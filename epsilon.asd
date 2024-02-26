@@ -11,6 +11,7 @@
      (:module "lib"
       :components
       ((:file "io")
+       (:file "cons")
        (:file "symbol")
        (:file "eval")
        (:module "checksum"
@@ -49,7 +50,7 @@
                  (:file "stream")
                  (:file "sha-2")))))
      (:module "tool"
-      :components ((:file "unit-test"))))))
+      :components ((:file "test"))))))
   :in-order-to ((asdf:test-op (asdf:test-op #:epsilon/tests))))
 
 (asdf:defsystem #:epsilon/tests

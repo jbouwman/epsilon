@@ -1,6 +1,7 @@
-(defpackage #:epsilon.tool.unit-test
+(defpackage #:epsilon.tool.test
   (:use
    #:cl
+   #:lib.cons
    #:sb-gray)
   (:export
    #:deftest
@@ -13,11 +14,11 @@
    #:describe-failed-tests
    #:run-suite-tests))
 
-(defpackage #:epsilon.tool.unit-test.suites
+(defpackage #:epsilon.tool.test.suites
   (:documentation
    "Namespace for test suites defined via DEFINE-TEST-PACKAGE."))
 
-(in-package #:epsilon.tool.unit-test)
+(in-package #:epsilon.tool.test)
 
 (defvar *suite*)
 
@@ -72,10 +73,10 @@ the toplevel entry point to any test.")
 (eval-when (:compile-toplevel :load-toplevel)
 
   (defmacro with-gensyms (names &body forms)
-  `(let ,(mapcar (lambda (name)
-                   `(,name (gensym ,(symbol-name name))))
-                 names)
-     ,@forms))
+    `(let ,(mapcar (lambda (name)
+                     `(,name (gensym ,(symbol-name name))))
+            names)
+       ,@forms))
 
   )
 
@@ -293,7 +294,7 @@ missing (in-root-suite)?"
 
 (define-condition failure (simple-condition)
   ((test-run :initform *test-run* :accessor test-run-of
-            :documentation "Might perfectly well be NIL") 
+             :documentation "Might perfectly well be NIL") 
    (progress-char :initform #\X :accessor progress-char-of
                   :initarg :progress-char :allocation :class)
    (expected :initarg :expected :initform *failures-and-errors-are-expected*
@@ -556,181 +557,6 @@ continue by returning (values)~@:>"))
 (defmacro with-expected-failures (&body body)
   "Run BODY registering failured conditions as expected failures."
   `(with-expected-failures* t ,@body))
-
-
-(eval-when (:compile-toplevel :load-toplevel)
-
-  (defun ensure-list (list)
-    (if (listp list)
-        list
-        (list list)))
-
-  (define-condition illegal-lambda-list (error)
-    ((lambda-list :accessor lambda-list-of :initarg :lambda-list)))
-
-  (defun illegal-lambda-list (lambda-list)
-    (error 'illegal-lambda-list :lambda-list lambda-list))
-
-  (defun parse-lambda-list (lambda-list visitor &key macro)
-    (declare (type list lambda-list)
-             (type (or symbol function) visitor))
-    (let ((args lambda-list))
-      (labels
-          ((fail ()
-             (illegal-lambda-list lambda-list))
-           (process-&whole ()
-             (assert (eq (first args) '&whole))
-             (pop args)
-             (unless macro
-               (fail))
-             (let ((whole (pop args)))
-               (unless whole
-                 (fail))
-               (funcall visitor '&whole whole whole))
-             (case (first args)
-               (&key          (entering-&key))
-               (&rest         (process-&rest))
-               (&optional     (entering-&optional))
-               (&body         (process-&body))
-               (&environment  (process-&environment))
-               ((&whole &aux &allow-other-keys) (fail))
-               (t             (process-required))))
-           (process-&body ()
-             (assert (eq (first args) '&body))
-             (pop args)
-             (unless macro
-               (fail))
-             (let ((body (pop args)))
-               (unless (null args)
-                 (fail))
-               (unless body
-                 (fail))
-               (funcall visitor '&body body body)))
-           (process-&environment ()
-             (assert (eq (first args) '&environment))
-             (pop args)
-             (unless macro
-               (fail))
-             (let ((env (pop args)))
-               (unless env
-                 (fail))
-               (funcall visitor '&environment env env))
-             (case (first args)
-               (&key          (entering-&key))
-               (&rest         (process-&rest))
-               (&optional     (entering-&optional))
-               (&body         (process-&body))
-               (&aux          (process-&aux))
-               ((&whole &environment &allow-other-keys) (fail))
-               (t             (process-required))))
-           (process-required ()
-             (unless args
-               (done))
-             (case (first args)
-               (&key          (entering-&key))
-               (&rest         (process-&rest))
-               (&optional     (entering-&optional))
-               (&body         (process-&body))
-               (&environment  (process-&environment))
-               ((&whole &allow-other-keys) (fail))
-               (&aux          (entering-&aux))
-               (t
-                (let ((arg (pop args)))
-                  (funcall visitor nil arg arg))
-                (process-required))))
-           (process-&rest ()
-             (assert (eq (first args) '&rest))
-             (pop args)
-             (let ((rest (pop args)))
-               (unless rest
-                 (fail))
-               (funcall visitor '&rest rest rest))
-             (unless args
-               (done))
-             (case (first args)
-               (&key               (entering-&key))
-               (&environment       (process-&environment))
-               ((&whole &optional &rest &body &allow-other-keys) (fail))
-               (&aux               (entering-&aux))
-               (t                  (fail))))
-           (entering-&optional ()
-             (assert (eq (first args) '&optional))
-             (pop args)
-             (process-&optional))
-           (process-&optional ()
-             (unless args
-               (done))
-             (case (first args)
-               (&key               (entering-&key))
-               (&rest              (process-&rest))
-               (&body              (process-&body))
-               ((&whole &optional &environment &allow-other-keys) (fail))
-               (&aux               (entering-&aux))
-               (t
-                (let* ((arg (ensure-list (pop args)))
-                       (name (first arg))
-                       (default (second arg)))
-                  (funcall visitor '&optional name arg nil default))
-                (process-&optional))))
-           (entering-&key ()
-             (assert (eq (first args) '&key))
-             (pop args)
-             (process-&key))
-           (process-&key ()
-             (unless args
-               (done))
-             (case (first args)
-               (&allow-other-keys (funcall visitor '&allow-other-keys nil nil))
-               ((&key &optional &whole &environment &body) (fail))
-               (&aux                    (entering-&aux))
-               (t
-                (let* ((arg (ensure-list (pop args)))
-                       (name-part (first arg))
-                       (default (second arg))
-                       (external-name (if (consp name-part)
-                                          (progn
-                                            (unless (= (length name-part) 2)
-                                              (illegal-lambda-list lambda-list))
-                                            (first name-part))
-                                          (intern (symbol-name name-part)
-                                                  #.(find-package "KEYWORD"))))
-                       (local-name (if (consp name-part)
-                                       (second name-part)
-                                       name-part)))
-                  (funcall visitor '&key local-name arg external-name default))
-                (process-&key))))
-           (entering-&aux ()
-             (assert (eq (first args) '&aux))
-             (pop args)
-             (process-&aux))
-           (process-&aux ()
-             (unless args
-               (done))
-             (case (first args)
-               ((&whole &optional &key &environment
-                        &allow-other-keys &aux &body) (fail))
-               (t
-                (let ((arg (ensure-list (pop args))))
-                  (funcall visitor '&aux (first arg) arg))
-                (process-&aux))))
-           (done ()
-             (return-from parse-lambda-list (values))))
-        (when args
-          (case (first args)
-            (&whole (process-&whole))
-            (t      (process-required)))))))
-
-  (defun lambda-list-to-value-list-expression (args)
-    `(list ,@(let ((result (list)))
-               (parse-lambda-list args
-                                  (lambda (kind name entry
-                                           &optional external-name default)
-                                    (declare (ignore entry external-name default))
-                                    (case kind
-                                      (&allow-other-keys)
-                                      (t (push `(cons ',name ,name) result)))))
-               (nreverse result))))
-  )
 
 (defun funcall-test-with-feedback-message (test-function &rest args)
   "Run TEST non-interactively and print results to *STANDARD-OUTPUT*.
@@ -1094,7 +920,7 @@ not destructively modified. Keys are compared using EQ."
                                   (make-instance
                                    'test-run
                                    :test *current-test*
-                                   :actual-test-arguments ,(lambda-list-to-value-list-expression args)
+                                   :actual-test-arguments ,args
                                    :parent-test-run parent-test-run)))
                           (handler-bind
                               ((test-skipped
@@ -1168,11 +994,11 @@ not destructively modified. Keys are compared using EQ."
 (setf *root-suite* (make-suite 'root-suite :documentation "Root Suite" :in nil))
 (setf *suite* *root-suite*)
 
-(defsuite (epsilon.tool.unit-test.suites::all-tests :in root-suite))
+(defsuite (epsilon.tool.test.suites::all-tests :in root-suite))
 
 (defun all-tests ()
   "Run all currently defined tests."
-  (run-tests 'epsilon.tool.unit-test.suites::all-tests))
+  (run-tests 'epsilon.tool.test.suites::all-tests))
 
 (defmacro define-test-package (name-or-name-with-args &body package-options)
   "Defines a new package and binds to it a new test suite.
@@ -1189,16 +1015,16 @@ PARENT-SUITE designated the suite previously created with
 DEFSUITE that should parent the newly created suite.
 
 Package NAME is defined via normal `defpackage', and in addition to
-processing PACKAGE-OPTIONS, automatically USES the :EPSILON.TOOL.UNIT-TEST and :CL
+processing PACKAGE-OPTIONS, automatically USES the :EPSILON.TOOL.TEST and :CL
 packages."
-  (destructuring-bind (name &key (in 'epsilon.tool.unit-test.suites::all-tests))
+  (destructuring-bind (name &key (in 'epsilon.tool.test.suites::all-tests))
       (ensure-list name-or-name-with-args)
     (unless (find-package name)
       (make-package name :use nil))
-    (let ((suite-sym (intern (string name) :epsilon.tool.unit-test.suites)))
+    (let ((suite-sym (intern (string name) :epsilon.tool.test.suites)))
       `(progn
 	 (defpackage ,name
-	   ,@(append `((:use :epsilon.tool.unit-test :cl))
+	   ,@(append `((:use :epsilon.tool.test :cl))
 		     package-options))
 	 (defsuite (,suite-sym :bind-to-package ,name
 			       :in ,in))))))

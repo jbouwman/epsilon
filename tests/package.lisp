@@ -1,4 +1,4 @@
-(epsilon.tool.unit-test:define-test-package #:epsilon-tests
+(epsilon.tool.test:define-test-package #:epsilon-tests
   (:use
    #:cl
    #:lib.checksum.adler-32
