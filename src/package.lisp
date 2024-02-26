@@ -6,7 +6,8 @@
    #:lib.io
    #:lib.eval
    #:lib.checksum.generic
-   #:lib.checksum.adler-32)
+   #:lib.checksum.adler-32
+   #:lib.checksum.crc-32)
   (:export
    #:encode
    #:encode-file

@@ -964,7 +964,7 @@
 
 (defun make-bzip2-state ()
   (let ((state (%make-bzip2-state)))
-    (setf (dstate-checksum state) (make-instance 'crc32-checksum))
+    (setf (dstate-checksum state) (make-instance 'crc-32))
     state))
 
 (defclass bzip2-codec ()

@@ -51,6 +51,10 @@
 (deftype u16 ()
   '(unsigned-byte 16))
 
+(deftype ->u16 (&optional length)
+  (let ((length (or length '*)))
+    `(simple-array u16 (,length))))
+
 (defun ->u16 (arg)
   (etypecase arg
     (array-index (make-array arg :element-type 'u16))

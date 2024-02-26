@@ -14,14 +14,14 @@
        (:module "checksum"
         :components
                 ((:file "generic")
-                 (:file "adler-32")))))
+                 (:file "adler-32")
+                 (:file "crc-32")))))
      (:module "tool"
       :components ((:file "unit-test")))
      (:file "package")
      (:file "generic")
      (:file "constant")
      (:file "type")
-     (:file "lib/checksum/crc")
      (:file "condition")
      (:file "gzip")
      (:file "zlib")
