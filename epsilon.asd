@@ -6,6 +6,8 @@
                              (:file "type-lo")
                              (:module "checksum"
                               :components ((:file "adler-32")))
+                             (:module "tool"
+                              :components ((:file "unit-test")))
                              (:file "package")
                              (:file "generic")
                              (:file "eval")
@@ -27,9 +29,7 @@
   :in-order-to ((asdf:test-op (asdf:test-op #:epsilon/tests))))
 
 (asdf:defsystem #:epsilon/tests
-  :depends-on (#:epsilon
-               #:flexi-streams          ; TODO
-               #:fiasco)                ; TODO
+  :depends-on (#:epsilon)
   :perform (asdf:test-op (o s)
                          (uiop:symbol-call :epsilon-tests :run-all-tests))
   :pathname "tests/"
