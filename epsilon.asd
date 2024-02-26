@@ -1,31 +1,38 @@
 (asdf:defsystem #:epsilon
   :serial t
-  :components ((:module "src"
-                :serial t
-                :components ((:file "generic-lo")
-                             (:file "type-lo")
-                             (:module "checksum"
-                              :components ((:file "adler-32")))
-                             (:module "tool"
-                              :components ((:file "unit-test")))
-                             (:file "package")
-                             (:file "generic")
-                             (:file "eval")
-                             (:file "constant")
-                             (:file "type")
-                             (:file "io")
-                             (:file "checksum/crc")
-                             (:file "condition")
-                             (:file "gzip")
-                             (:file "zlib")
-                             (:file "decompress")
-                             (:file "inflate")
-                             (:file "bzip")
-                             (:file "stream")
-                             (:file "bitstream")
-                             (:file "huffman")
-                             (:file "compress")
-                             (:file "public"))))
+  :components
+  ((:module "src"
+    :serial t
+    :components
+    ((:module "sys"
+      :components
+      ((:file "type")))
+     (:module "lib"
+      :components
+      ((:file "io")
+       (:file "eval")
+       (:module "checksum"
+        :components
+                ((:file "generic")
+                 (:file "adler-32")))))
+     (:module "tool"
+      :components ((:file "unit-test")))
+     (:file "package")
+     (:file "generic")
+     (:file "constant")
+     (:file "type")
+     (:file "lib/checksum/crc")
+     (:file "condition")
+     (:file "gzip")
+     (:file "zlib")
+     (:file "decompress")
+     (:file "inflate")
+     (:file "bzip")
+     (:file "stream")
+     (:file "bitstream")
+     (:file "huffman")
+     (:file "compress")
+     (:file "public"))))
   :in-order-to ((asdf:test-op (asdf:test-op #:epsilon/tests))))
 
 (asdf:defsystem #:epsilon/tests
