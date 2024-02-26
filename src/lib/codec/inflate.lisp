@@ -182,7 +182,6 @@ the input and the number of bytes written to the output."
 
 (defun %inflate-state-machine (state)
   (declare (type inflate-state state))
-  (declare (optimize (speed 3) (debug 1) (space 0) (compilation-speed 0)))
   ;; Once upon a time, the individual functions in the LABELS below were
   ;; separate functions.  We drove the state machine of this function
   ;; using LOOP and SYMBOL-FUNCTION.  This scheme looked lovely...except

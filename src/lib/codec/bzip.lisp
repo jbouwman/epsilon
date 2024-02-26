@@ -312,7 +312,6 @@
 
 (defun %bzip2-state-machine (state)
   (declare (type bzip2-state state))
-  (declare (optimize (speed 3) (debug 1) (space 0) (compilation-speed 0)))
   ;; See the enormous comment in %INFLATE-STATE-MACHINE for what's going
   ;; on here.
   (macrolet ((transition-to (next-state)

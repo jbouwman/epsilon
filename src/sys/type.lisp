@@ -2,6 +2,7 @@
   (:use #:cl)
   (:export
    #:array-index
+   #:array-index+1
    #:u8
    #:->u8
    #:random-u8
@@ -19,6 +20,9 @@
 
 (deftype array-index ()
   `(mod ,array-dimension-limit))
+
+(deftype array-index+1 ()
+  `(mod ,(1+ array-dimension-limit)))
 
 ;; 8 bit unsigned integer
 
