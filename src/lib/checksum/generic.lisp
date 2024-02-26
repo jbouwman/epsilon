@@ -1,10 +1,10 @@
-(defpackage #:encode.generic
+(defpackage #:lib.checksum.generic
   (:use #:cl)
   (:export
    #:checksum
    #:update))
 
-(in-package #:encode.generic)
+(in-package #:lib.checksum.generic)
 
 (defgeneric update (state buffer start count))
 

@@ -354,7 +354,8 @@ missing (in-root-suite)?"
 (defmethod print-object ((self unexpected-error) stream)
   (print-unreadable-object (self stream :identity nil :type nil)
     (format stream "error ~{~A~^,~}: ~S"
-            (mapcar (compose #'name-of #'test-of)
+            (mapcar (lambda (x)
+                      (name-of (test-of x)))
                     (loop for test-run = (test-run-of self) then (parent-test-run-of test-run)
                           while test-run collect test-run))
             (error-of self))))
@@ -419,14 +420,19 @@ and has no parent")
         (loop for test-run in (children-test-runs-of test-run)
               append (all-test-runs-of test-run))))
 
+(defun failed-assertion-p (failure)
+  (or (typep failure 'failed-assertion)
+      (typep failure 'missing-condition)
+      (typep failure 'unwanted-condition)))
+
+(defun unexpected-p (failure)
+  (typep failure 'unexpected-error))
+
 (defun test-run-statistics (test-run)
   (let* ((failures (failures-of test-run))
-         (failed-assertion-count (count-if (of-type '(or
-                                                      failed-assertion
-                                                      missing-condition
-                                                      unwanted-condition))
+         (failed-assertion-count (count-if #'failed-assertion-p
                                            failures))
-         (unexpected-error-count (count-if (of-type 'unexpected-error)
+         (unexpected-error-count (count-if #'unexpected-p
                                            failures))
          (expected-count (count-if 'expected-p failures))
          (skips-count (skips-of test-run)))
@@ -713,26 +719,6 @@ continue by returning (values)~@:>"))
           (case (first args)
             (&whole (process-&whole))
             (t      (process-required)))))))
-
-  (defun lambda-list-to-funcall-list (args)
-    (multiple-value-bind (requireds optionals rest keywords)
-        (parse-ordinary-lambda-list args)
-      (values (append requireds
-                      (loop
-                        :for entry :in optionals
-                        :collect (first entry))
-                      (loop
-                        :for entry :in keywords
-                        :appending (list (first (first entry))
-                                         (second (first entry)))))
-              rest)))
-
-  (defun lambda-list-to-funcall-expression (function args)
-    (multiple-value-bind (arg-list rest-variable)
-        (lambda-list-to-funcall-list args)
-      (if rest-variable
-          `(apply ,function ,@arg-list ,rest-variable)
-          `(funcall ,function ,@arg-list))))
 
   (defun lambda-list-to-value-list-expression (args)
     `(list ,@(let ((result (list)))

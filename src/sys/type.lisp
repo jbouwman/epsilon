@@ -1,4 +1,4 @@
-(defpackage #:encode.type
+(defpackage #:sys.type
   (:use #:cl)
   (:export
    #:array-index
@@ -15,7 +15,7 @@
    #:write-u32
    #:write-u32-msb))
 
-(in-package #:encode.type)
+(in-package #:sys.type)
 
 (deftype array-index ()
   `(mod ,array-dimension-limit))
@@ -50,6 +50,10 @@
 
 (deftype u16 ()
   '(unsigned-byte 16))
+
+(deftype ->u16 (&optional length)
+  (let ((length (or length '*)))
+    `(simple-array u16 (,length))))
 
 (defun ->u16 (arg)
   (etypecase arg

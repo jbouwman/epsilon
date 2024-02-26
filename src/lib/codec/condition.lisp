@@ -1,4 +1,4 @@
-(in-package #:encode)
+(in-package #:lib.codec)
 
 (define-condition stream-closed (stream-error)
   ()

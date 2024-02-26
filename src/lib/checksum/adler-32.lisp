@@ -1,13 +1,14 @@
-(defpackage #:encode.checksum.adler-32
-  (:use #:cl
-        #:encode.generic
-        #:encode.type)
+(defpackage #:lib.checksum.adler-32
+  (:use
+   #:cl
+   #:lib.checksum.generic
+   #:sys.type)
   (:export
    #:adler-32))
 
 ;; https://en.wikipedia.org/wiki/Adler-32
 
-(in-package #:encode.checksum.adler-32)
+(in-package #:lib.checksum.adler-32)
 
 (defconstant +adler-32-base+ 65521)
 

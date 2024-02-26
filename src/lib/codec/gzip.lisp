@@ -1,4 +1,4 @@
-(in-package :encode)
+(in-package #:lib.codec)
 
 (defclass gzip-header ()
   ((flags :initarg :flags :accessor flags)
@@ -46,7 +46,7 @@ the decompressor.")
 (defconstant +gzip-mtime+ 0)
 
 (defclass gzip-compressor (deflate-compressor)
-  ((checksum :initform (make-instance 'crc32-checksum))
+  ((checksum :initform (make-instance 'crc-32))
    (data-length :initform 0)))
 
 (defmethod start-data-format :before ((compressor gzip-compressor))

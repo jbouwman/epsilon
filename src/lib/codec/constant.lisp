@@ -1,4 +1,4 @@
-(in-package :encode)
+(in-package #:lib.codec)
 
 (defmacro define-constant (name value)
   `(unless (boundp ',name)

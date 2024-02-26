@@ -1,10 +1,11 @@
 (epsilon.tool.unit-test:define-test-package #:epsilon-tests
   (:use
    #:cl
-   #:encode.generic
-   #:encode.type
-   #:encode
-   #:encode.checksum.adler-32)
+   #:lib.checksum.adler-32
+   #:lib.checksum.generic
+   #:lib.codec
+   #:lib.io
+   #:sys.type)
   (:export
    #:run-epsilon-tests))
 

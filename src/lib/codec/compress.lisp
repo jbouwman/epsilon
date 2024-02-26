@@ -1,4 +1,4 @@
-(in-package #:encode)
+(in-package #:lib.codec)
 
 (defconstant +maximum-match-length+ 258
   "The maximum match length allowed.")

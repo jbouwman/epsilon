@@ -1,11 +1,20 @@
-(in-package #:encode)
+(defpackage #:lib.io
+  (:use
+   #:cl
+   #:sys.type)
+  (:export
+   #:file=
+   #:stream=
+   #:stream-files))
+
+(in-package #:lib.io)
 
 (defmacro with-u8-in ((f in) &body body)
-  `(with-open-file (,f ,in :element-type 'encode:u8)
+  `(with-open-file (,f ,in :element-type 'u8)
      ,@body))
 
 (defmacro with-u8-out ((f in) &body body)
-  `(with-open-file (,f ,in :element-type 'encode:u8
+  `(with-open-file (,f ,in :element-type 'u8
                            :direction :output
                            :if-exists :supersede)
      ,@body))

@@ -1,4 +1,4 @@
-(in-package :encode)
+(in-package #:lib.codec)
 
 ;;; decoders for fixed compression blocks
 
@@ -65,6 +65,8 @@
   ;; format of the compressed data that we're reading
   (data-format 'deflate :type (member deflate zlib gzip)))
 
+;; FIXME deleteme
+
 (defun make-inflate-state (format)
   "Return a INFLATE-STATE structure suitable for uncompressing data in
 FORMAT; FORMAT should be:
@@ -83,7 +85,7 @@ The usual value of FORMAT will be one of :GZIP or :ZLIB."
           (state (%make-inflate-state f)))
     (case f
       (gzip
-       (setf (dstate-checksum state) (make-instance 'crc32-checksum)))
+       (setf (dstate-checksum state) (make-instance 'crc-32)))
       (zlib
        (setf (dstate-checksum state) (make-instance 'adler-32))))
     state))

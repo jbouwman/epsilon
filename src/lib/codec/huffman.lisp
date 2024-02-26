@@ -1,10 +1,10 @@
-(in-package #:encode)
+(in-package #:lib.codec)
 
 (deftype code-vector ()
-  '(simple-array u32 (*)))
+  '->u32)
 
 (deftype size-vector ()
-  '(simple-array u8 (*)))
+  '->u8)
 
 (defclass huffman-codes ()
   ((codes
@@ -15,10 +15,10 @@
     :accessor sizes)))
                         
 (defun code-vector (length)
-  (make-array length :element-type 'u32))
+  (->u32 length))
 
 (defun size-vector (length)
-  (make-array length :element-type 'u8))
+  (->u8 length))
 
 ;;;
 ;;; Generate the fixed code/size vectors
