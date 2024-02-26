@@ -1,4 +1,4 @@
-(fiasco:define-test-package #:epsilon-tests
+(epsilon.tool.unit-test:define-test-package #:epsilon-tests
   (:use
    #:cl
    #:encode.generic
