@@ -1,4 +1,4 @@
-(in-package :encode)
+(in-package #:lib.codec)
 
 (defclass zlib-header ()
   ((flags :initarg :flags :accessor flags)

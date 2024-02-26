@@ -1,4 +1,4 @@
-(in-package :encode)
+(in-package #:lib.codec)
 
 (defclass gzip-header ()
   ((flags :initarg :flags :accessor flags)

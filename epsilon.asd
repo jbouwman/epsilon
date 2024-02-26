@@ -12,27 +12,31 @@
       ((:file "io")
        (:file "eval")
        (:module "checksum"
+        :serial t
         :components
                 ((:file "generic")
                  (:file "adler-32")
-                 (:file "crc-32")))))
+                 (:file "crc-32")))
+       (:module "codec"
+        :serial t
+        :components
+                ((:file "package")      ; TODO
+                 (:file "generic")
+                 (:file "constant")
+                 (:file "type")
+                 (:file "condition")
+                 (:file "gzip")
+                 (:file "zlib")
+                 (:file "decompress")
+                 (:file "inflate")
+                 (:file "bzip")
+                 (:file "stream")
+                 (:file "bitstream")
+                 (:file "huffman")
+                 (:file "compress")
+                 (:file "public")))))
      (:module "tool"
-      :components ((:file "unit-test")))
-     (:file "package")
-     (:file "generic")
-     (:file "constant")
-     (:file "type")
-     (:file "condition")
-     (:file "gzip")
-     (:file "zlib")
-     (:file "decompress")
-     (:file "inflate")
-     (:file "bzip")
-     (:file "stream")
-     (:file "bitstream")
-     (:file "huffman")
-     (:file "compress")
-     (:file "public"))))
+      :components ((:file "unit-test"))))))
   :in-order-to ((asdf:test-op (asdf:test-op #:epsilon/tests))))
 
 (asdf:defsystem #:epsilon/tests

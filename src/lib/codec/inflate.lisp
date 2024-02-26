@@ -1,4 +1,4 @@
-(in-package :encode)
+(in-package #:lib.codec)
 
 ;;; decoders for fixed compression blocks
 

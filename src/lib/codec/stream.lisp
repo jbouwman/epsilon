@@ -1,4 +1,4 @@
-(in-package :encode)
+(in-package #:lib.codec)
 
 (defclass decompressing-stream (fundamental-binary-input-stream)
   ((wrapped-stream :initarg :stream :reader wrapped-stream)

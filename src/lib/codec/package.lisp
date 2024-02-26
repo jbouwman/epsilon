@@ -1,4 +1,4 @@
-(defpackage #:encode
+(defpackage #:lib.codec
   (:use
    #:cl
    #:sb-gray
