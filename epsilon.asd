@@ -1,5 +1,6 @@
 (asdf:defsystem #:epsilon
   :serial t
+  :depends-on (:sb-rotate-byte)
   :components
   ((:module "src"
     :serial t
@@ -10,6 +11,7 @@
      (:module "lib"
       :components
       ((:file "io")
+       (:file "symbol")
        (:file "eval")
        (:module "checksum"
         :serial t
@@ -34,7 +36,18 @@
                  (:file "bitstream")
                  (:file "huffman")
                  (:file "compress")
-                 (:file "public")))))
+                 (:file "public")))
+       (:module "digest"
+        :serial t
+        :components
+                ((:file "macro")
+                 (:file "reader")
+                 (:file "common")
+                 (:file "util")
+                 (:file "generic")
+                 (:file "public")
+                 (:file "stream")
+                 (:file "sha-2")))))
      (:module "tool"
       :components ((:file "unit-test"))))))
   :in-order-to ((asdf:test-op (asdf:test-op #:epsilon/tests))))
@@ -47,4 +60,5 @@
   :serial t
   :components ((:file "package")        ; TODO
                (:file "checksum")
-               (:file "encode")))
+               (:file "encode")
+               (:file "sha-2")))
