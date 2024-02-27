@@ -2,7 +2,7 @@
   (:use
    #:cl
    #:lib.checksum.generic
-   #:sys.type)
+   #:lib.type)
   (:export
    #:adler-32))
 

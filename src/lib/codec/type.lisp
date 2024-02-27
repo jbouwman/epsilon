@@ -23,8 +23,6 @@
 (deftype bitstream-buffer-bit-count ()
   `(integer 0 ,+bitstream-buffer-bits+))
 
-(deftype index () '(mod #.array-dimension-limit))
-
 (deftype deflate-code-length () '(integer 0 #.+max-code-length+))
 
 (deftype deflate-code () '(unsigned-byte #.+max-code-length+))

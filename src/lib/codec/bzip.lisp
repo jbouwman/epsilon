@@ -29,13 +29,13 @@
                                                                 3 11 7 15)))))
     (aref table x)))
 
-(defun reverse-ub8 (x)
+(defun reverse-u8 (x)
   (logior (ash (reverse-ub4 (ldb (byte 4 0) x)) 4)
           (reverse-ub4 (ldb (byte 4 4) x))))
 
 (defun reverse-ub16 (x)
-  (logior (ash (reverse-ub8 (ldb (byte 8 0) x)) 8)
-          (reverse-ub8 (ldb (byte 8 8) x))))
+  (logior (ash (reverse-u8 (ldb (byte 8 0) x)) 8)
+          (reverse-u8 (ldb (byte 8 8) x))))
 
 (defvar *dummy-vec* (make-array #.+bz-max-alpha-size+ :element-type 'u32))
 

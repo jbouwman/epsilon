@@ -1,7 +1,8 @@
 (defpackage #:lib.digest.stream
   (:use
    #:cl
-   #:sys.type
+   #:sb-gray
+   #:lib.type
    #:lib.digest.generic)
   (:export
    #:with-authenticating-stream))
@@ -23,11 +24,11 @@
 
 ;;; input streams
 
-(defclass octet-input-stream (octet-stream sb-gray:fundamental-binary-input-stream)
+(defclass octet-input-stream (octet-stream fundamental-binary-input-stream)
   ((index :accessor index :initarg :index :type array-index)
    (end :accessor end :initarg :end :type array-index)))
 
-(defmethod sb-gray:stream-read-byte ((stream octet-input-stream))
+(defmethod stream-read-byte ((stream octet-input-stream))
   (let ((buffer (buffer stream))
         (index (index stream)))
     (declare (type ->u8 buffer))
@@ -37,7 +38,7 @@
        (setf (index stream) (1+ index))
        (aref buffer index)))))
 
-(defmethod sb-gray:stream-read-sequence ((stream octet-input-stream) seq &optional (start 0) end)
+(defmethod stream-read-sequence ((stream octet-input-stream) seq &optional (start 0) end)
   (typecase seq
     (->u8
      (let ((end (or end (length seq))))
@@ -70,10 +71,10 @@
 
 ;;; output streams
 
-(defclass octet-output-stream (octet-stream sb-gray:fundamental-binary-output-stream)
+(defclass octet-output-stream (octet-stream fundamental-binary-output-stream)
   ((index :accessor index :initform 0 :type array-index)))
 
-(defmethod sb-gray::stream-write-byte ((stream octet-output-stream) integer)
+(defmethod :stream-write-byte ((stream octet-output-stream) integer)
   (declare (type (unsigned-byte 8) integer))
   (let* ((buffer (buffer stream))
          (length (length buffer))
@@ -90,7 +91,7 @@
           (index stream) (1+ index))
     integer))
 
-(defmethod sb-gray:stream-write-sequence ((stream octet-output-stream) seq &optional (start 0) end)
+(defmethod stream-write-sequence ((stream octet-output-stream) seq &optional (start 0) end)
   (typecase seq
     (->u8
      (let ((end (or end (length seq))))

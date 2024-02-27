@@ -1,12 +1,13 @@
 (defpackage #:lib.digest.sha-2
-  (:use #:cl
-        #:sys.type
-        #:lib.symbol
-        #:lib.digest.common
-        #:lib.digest.generic
-        #:lib.digest.macro
-        #:lib.digest.public
-        #:lib.digest.reader))
+  (:use
+   #:cl
+   #:lib.type
+   #:lib.symbol
+   #:lib.digest.common
+   #:lib.digest.generic
+   #:lib.digest.macro
+   #:lib.digest.public
+   #:lib.digest.reader))
 
 ;;; implementation of SHA-2/256
 
@@ -53,18 +54,13 @@
 
 (defun update-sha256-block (regs block)
   (declare (type sha256-regs regs))
-  (declare (type (simple-array (unsigned-byte 32) (64)) block)
+  (declare (type (->u32 64) block)
            #.(burn-baby-burn))
   (let ((a (sha256-regs-a regs)) (b (sha256-regs-b regs))
         (c (sha256-regs-c regs)) (d (sha256-regs-d regs))
         (e (sha256-regs-e regs)) (f (sha256-regs-f regs))
         (g (sha256-regs-g regs)) (h (sha256-regs-h regs)))
     (flet ((ch (x y z)
-             #+cmu
-             (kernel:32bit-logical-xor z
-                                       (kernel:32bit-logical-and x
-                                                                 (kernel:32bit-logical-xor y z)))
-             #-cmu
              (logxor z (logand x (logxor y z))))
            (maj (x y z)
              (ldb (byte 32 0) (logxor (logand x y) (logand x z)
@@ -99,7 +95,7 @@
         regs))))
 
 (defun sha256-expand-block (block)
-  (declare (type (simple-array (unsigned-byte 32) (64)) block)
+  (declare (type (->u32 64) block)
            #.(burn-baby-burn))
   (flet ((sigma0 (x)
            (declare (type (unsigned-byte 32) x))
@@ -126,7 +122,7 @@
              (:include mdx))
   (regs (initial-sha256-regs) :type sha256-regs :read-only t)
   (block (make-array 64 :element-type '(unsigned-byte 32))
-    :type (simple-array (unsigned-byte 32) (64)) :read-only t))
+    :type (->u32 64) :read-only t))
 
 (defstruct (sha224
              (:include sha256)
@@ -166,7 +162,7 @@
 (define-digest-updater sha256
   (flet ((compress (state sequence offset)
            (let ((block (sha256-block state)))
-             (fill-block-ub8-be block sequence offset)
+             (fill-block-u8-be block sequence offset)
              (sha256-expand-block block)
              (update-sha256-block (sha256-regs state) block))))
     (declare (dynamic-extent #'compress))
@@ -181,14 +177,14 @@
         (total-length (* 8 (sha256-amount state))))
     (declare (type sha256-regs regs)
              (type (integer 0 63) buffer-index)
-             (type (simple-array (unsigned-byte 32) (64)) block)
-             (type (simple-array (unsigned-byte 8) (64)) buffer))
+             (type (->u32 64) block)
+             (type (->u8 64) buffer))
     (setf (aref buffer buffer-index) #x80)
     (when (> buffer-index 55)
       (loop for index of-type (integer 0 64)
          from (1+ buffer-index) below 64
          do (setf (aref buffer index) #x00))
-      (fill-block-ub8-be block buffer 0)
+      (fill-block-u8-be block buffer 0)
       (sha256-expand-block block)
       (update-sha256-block regs block)
       (loop for index of-type (integer 0 16)
@@ -199,7 +195,7 @@
          from (1+ buffer-index) below 64
          do (setf (aref buffer index) #x00))
       ;; copy the data to BLOCK prematurely
-      (fill-block-ub8-be block buffer 0))
+      (fill-block-u8-be block buffer 0))
     ;; fill in the remaining block data
     (store-data-length block total-length 14 t)
     (sha256-expand-block block)
@@ -208,6 +204,5 @@
 
 (defdigest sha256 :digest-length 32 :block-length 64)
 (defdigest sha224 :digest-length 28 :block-length 64)
-
 
 (%make-sha256-digest)

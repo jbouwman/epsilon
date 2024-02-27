@@ -1,24 +1,31 @@
-(defpackage #:epsilon.tool.test
+(defpackage #:tool.test
   (:use
    #:cl
-   #:lib.cons
-   #:sb-gray)
+   #:sb-gray
+   #:lib.list
+   #:lib.symbol)
   (:export
+   #:define-test-package
    #:deftest
+   #:describe-failed-tests
    #:is
+   #:run-all-tests
+   #:run-package-tests
+   #:run-suite-tests
+   #:run-tests
    #:signals
    #:skip
-   #:define-test-package
-   #:run-tests
-   #:run-package-tests
-   #:describe-failed-tests
-   #:run-suite-tests))
+   #:test-file))
 
-(defpackage #:epsilon.tool.test.suites
+(defpackage #:tool.test.suites
   (:documentation
    "Namespace for test suites defined via DEFINE-TEST-PACKAGE."))
 
-(in-package #:epsilon.tool.test)
+(in-package #:tool.test)
+
+(defun test-file (name)
+  (merge-pathnames (format nil "tests/data/~A" name)
+                   (asdf:system-source-directory "epsilon")))
 
 (defvar *suite*)
 
@@ -69,17 +76,6 @@ the toplevel entry point to any test.")
 (defvar *within-non-suite-test* nil
   "True within the scope of a non-suite test. Used to suppress printing test
   status for recursive test calls.")
-
-(eval-when (:compile-toplevel :load-toplevel)
-
-  (defmacro with-gensyms (names &body forms)
-    `(let ,(mapcar (lambda (name)
-                     `(,name (gensym ,(symbol-name name))))
-            names)
-       ,@forms))
-
-  )
-
 
 ;; Stream
 
@@ -166,9 +162,7 @@ this test when its parent suite is invoked. Enabled by default.")))
              (not (gethash (package-of self) *package-bound-suites*)))
     (warn 'test-style-warning
           :test self
-          :format-control "Adding test under parent ~S which is in a~
-different package (parent: ~A, child: ~A). Maybe a~
-missing (in-root-suite)?"
+          :format-control "Adding test under parent ~S which is in a different package (parent: ~A, child: ~A). Maybe a missing (in-root-suite)?"
           :format-arguments (list new-parent (symbol-package
                                               (name-of new-parent))
                                   (symbol-package (name-of self)))))
@@ -847,47 +841,6 @@ returning (values)~@:>" (name-of test)))
      (lambda ()
        (run-test-body)))))
 
-(eval-when (:compile-toplevel :load-toplevel)
-
-  (defun parse-body (body &key documentation whole)
-    "Parses BODY into (values remaining-forms declarations doc-string).
-Documentation strings are recognized only if DOCUMENTATION is true.
-Syntax errors in body are signalled and WHOLE is used in the signal
-arguments when given."
-    (let ((doc nil)
-          (decls nil)
-          (current nil))
-      (tagbody
-       :declarations
-         (setf current (car body))
-         (when (and documentation (stringp current) (cdr body))
-           (if doc
-               (error "Too many documentation strings in ~S." (or whole body))
-               (setf doc (pop body)))
-           (go :declarations))
-         (when (and (listp current) (eql (first current) 'declare))
-           (push (pop body) decls)
-           (go :declarations)))
-      (values body (nreverse decls) doc)))
-
-  (defun remove-from-plist (plist &rest keys)
-    "Returns a property-list with same keys and values as PLIST, except that keys
-in the list designated by KEYS and values corresponding to them are removed.
-The returned property-list may share structure with the PLIST, but PLIST is
-not destructively modified. Keys are compared using EQ."
-    (declare (optimize (speed 3)))
-    ;; FIXME: possible optimization: (remove-from-plist '(:x 0 :a 1 :b 2) :a)
-    ;; could return the tail without consing up a new list.
-    (loop for (key . rest) on plist by #'cddr
-          do (assert rest () "Expected a proper plist, got ~S" plist)
-          unless (member key keys :test #'eq)
-            collect key and collect (first rest)))
-
-  (define-modify-macro remove-from-plistf (&rest keys) remove-from-plist
-    "Modify macro for REMOVE-FROM-PLIST.")
-
-  )
-
 (defmacro deftest (&whole whole name args &body body)
   (multiple-value-bind (remaining-forms declarations documentation)
       (parse-body body :documentation t :whole whole)
@@ -994,11 +947,11 @@ not destructively modified. Keys are compared using EQ."
 (setf *root-suite* (make-suite 'root-suite :documentation "Root Suite" :in nil))
 (setf *suite* *root-suite*)
 
-(defsuite (epsilon.tool.test.suites::all-tests :in root-suite))
+(defsuite (tool.test.suites::all-tests :in root-suite))
 
-(defun all-tests ()
+(defun run-all-tests ()
   "Run all currently defined tests."
-  (run-tests 'epsilon.tool.test.suites::all-tests))
+  (run-tests 'tool.test.suites::all-tests))
 
 (defmacro define-test-package (name-or-name-with-args &body package-options)
   "Defines a new package and binds to it a new test suite.
@@ -1015,16 +968,16 @@ PARENT-SUITE designated the suite previously created with
 DEFSUITE that should parent the newly created suite.
 
 Package NAME is defined via normal `defpackage', and in addition to
-processing PACKAGE-OPTIONS, automatically USES the :EPSILON.TOOL.TEST and :CL
+processing PACKAGE-OPTIONS, automatically USES the :TOOL.TEST and :CL
 packages."
-  (destructuring-bind (name &key (in 'epsilon.tool.test.suites::all-tests))
+  (destructuring-bind (name &key (in 'tool.test.suites::all-tests))
       (ensure-list name-or-name-with-args)
     (unless (find-package name)
       (make-package name :use nil))
-    (let ((suite-sym (intern (string name) :epsilon.tool.test.suites)))
+    (let ((suite-sym (intern (string name) :tool.test.suites)))
       `(progn
 	 (defpackage ,name
-	   ,@(append `((:use :epsilon.tool.test :cl))
+	   ,@(append `((:use :tool.test :cl))
 		     package-options))
 	 (defsuite (,suite-sym :bind-to-package ,name
 			       :in ,in))))))

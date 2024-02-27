@@ -2,7 +2,7 @@
   (:use
    #:cl
    #:sb-rotate-byte
-   #:sys.type
+   #:lib.type
    #:lib.symbol)
   (:export
    #:%add-with-carry
@@ -11,10 +11,10 @@
    #:copy-block
    #:copy-to-buffer
    #:defconst
-   #:fill-block-ub8-be
-   #:fill-block-ub8-be/64
-   #:fill-block-ub8-le
-   #:fill-block-ub8-le/64
+   #:fill-block-u8-be
+   #:fill-block-u8-be/64
+   #:fill-block-u8-le
+   #:fill-block-u8-le/64
    #:hold-me-back
    #:mod32*
    #:mod32+
@@ -41,7 +41,7 @@
 
 ;;;; common.lisp -- efficient implementations of mod32 arithmetic and macros
 
-(in-package :lib.digest.common)
+(in-package #:lib.digest.common)
 
 (defmacro defconst (name value)
   `(defconstant ,name
@@ -58,12 +58,9 @@
 
 (defun hold-me-back ()
   '(declare (optimize (speed 3) (space 0) (compilation-speed 0)
-             #-cmu (safety 1) #-cmu (debug 1)
-             #+cmu (safety 0) #+cmu (debug 0))
-    #+cmu (ext:optimize-interface (safety 1) (debug 1))))
+             (safety 1) (debug 1))))
 ) ; EVAL-WHEN
 
-
 ;;; extracting individual bytes from integers
 
 ;;; We used to declare these functions with much stricter types (e.g.
@@ -85,12 +82,13 @@
                       (ldb (byte 8 ,(* 8 (1- i))) ub)))) into forms
         finally (return `(progn ,@forms)))
 
-
 ;;; fetching/storing appropriately-sized integers from octet vectors
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
 (defun ubref-fun-name (bitsize big-endian-p)
-  (symbolicate '#:ub bitsize (if big-endian-p '#:ref/be '#:ref/le)))
+  (symbolicate '#:ub
+               (princ-to-string bitsize)
+               (if big-endian-p '#:ref/be '#:ref/le)))
 ) ; EVAL-WHEN
 
 (declaim (inline ub16ref/le (setf ub16ref/le)
@@ -105,14 +103,6 @@
            (type array-index offset))
   #+ccl
   (ccl::%little-endian-u8-ref-u16 vector offset)
-
-  #+(and ecl ironclad-assembly little-endian)
-  (ffi:c-inline (vector offset)
-                (t :unsigned-int)
-                :uint16-t
-                "*((uint16_t *) ((#0)->array.self.b8 + #1))"
-                :one-liner t
-                :side-effects nil)
 
   #+(and sbcl little-endian)
   (sb-sys:sap-ref-16 (sb-sys:vector-sap vector) offset)
@@ -130,13 +120,6 @@
            (type array-index offset))
   #+ccl
   (setf (ccl::%little-endian-u8-ref-u16 vector offset) value)
-
-  #+(and ecl ironclad-assembly little-endian)
-  (ffi:c-inline (vector offset value)
-                (t :unsigned-int :uint16-t)
-                :void
-                "*((uint16_t *) ((#0)->array.self.b8 + #1)) = #2"
-                :one-liner t)
 
   #+(and sbcl little-endian)
   (setf (sb-sys:sap-ref-16 (sb-sys:vector-sap vector) offset) value)
@@ -185,14 +168,6 @@
   #+(and ccl ironclad-assembly x86-64)
   (%ub32ref/le vector offset)
 
-  #+(and ecl ironclad-assembly little-endian)
-  (ffi:c-inline (vector offset)
-                (t :unsigned-int)
-                :uint32-t
-                "*((uint32_t *) ((#0)->array.self.b8 + #1))"
-                :one-liner t
-                :side-effects nil)
-
   #+(and sbcl little-endian)
   (sb-sys:sap-ref-32 (sb-sys:vector-sap vector) offset)
 
@@ -210,13 +185,6 @@
   #+(and ccl ironclad-assembly x86-64)
   (%ub32set/le value vector offset)
 
-  #+(and ecl ironclad-assembly little-endian)
-  (ffi:c-inline (vector offset value)
-                (t :unsigned-int :uint32-t)
-                :void
-                "*((uint32_t *) ((#0)->array.self.b8 + #1)) = #2"
-                :one-liner t)
-
   #+(and sbcl little-endian)
   (setf (sb-sys:sap-ref-32 (sb-sys:vector-sap vector) offset) value)
 
@@ -233,20 +201,6 @@
            (type array-index offset))
   #+(and ccl ironclad-assembly x86-64)
   (%ub32ref/be vector offset)
-
-  #+(and ecl ironclad-assembly little-endian)
-  (ffi:c-inline (vector offset)
-                (t :unsigned-int)
-                :uint32-t
-                "{
-uint32_t n = *((uint32_t *) ((#0)->array.self.b8 + #1));
-uint32_t r = (n << 24)
-           | ((n & 0xff00) << 8)
-           | ((n >> 8) & 0xff00)
-           | (n >> 24);
-@(return 0) = r;
-}"
-                :side-effects nil)
 
   #+(and sbcl big-endian)
   (sb-sys:sap-ref-32 (sb-sys:vector-sap vector) offset)
@@ -269,19 +223,6 @@ uint32_t r = (n << 24)
   #+(and ccl ironclad-assembly x86-64)
   (%ub32set/be value vector offset)
 
-  #+(and ecl ironclad-assembly little-endian)
-  (ffi:c-inline (vector offset value)
-                (t :unsigned-int :uint32-t)
-                :void
-                "{
-uint32_t n = #2;
-uint32_t r = (n << 24)
-           | ((n & 0xff00) << 8)
-           | ((n >> 8) & 0xff00)
-           | (n >> 24);
-*((uint32_t *) ((#0)->array.self.b8 + #1)) = r;
-}")
-
   #+(and sbcl big-endian)
   (setf (sb-sys:sap-ref-32 (sb-sys:vector-sap vector) offset) value)
 
@@ -303,14 +244,6 @@ uint32_t r = (n << 24)
   #+(and ccl ironclad-assembly x86-64)
   (%ub64ref/le vector offset)
 
-  #+(and ecl ironclad-assembly little-endian uint64-t)
-  (ffi:c-inline (vector offset)
-                (t :unsigned-int)
-                :uint64-t
-                "*((uint64_t *) ((#0)->array.self.b8 + #1))"
-                :one-liner t
-                :side-effects nil)
-
   #+(and sbcl little-endian 64-bit)
   (sb-sys:sap-ref-64 (sb-sys:vector-sap vector) offset)
 
@@ -328,13 +261,6 @@ uint32_t r = (n << 24)
   #+(and ccl ironclad-assembly x86-64)
   (%ub64set/le value vector offset)
 
-  #+(and ecl ironclad-assembly little-endian uint64-t)
-  (ffi:c-inline (vector offset value)
-                (t :unsigned-int :uint64-t)
-                :void
-                "*((uint64_t *) ((#0)->array.self.b8 + #1)) = #2"
-                :one-liner t)
-
   #+(and sbcl little-endian 64-bit)
   (setf (sb-sys:sap-ref-64 (sb-sys:vector-sap vector) offset) value)
 
@@ -351,24 +277,6 @@ uint32_t r = (n << 24)
            (type array-index offset))
   #+(and ccl ironclad-assembly x86-64)
   (%ub64ref/be vector offset)
-
-  #+(and ecl ironclad-assembly little-endian uint64-t)
-  (ffi:c-inline (vector offset)
-                (t :unsigned-int)
-                :uint64-t
-                "{
-uint64_t n = *((uint64_t *) ((#0)->array.self.b8 + #1));
-uint64_t r = (n << 56)
-           | ((n & 0xff00) << 40)
-           | ((n & 0xff0000) << 24)
-           | ((n & 0xff000000) << 8)
-           | ((n >> 8) & 0xff000000)
-           | ((n >> 24) & 0xff0000)
-           | ((n >> 40) & 0xff00)
-           | (n >> 56);
-@(return 0) = r;
-}"
-                :side-effects nil)
 
   #+(and sbcl big-endian 64-bit)
   (sb-sys:sap-ref-64 (sb-sys:vector-sap vector) offset)
@@ -390,23 +298,6 @@ uint64_t r = (n << 56)
            (type array-index offset))
   #+(and ccl ironclad-assembly x86-64)
   (%ub64set/be value vector offset)
-
-  #+(and ecl ironclad-assembly little-endian uint64-t)
-  (ffi:c-inline (vector offset value)
-                (t :unsigned-int :uint64-t)
-                :void
-                "{
-uint64_t n = #2;
-uint64_t r = (n << 56)
-           | ((n & 0xff00) << 40)
-           | ((n & 0xff0000) << 24)
-           | ((n & 0xff000000) << 8)
-           | ((n >> 8) & 0xff000000)
-           | ((n >> 24) & 0xff0000)
-           | ((n >> 40) & 0xff00)
-           | (n >> 56);
-*((uint64_t *) ((#0)->array.self.b8 + #1)) = r;
-}")
 
   #+(and sbcl big-endian 64-bit)
   (setf (sb-sys:sap-ref-64 (sb-sys:vector-sap vector) offset) value)
@@ -434,23 +325,10 @@ uint64_t r = (n << 56)
   #+(and ccl x86-64 ironclad-assembly)
   (%mod32+ a b)
 
-  #+(and ecl ironclad-assembly)
-  (ffi:c-inline (a b)
-                (:uint32-t :uint32-t)
-                :uint32-t
-                "#0 + #1"
-                :one-liner t
-                :side-effects nil)
-
   #-(or (and ccl x86-64 ironclad-assembly)
         (and ecl ironclad-assembly))
   (ldb (byte 32 0) (+ a b)))
 
-#+cmu
-(define-compiler-macro mod32+ (a b)
-  `(ext:truly-the (unsigned-byte 32) (+ ,a ,b)))
-
-#+sbcl
 (define-compiler-macro mod32+ (a b)
   `(ldb (byte 32 0) (+ ,a ,b)))
 
@@ -463,23 +341,10 @@ uint64_t r = (n << 56)
   #+(and ccl x86-64 ironclad-assembly)
   (%mod32- a b)
 
-  #+(and ecl ironclad-assembly)
-  (ffi:c-inline (a b)
-                (:uint32-t :uint32-t)
-                :uint32-t
-                "#0 - #1"
-                :one-liner t
-                :side-effects nil)
-
   #-(or (and ccl x86-64 ironclad-assembly)
         (and ecl ironclad-assembly))
   (ldb (byte 32 0) (- a b)))
 
-#+cmu
-(define-compiler-macro mod32- (a b)
-  `(ext:truly-the (unsigned-byte 32) (- ,a ,b)))
-
-#+sbcl
 (define-compiler-macro mod32- (a b)
   `(ldb (byte 32 0) (- ,a ,b)))
 
@@ -492,23 +357,10 @@ uint64_t r = (n << 56)
   #+(and ccl x86-64 ironclad-assembly)
   (%mod32* a b)
 
-  #+(and ecl ironclad-assembly)
-  (ffi:c-inline (a b)
-                (:uint32-t :uint32-t)
-                :uint32-t
-                "#0 * #1"
-                :one-liner t
-                :side-effects nil)
-
   #-(or (and ccl x86-64 ironclad-assembly)
         (and ecl ironclad-assembly))
   (ldb (byte 32 0) (* a b)))
 
-#+cmu
-(define-compiler-macro mod32* (a b)
-  `(ext:truly-the (unsigned-byte 32) (* ,a ,b)))
-
-#+sbcl
 (define-compiler-macro mod32* (a b)
   `(ldb (byte 32 0) (* ,a ,b)))
 
@@ -520,14 +372,6 @@ uint64_t r = (n << 56)
            (type (integer -31 31) count))
   #+(and ccl x86-64 ironclad-assembly)
   (%mod32ash num count)
-
-  #+(and ecl ironclad-assembly)
-  (ffi:c-inline (num count)
-                (:uint32-t :int8-t)
-                :uint32-t
-                "(#1 > 0) ? (#0 << #1) : (#0 >> -#1)"
-                :one-liner t
-                :side-effects nil)
 
   #-(or (and ccl x86-64 ironclad-assembly)
         (and ecl ironclad-assembly))
@@ -547,14 +391,6 @@ uint64_t r = (n << 56)
   #+(and ccl x86-64 ironclad-assembly)
   (%mod32lognot num)
 
-  #+(and ecl ironclad-assembly)
-  (ffi:c-inline (num)
-                (:uint32-t)
-                :uint32-t
-                "~#0"
-                :one-liner t
-                :side-effects nil)
-
   #-(or (and ccl x86-64 ironclad-assembly)
         (and ecl ironclad-assembly))
   (ldb (byte 32 0) (lognot num)))
@@ -569,52 +405,12 @@ uint64_t r = (n << 56)
 (defun rol32 (a s)
   (declare (type (unsigned-byte 32) a)
            (type (integer 0 32) s))
-  #+(and ccl x86-64 ironclad-assembly)
-  (%rol32 a s)
-
-  #+cmu
-  (kernel:32bit-logical-or #+little-endian (kernel:shift-towards-end a s)
-                           #+big-endian (kernel:shift-towards-start a s)
-                           (ash a (- s 32)))
-
-  #+(and ecl ironclad-assembly)
-  (ffi:c-inline (a s)
-                (:uint32-t :uint8-t)
-                :uint32-t
-                "(#0 << #1) | (#0 >> (32 - #1))"
-                :one-liner t
-                :side-effects nil)
-
-  #+sbcl
-  (sb-rotate-byte:rotate-byte s (byte 32 0) a)
-
-  #-(or (and ccl x86-64 ironclad-assembly)
-        cmu
-        (and ecl ironclad-assembly)
-        sbcl)
-  (logior (ldb (byte 32 0) (ash a s)) (ash a (- s 32))))
+  (sb-rotate-byte:rotate-byte s (byte 32 0) a))
 
 (defun ror32 (a s)
   (declare (type (unsigned-byte 32) a)
            (type (integer 0 32) s))
-  #+(and ccl x86-64 ironclad-assembly)
-  (%ror32 a s)
-
-  #+(and ecl ironclad-assembly)
-  (ffi:c-inline (a s)
-                (:uint32-t :uint8-t)
-                :uint32-t
-                "(#0 << (32 - #1)) | (#0 >> #1)"
-                :one-liner t
-                :side-effects nil)
-
-  #+sbcl
-  (sb-rotate-byte:rotate-byte (- s) (byte 32 0) a)
-
-  #-(or (and ccl x86-64 ironclad-assembly)
-        (and ecl ironclad-assembly)
-        sbcl)
-  (rol32 a (- 32 s)))
+  (sb-rotate-byte:rotate-byte (- s) (byte 32 0) a))
 
 (declaim #+ironclad-fast-mod64-arithmetic (inline mod64+ mod64- mod64*)
          (ftype (function ((unsigned-byte 64) (unsigned-byte 64)) (unsigned-byte 64)) mod64+))
@@ -623,14 +419,6 @@ uint64_t r = (n << 56)
   (declare (type (unsigned-byte 64) a b))
   #+(and ccl x86-64 ironclad-assembly)
   (%mod64+ a b)
-
-  #+(and ecl ironclad-assembly uint64-t)
-  (ffi:c-inline (a b)
-                (:uint64-t :uint64-t)
-                :uint64-t
-                "#0 + #1"
-                :one-liner t
-                :side-effects nil)
 
   #-(or (and ccl x86-64 ironclad-assembly)
         (and ecl ironclad-assembly uint64-t))
@@ -645,14 +433,6 @@ uint64_t r = (n << 56)
   #+(and ccl x86-64 ironclad-assembly)
   (%mod64- a b)
 
-  #+(and ecl ironclad-assembly uint64-t)
-  (ffi:c-inline (a b)
-                (:uint64-t :uint64-t)
-                :uint64-t
-                "#0 - #1"
-                :one-liner t
-                :side-effects nil)
-
   #-(or (and ccl x86-64 ironclad-assembly)
         (and ecl ironclad-assembly uint64-t))
   (ldb (byte 64 0) (- a b)))
@@ -665,14 +445,6 @@ uint64_t r = (n << 56)
   (declare (type (unsigned-byte 64) a b))
   #+(and ccl x86-64 ironclad-assembly)
   (%mod64* a b)
-
-  #+(and ecl ironclad-assembly uint64-t)
-  (ffi:c-inline (a b)
-                (:uint64-t :uint64-t)
-                :uint64-t
-                "#0 * #1"
-                :one-liner t
-                :side-effects nil)
 
   #-(or (and ccl x86-64 ironclad-assembly)
         (and ecl ironclad-assembly uint64-t))
@@ -690,14 +462,6 @@ uint64_t r = (n << 56)
            (type (integer -63 63) count))
   #+(and ccl x86-64 ironclad-assembly)
   (%mod64ash num count)
-
-  #+(and ecl ironclad-assembly uint64-t)
-  (ffi:c-inline (num count)
-                (:uint64-t :int8-t)
-                :uint64-t
-                "(#1 > 0) ? (#0 << #1) : (#0 >> -#1)"
-                :one-liner t
-                :side-effects nil)
 
   #-(or (and ccl x86-64 ironclad-assembly)
         (and ecl ironclad-assembly uint64-t))
@@ -717,14 +481,6 @@ uint64_t r = (n << 56)
   #+(and ccl x86-64 ironclad-assembly)
   (%mod64lognot num)
 
-  #+(and ecl ironclad-assembly uint64-t)
-  (ffi:c-inline (num)
-                (:uint64-t)
-                :uint64-t
-                "~#0"
-                :one-liner t
-                :side-effects nil)
-
   #-(or (and ccl x86-64 ironclad-assembly)
         (and ecl ironclad-assembly uint64-t))
   (ldb (byte 64 0) (lognot num)))
@@ -739,48 +495,13 @@ uint64_t r = (n << 56)
 (defun rol64 (a s)
   (declare (type (unsigned-byte 64) a)
            (type (integer 0 64) s))
-  #+(and ccl x86-64 ironclad-assembly)
-  (%rol64 a s)
-
-  #+(and ecl ironclad-assembly uint64-t)
-  (ffi:c-inline (a s)
-                (:uint64-t :uint8-t)
-                :uint64-t
-                "(#0 << #1) | (#0 >> (64 - #1))"
-                :one-liner t
-                :side-effects nil)
-
-  #+sbcl
-  (sb-rotate-byte:rotate-byte s (byte 64 0) a)
-
-  #-(or (and ccl x86-64 ironclad-assembly)
-        (and ecl ironclad-assembly uint64-t)
-        sbcl)
-  (logior (ldb (byte 64 0) (ash a s)) (ash a (- s 64))))
+  (sb-rotate-byte:rotate-byte s (byte 64 0) a))
 
 (defun ror64 (a s)
   (declare (type (unsigned-byte 64) a)
            (type (integer 0 64) s))
-  #+(and ccl x86-64 ironclad-assembly)
-  (%ror64 a s)
+  (sb-rotate-byte:rotate-byte (- s) (byte 64 0) a))
 
-  #+(and ecl ironclad-assembly uint64-t)
-  (ffi:c-inline (a s)
-                (:uint64-t :uint8-t)
-                :uint64-t
-                "(#0 << (64 - #1)) | (#0 >> #1)"
-                :one-liner t
-                :side-effects nil)
-
-  #+sbcl
-  (sb-rotate-byte:rotate-byte (- s) (byte 64 0) a)
-
-  #-(or (and ccl x86-64 ironclad-assembly)
-        (and ecl ironclad-assembly uint64-t)
-        sbcl)
-  (rol64 a (- 64 s)))
-
-
 ;;; 64-bit utilities
 
 (declaim #+ironclad-fast-mod32-arithmetic
@@ -823,7 +544,7 @@ uint64_t r = (n << 56)
 ;;; the hash functions.  we provide big-endian and little-endian
 ;;; versions.
 
-(declaim (inline fill-block-le-ub8 fill-block-be-ub8))
+(declaim (inline fill-block-le-u8 fill-block-be-u8))
 
 (declaim (inline copy-to-buffer))
 (defun copy-to-buffer (from from-offset count buffer buffer-offset)
@@ -835,48 +556,30 @@ starting at buffer-offset."
            (type ->u8 from)
            (type ->u8 buffer)
            #.(burn-baby-burn))
-  #+cmu
-  (kernel:bit-bash-copy
-   from (+ (* vm:vector-data-offset vm:word-bits) (* from-offset vm:byte-bits))
-   buffer (+ (* vm:vector-data-offset vm:word-bits)
-             (* buffer-offset vm:byte-bits))
-   (* count vm:byte-bits))
-  #+sbcl
-  (sb-kernel:ub8-bash-copy from from-offset buffer buffer-offset count)
-  #-(or cmu sbcl)
-  (loop for buffer-index of-type (integer 0 64) from buffer-offset
-        for from-index of-type fixnum from from-offset
-        below (+ from-offset count)
-        do
-        (setf (aref buffer buffer-index) (aref from from-index))))
+  (sb-kernel:ub8-bash-copy from from-offset buffer buffer-offset count))
 
-(defun fill-block-ub8-le (block buffer offset)
+(defun fill-block-u8-le (block buffer offset)
   "Convert a complete 64 (UNSIGNED-BYTE 8) input BUFFER starting from
 OFFSET into the given (UNSIGNED-BYTE 32) BLOCK."
   (declare (type (integer 0 #.(- array-dimension-limit 64)) offset)
-           (type (simple-array (unsigned-byte 32) (16)) block)
+           (type (->u32 16) block)
            (type ->u8 buffer))
-  #+(and :cmu :little-endian)
-  (kernel:bit-bash-copy
-   buffer (+ (* vm:vector-data-offset vm:word-bits) (* offset vm:byte-bits))
-   block (* vm:vector-data-offset vm:word-bits)
-   (* 64 vm:byte-bits))
   #+(and :sbcl :little-endian)
   (sb-kernel:ub8-bash-copy buffer offset block 0 64)
   #-(or (and :sbcl :little-endian) (and :cmu :little-endian))
   (loop for i of-type (integer 0 16) from 0
-        for j of-type (integer 0 #.array-dimension-limit)
+        for j of-type array-index
         from offset to (+ offset 63) by 4
         do
         (setf (aref block i) (ub32ref/le buffer j)))
   (values))
 
-(defun fill-block-ub8-be (block buffer offset)
+(defun fill-block-u8-be (block buffer offset)
   "Convert a complete 64 (unsigned-byte 8) input vector segment
 starting from offset into the given 16 word SHA1 block.  Calling this function
 without subsequently calling EXPAND-BLOCK results in undefined behavior."
   (declare (type (integer 0 #.(- array-dimension-limit 64)) offset)
-           (type (simple-array (unsigned-byte 32) (*)) block)
+           (type ->u32 block)
            (type ->u8 buffer))
   ;; convert to 32-bit words
   #+(and :cmu :big-endian)
@@ -889,18 +592,18 @@ without subsequently calling EXPAND-BLOCK results in undefined behavior."
   (sb-kernel:ub8-bash-copy buffer offset block 0 64)
   #-(or (and :sbcl :big-endian) (and :cmu :big-endian))
   (loop for i of-type (integer 0 16) from 0
-        for j of-type (integer 0 #.array-dimension-limit)
+        for j of-type array-index
         from offset to (+ offset 63) by 4
         do (setf (aref block i) (ub32ref/be buffer j)))
   (values))
 
-(defun fill-block-ub8-le/64 (block buffer offset)
+(defun fill-block-u8-le/64 (block buffer offset)
   "Convert a complete 128 (unsigned-byte 8) input vector segment
 starting from offset into the given 16 qword SHA1 block.  Calling this
 function without subsequently calling EXPAND-BLOCK results in undefined
 behavior."
-  (declare (type (integer 0 #.(- array-dimension-limit 64)) offset)
-           (type (simple-array (unsigned-byte 64) (*)) block)
+  (declare (type (array-index #.(- array-dimension-limit 64)) offset)
+           (type ->u64 block)
            (type ->u8 buffer)
            #.(burn-baby-burn))
   ;; convert to 64-bit words
@@ -914,18 +617,18 @@ behavior."
   (sb-kernel:ub8-bash-copy buffer offset block 0 64)
   #-(or (and :sbcl :little-endian :64-bit) (and :cmu :little-endian :64-bit))
   (loop for i of-type (integer 0 8) from 0
-        for j of-type (integer 0 #.array-dimension-limit)
+        for j of-type array-index
         from offset to (+ offset 63) by 8
         do (setf (aref block i) (ub64ref/le buffer j)))
   (values))
 
-(defun fill-block-ub8-be/64 (block buffer offset)
+(defun fill-block-u8-be/64 (block buffer offset)
   "Convert a complete 128 (unsigned-byte 8) input vector segment
 starting from offset into the given 16 qword SHA1 block.  Calling this
 function without subsequently calling EXPAND-BLOCK results in undefined
 behavior."
-  (declare (type (integer 0 #.(- array-dimension-limit 128)) offset)
-           (type (simple-array (unsigned-byte 64) (*)) block)
+  (declare (type (array-index #.(- array-dimension-limit 128)) offset)
+           (type ->u64 block)
            (type ->u8 buffer)
            #.(burn-baby-burn))
   ;; convert to 64-bit words
@@ -939,13 +642,13 @@ behavior."
   (sb-kernel:ub8-bash-copy buffer offset block 0 128)
   #-(or (and :sbcl :big-endian) (and :cmu :big-endian))
   (loop for i of-type (integer 0 16) from 0
-        for j of-type (integer 0 #.array-dimension-limit)
+        for j of-type array-index
         from offset to (+ offset 127) by 8
         do (setf (aref block i) (ub64ref/be buffer j)))
   (values))
 
 (defun xor-block (block-length input-block1 input-block1-start input-block2 input-block2-start output-block output-block-start)
-  (declare (type (simple-array (unsigned-byte 8) (*)) input-block1 input-block2 output-block)
+  (declare (type ->u8 input-block1 input-block2 output-block)
            (type array-index block-length input-block1-start input-block2-start output-block-start)
            #.(burn-baby-burn))
   (macrolet ((xor-bytes (size xor-form)
@@ -1011,7 +714,7 @@ behavior."
      form)))
 
 (defun copy-block (block-length input-block input-block-start output-block output-block-start)
-  (declare (type (simple-array (unsigned-byte 8) (*)) input-block output-block)
+  (declare (type ->u8 input-block output-block)
            (type array-index block-length input-block-start output-block-start)
            #.(burn-baby-burn))
   (macrolet ((copy-bytes (size copy-form)

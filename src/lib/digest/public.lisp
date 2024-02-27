@@ -2,7 +2,7 @@
   (:use
    #:cl
    #:sb-gray
-   #:sys.type
+   #:lib.type
    #:lib.digest.common
    #:lib.digest.generic
    #:lib.digest.macro
@@ -71,8 +71,7 @@
   ;; for non-simple vectors.
   (declare (type (vector ->u8) vector)
            (type array-index start end))
-  (#+cmucl lisp::with-array-data
-   #+sbcl sb-kernel:with-array-data ((data vector) (real-start start) (real-end end))
+  (sb-kernel:with-array-data ((data vector) (real-start start) (real-end end))
    (declare (ignore real-end))
    (update-digest digest data :start real-start :end (+ real-start (- end start)))))
 
@@ -106,9 +105,6 @@
                       (:constructor ,constructor ())
                       (:copier ,copier))
            ,@registers)
-         ;; Some versions of LispWorks incorrectly define STRUCT-NAME as
-         ;; a type with DEFSTRUCT, so avoid gratuitous warnings.
-         #-(and lispworks lispworks5.0)
          (deftype ,struct-name ()
            '(simple-array (unsigned-byte ,register-bit-size) (,(length registers)))))
        (defun ,digest-fun (regs buffer start)
@@ -301,8 +297,8 @@
 ;;; These four functions represent the common interface for digests in
 ;;; other crypto toolkits (OpenSSL, Botan, Python, etc.).  You obtain
 ;;; some state object for a particular digest, you update it with some
-;;; data, and then you get the actual digest.  Flexibility is the name
-;;; of the game with these functions.
+;;; data, and then you get the actual digest.
+
 (defun make-digest (digest-name &rest keys &key &allow-other-keys)
   "Return a digest object which uses the algorithm DIGEST-NAME."
   (typecase digest-name
@@ -314,7 +310,6 @@
     (t
      (error 'type-error :datum digest-name :expected-type 'symbol))))
 
-
 ;;; the digest-defining macro
 
 (defun digestp (sym)
