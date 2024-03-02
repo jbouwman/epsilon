@@ -1,5 +1,6 @@
 (defpackage #:lib.checksum.generic
-  (:use #:cl)
+  (:use
+   #:cl)
   (:export
    #:checksum
    #:update))

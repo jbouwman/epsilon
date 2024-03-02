@@ -1,9 +1,5 @@
 (in-package #:lib.codec)
 
-(defmacro define-constant (name value)
-  `(unless (boundp ',name)
-     (defconstant ,name ,value)))
-
 ;;;; DEFLATE constants.
 
 ;;; block types

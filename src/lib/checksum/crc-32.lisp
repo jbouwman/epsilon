@@ -1,7 +1,7 @@
 (defpackage #:lib.checksum.crc-32
   (:use
    #:cl
-   #:sys.type
+   #:lib.type
    #:lib.checksum.generic)
   (:export
    #:crc-32))

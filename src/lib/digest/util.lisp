@@ -1,5 +1,7 @@
 (defpackage #:lib.digest.util
-  (:use #:cl))
+  (:use
+   #:cl
+   #:lib.type))
 
 ;;; functions that come in handy in crypto applications
 
@@ -42,7 +44,7 @@ hexadecimal digits into a byte array."
   (let* ((end (or end (length string)))
          (length (/ (- end start) 2))
          (key (make-array length :element-type '(unsigned-byte 8))))
-    (declare (type (simple-array (unsigned-byte 8) (*)) key))
+    (declare (type ->u8 key))
     (flet ((char-to-digit (char)
              (or (position char "0123456789abcdef" :test #'char-equal)
                  (error 'ironclad-error
@@ -80,7 +82,7 @@ STRING contains any character whose CHAR-CODE is greater than 255."
 (defun constant-time-equal (data1 data2)
   "Returns T if the elements in DATA1 and DATA2 are identical, NIL otherwise.
 All the elements of DATA1 and DATA2 are compared to prevent timing attacks."
-  (declare (type (simple-array (unsigned-byte 8) (*)) data1 data2))
+  (declare (type ->u8 data1 data2))
   (let ((res (if (= (length data1) (length data2)) 0 1)))
     (declare (type (unsigned-byte 8) res))
     (loop for d1 across data1

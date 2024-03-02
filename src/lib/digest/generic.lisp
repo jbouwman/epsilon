@@ -24,9 +24,9 @@ cipher or is not a cipher object."))
   (:documentation "Return the digest of the contents of the file named by
 PATHNAME using the algorithm DIGEST-NAME.
 
-If DIGEST is provided, the digest will be placed into DIGEST starting at
-DIGEST-START. DIGEST must be a (SIMPLE-ARRAY (UNSIGNED-BYTE 8) (*)). An error
-will be signaled if there is insufficient room in DIGEST.
+If DIGEST is provided, the digest will be placed into DIGEST starting
+at DIGEST-START. DIGEST must be a ->u8. An error will be signaled if
+there is insufficient room in DIGEST.
 
 If BUFFER is provided, the portion of BUFFER between START and END will be used
 to hold data read from the stream."))
@@ -36,7 +36,7 @@ to hold data read from the stream."))
 DIGEST-NAME.  STREAM-ELEMENT-TYPE of STREAM should be (UNSIGNED-BYTE 8).
 
 If DIGEST is provided, the digest will be placed into DIGEST starting at
-DIGEST-START.  DIGEST must be a (SIMPLE-ARRAY (UNSIGNED-BYTE 8) (*)).
+DIGEST-START.  DIGEST must be a ->u8.
 An error will be signaled if there is insufficient room in DIGEST.
 
 If BUFFER is provided, the portion of BUFFER between START and END will
@@ -48,7 +48,7 @@ specified by START and END using the algorithm DIGEST-SPEC.
 SEQUENCE can be any vector with an element-type of (UNSIGNED-BYTE 8).
 
 If DIGEST is provided, the digest will be placed into DIGEST starting at
-DIGEST-START.  DIGEST must be a (SIMPLE-ARRAY (UNSIGNED-BYTE 8) (*)).
+DIGEST-START.  DIGEST must be a ->u8.
 An error will be signaled if there is insufficient room in DIGEST."))
 
 (defgeneric copy-digest (digester &optional copy)
@@ -66,7 +66,7 @@ The exact method is determined by the type of THING."))
 DIGESTER so far.
 
 If DIGEST is provided, the hash will be placed into DIGEST starting at
-DIGEST-START.  DIGEST must be a (SIMPLE-ARRAY (UNSIGNED-BYTE 8) (*)).
+DIGEST-START.  DIGEST must be a ->u8.
 An error will be signaled if there is insufficient room in DIGEST."))
 
 (defgeneric digest-length (digest)

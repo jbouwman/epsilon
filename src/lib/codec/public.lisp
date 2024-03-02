@@ -25,7 +25,7 @@ writes all compressed data to STREAM."
     (:gzip (make-instance 'gzip-codec))))
 
 (defun encode-file (codec-name in out)
-  (stream-files (partial #'encode (codec codec-name)) in out))
+  (stream-files (curry #'encode (codec codec-name)) in out))
 
 (defun decode-file (codec-name in out)
-  (stream-files (partial #'decode (codec codec-name)) in out))
+  (stream-files (curry #'decode (codec codec-name)) in out))

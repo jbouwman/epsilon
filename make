@@ -9,7 +9,7 @@ def run_unit_tests [] {
 }
 
 def generate_coverage_report [] {
-    mkdir target/covearage
+    mkdir target/coverage
     (sbcl --noinform
           --non-interactive
           --eval "(require :sb-cover)"

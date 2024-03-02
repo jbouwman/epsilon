@@ -1,23 +1,5 @@
 (in-package #:lib.codec)
 
-(define-condition stream-closed (stream-error)
-  ()
-  (:documentation
-   "Signaled when a closed stream is written.")
-  (:report
-   (lambda (condition stream)
-     (format stream "Stream ~S is closed"
-             (stream-error-stream condition)))))
-
-(define-condition stream-exhausted (stream-error)
-  ()
-  (:documentation
-   "Signaled when a stream is exhausted.")
-  (:report
-   (lambda (condition stream)
-     (format stream "Stream ~S exhausted."
-             (stream-error-stream condition)))))
-
 ;; jx
 
 (define-condition invalid-format-error (simple-error)

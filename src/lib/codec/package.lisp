@@ -2,16 +2,20 @@
   (:use
    #:cl
    #:sb-gray
-   #:sys.type
+   #:lib.binding
+   #:lib.type
    #:lib.io
-   #:lib.eval
+   #:lib.function
    #:lib.checksum.generic
    #:lib.checksum.adler-32
-   #:lib.checksum.crc-32)
+   #:lib.checksum.crc-32
+   #:lib.stream)
   (:export
    #:encode
    #:encode-file
    #:encoding-error
    #:decode
    #:decode-file
-   #:decoding-error))
+   #:decoding-error
+   #:make-decompressing-stream
+   ))
