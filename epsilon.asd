@@ -186,10 +186,10 @@
                          (uiop:symbol-call :tool.test :run-all-tests))
   :pathname "tests/"
   :serial t
-  :components ((:file "lib/checksum-tests")
+  :components ((:file "lib/archive-tests")
+               (:file "lib/checksum-tests")
                (:file "lib/codec-tests")
                (:file "lib/digest-tests")
                (:file "lib/regex-tests")
                (:file "lib/stream-tests")
-               (:file "net/http-tests")
-               ))
+               (:file "net/http-tests")))
