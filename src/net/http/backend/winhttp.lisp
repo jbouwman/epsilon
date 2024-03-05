@@ -1,18 +1,18 @@
 (defpackage #:net.http.backend.winhttp
-  (:use #:cl
-        #:lib.binding
-        #:lib.char
-        #:lib.io
-        #:lib.stream
-        #:net.http.body
-        #:net.http.error
-        #:net.http.util
-        #:winhttp
-        #:split-sequence)
+  (:use
+   #:cl
+   #:lib.binding
+   #:lib.char
+   #:lib.stream
+   #:net.http.body
+   #:net.http.error
+   #:net.http.util
+   #:winhttp
+   #:split-sequence)
   (:export :request
 
            ;; Restarts
-           :retry-request
+   :retry-request
            :ignore-and-continue))
 (in-package #:net.http.backend.winhttp)
 
@@ -224,7 +224,7 @@
                     (setf body
                           (etypecase body
                             (string (make-string-input-stream body))
-                            (vector (make-vector-stream :input body)))))
+                            (vector (make-vector-stream body)))))
 
                   (values body
                           status

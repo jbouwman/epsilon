@@ -1,83 +1,26 @@
-;;;; -*- Mode: lisp; indent-tabs-mode: nil -*-
-;;;
-;;; libraries.lisp --- Finding and loading foreign libraries.
-;;;
-;;; Copyright (C) 2005-2006, James Bielman  <jamesjb@jamesjb.com>
-;;; Copyright (C) 2006-2007, Luis Oliveira  <loliveira@common-lisp.net>
-;;;
-;;; Permission is hereby granted, free of charge, to any person
-;;; obtaining a copy of this software and associated documentation
-;;; files (the "Software"), to deal in the Software without
-;;; restriction, including without limitation the rights to use, copy,
-;;; modify, merge, publish, distribute, sublicense, and/or sell copies
-;;; of the Software, and to permit persons to whom the Software is
-;;; furnished to do so, subject to the following conditions:
-;;;
-;;; The above copyright notice and this permission notice shall be
-;;; included in all copies or substantial portions of the Software.
-;;;
-;;; THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-;;; EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-;;; MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-;;; NONINFRINGEMENT.  IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-;;; HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-;;; WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-;;; OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-;;; DEALINGS IN THE SOFTWARE.
-;;;
-
 (in-package #:sys.ffi)
 
 ;;;# Finding Foreign Libraries
-;;;
-;;; We offer two ways for the user of a CFFI library to define
-;;; his/her own library directories: *FOREIGN-LIBRARY-DIRECTORIES*
-;;; for regular libraries and *DARWIN-FRAMEWORK-DIRECTORIES* for
-;;; Darwin frameworks.
-;;;
-;;; These two special variables behave similarly to
-;;; ASDF:*CENTRAL-REGISTRY* as its arguments are evaluated before
-;;; being used. We used our MINI-EVAL instead of the full-blown EVAL
-;;; and the evaluated form should yield a single pathname or a list of
-;;; pathnames.
-;;;
-;;; Only after failing to find a library through the normal ways
-;;; (eg: on Linux LD_LIBRARY_PATH, /etc/ld.so.cache, /usr/lib/, /lib)
-;;; do we try to find the library ourselves.
-
-(defun explode-path-environment-variable (name)
-  (mapcar #'uiop:ensure-directory-pathname
-          (split-if (lambda (c) (eql #\: c))
-                    (uiop:getenv name)
-                    :elide)))
 
 (defun darwin-fallback-library-path ()
-  (or (explode-path-environment-variable "DYLD_FALLBACK_LIBRARY_PATH")
-      (list (merge-pathnames #p"lib/" (user-homedir-pathname))
-            #+arm64 #p"/opt/homebrew/lib/"
-            #p"/opt/local/lib/"
-            #p"/usr/local/lib/"
-            #p"/usr/lib/")))
+  (list (merge-pathnames #p"lib/" (user-homedir-pathname))
+        #+arm64 #p"/opt/homebrew/lib/"
+        #p"/opt/local/lib/"
+        #p"/usr/local/lib/"
+        #p"/usr/lib/"))
 
 (defvar *foreign-library-directories*
-  (if (featurep :darwin)
-      '((explode-path-environment-variable "LD_LIBRARY_PATH")
-        (explode-path-environment-variable "DYLD_LIBRARY_PATH")
-        (uiop:getcwd)
-        (darwin-fallback-library-path))
-      '())
+  '()
   "List onto which user-defined library paths can be pushed.")
 
 (defun fallback-darwin-framework-directories ()
-  (or (explode-path-environment-variable "DYLD_FALLBACK_FRAMEWORK_PATH")
-      (list (uiop:getcwd)
-            (merge-pathnames #p"Library/Frameworks/" (user-homedir-pathname))
-            #p"/Library/Frameworks/"
-            #p"/System/Library/Frameworks/")))
+  (list (sys.filesystem:current-directory)
+        (merge-pathnames #p"Library/Frameworks/" (user-homedir-pathname))
+        #p"/Library/Frameworks/"
+        #p"/System/Library/Frameworks/"))
 
 (defvar *darwin-framework-directories*
-  '((explode-path-environment-variable "DYLD_FRAMEWORK_PATH")
-    (fallback-darwin-framework-directories))
+  '((fallback-darwin-framework-directories))
   "List of directories where Frameworks are searched for.")
 
 (defun mini-eval (form)

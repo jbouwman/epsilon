@@ -2081,31 +2081,8 @@ happen. Use with care."
 
 (defmethod socket-option ((usocket stream-usocket)
                           (option (eql :receive-timeout)) &key)
-  (declare (ignorable option))
-  (let ((socket (socket usocket)))
-    (declare (ignorable socket))
-    #+abcl
-    () ; TODO
-    #+allegro
-    () ; TODO
-    #+clisp
-    (socket:socket-options socket :so-rcvtimeo)
-    #+clozure
-    (ccl:stream-input-timeout socket)
-    #+cmu
-    (lisp::fd-stream-timeout (socket-stream usocket))
-    #+(or ecl clasp)
-    (sb-bsd-sockets:sockopt-receive-timeout socket)
-    #+lispworks
-    (get-socket-receive-timeout socket)
-    #+mcl
-    () ; TODO
-    #+mocl
-    () ; unknown
-    #+sbcl
-    (sb-impl::fd-stream-timeout (socket-stream usocket))
-    #+scl
-    ())) ; TODO
+  (declare (ignore option))
+  (sb-impl::fd-stream-timeout (socket-stream usocket)))
 
 (defmethod (setf socket-option) (new-value (usocket stream-usocket)
                                            (option (eql :receive-timeout)) &key)
@@ -2306,28 +2283,7 @@ happen. Use with care."
   (declare (ignorable option))
   (let ((socket (socket usocket)))
     (declare (ignorable socket))
-    #+abcl
-    () ; TODO
-    #+allegro
-    () ; TODO
-    #+clisp
-    (int->bool (socket:socket-options socket :tcp-nodelay))
-    #+clozure
-    (int->bool (get-socket-option-tcp-nodelay socket))
-    #+cmu
-    ()
-    #+(or ecl clasp)
-    (sb-bsd-sockets::sockopt-tcp-nodelay socket)
-    #+lispworks
-    (int->bool (get-socket-tcp-nodelay socket))
-    #+mcl
-    () ; TODO
-    #+mocl
-    () ; unknown
-    #+sbcl
-    (sb-bsd-sockets::sockopt-tcp-nodelay socket)
-    #+scl
-    ())) ; TODO
+    (sb-bsd-sockets::sockopt-tcp-nodelay socket)))
 
 (defmethod (setf socket-option) (new-value (usocket stream-usocket)
                                            (option (eql :tcp-no-delay)) &key)

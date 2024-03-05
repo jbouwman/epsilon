@@ -4,7 +4,7 @@
    #:lib.checksum.adler-32
    #:lib.checksum.generic
    #:lib.codec
-   #:lib.io
+   #:lib.stream
    #:lib.type))
 
 (in-package #:lib.checksum/tests)

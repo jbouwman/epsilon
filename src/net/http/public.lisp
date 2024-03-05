@@ -1,12 +1,12 @@
-(uiop:define-package #:net.http
-    (:nicknames :dex)
-  (:use :cl
-        #:lib.io
-        #:lib.list
-        :net.http.connection-cache
-        :net.http.util
-        #-windows #:net.http.backend.socket
-        #+windows #:net.http.backend.winhttp)
+(defpackage #:net.http
+    (:use
+     #:cl
+     #:lib.list
+     #:lib.stream
+     #:net.http.connection-cache
+     #:net.http.util
+     #-windows #:net.http.backend.socket
+     #+windows #:net.http.backend.winhttp)
   (:shadow :get
    :delete)
   (:export
@@ -30,8 +30,7 @@
 
    ;; Restarts
    :retry-request
-   :ignore-and-continue)
-  (:use-reexport :net.http.error))
+   :ignore-and-continue))
 
 (in-package #:net.http)
 
@@ -112,7 +111,7 @@
                          :direction :output :element-type '(unsigned-byte 8)
                          :if-exists if-exists
                          :if-does-not-exist :create)
-      (let ((body (apply #'dex:get uri :want-stream t :force-binary t
+      (let ((body (apply #'get uri :want-stream t :force-binary t
                          (remove-from-plist args :if-exists))))
         (copy-stream body out)
         ;; Nominally the body gets closed, but if keep-alive is nil we need to explicitly do it.

@@ -242,11 +242,10 @@ with OUTPUT, a starting offset, and the count of pending data."
   (write-u8 (bitstream compressor) octet))
 
 (defmethod write-u8-vector (vector (compressor deflate-compressor)
-                               &key (start 0) end)
+                            &key (start 0) end)
   (write-u8-vector vector (bitstream compressor)
-                      :start start
-                      :end end))
-                               
+                   :start start
+                   :end end))
 
 (defmethod start-data-format ((compressor deflate-compressor))
   (let ((bitstream (bitstream compressor)))

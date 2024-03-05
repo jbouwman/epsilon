@@ -8,6 +8,7 @@
    #:lib.collect
    #:lib.list
    #:lib.symbol
+   #:lib.type
    #:lib.xsubseq)
   (:export
 
@@ -167,7 +168,7 @@
                            (+ (char-code el)
                               #.(- (char-code #\a) (char-code #\A))))))
                       (t el)))
-                   ((typep el '(unsigned-byte 8))
+                   ((typep el 'u8)
                     (cond
                       ((<= #.(char-code #\a) el #.(char-code #\z))
                        `(,el
@@ -241,7 +242,7 @@
           (cadr var)))))
 
 (deftype octets (&optional (len '*))
-  `(simple-array (unsigned-byte 8) (,len)))
+  `(simple-array u8 (,len)))
 
 (defun variable-type* (var &optional env)
   (let ((type (variable-type var env)))
@@ -472,7 +473,7 @@
                           `(length ,data))))
          (declare (type octets ,data)
                   (type fixnum ,p ,g-end)
-                  (type (unsigned-byte 8) ,elem))
+                  (type u8 ,elem))
          (parsing-macrolet (,elem ,data ,p ,g-end)
              ((skip-conditions (elem-var elems)
                                `(or ,@(loop for el in elems
@@ -599,11 +600,11 @@
 (defconstant +dash+ #.(char-code #\-))
 
 (define-constant +crlf+
-  (make-array 2 :element-type '(unsigned-byte 8)
+  (make-array 2 :element-type 'u8
                 :initial-contents (list +cr+ +lf+)))
 
 (deftype simple-byte-vector (&optional (len '*))
-  `(simple-array (unsigned-byte 8) (,len)))
+  `(simple-array u8 (,len)))
 
 (declaim (inline digit-byte-char-p
                  digit-byte-char-to-integer
@@ -615,24 +616,24 @@
 ;; FIXME repetitious
 
 (defun digit-byte-char-p (byte)
-  (declare (type (unsigned-byte 8) byte)
+  (declare (type u8 byte)
            (optimize (speed 3) (safety 0)))
   (<= #.(char-code #\0) byte #.(char-code #\9)))
 
-(declaim (ftype (function ((unsigned-byte 8)) fixnum) digit-byte-char-to-integer))
+(declaim (ftype (function (u8) fixnum) digit-byte-char-to-integer))
 (defun digit-byte-char-to-integer (byte)
-  (declare (type (unsigned-byte 8) byte)
+  (declare (type u8 byte)
            (optimize (speed 3) (safety 0)))
   (the fixnum (- byte #.(char-code #\0))))
 
 (defun alpha-byte-char-p (byte)
-  (declare (type (unsigned-byte 8) byte)
+  (declare (type u8 byte)
            (optimize (speed 3) (safety 0)))
   (or (<= #.(char-code #\A) byte #.(char-code #\Z))
       (<= #.(char-code #\a) byte #.(char-code #\z))))
 
 (defun alpha-byte-char-to-lower-char (byte)
-  (declare (type (unsigned-byte 8) byte)
+  (declare (type u8 byte)
            (optimize (speed 3) (safety 0)))
   (the character
        (cond
@@ -642,12 +643,12 @@
             (code-char byte)))))
 
 (defun alphanumeric-byte-char-p (byte)
-  (declare (type (unsigned-byte 8) byte))
+  (declare (type u8 byte))
   (or (alpha-byte-char-p byte)
       (digit-byte-char-p byte)))
 
 (defun mark-byte-char-p (byte)
-  (declare (type (unsigned-byte 8) byte)
+  (declare (type u8 byte)
            (optimize (speed 3) (safety 0)))
   (or (= byte #.(char-code #\-))
       (= byte #.(char-code #\_))
@@ -659,10 +660,10 @@
       (= byte #.(char-code #\())
       (= byte #.(char-code #\)))))
 
-(declaim (ftype (function ((unsigned-byte 8)) (unsigned-byte 8)) byte-to-ascii-lower)
+(declaim (ftype (function (u8) u8) byte-to-ascii-lower)
          (inline byte-to-ascii-lower))
 (defun byte-to-ascii-lower (x)
-  (declare (type (unsigned-byte 8) x)
+  (declare (type u8 x)
            (optimize (speed 3) (safety 0)))
   (if (<= #.(char-code #\A) x #.(char-code #\Z))
       (- x #.(- (char-code #\A) (char-code #\a)))
@@ -704,7 +705,7 @@
   (let* ((vec1-len (length vec1))
          (vec2-len (length vec2))
          (result (make-array (+ vec1-len vec2-len)
-                             :element-type '(unsigned-byte 8))))
+                             :element-type 'u8)))
     (declare (type simple-byte-vector result))
     (replace result vec1 :start1 0)
     (replace result vec2 :start1 vec1-len)
@@ -1388,7 +1389,7 @@ us a never-ending header that the application keeps buffering.")
   (when (<= end start)
     (error 'eof))
   (let ((current (aref data start)))
-    (declare (type (unsigned-byte 8) current))
+    (declare (type u8 current))
     (cond
       ((or (= current +tab+)
            (= current +space+))
@@ -1934,7 +1935,7 @@ us a never-ending header that the application keeps buffering.")
 (defun http-multipart-parse (parser callbacks data &key (start 0) end)
   (declare (type simple-byte-vector data))
   (let* ((end (or end (length data)))
-         (boundary (map '(simple-array (unsigned-byte 8) (*)) #'char-code (ll-multipart-parser-boundary parser)))
+         (boundary (map '(simple-array u8 (*)) #'char-code (ll-multipart-parser-boundary parser)))
          (boundary-length (length boundary))
          (header-parser (ll-multipart-parser-header-parser parser)))
     (declare (type simple-byte-vector boundary))
@@ -2007,7 +2008,7 @@ us a never-ending header that the application keeps buffering.")
                                           (ll-multipart-parser-boundary-buffer parser)
                                           data))
                        (go exit-loop))
-                     (let ((data2 (make-array boundary-length :element-type '(unsigned-byte 8)))
+                     (let ((data2 (make-array boundary-length :element-type 'u8))
                            (boundary-buffer-length (length (ll-multipart-parser-boundary-buffer parser))))
                        (replace data2 (ll-multipart-parser-boundary-buffer parser)
                                 :start2 2)

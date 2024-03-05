@@ -54,13 +54,13 @@
 (defmethod size ((io stream))
   (file-length io))
 
-(defun ub32 (io)
+(defun u32 (io)
   (etypecase io
     (vector-input
-     (prog1 (nibbles:ub32ref/le (vector-input-vector io) (vector-input-index io))
+     (prog1 (u32ref/le (vector-input-vector io) (vector-input-index io))
        (incf (vector-input-index io) 4)))
     (stream
-     (nibbles:read-ub32/le io))))
+     (read-u32/le io))))
 
 (defun output (io array start end)
   (etypecase io
@@ -110,7 +110,7 @@
 (defun call-with-io (function io &key (start 0) end (if-exists :error) (direction :input))
   (etypecase io
     ((or string pathname)
-     (if (pathname-utils:directory-p io)
+     (if (sys.path:directory-p io)
          (funcall function (make-directory-input))
          (with-open-file (stream io :direction direction
                                     :element-type '(unsigned-byte 8)

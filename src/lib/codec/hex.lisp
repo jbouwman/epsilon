@@ -1,17 +1,16 @@
-(defpackage #:lib.digest.util
+(defpackage #:lib.codec.hex
   (:use
    #:cl
-   #:lib.type))
+   #:lib.type)
+  (:export
+   #:u8-to-hex
+   #:hex-to-u8))
 
-;;; functions that come in handy in crypto applications
+;; Hexadecimal string encoding
 
-(in-package #:lib.digest.util)
+(in-package #:lib.codec.hex)
 
-(declaim (inline byte-array-to-hex-string
-                 hex-string-to-byte-array
-                 ascii-string-to-byte-array))
-
-(defun byte-array-to-hex-string (vector &key (start 0) end (element-type 'base-char))
+(defun u8-to-hex (vector &key (start 0) end (element-type 'base-char))
   "Return a string containing the hexadecimal representation of the
 subsequence of VECTOR between START and END.  ELEMENT-TYPE controls
 the element-type of the returned string."
@@ -37,7 +36,7 @@ the element-type of the returned string."
                   (aref hexdigits (ldb (byte 4 0) byte))))
        finally (return string))))
 
-(defun hex-string-to-byte-array (string &key (start 0) (end nil))
+(defun hex-to-u8 (string &key (start 0) (end nil))
   "Parses a substring of STRING delimited by START and END of
 hexadecimal digits into a byte array."
   (declare (type string string))
@@ -56,36 +55,3 @@ hexadecimal digits into a byte array."
                      (+ (* (char-to-digit (char string j)) 16)
                         (char-to-digit (char string (1+ j)))))
          finally (return key)))))
-
-(defun ascii-string-to-byte-array (string &key (start 0) end)
-  "Convert STRING to a (VECTOR (UNSIGNED-BYTE 8)).  It is an error if
-STRING contains any character whose CHAR-CODE is greater than 255."
-  (declare (type string string)
-           (type fixnum start)
-           (type (or null fixnum) end))
-  (let* ((length (length string))
-         (vec (make-array length :element-type '(unsigned-byte 8)))
-         (end (or end length)))
-    (loop for i from start below end do
-          (let ((byte (char-code (char string i))))
-            (unless (< byte 256)
-              (error 'ironclad-error
-                     :format-control "~A is not an ASCII character"
-                     :format-arguments (list (char string i))))
-            (setf (aref vec i) byte))
-          finally (return vec))))
-
-(declaim (notinline byte-array-to-hex-string
-                    hex-string-to-byte-array
-                    ascii-string-to-byte-array))
-
-(defun constant-time-equal (data1 data2)
-  "Returns T if the elements in DATA1 and DATA2 are identical, NIL otherwise.
-All the elements of DATA1 and DATA2 are compared to prevent timing attacks."
-  (declare (type ->u8 data1 data2))
-  (let ((res (if (= (length data1) (length data2)) 0 1)))
-    (declare (type (unsigned-byte 8) res))
-    (loop for d1 across data1
-          for d2 across data2
-          do (setf res (logior res (logxor d1 d2))))
-    (zerop res)))

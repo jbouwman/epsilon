@@ -67,7 +67,7 @@
   (when (and restore-attributes
              (eql *compatibility* (second (attributes entry))))
     ;; TODO: restore other extended attributes from the extra blocks (uid/gid/etc)
-    (setf (file-attributes:attributes path) (third (attributes entry)))))
+    (setf (sys.file:attributes path) (third (attributes entry)))))
 
 (defun entry-to-stream (stream entry &key password)
   (flet ((output (buffer start end)
@@ -105,7 +105,7 @@
   (etypecase file
     (zip-file
      (loop for entry across (entries file)
-           for full-path = (merge-pathnames (pathname-utils:parse-native-namestring (file-name entry)) path)
+           for full-path = (merge-pathnames (sys.path:parse-native-namestring (file-name entry)) path)
            do (ensure-directories-exist full-path)
               (unless (getf (first (attributes entry)) :directory)
                 (entry-to-file full-path entry :if-exists if-exists :password password))))
@@ -124,9 +124,9 @@
                       ((or (pathname-name file) (pathname-type file))
                        (vector-push-extend (make-instance 'zip-entry :content file) entries))
                       (T
-                       (setf file (org.shirakumo.filesystem-utils:resolve-symbolic-links file))
-                       (loop with base = (truename (if strip-root file (pathname-utils:parent file)))
-                             for path in (directory (merge-pathnames (merge-pathnames pathname-utils:*wild-file* pathname-utils:*wild-inferiors*)
+                       (setf file (sys.filesystem:resolve-symbolic-links file))
+                       (loop with base = (truename (if strip-root file (sys.path:parent file)))
+                             for path in (directory (merge-pathnames (merge-pathnames sys.path:*wild-file* sys.path:*wild-inferiors*) ; FIXME eradicate merge-pathnames
                                                                      file))
                              for file-name = (enough-namestring path base)
                              do (vector-push-extend (make-instance 'zip-entry :content path :file-name file-name) entries))))))

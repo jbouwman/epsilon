@@ -9,13 +9,13 @@
   (let ((fields ()))
     (loop with index = 0
           while (< index (length vector))
-          do (let* ((sig (nibbles:ub16ref/le vector index))
+          do (let* ((sig (u16ref/le vector index))
                     (dec (gethash sig *structures*)))
                (incf index 2)
                (when dec
                  (push (funcall (first dec) vector index) fields))
                (if (< index (length vector))
-                   (incf index (+ 2 (nibbles:ub16ref/le vector index)))
+                   (incf index (+ 2 (u16ref/le vector index)))
                    (return))))
     (nreverse fields)))
 
@@ -102,7 +102,7 @@
     ;; We skip the bytes that are guaranteed to be part of the structure anyway. Thus, if the
     ;; comment is empty, we should immediately end up at the signature.
     (seek input (- (end input) (+ 4 2 2 2 2 4 4 2)))
-    (loop for byte = (ub32 input)
+    (loop for byte = (u32 input)
           until (= #x06054B50 byte)
           ;; Seek back the 4 bytes we read +1 extra byte.
           ;; TODO: This could be sped up by trying to match parts of the signature against what we
@@ -118,7 +118,7 @@
       ;; OK, next we look for end-of-central-directory-locator/64, which should be
       ;; input - 4 (eocd sig) - 16 (ecod64 payload) - 4 (eocd64 sig)
       (seek input (- (index input) 4 16 4))
-      (when (= #x07064B50 (ub32 input))
+      (when (= #x07064B50 (u32 input))
         (let ((eocd-locator (parse-structure end-of-central-directory-locator/64 input))
               (eocd64-input input))
           (when (/= (end-of-central-directory-number-of-disk eocd)
@@ -130,7 +130,7 @@
           (setf (aref disks (end-of-central-directory-locator/64-central-directory-disk eocd-locator)) eocd64-input)
           ;; Okey, header is on here, let's check it.
           (seek eocd64-input (end-of-central-directory-locator/64-central-directory-start eocd-locator))
-          (if (= #x06064B50 (ub32 eocd64-input))
+          (if (= #x06064B50 (u32 eocd64-input))
               (let ((eocd (parse-structure end-of-central-directory/64 eocd64-input)))
                 (setf cd-offset (end-of-central-directory/64-central-directory-start eocd))
                 (setf cd-start-disk (end-of-central-directory/64-central-directory-disk eocd))

@@ -1,8 +1,8 @@
-(in-package :cl-user)
 (defpackage net.http.encoding
   (:use
    #:cl
-   #:lib.char)
+   #:lib.char
+   #:lib.type)
   (:export :detect-charset))
 (in-package :net.http.encoding)
 
@@ -42,7 +42,7 @@
       ((string-equal type "text")
        (or (charset-to-encoding charset nil)
            (if (and (string-equal subtype "html")
-                    (typep body '(array (unsigned-byte 8) (*))))
+                    (typep body '->u8))
                (charset-to-encoding (detect-charset-from-html body) nil)
                nil)
            :utf-8))

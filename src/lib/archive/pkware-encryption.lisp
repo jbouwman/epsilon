@@ -7,9 +7,13 @@
   (k1 591751049 :type (unsigned-byte 32))
   (k2 878082192 :type (unsigned-byte 32)))
 
+(defun crc-nth (n)
+  (logior (ash (aref lib.checksum.crc-32::*crc-32-table* (* 2 n)) 16)
+          (aref lib.checksum.crc-32::*crc-32-table* (1+ (* 2 n)))))
+
 (defun crc32-rotate (crc byte)
   (logxor (ldb (byte 24 8) crc)
-          (aref 3bz::+crc32/table+ (ldb (byte 8 0) (logxor crc byte)))))
+          (crc-nth (ldb (byte 8 0) (logxor crc byte)))))
 
 (defun update-pkware-state (state byte)
   (setf (pkware-decrypt-state-k0 state) (crc32-rotate (pkware-decrypt-state-k0 state) byte))

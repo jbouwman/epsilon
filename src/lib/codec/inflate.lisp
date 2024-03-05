@@ -83,10 +83,10 @@ The usual value of FORMAT will be one of :GZIP or :ZLIB."
               (t
                (error 'invalid-format-error :format format))))
           (state (%make-inflate-state f)))
-    (case f
+    (ecase f
       (gzip
        (setf (dstate-checksum state) (make-instance 'crc-32)))
-      (zlib
+      ((zlib deflate)
        (setf (dstate-checksum state) (make-instance 'adler-32))))
     state))
 

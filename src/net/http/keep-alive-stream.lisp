@@ -1,16 +1,16 @@
-(in-package :cl-user)
-(defpackage net.http.keep-alive-stream
+(defpackage #:net.http.keep-alive-stream
   (:use
    #:cl
    #:sb-gray
    #:lib.control)
   (:export
-   :make-keep-alive-stream
-   :keep-alive-stream
-   :keep-alive-chunked-stream
-   :keep-alive-stream-close-underlying-stream
-   :keep-alive-stream-stream))
-(in-package :net.http.keep-alive-stream)
+   #:make-keep-alive-stream
+   #:keep-alive-stream
+   #:keep-alive-chunked-stream
+   #:keep-alive-stream-close-underlying-stream
+   #:keep-alive-stream-stream))
+
+(in-package #:net.http.keep-alive-stream)
 
 (defclass keep-alive-stream (fundamental-input-stream)
   ((stream :type (or null stream)

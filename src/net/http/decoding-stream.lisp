@@ -1,10 +1,11 @@
-(in-package :cl-user)
-(defpackage net.http.decoding-stream
-  (:use :cl
-        #:sb-gray
-        #:lib.char)
-  (:export :make-decoding-stream
-           :decoding-stream)
+(defpackage #:net.http.decoding-stream
+  (:use
+   #:cl
+   #:sb-gray
+   #:lib.char)
+  (:export
+   #:make-decoding-stream
+   #:decoding-stream)
   (:documentation "Provides character decoding stream."))
 
 (in-package :net.http.decoding-stream)

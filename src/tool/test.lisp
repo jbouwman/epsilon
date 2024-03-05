@@ -553,8 +553,7 @@ continue by returning (values)~@:>"))
   `(with-expected-failures* t ,@body))
 
 (defun funcall-test-with-feedback-message (test-function &rest args)
-  "Run TEST non-interactively and print results to *STANDARD-OUTPUT*.
-This function is ideal for ASDF:TEST-OP's."
+  "Run TEST non-interactively and print results to *STANDARD-OUTPUT*."
   (let* ((*test-run-standard-output* (make-broadcast-stream))
          (result (without-debugging (apply test-function args)))
          (*package* (find-package :common-lisp)))

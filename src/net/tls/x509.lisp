@@ -10,7 +10,7 @@ ASN1 string validation references:
 (defgeneric decode-asn1-string (asn1-string type))
 
 (defun copy-bytes-to-lisp-vector (src-ptr vector count)
-  (declare (type (simple-array (unsigned-byte 8)) vector)
+  (declare (type ->u8 vector)
            (type fixnum count)
            (optimize (safety 0) (debug 0) (speed 3)))
   (dotimes (i count vector)
@@ -24,14 +24,14 @@ ASN1 string validation references:
     vector))
 
 (defun asn1-iastring-char-p (byte)
-  (declare (type (unsigned-byte 8) byte)
+  (declare (type u8 byte)
            (optimize (speed 3)
                      (debug 0)
                      (safety 0)))
   (< byte #x80))
 
 (defun asn1-iastring-p (bytes)
-  (declare (type (simple-array (unsigned-byte 8)) bytes)
+  (declare (type ->u8 bytes)
            (optimize (speed 3)
                      (debug 0)
                      (safety 0)))
@@ -44,7 +44,7 @@ ASN1 string validation references:
         (error 'invalid-asn1-string :type '+v-asn1-iastring+))))
 
 (defun asn1-printable-char-p (byte)
-  (declare (type (unsigned-byte 8) byte)
+  (declare (type u8 byte)
            (optimize (speed 3)
                      (debug 0)
                      (safety 0)))
@@ -72,7 +72,7 @@ ASN1 string validation references:
     ((= byte #.(char-code #\?)) t)))
 
 (defun asn1-printable-string-p (bytes)
-  (declare (type (simple-array (unsigned-byte 8)) bytes)
+  (declare (type ->u8 bytes)
            (optimize (speed 3)
                      (debug 0)
                      (safety 0)))
@@ -100,7 +100,7 @@ ASN1 string validation references:
       (error 'invalid-asn1-string :type '+v-asn1-universalstring+)))
 
 (defun asn1-teletex-char-p (byte)
-  (declare (type (unsigned-byte 8) byte)
+  (declare (type u8 byte)
            (optimize (speed 3)
                      (debug 0)
                      (safety 0)))
@@ -108,7 +108,7 @@ ASN1 string validation references:
        (< byte #x80)))
 
 (defun asn1-teletex-string-p (bytes)
-  (declare (type (simple-array (unsigned-byte 8)) bytes)
+  (declare (type ->u8 bytes)
            (optimize (speed 3)
                      (debug 0)
                      (safety 0)))
@@ -187,7 +187,7 @@ we are going to pass them to FFI:WITH-POINTER-TO-VECTOR-DATA)"))
       :pem))
 
 (defun decode-certificate-from-file (path &key format)
-  (let ((bytes (with-open-file (stream path :element-type '(unsigned-byte 8))
+  (let ((bytes (with-open-file (stream path :element-type 'u8)
                  (slurp-stream stream)))
         (format (or format (cert-format-from-path path))))
     (decode-certificate format bytes)))

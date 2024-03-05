@@ -32,7 +32,7 @@
 
 (defun ensure-password (password)
   (etypecase password
-    (string (babel:string-to-octets password :encoding :utf-8))
+    (string (lib.char:string-to-u8 password :encoding :utf-8))
     ((vector (unsigned-byte 8)) password)
     (null (restart-case (error 'password-required)
             (use-value (password)

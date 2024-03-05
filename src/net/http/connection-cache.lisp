@@ -1,5 +1,4 @@
-(in-package :cl-user)
-(defpackage net.http.connection-cache
+(defpackage #:net.http.connection-cache
   (:use
    #:cl
    #:sys.sync.thread)
@@ -10,7 +9,8 @@
            :steal-connection
            :push-connection
            :clear-connection-pool))
-(in-package :net.http.connection-cache)
+
+(in-package #:net.http.connection-cache)
 
 (defvar *use-connection-pool* t)
 (defvar *max-active-connections* 8
