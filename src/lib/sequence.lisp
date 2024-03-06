@@ -10,7 +10,6 @@
    #:delete/swapped-arguments
    #:deletef
    #:emptyp
-   #:emptyp
    #:ends-with
    #:ends-with-subseq
    #:extremum

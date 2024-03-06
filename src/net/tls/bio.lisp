@@ -379,17 +379,17 @@
 (defmacro with-bio-output-to-string ((bio) &body body)
   "Evaluate BODY with BIO bound to a SSL BIO structure that writes to
 a Common Lisp string.  The string is returned."
-  `(let ((*bio-socket* (make-vector-stream :output t))
+  `(let ((*bio-socket* (make-instance 'fast-output-stream))
 	 (,bio (bio-new-lisp)))
      (unwind-protect
           (progn ,@body)
        (bio-free ,bio))
-     (u8-to-string (output-stream-vector *bio-socket*))))
+     (u8-to-string (finish-output-stream *bio-socket*))))
 
 (defmacro with-bio-input-from-string ((bio string) &body body)
   "Evaluate BODY with BIO bound to a SSL BIO structure that reads from
 a Common Lisp STRING."
-  `(let ((*bio-socket* (make-vector-stream :input (string-to-u8 ,string)))
+  `(let ((*bio-socket* (make-vector-stream (string-to-u8 ,string)))
 	 (,bio (bio-new-lisp)))
      (unwind-protect
           (progn ,@body)

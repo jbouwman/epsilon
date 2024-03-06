@@ -3,12 +3,11 @@
    #:cl
    #:sb-gray
    #:lib.binding
-   #:lib.type
-   #:lib.io
-   #:lib.function
-   #:lib.checksum.generic
    #:lib.checksum.adler-32
    #:lib.checksum.crc-32
+   #:lib.checksum.generic
+   #:lib.function
+   #:lib.type
    #:lib.stream)
   (:export
    #:encode

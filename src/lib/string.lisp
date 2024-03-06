@@ -2,6 +2,8 @@
   (:use :cl)
   (:export
    #:concat
+   #:first-char
+   #:last-char
    #:ends-with-p
    #:starts-with-p
    #:string-designator
@@ -10,6 +12,8 @@
    #:strip-right))
 
 (in-package #:lib.string)
+
+
 
 (deftype string-designator ()
   "A string designator type. A string designator is either a string, a symbol,
@@ -24,6 +28,14 @@ or a character."
         (setf (aref output (+ offset i))
               (aref string i)))
       (incf offset (length string)))))
+
+(defun first-char (s)
+  "Return the first character of a non-empty string S, or NIL"
+  (and (stringp s) (plusp (length s)) (char s 0)))
+
+(defun last-char (s)
+  "Return the last character of a non-empty string S, or NIL"
+  (and (stringp s) (plusp (length s)) (char s (1- (length s)))))
 
 (defun first-index (string char-fn)
   (loop :for i :from 0 :to (1- (length string))

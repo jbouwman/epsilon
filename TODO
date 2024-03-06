@@ -1,6 +1,5 @@
-Translate and remove references to uiop
 Translate and remove references to asdf
 Build scaffold of alt asdf loader
 Define archive format
-marge fast-io and vector-stream
-q
+ 
+ 

@@ -1,12 +1,13 @@
 (tool.test:define-test-package #:lib.codec/tests
   (:use
    #:lib.codec
-   #:lib.io))
+   #:lib.stream
+   #:sys.directory))
 
 (in-package #:lib.codec/tests)
 
 (defun decompress (codec compressed original)
-  (uiop:with-temporary-file (:pathname decompressed)
+  (with-tempfile (decompressed)
     (decode-file codec compressed decompressed)
     (is (file= original decompressed))))
 
@@ -14,7 +15,7 @@
   (decompress codec (test-file compressed) (test-file original)))
 
 (defun roundtrip (codec original)
-  (uiop:with-temporary-file (:pathname compressed)
+  (with-tempfile (compressed)
     (encode-file codec original compressed)
     (decompress codec compressed original)))
 

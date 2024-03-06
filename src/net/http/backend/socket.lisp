@@ -3,8 +3,8 @@
    #:cl
    #:lib.binding
    #:lib.codec.base64
-   #:lib.io
    #:lib.sequence
+   #:lib.stream
    #:net.http.body
    #:net.http.chunked-stream
    #:net.http.connection-cache
@@ -24,7 +24,7 @@
 (in-package #:net.http.backend.socket)
 
 (defparameter *ca-bundle*
-  (uiop:native-namestring
+  (sys.path:native-namestring
    (asdf:system-relative-pathname :epsilon #P"certs/cacert.pem")))
 
 (defun-speedy read-until-crlf*2 (stream)
@@ -304,7 +304,7 @@
                                         net.tls:+ssl-verify-peer+)
                                     :verify-location
                                     (cond
-                                      (ca-path (uiop:native-namestring ca-path))
+                                      (ca-path (sys.path:native-namestring ca-path))
                                       ((probe-file *ca-bundle*) *ca-bundle*)
                                       ;; In executable environment, perhaps *ca-bundle* doesn't exist.
                                       (t :default))))

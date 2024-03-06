@@ -6,7 +6,7 @@ the bytes as a SIMPLE-ARRAY with ELEMENT-TYPE '(UNSIGNED-BYTE 8). Signals
 an ERROR in case of problems; for example, when the OpenSSL random number
 generator has not been seeded with enough randomness to ensure an
 unpredictable byte sequence."
-  (let* ((result (make-array count :element-type '(unsigned-byte 8)))
+  (let* ((result (->u8 count))
          (buf (make-buffer count))
          (ret (with-pointer-to-vector-data (ptr buf)
                 (rand-bytes ptr count))))

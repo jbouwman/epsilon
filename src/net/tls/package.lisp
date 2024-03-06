@@ -6,6 +6,7 @@
         #:lib.list
         #:lib.stream
         #:lib.symbol
+        #:lib.type
         #:sys.sync.lock
         #:sys.sync.thread)
   (:local-nicknames

@@ -1,13 +1,14 @@
 (defpackage #:sys.ffi.sys
-  (:use #:common-lisp
-        #:lib.array
-        #:lib.binding
-        #:lib.function
-        #:lib.hash
-        #:lib.io
-        #:lib.list
-        #:lib.symbol
-        #:sb-alien)
+  (:use
+   #:cl
+   #:lib.array
+   #:lib.binding
+   #:lib.function
+   #:lib.hash
+   #:lib.list
+   #:lib.stream
+   #:lib.symbol
+   #:sb-alien)
   (:export
    ;; C ABI utils
    #:canonicalize-symbol-name-case
@@ -72,8 +73,8 @@
    #:lib.condition
    #:lib.function
    #:lib.hash
-   #:lib.io
    #:lib.list
+   #:lib.stream
    #:lib.symbol
    #:lib.vector
    #:sys.env)

@@ -1,42 +1,41 @@
-(in-package :cl-user)
-(defpackage net.http.error
+(defpackage #:net.http.error
   (:use
    #:cl
    #:net.url)
   (:export
-   :http-request-failed
-
+   #:http-request-failed
+   
    ;; 4xx
-   :http-request-bad-request
-   :http-request-unauthorized
-   :http-request-payment-required
-   :http-request-forbidden
-   :http-request-not-found
-   :http-request-method-not-allowed
-   :http-request-not-acceptable
-   :http-request-proxy-authentication-required
-   :http-request-request-timeout
-   :http-request-conflict
-   :http-request-gone
-   :http-request-length-required
-   :http-request-precondition-failed
-   :http-request-payload-too-large
-   :http-request-uri-too-long
-   :http-request-unsupported-media-type
-   :http-request-range-not-satisfiable
-   :http-request-expectation-failed
-   :http-request-misdirected-request
-   :http-request-upgrade-required
-   :http-request-too-many-requests
-
+   #:bad-request
+   #:unauthorized
+   #:payment-required
+   #:forbidden
+   #:not-found
+   #:method-not-allowed
+   #:not-acceptable
+   #:proxy-authentication-required
+   #:request-timeout
+   #:conflict
+   #:gone
+   #:length-required
+   #:precondition-failed
+   #:payload-too-large
+   #:uri-too-long
+   #:unsupported-media-type
+   #:range-not-satisfiable
+   #:expectation-failed
+   #:misdirected-request
+   #:upgrade-required
+   #:too-many-requests
+   
    ;; 5xx
-   :http-request-internal-server-error
-   :http-request-not-implemented
-   :http-request-bad-gateway
-   :http-request-service-unavailable
-   :http-request-gateway-timeout
-   :http-request-http-version-not-supported
-
+   #:internal-server-error
+   #:not-implemented
+   #:bad-gateway
+   #:service-unavailable
+   #:gateway-timeout
+   #:http-version-not-supported
+   
    ;; accessors
    :response-body
    :response-status
@@ -66,7 +65,7 @@
                        status)))))
 
 (defmacro define-request-failed-condition (name code)
-  `(define-condition ,(intern (format nil "~A-~A" :http-request name)) (http-request-failed)
+  `(define-condition ,name (http-request-failed)
      ()
      (:report (lambda (condition stream)
                 (with-slots (body uri) condition

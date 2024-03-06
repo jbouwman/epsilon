@@ -462,7 +462,7 @@
       (char= char #\.)))
 
 (defun scheme-byte-p (byte)
-  (declare (type (unsigned-byte 8) byte)
+  (declare (type u8 byte)
            (optimize (speed 3) (safety 0)))
   (or (standard-alphanumeric-byte-p byte)
       (= byte (char-code #\+))
@@ -613,7 +613,7 @@
              (= byte #.(char-code #\/))))))
 
 (defun path-byte-p (byte)
-  (declare (type (unsigned-byte 8) byte)
+  (declare (type u8 byte)
            (optimize (speed 3) (safety 0)))
   (or (= (aref +uri-char+ byte) 1)
       (= byte (char-code #\/))))
@@ -625,7 +625,7 @@
       (char= char #\?)))
 
 (defun query-byte-p (byte)
-  (declare (type (unsigned-byte 8) byte)
+  (declare (type u8 byte)
            (optimize (speed 3) (safety 0)))
   (or (path-byte-p byte)
       (= byte (char-code #\?))))
@@ -657,7 +657,7 @@
               (values ,data ,start ,end))
            (declare (type fixnum ,p))
            (let ((,byte (aref ,data ,p)))
-             (declare (type (unsigned-byte 8) ,byte))
+             (declare (type u8 ,byte))
              (when (or ,@(loop for delim in delimiters
                                collect `(= ,(char-code delim) ,byte)))
                (return (values ,data ,start ,p)))
@@ -781,7 +781,7 @@
            (optimize (speed 3) (safety 2)))
   (let* ((end (or end (length data)))
          (buffer (make-array (- end start)
-                             :element-type '(unsigned-byte 8)))
+                             :element-type 'u8))
          (i 0)
          parsing-encoded-part)
     (declare (type integer end i)
@@ -925,7 +925,7 @@
     ary))
 
 (defun integer-to-hexdigit (byte)
-  (declare (type (unsigned-byte 8) byte)
+  (declare (type u8 byte)
            (optimize (speed 3) (safety 0)))
   (let ((res (make-string 2)))
     (multiple-value-bind (quotient remainder)
@@ -935,7 +935,7 @@
     res))
 
 (defun unreservedp (byte)
-  (declare (type (unsigned-byte 8) byte)
+  (declare (type u8 byte)
            (optimize (speed 3) (safety 0)))
   (or (<= (char-code #\A) byte (char-code #\Z))
       (<= (char-code #\a) byte (char-code #\z))
@@ -967,7 +967,7 @@
     (declare (type ->u8 octets)
              (type string res)
              (type integer i))
-    (loop for byte of-type (unsigned-byte 8) across octets do
+    (loop for byte of-type u8 across octets do
       (cond
         ((and space-to-plus
               (= byte #.(char-code #\Space)))
@@ -1033,7 +1033,7 @@
       (setf (uri-port uri) (scheme-default-port (uri-scheme uri))))
     (when (pathnamep (uri-path uri))
       (setf (uri-path uri)
-            (uiop:native-namestring (uri-path uri))))
+            (sys.path:native-namestring (uri-path uri))))
     uri))
 
 (defun uri-authority (uri)
@@ -1108,7 +1108,7 @@
       (dotimes (i 4 t)
         (multiple-value-bind (byte pos endp)
             (read-byte-string host start)
-          (unless (typep byte '(unsigned-byte 8))
+          (unless (typep byte 'u8)
             (return nil))
           (unless (xor endp (not (= i 3)))
             (return nil))
@@ -1324,7 +1324,7 @@
 (defun make-uri-file (&rest initargs &key path &allow-other-keys)
   (when (pathnamep path)
     (setf (getf initargs :path)
-          (uiop:native-namestring path)))
+          (sys.path:native-namestring path)))
   (apply #'%make-uri-file initargs))
 
 (declaim (ftype (function (uri-file) pathname) uri-file-pathname))
@@ -1387,9 +1387,9 @@ Assumes that the path of the file URI is correct path syntax for the environment
 
 (defun render-uri (uri &optional stream)
   (flet ((maybe-slash (authority path)
-           (if (and (not (uiop:emptyp authority)) (not (uiop:emptyp path))
-                    (char/= (uiop:last-char authority) #\/)
-                    (char/= (uiop:first-char path) #\/))
+           (if (and (not (emptyp authority)) (not (emptyp path))
+                    (char/= (lib.string:last-char authority) #\/)
+                    (char/= (lib.string:first-char path) #\/))
                "/"
                "")))
     (cond

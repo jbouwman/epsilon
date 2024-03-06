@@ -60,7 +60,7 @@
     :accessor ssl-stream-key)))
 
 (defmethod stream-element-type ((stream ssl-stream))
-  '(unsigned-byte 8))
+  'u8)
 
 (defmethod close ((stream ssl-stream) &key abort)
   (cond

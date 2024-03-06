@@ -2,8 +2,9 @@
   (:use
    #:cl
    #:lib.char
-   #:lib.io
    #:lib.list
+   #:lib.stream
+   #:lib.type
    #:net.url
    #:net.http.encoding
    #:net.http.decoding-stream
@@ -101,7 +102,7 @@
       (setf (lookup-in-content-encoding-cache val)
             (typecase val
               (string (lib.char:string-to-u8 val))
-              ((array (unsigned-byte 8) (*)) val)
+              (->u8 val)
               (symbol (lib.char:string-to-u8 (princ-to-string val)))
               (cons (convert-to-octets (first val)))
               (otherwise (lib.char:string-to-u8 (princ-to-string val)))))))

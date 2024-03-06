@@ -3,13 +3,13 @@
 (defvar *structures* (make-hash-table :test 'eql))
 
 (defun decode-structure (vector index)
-  (let* ((signature (nibbles:ub32ref/le vector index))
+  (let* ((signature (u32ref/le vector index))
          (parser (or (gethash signature *structures*)
                      (error 'unknown-block-signature :signature signature))))
     (funcall (first parser) vector (+ index 4))))
 
 (defun read-structure (stream)
-  (let* ((signature (nibbles:read-ub32/le stream))
+  (let* ((signature (read-u32/le stream))
          (parser (or (gethash signature *structures*)
                      (error 'unknown-block-signature :signature signature))))
     (funcall (second parser) stream)))
@@ -26,56 +26,56 @@
 
 (defun integer-binary-type (integer)
   (cond ((<= integer #xFF) 'u8)
-        ((<= integer #xFFFF) 'ub16)
-        ((<= integer #xFFFFFFFF) 'ub32)
-        ((<= integer #xFFFFFFFFFFFFFFFF) 'ub64)
+        ((<= integer #xFFFF) 'u16)
+        ((<= integer #xFFFFFFFF) 'u32)
+        ((<= integer #xFFFFFFFFFFFFFFFF) 'u64)
         (T (error 'integer-too-large))))
 
 (defun binary-type-size (type)
   (ecase type
     (u8 1)
-    (ub16 2)
-    (ub32 4)
-    (ub64 8)))
+    (u16 2)
+    (u32 4)
+    (u64 8)))
 
 (defun binary-type-type (type)
   (ecase type
     (u8 '(unsigned-byte 8))
-    (ub16 '(unsigned-byte 16))
-    (ub32 '(unsigned-byte 32))
-    (ub64 '(unsigned-byte 64))))
+    (u16 '(unsigned-byte 16))
+    (u32 '(unsigned-byte 32))
+    (u64 '(unsigned-byte 64))))
 
 (defun binary-type-decoder (type)
   (ecase type
     (u8 'aref)
-    (ub16 'nibbles:ub16ref/le)
-    (ub32 'nibbles:ub32ref/le)
-    (ub64 'nibbles:ub64ref/le)))
+    (u16 'u16ref/le)
+    (u32 'u32ref/le)
+    (u64 'u64ref/le)))
 
 (defun binary-type-reader (type)
   (ecase type
     (u8 'read-byte)
-    (ub16 'nibbles:read-ub16/le)
-    (ub32 'nibbles:read-ub32/le)
-    (ub64 'nibbles:read-ub64/le)))
+    (u16 'read-u16/le)
+    (u32 'read-u32/le)
+    (u64 'read-u64/le)))
 
 (defun binary-type-encoder (type)
   (ecase type
     (u8 '(lambda (vector index value)
             (setf (aref vector index) value)))
-    (ub16 '(lambda (vector index value)
-             (setf (nibbles::ub16ref/le vector index) value)))
-    (ub32 '(lambda (vector index value)
-             (setf (nibbles::ub32ref/le vector index) value)))
-    (ub64 '(lambda (vector index value)
-             (setf (nibbles::ub64ref/le vector index) value)))))
+    (u16 '(lambda (vector index value)
+             (setf (u16ref/le vector index) value)))
+    (u32 '(lambda (vector index value)
+             (setf (u32ref/le vector index) value)))
+    (u64 '(lambda (vector index value)
+             (setf (u64ref/le vector index) value)))))
 
 (defun binary-type-writer (type)
   (ecase type
     (u8 'write-byte)
-    (ub16 'nibbles:write-ub16/le)
-    (ub32 'nibbles:write-ub32/le)
-    (ub64 'nibbles:write-ub64/le)))
+    (u16 'write-u16/le)
+    (u32 'write-u32/le)
+    (u64 'write-u64/le)))
 
 (defun generate-record-decoder (record vector index)
   (destructuring-bind (name type &optional count) record
@@ -124,7 +124,7 @@
                      (incf ,index ,(binary-type-size btype)))))
           (count
            (if (eql type 'character)
-               `(let ((vec (babel:string-to-octets ,name :encoding :utf-8)))
+               `(let ((vec (lib.char:string-to-u8 ,name :encoding :utf-8)))
                   (loop for char across vec
                         do (setf (aref ,vector ,index) char)
                            (incf ,index)
@@ -144,7 +144,7 @@
              `(,(binary-type-writer btype) ,type ,stream)))
           (count
            (if (eql type 'character)
-               `(let ((vec (babel:string-to-octets ,name :encoding :utf-8)))
+               `(let ((vec (lib.char:string-to-u8 ,name :encoding :utf-8)))
                   (loop for char across vec
                         do (write-byte char ,stream)))
                `(loop for i from 0 below ,count
@@ -178,10 +178,10 @@
          (defun ,encode-name (structure vector index)
            ,@(typecase signature
                ((unsigned-byte 16)
-                `((setf (nibbles:ub16ref/le vector index) ,signature)
+                `((setf (u16ref/le vector index) ,signature)
                   (incf index 2)))
                ((unsigned-byte 32)
-                `((setf (nibbles:ub32ref/le vector index) ,signature)
+                `((setf (u32ref/le vector index) ,signature)
                   (incf index 4))))
            (with-slots ,fields structure
              ,@(loop for record in records
@@ -189,9 +189,9 @@
          (defun ,write-name (structure stream)
            ,@(typecase signature
                ((unsigned-byte 16)
-                `((nibbles:write-ub16/le ,signature stream)))
+                `((write-u16/le ,signature stream)))
                ((unsigned-byte 32)
-                `((nibbles:write-ub32/le ,signature stream))))
+                `((write-u32/le ,signature stream))))
            (with-slots ,fields structure
              ,@(loop for record in records
                      collect (generate-record-writer record 'stream))))
@@ -201,11 +201,11 @@
                            (list #',decode-name #',read-name #',encode-name #',write-name)))))))))
 
 (defun decode-string (octets flags)
-  (babel:octets-to-string octets :encoding (if (logbitp 11 flags) :utf-8 :cp437)))
+  (lib.char:u8-to-string octets :encoding (if (logbitp 11 flags) :utf-8 :cp437)))
 
 (defun encode-string (string)
   (if string
-      (babel:string-to-octets string :encoding :utf-8)
+      (lib.char:string-to-u8 string :encoding :utf-8)
       #()))
 
 (defun decode-msdos-timestamp (date time)
@@ -249,12 +249,12 @@
   (let ((compat (file-attribute-name compat))
         (msdos (ldb (byte 8 0) attr))
         (os-specific (ldb (byte 16 16) attr)))
-    (list (file-attributes:decode-attributes msdos :windows) compat os-specific)))
+    (list (sys.file:decode-attributes msdos :windows) compat os-specific)))
 
 (defun encode-file-attribute (thing)
   (destructuring-bind (msdos compat os-specific) thing
     (declare (ignore compat))
     (let ((i 0))
-      (setf (ldb (byte 8 0) i) (logand #xFF (file-attributes:encode-attributes msdos :windows)))
+      (setf (ldb (byte 8 0) i) (logand #xFF (sys.file:encode-attributes msdos :windows)))
       (setf (ldb (byte 16 16) i) (logand #xFFFF os-specific))
       i)))

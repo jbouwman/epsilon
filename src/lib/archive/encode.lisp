@@ -35,13 +35,13 @@
        (unless (file-name entry)
          (setf (file-name entry) (file-namestring content)))
        (unless (attributes entry)
-         (setf (attributes entry) (list `(,(if (pathname-utils:directory-p content)
+         (setf (attributes entry) (list `(,(if (sys.path:directory-p content)
                                                :directory
                                                :normal)
                                           T)
                                         *compatibility*
-                                        (file-attributes:attributes content))))
-       (unless (pathname-utils:directory-p content)
+                                        (sys.file:attributes content))))
+       (unless (sys.path:directory-p content)
          (typecase content
            (file-stream (setf (uncompressed-size entry) (file-length content)))
            (T
@@ -84,7 +84,7 @@
     extra))
 
 (defun entry-to-lf (entry)
-  (let ((file-name (babel:string-to-octets (file-name entry) :encoding :utf-8))
+  (let ((file-name (lib.char:string-to-u8 (file-name entry) :encoding :utf-8))
         (extra (make-array 0 :adjustable T :element-type '(unsigned-byte 8)))
         (size (or (size entry) 0))
         (uncompressed-size (or (uncompressed-size entry) 0)))
@@ -130,7 +130,7 @@
         (make-data-descriptor/64 (crc-32 entry) (size entry) uncompressed-size))))
 
 (defun entry-to-cd (entry)
-  (let ((file-name (babel:string-to-octets (file-name entry) :encoding :utf-8))
+  (let ((file-name (lib.char:string-to-u8 (file-name entry) :encoding :utf-8))
         (comment (encode-string (comment entry)))
         (extra (make-array 0 :adjustable T :element-type '(unsigned-byte 8)))
         (size (or (size entry) 0))
@@ -173,7 +173,7 @@
                (etypecase input
                  (stream
                   (when (or (not (typep input 'file-stream))
-                            (not (pathname-utils:directory-p input)))
+                            (not (sys.path:directory-p input)))
                     (loop with buffer = (make-array 4096 :element-type '(unsigned-byte 8))
                           for read = (read-sequence buffer input)
                           while (< 0 read)

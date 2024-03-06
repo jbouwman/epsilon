@@ -1,32 +1,34 @@
-(in-package :cl-user)
-(defpackage net.http.util
-  (:use :cl
-        #:lib.io
-        #:net.url)
-  (:export :*default-connect-timeout*
-           :*default-read-timeout*
-           :*verbose*
-           :*default-proxy*
-           :*not-verify-ssl*
-           :defun-speedy
-           :defun-careful
-           :octets
-           :ascii-string-to-octets
-           :+crlf+
-           :*default-user-agent*
-           :write-first-line
-           :write-header
-           :with-header-output
-           :write-connect-header
-           :make-random-string))
-(in-package :net.http.util)
+(defpackage #:net.http.util
+  (:use
+   #:cl
+   #:lib.stream
+   #:net.url)
+  (:export
+   #:*default-connect-timeout*
+   #:*default-read-timeout*
+   #:*verbose*
+   #:*default-proxy*
+   #:*not-verify-ssl*
+   #:defun-speedy
+   #:defun-careful
+   #:octets
+   #:ascii-string-to-octets
+   #:+crlf+
+   #:*default-user-agent*
+   #:write-first-line
+   #:write-header
+   #:with-header-output
+   #:write-connect-header
+   #:make-random-string))
+
+(in-package #:net.http.util)
 
 (defvar *default-connect-timeout* 10)
 (defvar *default-read-timeout* 10)
 (defvar *verbose* nil)
 (defvar *not-verify-ssl* nil)
-(defvar *default-proxy* (or #-windows (uiop:getenv "HTTPS_PROXY")
-                            #-windows (uiop:getenv "HTTP_PROXY"))
+(defvar *default-proxy* (or #-windows (sys.env:getenv "HTTPS_PROXY")
+                            #-windows (sys.env:getenv "HTTP_PROXY"))
   "If specified will be used as the default value of PROXY in calls to net.http.  Defaults to
  the value of the environment variable HTTPS_PROXY or HTTP_PROXY if not on Windows.")
 
