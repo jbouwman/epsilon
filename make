@@ -1,14 +1,22 @@
 #!/usr/bin/env nu
 
-def run_unit_tests [] {
+def build [] {
     (sbcl --noinform
           --non-interactive
-          --eval "(setf *compile-verbose* nil)"
-          --eval "(load \"epsilon.asd\")"
-          --eval "(asdf:test-system :epsilon)")
+          --eval "(load \"epsilon.lisp\")"
+          --eval "(load-epsilon)")
 }
 
-def generate_coverage_report [] {
+def test [] {
+    (sbcl --noinform
+          --non-interactive
+          --eval "(load \"epsilon.lisp\")"
+          --eval "(load-epsilon)"
+          # ...
+          )
+}
+
+def coverage [] {
     mkdir target/coverage
     (sbcl --noinform
           --non-interactive
@@ -21,15 +29,10 @@ def generate_coverage_report [] {
     open target/coverage/cover-index.html
 }
 
-def make_etags [] {
-    rm -f TAGS
-    ls src | where type == "file" and name =~ ".lisp" | each {|x| etags -a $x.name}
-}
-
 def main [args] {
     match $args {
-        "test"     => run_unit_tests,
-        "coverage" => generate_coverage_report,
-        "tags"     => make_etags
+        "build"    => build,
+        "test"     => test,
+        "coverage" => coverage
     }
 }

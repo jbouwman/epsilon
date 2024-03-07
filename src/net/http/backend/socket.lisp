@@ -23,8 +23,8 @@
 
 (in-package #:net.http.backend.socket)
 
-(defparameter *ca-bundle*
-  (sys.path:native-namestring
+(defparameter *ca-bundle* nil
+  #++ (sys.path:native-namestring
    (asdf:system-relative-pathname :epsilon #P"certs/cacert.pem")))
 
 (defun-speedy read-until-crlf*2 (stream)
