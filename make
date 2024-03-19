@@ -12,8 +12,8 @@ def test [] {
           --non-interactive
           --eval "(load \"epsilon.lisp\")"
           --eval "(load-epsilon)"
-          # ...
-          )
+          --eval "(load-epsilon-tests)"
+          --eval "(tool.test:run-all-tests)")
 }
 
 def coverage [] {
@@ -21,10 +21,10 @@ def coverage [] {
     (sbcl --noinform
           --non-interactive
           --eval "(require :sb-cover)"
-          --eval "(setf *compile-verbose* nil)"
-          --eval "(load \"epsilon.asd\")"
-          --eval "(declaim (optimize sb-cover:store-coverage-data))"
-          --eval "(asdf:test-system :epsilon :force '(:epsilon))"
+          --eval "(load \"epsilon.lisp\")"
+          --eval "(load-epsilon)"
+          --eval "(load-epsilon-tests)"
+          --eval "(tool.test:run-all-tests)"
           --eval "(sb-cover:report \"target/coverage/\")")
     open target/coverage/cover-index.html
 }

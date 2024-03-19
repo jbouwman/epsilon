@@ -27,6 +27,7 @@
    #:mdx-updater
    #:start
    #:end                                ; fixme
+   #:produce-digest
    #:state
    #:store-data-length
    #:update-digest

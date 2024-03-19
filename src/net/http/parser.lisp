@@ -241,15 +241,12 @@
           (eq (car var) 'the)
           (cadr var)))))
 
-(deftype octets (&optional (len '*))
-  `(simple-array u8 (,len)))
-
 (defun variable-type* (var &optional env)
   (let ((type (variable-type var env)))
     (cond
       ((null type) nil)
       ((subtypep type 'string) 'string)
-      ((subtypep type 'octets) 'octets))))
+      ((subtypep type '->u8) '->u8))))
 
 (defun check-skip-elems (elems)
   (or (every (lambda (elem)
@@ -471,7 +468,7 @@
              (,g-end ,(if end
                           `(or ,end (length ,data))
                           `(length ,data))))
-         (declare (type octets ,data)
+         (declare (type ->u8 ,data)
                   (type fixnum ,p ,g-end)
                   (type u8 ,elem))
          (parsing-macrolet (,elem ,data ,p ,g-end)
@@ -534,14 +531,14 @@
   (let ((data-type (variable-type* data env)))
     (case data-type
       (string `(with-string-parsing (,data :start ,start :end ,end) ,@body))
-      (octets `(macrolet ((get-elem (form) `(code-char ,form))
+      (->u8 `(macrolet ((get-elem (form) `(code-char ,form))
                           (subseq* (data start &optional end)
                             `(u8-to-string ,data :start ,start :end ,end)))
                  (with-octets-parsing (,data :start ,start :end ,end) ,@body)))
       (otherwise (once-only (data)
                    `(etypecase ,data
                       (string (with-string-parsing (,data :start ,start :end ,end) ,@body))
-                      (octets (macrolet ((get-elem (form) `(code-char ,form))
+                      (->u8 (macrolet ((get-elem (form) `(code-char ,form))
                                          (subseq* (data start &optional end)
                                            `(u8-to-string ,data :start ,start :end ,end)))
                                 (with-octets-parsing (,data :start ,start :end ,end) ,@body)))))))))

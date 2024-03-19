@@ -203,6 +203,5 @@
     (finalize-registers state regs)))
 
 (defdigest sha256 :digest-length 32 :block-length 64)
-(defdigest sha224 :digest-length 28 :block-length 64)
 
-(%make-sha256-digest)
+(defdigest sha224 :digest-length 28 :block-length 64)

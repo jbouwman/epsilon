@@ -4,6 +4,7 @@
    #:lib.binding
    #:lib.char
    #:lib.stream
+   #:lib.string
    #:net.http.body
    #:net.http.error
    #:net.http.util

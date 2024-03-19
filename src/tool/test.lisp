@@ -3,7 +3,8 @@
    #:cl
    #:sb-gray
    #:lib.list
-   #:lib.symbol)
+   #:lib.symbol
+   #:sys.fs)
   (:export
    #:define-test-package
    #:deftest
@@ -25,7 +26,7 @@
 
 (defun test-file (name)
   (merge-pathnames (format nil "tests/data/~A" name)
-                   (asdf:system-source-directory "epsilon")))
+                   (current-dir)))
 
 (defvar *suite*)
 

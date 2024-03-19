@@ -4,6 +4,7 @@
    #:concat
    #:first-char
    #:last-char
+   #:random-string
    #:ends-with-p
    #:starts-with-p
    #:string-designator
@@ -12,8 +13,6 @@
    #:strip-right))
 
 (in-package #:lib.string)
-
-
 
 (deftype string-designator ()
   "A string designator type. A string designator is either a string, a symbol,
@@ -28,6 +27,17 @@ or a character."
         (setf (aref output (+ offset i))
               (aref string i)))
       (incf offset (length string)))))
+
+(defun random-string (&optional (length 12))
+  (declare (type fixnum length))
+  (let ((result (make-string length)))
+    (declare (type simple-string result))
+    (dotimes (i length result)
+      (setf (aref result i)
+            (ecase (random 5)
+              ((0 1) (code-char (+ #.(char-code #\a) (random 26))))
+              ((2 3) (code-char (+ #.(char-code #\A) (random 26))))
+              ((4) (code-char (+ #.(char-code #\0) (random 10)))))))))
 
 (defun first-char (s)
   "Return the first character of a non-empty string S, or NIL"
