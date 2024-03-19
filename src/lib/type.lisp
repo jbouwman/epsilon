@@ -14,7 +14,6 @@
    #:u8-set
    #:->u8
    #:random-u8
-   #:fixed-u8
 
    ;; unsigned 16
 
@@ -149,10 +148,6 @@
 (defun random-u8 (size)
   (->u8 (loop :for i :from 1 :to size
               :collect (random 256))))
-
-(defun fixed-u8 (size)
-  (->u8 (loop :for i :from 1 :to size
-              :collect (mod i 256))))
 
 ;; u16
 

@@ -2,12 +2,12 @@
   (:use
    #:lib.codec
    #:lib.stream
-   #:sys.directory))
+   #:sys.fs))
 
 (in-package #:lib.codec/tests)
 
 (defun decompress (codec compressed original)
-  (with-tempfile (decompressed)
+  (with-temp-file (decompressed)
     (decode-file codec compressed decompressed)
     (is (file= original decompressed))))
 
@@ -15,7 +15,7 @@
   (decompress codec (test-file compressed) (test-file original)))
 
 (defun roundtrip (codec original)
-  (with-tempfile (compressed)
+  (with-temp-file (compressed)
     (encode-file codec original compressed)
     (decompress codec compressed original)))
 

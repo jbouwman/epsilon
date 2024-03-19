@@ -145,21 +145,21 @@
        2 boundary-length 2 2)))
 
 (defun write-multipart-content (content boundary stream)
-  (let ((boundary (ascii-string-to-octets boundary)))
+  (let ((boundary (string->u8 boundary)))
     (labels ((boundary-line (&optional endp)
-               (write-sequence (ascii-string-to-octets "--") stream)
+               (write-sequence (string->u8 "--") stream)
                (write-sequence boundary stream)
                (when endp
-                 (write-sequence (ascii-string-to-octets "--") stream))
+                 (write-sequence (string->u8 "--") stream))
                (crlf))
              (crlf () (write-sequence +crlf+ stream)))
       (loop for (key . val) in content
             do (boundary-line)
-               (write-sequence (ascii-string-to-octets (content-disposition key val)) stream)
+               (write-sequence (string->u8 (content-disposition key val)) stream)
                (let ((content-type (multipart-value-content-type val)))
                  (when content-type
                    (write-sequence
-                     (ascii-string-to-octets
+                     (string->u8
                        (format nil "Content-Type: ~A~C~C" content-type #\Return #\Newline))
                      stream)))
                (crlf)

@@ -78,26 +78,6 @@
 (defmacro with-temporary-file ((path &rest args) &body body)
   `(call-with-temporary-file (lambda (,path) ,@body) ,@args))
 
-(defun current-directory ()
-  (sb-ext:parse-native-namestring (sb-unix:posix-getcwd/)))
-
-(defun (setf current-directory) (new)
-  (let ((pathname (pathname new)))
-    (sb-posix:chdir (sb-ext:native-namestring pathname))
-    pathname))
-
-(defun call-with-current-directory (function directory)
-  (let ((current (current-directory)))
-    (if (sys.path:pathname-equal current directory)
-        (funcall function)
-        (progn
-          (setf (current-directory) directory)
-          (unwind-protect (funcall function)
-            (setf (current-directory) current))))))
-
-(defmacro with-current-directory ((directory) &body body)
-  `(call-with-current-directory (lambda () ,@body) ,directory))
-
 (defun ensure-deleted (pathname)
   (when (file-exists-p pathname)
     (delete-file* pathname)))

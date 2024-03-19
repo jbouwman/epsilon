@@ -5,6 +5,8 @@
    #:lib.codec.base64
    #:lib.sequence
    #:lib.stream
+   #:lib.string
+   #:lib.type
    #:net.http.body
    #:net.http.chunked-stream
    #:net.http.connection-cache
@@ -15,7 +17,8 @@
    #:net.http.parser
    #:net.http.util
    #:net.url
-   #:net.tls)
+   #:net.tls
+   #:sys.fs)
   (:export
    #:request
    #:retry-request
@@ -23,11 +26,10 @@
 
 (in-package #:net.http.backend.socket)
 
-(defparameter *ca-bundle* nil
-  #++ (sys.path:native-namestring
-   (asdf:system-relative-pathname :epsilon #P"certs/cacert.pem")))
+(defun ca-bundle ()
+  (concatenate 'string (current-dir) "certs/cacert.pem"))
 
-(defun-speedy read-until-crlf*2 (stream)
+(defun read-until-crlf*2 (stream)
   (with-fast-output (buf)
     (tagbody
      read-cr
@@ -115,7 +117,7 @@
                               (lambda ()
                                 (setq finishedp t)))))
     (let ((buf (read-until-crlf*2 stream)))
-      (declare (type octets buf))
+      (declare (type ->u8 buf))
       (when collect-headers
         (fast-write-sequence buf headers-data))
       (funcall parser buf))
@@ -141,7 +143,7 @@
        (setq body +empty-body+))
       (T
        (setq body-data (make-output-buffer))
-       (loop for buf of-type octets = (read-until-crlf*2 stream)
+       (loop for buf of-type ->u8 = (read-until-crlf*2 stream)
              do (funcall parser buf)
              until (or finishedp
                        (zerop (length buf)))
@@ -305,7 +307,7 @@
                                     :verify-location
                                     (cond
                                       (ca-path (sys.path:native-namestring ca-path))
-                                      ((probe-file *ca-bundle*) *ca-bundle*)
+                                      ((probe-file (ca-bundle)) (ca-bundle))
                                       ;; In executable environment, perhaps *ca-bundle* doesn't exist.
                                       (t :default))))
           (ssl-cert-pem-p (and ssl-cert-file
@@ -334,389 +336,389 @@
 (defmethod open-stream-p ((u socket-wrapped-stream))
   (open-stream-p (socket-wrapped-stream-stream u)))
 
-(defun-careful request (uri &rest args
-                            &key (method :get) (version 1.1)
-                            content headers
-                            basic-auth
-                            (connect-timeout *default-connect-timeout*) (read-timeout *default-read-timeout*)
-                            (keep-alive t) (use-connection-pool t)
-                            (max-redirects 5)
-                            ssl-key-file ssl-cert-file ssl-key-password
-                            stream (verbose *verbose*)
-                            force-binary
-                            force-string
-                            want-stream
-                            (proxy *default-proxy*)
-                            (insecure *not-verify-ssl*)
-                            ca-path
-                            &aux
-                            (proxy-uri (and proxy (uri proxy)))
-                            (original-user-supplied-stream stream)
-                            (user-supplied-stream (if (socket-wrapped-stream-p stream) (socket-wrapped-stream-stream stream) stream)))
+(defun request (uri &rest args
+                &key (method :get) (version 1.1)
+                  content headers
+                  basic-auth
+                  (connect-timeout *default-connect-timeout*) (read-timeout *default-read-timeout*)
+                  (keep-alive t) (use-connection-pool t)
+                  (max-redirects 5)
+                  ssl-key-file ssl-cert-file ssl-key-password
+                  stream (verbose *verbose*)
+                  force-binary
+                  force-string
+                  want-stream
+                  (proxy *default-proxy*)
+                  (insecure *not-verify-ssl*)
+                  ca-path
+                &aux
+                  (proxy-uri (and proxy (uri proxy)))
+                  (original-user-supplied-stream stream)
+                  (user-supplied-stream (if (socket-wrapped-stream-p stream) (socket-wrapped-stream-stream stream) stream)))
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password
                       connect-timeout ca-path)
            (type real version)
            (type fixnum max-redirects))
   (with-content-caches
-  (labels ((make-new-connection (uri)
-             (restart-case
-                 (let* ((con-uri (uri (or proxy uri)))
-                        (connection (net.socket:socket-connect (uri-host con-uri)
-                                                            (uri-port con-uri)
-                                                            #-(or ecl clasp clisp allegro) :timeout #-(or ecl clasp clisp allegro) connect-timeout
-                                                            :element-type '(unsigned-byte 8)))
-                        (stream
-                          (net.socket:socket-stream connection))
-                        (scheme (uri-scheme uri)))
-                   (declare (type string scheme))
-                   (when read-timeout
-                     (setf (net.socket:socket-option connection :receive-timeout) read-timeout))
-                   (when (socks5-proxy-p proxy-uri)
-                     (ensure-socks5-connected stream stream uri method))
-                   (if (string= scheme "https")
-                       (make-ssl-stream (if (http-proxy-p proxy-uri)
-                                               (make-connect-stream uri version stream (make-proxy-authorization con-uri))
-                                               stream) ca-path ssl-key-file ssl-cert-file ssl-key-password (uri-host uri) insecure)
-                       stream))
-               (retry-request ()
-                 :report "Retry the same request."
-                 (return-from request
-                   (apply #'request uri :use-connection-pool nil args)))
-               (retry-insecure ()
-                 :report "Retry the same request without checking for SSL certificate validity."
-                 (return-from request
-                   (apply #'request uri :use-connection-pool nil :insecure t args)))))
-           (http-proxy-p (uri)
-             (and uri
-                  (let ((scheme (uri-scheme uri)))
-                    (and (stringp scheme)
-                         (or (string= scheme "http")
-                             (string= scheme "https"))))))
-           (socks5-proxy-p (uri)
-             (and uri
-                  (let ((scheme (uri-scheme uri)))
-                    (and (stringp scheme)
-                         (string= scheme "socks5")))))
-           (connection-keep-alive-p (connection-header)
-             (and keep-alive
-                  (or (and (= (the real version) 1.0)
-                           (equalp connection-header "keep-alive"))
-                      (not (equalp connection-header "close")))))
-           (return-stream-to-pool (stream uri)
-             (push-connection (format nil "~A://~A"
-                                      (uri-scheme uri)
-                                      (uri-authority uri)) stream #'close))
-           (return-stream-to-pool-or-close (stream connection-header uri)
-             (if (and (not user-supplied-stream) use-connection-pool (connection-keep-alive-p connection-header))
-                 (return-stream-to-pool stream uri)
-                 (when (open-stream-p stream)
-                   (close stream))))
-           (finalize-connection (stream connection-header uri)
-             "If KEEP-ALIVE is in the connection-header and the user is not requesting a stream,
+    (labels ((make-new-connection (uri)
+               (restart-case
+                   (let* ((con-uri (uri (or proxy uri)))
+                          (connection (net.socket:socket-connect (uri-host con-uri)
+                                                                 (uri-port con-uri)
+                                                                 #-(or ecl clasp clisp allegro) :timeout #-(or ecl clasp clisp allegro) connect-timeout
+                                                                 :element-type '(unsigned-byte 8)))
+                          (stream
+                            (net.socket:socket-stream connection))
+                          (scheme (uri-scheme uri)))
+                     (declare (type string scheme))
+                     (when read-timeout
+                       (setf (net.socket:socket-option connection :receive-timeout) read-timeout))
+                     (when (socks5-proxy-p proxy-uri)
+                       (ensure-socks5-connected stream stream uri method))
+                     (if (string= scheme "https")
+                         (make-ssl-stream (if (http-proxy-p proxy-uri)
+                                              (make-connect-stream uri version stream (make-proxy-authorization con-uri))
+                                              stream) ca-path ssl-key-file ssl-cert-file ssl-key-password (uri-host uri) insecure)
+                         stream))
+                 (retry-request ()
+                   :report "Retry the same request."
+                   (return-from request
+                     (apply #'request uri :use-connection-pool nil args)))
+                 (retry-insecure ()
+                   :report "Retry the same request without checking for SSL certificate validity."
+                   (return-from request
+                     (apply #'request uri :use-connection-pool nil :insecure t args)))))
+             (http-proxy-p (uri)
+               (and uri
+                    (let ((scheme (uri-scheme uri)))
+                      (and (stringp scheme)
+                           (or (string= scheme "http")
+                               (string= scheme "https"))))))
+             (socks5-proxy-p (uri)
+               (and uri
+                    (let ((scheme (uri-scheme uri)))
+                      (and (stringp scheme)
+                           (string= scheme "socks5")))))
+             (connection-keep-alive-p (connection-header)
+               (and keep-alive
+                    (or (and (= (the real version) 1.0)
+                             (equalp connection-header "keep-alive"))
+                        (not (equalp connection-header "close")))))
+             (return-stream-to-pool (stream uri)
+               (push-connection (format nil "~A://~A"
+                                        (uri-scheme uri)
+                                        (uri-authority uri)) stream #'close))
+             (return-stream-to-pool-or-close (stream connection-header uri)
+               (if (and (not user-supplied-stream) use-connection-pool (connection-keep-alive-p connection-header))
+                   (return-stream-to-pool stream uri)
+                   (when (open-stream-p stream)
+                     (close stream))))
+             (finalize-connection (stream connection-header uri)
+               "If KEEP-ALIVE is in the connection-header and the user is not requesting a stream,
               we will push the connection to our connection pool if allowed, otherwise we return
               the stream back to the user who must close it."
-             (unless want-stream
-               (cond
-                 ((and use-connection-pool (connection-keep-alive-p connection-header) (not user-supplied-stream))
-                   (return-stream-to-pool stream uri))
-                 ((not (connection-keep-alive-p connection-header))
-                  (when (open-stream-p stream)
-                    (close stream)))))))
-    (let* ((uri (uri uri))
-           (proxy (when (http-proxy-p proxy-uri) proxy))
-           (content-type (cdr (find :content-type headers :key #'car :test #'string-equal)))
-           (multipart-p (or (and content-type
-                                 (>= (length content-type) 10)
-				 (string= content-type "multipart/" :end1 10))
-                            (and (not content-type)
-                                 (consp content)
-                                 (find-if #'pathnamep content :key #'cdr))))
-           (form-urlencoded-p (or (string= content-type "application/x-www-form-urlencoded")
-                                  (and (not content-type)
-                                       (consp content)
-                                       (not multipart-p))))
-           (boundary (and multipart-p
-                          (make-random-string 12)))
-           (content (if (and form-urlencoded-p (not (stringp content))) ;; user can provide already encoded content, trust them.
-                        (url-encode-params content)
-                        content))
-           (stream (or user-supplied-stream
-                       (and use-connection-pool
-                            (steal-connection (format nil "~A://~A"
-                                                      (uri-scheme uri)
-                                                      (uri-authority uri))))))
-           (reusing-stream-p (not (null stream))) ;; user provided or from connection-pool
-           (stream (or stream
-                       (make-new-connection uri)))
-           (content-length
-             (assoc :content-length headers :test #'string-equal))
-           (transfer-encoding
-             (assoc :transfer-encoding headers :test #'string-equal))
-           (chunkedp (or (and transfer-encoding
-                              (equalp (cdr transfer-encoding) "chunked"))
-                         (and content-length
-                              (null (cdr content-length)))))
-           (first-line-data
-             (with-fast-output (buffer)
-               (write-first-line method uri version buffer)))
-           (headers-data
-             (flet ((write-header* (name value)
-                      (let ((header (assoc name headers :test #'string-equal)))
-                        (if header
-                            (when (cdr header)
-                              (write-header name (cdr header)))
-                            (write-header name value)))
-                      (values)))
-               (with-header-output (buffer)
-                 (write-header* :user-agent #.*default-user-agent*)
-                 (write-header* :host (uri-authority uri))
-                 (write-header* :accept "*/*")
+               (unless want-stream
                  (cond
-                   ((and keep-alive
-                         (= (the real version) 1.0))
-                    (write-header* :connection "keep-alive"))
-                   ((and (not keep-alive)
-                         (= (the real version) 1.1))
-                    (write-header* :connection "close")))
-                 (when basic-auth
-                   (write-header* :authorization
-                                  (format nil "Basic ~A"
-                                          (string-to-base64-string
-                                           (format nil "~A:~A"
-                                                   (car basic-auth)
-                                                   (cdr basic-auth))))))
-                 (when proxy
-                   (let ((scheme (uri-scheme uri)))
-                     (when (string= scheme "http")
-                       (let* ((uri (uri proxy))
-                              (proxy-authorization (make-proxy-authorization uri)))
-                         (when proxy-authorization
-                           (write-header* :proxy-authorization proxy-authorization))))))
-                 (cond
-                   (multipart-p
-                    (write-header* :content-type (format nil "~A; boundary=~A"
-                                                         (or content-type "multipart/form-data")
-                                                         boundary))
-                    (unless chunkedp
-                      (write-header* :content-length
-                                     (multipart-content-length content boundary))))
-                   (form-urlencoded-p
-                    (write-header* :content-type "application/x-www-form-urlencoded")
-                    (unless chunkedp
-                      (write-header* :content-length (length (the string content)))))
-                   (t
-                    (etypecase content
-                      (null
-                       (unless chunkedp
-                         (write-header* :content-length 0)))
-                      (string
-                       (write-header* :content-type (or content-type "text/plain"))
-                       (unless chunkedp
-                         (write-header* :content-length (content-length content))))
-                      ((array (unsigned-byte 8) *)
-                       (write-header* :content-type (or content-type "text/plain"))
-                       (unless chunkedp
-                         (write-header* :content-length (length content))))
-                      (pathname
-                       (write-header* :content-type (or content-type (net.http.body:content-type content)))
-                       (unless chunkedp
-                         (write-header :content-length
-                                       (or (cdr (assoc :content-length headers :test #'string-equal))
-                                           (content-length content))))))))
-                 ;; Transfer-Encoding: chunked
-                 (when (and chunkedp
-                            (not transfer-encoding))
-                   (write-header* :transfer-encoding "chunked"))
-
-                 ;; Custom headers
-                 (loop for (name . value) in headers
-                       unless (member name '(:user-agent :host :accept
-                                             :connection
-                                             :content-type :content-length) :test #'string-equal)
-                         do (write-header name value))))))
-      (macrolet ((maybe-try-again-without-reusing-stream (&optional (force nil))
-                   `(progn ;; retrying by go retry avoids generating the header, parsing, etc.
-                      (when (open-stream-p stream)
-                        (close stream :abort t)
-                        (setf stream nil))
-                      
-                      (when ,(or force 'reusing-stream-p)
-                        (setf reusing-stream-p nil
-                              user-supplied-stream nil
-                              stream (make-new-connection uri))
-                        (go retry))))
-                 (try-again-without-reusing-stream ()
-                   `(maybe-try-again-without-reusing-stream t))
-                 (with-retrying (&body body)
-                   `(restart-case
-                        (handler-bind (((and error
-                                             ;; We should not retry errors received from the server.
-                                             ;; Only technical errors such as disconnection or some
-                                             ;; problems with the protocol should be retried automatically.
-                                             ;; This solves https://github.com/fukamachi/net.http/issues/137 issue.
-                                             (not http-request-failed))
-                                         (lambda (e)
-                                           (declare (ignorable e))
-                                           (maybe-try-again-without-reusing-stream))))
-                          ,@body)
-                      (retry-request () :report "Retry the same request."
-                        (return-from request (apply #'request uri args)))
-                      (ignore-and-continue () :report "Ignore the error and continue."))))
-        (tagbody
-         retry
-
-           (unless (open-stream-p stream)
-             (try-again-without-reusing-stream))
-           
-           (with-retrying
-             (write-sequence first-line-data stream)
-             (write-sequence headers-data stream)
-             (write-sequence +crlf+ stream)
-             (force-output stream))
-
-           ;; Sending the content
-           (when content
-             (let ((stream (if chunkedp
-                               (make-chunked-stream stream)
-                               stream)))
-               (when chunkedp
-                 (setf (chunked-stream-output-chunking-p stream) t))
-               (with-retrying
-                 (if (consp content)
-                     (net.http.body:write-multipart-content content boundary stream)
-                     (net.http.body:write-as-octets stream content))
-                 (when chunkedp
-                   (setf (chunked-stream-output-chunking-p stream) nil))
-                 (finish-output stream))))
-
-         start-reading
-           (multiple-value-bind (http body response-headers-data transfer-encoding-p)
-               (with-retrying
-                   (read-response stream (not (eq method :head)) verbose (not want-stream)))
-             (let* ((status (http-status http))
-                    (response-headers (http-headers http))
-                    (content-length (gethash "content-length" response-headers))
-                    (content-length (etypecase content-length
-                                      (null content-length)
-                                      (string (parse-integer content-length))
-                                      (integer content-length))))
-               (when (= status 0)
-                 (with-retrying
-                   (http-request-failed status
-                                        :body body
-                                        :headers headers
-                                        :uri uri
-                                        :method method)))
-               (when verbose
-                 (print-verbose-data :outgoing first-line-data headers-data +crlf+)
-                 (print-verbose-data :incoming response-headers-data))
-               
-               (when (and (member status '(301 302 303 307 308) :test #'=)
-                          (gethash "location" response-headers)
-                          (/= max-redirects 0))
-                 ;; Need to read the response body
-                 (when (and want-stream
-                            (not (eq method :head)))
+                   ((and use-connection-pool (connection-keep-alive-p connection-header) (not user-supplied-stream))
+                    (return-stream-to-pool stream uri))
+                   ((not (connection-keep-alive-p connection-header))
+                    (when (open-stream-p stream)
+                      (close stream)))))))
+      (let* ((uri (uri uri))
+             (proxy (when (http-proxy-p proxy-uri) proxy))
+             (content-type (cdr (find :content-type headers :key #'car :test #'string-equal)))
+             (multipart-p (or (and content-type
+                                   (>= (length content-type) 10)
+				   (string= content-type "multipart/" :end1 10))
+                              (and (not content-type)
+                                   (consp content)
+                                   (find-if #'pathnamep content :key #'cdr))))
+             (form-urlencoded-p (or (string= content-type "application/x-www-form-urlencoded")
+                                    (and (not content-type)
+                                         (consp content)
+                                         (not multipart-p))))
+             (boundary (and multipart-p
+                            (make-random-string 12)))
+             (content (if (and form-urlencoded-p (not (stringp content))) ;; user can provide already encoded content, trust them.
+                          (url-encode-params content)
+                          content))
+             (stream (or user-supplied-stream
+                         (and use-connection-pool
+                              (steal-connection (format nil "~A://~A"
+                                                        (uri-scheme uri)
+                                                        (uri-authority uri))))))
+             (reusing-stream-p (not (null stream))) ;; user provided or from connection-pool
+             (stream (or stream
+                         (make-new-connection uri)))
+             (content-length
+               (assoc :content-length headers :test #'string-equal))
+             (transfer-encoding
+               (assoc :transfer-encoding headers :test #'string-equal))
+             (chunkedp (or (and transfer-encoding
+                                (equalp (cdr transfer-encoding) "chunked"))
+                           (and content-length
+                                (null (cdr content-length)))))
+             (first-line-data
+               (with-fast-output (buffer)
+                 (write-first-line method uri version buffer)))
+             (headers-data
+               (flet ((write-header* (name value)
+                        (let ((header (assoc name headers :test #'string-equal)))
+                          (if header
+                              (when (cdr header)
+                                (write-header name (cdr header)))
+                              (write-header name value)))
+                        (values)))
+                 (with-header-output (buffer)
+                   (write-header* :user-agent #.*default-user-agent*)
+                   (write-header* :host (uri-authority uri))
+                   (write-header* :accept "*/*")
                    (cond
-                     ((integerp content-length)
-                      (dotimes (i content-length)
-                        (loop until (read-byte body nil nil))))
-                     (transfer-encoding-p
-                       (read-until-crlf*2 body))))
+                     ((and keep-alive
+                           (= (the real version) 1.0))
+                      (write-header* :connection "keep-alive"))
+                     ((and (not keep-alive)
+                           (= (the real version) 1.1))
+                      (write-header* :connection "close")))
+                   (when basic-auth
+                     (write-header* :authorization
+                                    (format nil "Basic ~A"
+                                            (string-to-base64-string
+                                             (format nil "~A:~A"
+                                                     (car basic-auth)
+                                                     (cdr basic-auth))))))
+                   (when proxy
+                     (let ((scheme (uri-scheme uri)))
+                       (when (string= scheme "http")
+                         (let* ((uri (uri proxy))
+                                (proxy-authorization (make-proxy-authorization uri)))
+                           (when proxy-authorization
+                             (write-header* :proxy-authorization proxy-authorization))))))
+                   (cond
+                     (multipart-p
+                      (write-header* :content-type (format nil "~A; boundary=~A"
+                                                           (or content-type "multipart/form-data")
+                                                           boundary))
+                      (unless chunkedp
+                        (write-header* :content-length
+                                       (multipart-content-length content boundary))))
+                     (form-urlencoded-p
+                      (write-header* :content-type "application/x-www-form-urlencoded")
+                      (unless chunkedp
+                        (write-header* :content-length (length (the string content)))))
+                     (t
+                      (etypecase content
+                        (null
+                         (unless chunkedp
+                           (write-header* :content-length 0)))
+                        (string
+                         (write-header* :content-type (or content-type "text/plain"))
+                         (unless chunkedp
+                           (write-header* :content-length (content-length content))))
+                        ((array (unsigned-byte 8) *)
+                         (write-header* :content-type (or content-type "text/plain"))
+                         (unless chunkedp
+                           (write-header* :content-length (length content))))
+                        (pathname
+                         (write-header* :content-type (or content-type (net.http.body:content-type content)))
+                         (unless chunkedp
+                           (write-header :content-length
+                                         (or (cdr (assoc :content-length headers :test #'string-equal))
+                                             (content-length content))))))))
+                   ;; Transfer-Encoding: chunked
+                   (when (and chunkedp
+                              (not transfer-encoding))
+                     (write-header* :transfer-encoding "chunked"))
 
-                 (let* ((location-uri (uri (gethash "location" response-headers)))
-                        (same-server-p (or (null (uri-host location-uri))
-                                           (and (string= (uri-scheme location-uri)
-                                                         (uri-scheme uri))
-                                                (string= (uri-host location-uri)
-                                                         (uri-host uri))
-                                                (eql (uri-port location-uri)
-                                                     (uri-port uri))))))
-                   (if (and same-server-p
-                            (or (= status 307) (= status 308)
-                                (member method '(:get :head) :test #'eq)))
-                       (progn ;; redirection to the same host
-                         (setq uri (merge-uris location-uri uri))
-                         (setq first-line-data
-                               (with-fast-output (buffer)
-                                 (write-first-line method uri version buffer)))
-                         (decf max-redirects)
-                         (if (equalp (gethash "connection" response-headers) "close")
-                             (try-again-without-reusing-stream)
-                             (progn
-                               (setq reusing-stream-p t)
-                               (go retry))))
-                       (progn ;; this is a redirection to a different host
-                         (setf location-uri (merge-uris location-uri uri))
-                         ;; Close connection if it isn't from our connection pool or from the user and we aren't going to
-                         ;; pass it to our new call.
-                         (when (not same-server-p) (return-stream-to-pool-or-close stream (gethash "connection" response-headers) uri))
-                         (setf (getf args :headers)
-                               (nconc `((:host . ,(uri-host location-uri))) headers))
-                         (setf (getf args :max-redirects)
-                               (1- max-redirects))
-                         ;; Redirect as GET if it's 301, 302, 303
-                         (unless (or (= status 307) (= status 308)
-                                     (member method '(:get :head) :test #'eq))
-                           (setf (getf args :method) :get))
-                         (return-from request
-                           (apply #'request location-uri (if same-server-p
-                                                             args
-                                                             (progn (remf args :stream) args))))))))
-               (unwind-protect
-                    (let* ((keep-connection-alive (connection-keep-alive-p
-                                                   (gethash "connection" response-headers)))
-                           (body (convert-body body
-                                              (gethash "content-encoding" response-headers)
-                                              (gethash "content-type" response-headers)
-                                              content-length
-                                              transfer-encoding-p
-                                              force-binary
-                                              force-string
-                                              keep-connection-alive
-                                              (if (and use-connection-pool keep-connection-alive (not user-supplied-stream) (streamp body))
-                                                  (lambda (underlying-stream abort)
-                                                    (declare (ignore abort))
-                                                    (when (and underlying-stream (open-stream-p underlying-stream))
-                                                      ;; read any left overs the user may have not read (in case of errors on user side?)
-                                                      (loop while (ignore-errors (listen underlying-stream)) ;; ssl streams may close
-                                                            do (read-byte underlying-stream nil nil))
-                                                      (when (open-stream-p underlying-stream)
-                                                        (push-connection (format nil "~A://~A"
-                                                                                 (uri-scheme uri)
-                                                                                 (uri-authority uri)) underlying-stream #'close))))
-                                                  #'net.http.keep-alive-stream:keep-alive-stream-close-underlying-stream))))
-                      ;; Raise an error when the HTTP response status code is 4xx or 50x.
-                      (when (<= 400 status)
-                        (with-retrying
-                          (http-request-failed status
-                                               :body body
-                                               :headers response-headers
-                                               :uri uri
-                                               :method method)))
-                      ;; Have to be a little careful with the fifth value stream we return --
-                      ;; the user may be not aware that keep-alive t without use-connection-pool can leak
-                      ;; sockets, so we wrap the returned last value so when it is garbage
-                      ;; collected it gets closed.  If the user is getting a stream back as BODY,
-                      ;; then we instead add a finalizer to that stream to close it when garbage collected
-                      (return-from request
-                        (values body
-                                status
-                                response-headers
-                                uri
-                                (when (and keep-alive
-                                           (not (equalp (gethash "connection" response-headers) "close"))
-                                           (or (not use-connection-pool) user-supplied-stream))
-                                  (or (and original-user-supplied-stream ;; user provided a stream
-					   (if (socket-wrapped-stream-p original-user-supplied-stream) ;; but, it came from us
-					       (eql (socket-wrapped-stream-stream original-user-supplied-stream) stream) ;; and we used it
-					       (eql original-user-supplied-stream stream)) ;; user provided a bare stream
-					   original-user-supplied-stream) ;; return what the user sent without wrapping it
-                                      (if want-stream ;; add a finalizer to the body to close the stream
-                                          (progn
-                                            (sys.gc:finalize body (lambda () (close stream)))
-                                            stream)
-                                          (let ((wrapped-stream (make-socket-wrapped-stream :stream stream)))
-                                            (sys.gc:finalize wrapped-stream (lambda () (close stream)))
-                                            wrapped-stream)))))))
-                 (finalize-connection stream (gethash "connection" response-headers) uri))))))))))
+                   ;; Custom headers
+                   (loop for (name . value) in headers
+                         unless (member name '(:user-agent :host :accept
+                                               :connection
+                                               :content-type :content-length) :test #'string-equal)
+                           do (write-header name value))))))
+        (macrolet ((maybe-try-again-without-reusing-stream (&optional (force nil))
+                     `(progn ;; retrying by go retry avoids generating the header, parsing, etc.
+                        (when (open-stream-p stream)
+                          (close stream :abort t)
+                          (setf stream nil))
+                        
+                        (when ,(or force 'reusing-stream-p)
+                          (setf reusing-stream-p nil
+                                user-supplied-stream nil
+                                stream (make-new-connection uri))
+                          (go retry))))
+                   (try-again-without-reusing-stream ()
+                     `(maybe-try-again-without-reusing-stream t))
+                   (with-retrying (&body body)
+                     `(restart-case
+                          (handler-bind (((and error
+                                               ;; We should not retry errors received from the server.
+                                               ;; Only technical errors such as disconnection or some
+                                               ;; problems with the protocol should be retried automatically.
+                                               ;; This solves https://github.com/fukamachi/net.http/issues/137 issue.
+                                               (not http-request-failed))
+                                           (lambda (e)
+                                             (declare (ignorable e))
+                                             (maybe-try-again-without-reusing-stream))))
+                            ,@body)
+                        (retry-request () :report "Retry the same request."
+                          (return-from request (apply #'request uri args)))
+                        (ignore-and-continue () :report "Ignore the error and continue."))))
+          (tagbody
+           retry
+
+             (unless (open-stream-p stream)
+               (try-again-without-reusing-stream))
+             
+             (with-retrying
+                 (write-sequence first-line-data stream)
+               (write-sequence headers-data stream)
+               (write-sequence +crlf+ stream)
+               (force-output stream))
+
+             ;; Sending the content
+             (when content
+               (let ((stream (if chunkedp
+                                 (make-chunked-stream stream)
+                                 stream)))
+                 (when chunkedp
+                   (setf (chunked-stream-output-chunking-p stream) t))
+                 (with-retrying
+                     (if (consp content)
+                         (net.http.body:write-multipart-content content boundary stream)
+                         (net.http.body:write-as-octets stream content))
+                   (when chunkedp
+                     (setf (chunked-stream-output-chunking-p stream) nil))
+                   (finish-output stream))))
+
+           start-reading
+             (multiple-value-bind (http body response-headers-data transfer-encoding-p)
+                 (with-retrying
+                     (read-response stream (not (eq method :head)) verbose (not want-stream)))
+               (let* ((status (http-status http))
+                      (response-headers (http-headers http))
+                      (content-length (gethash "content-length" response-headers))
+                      (content-length (etypecase content-length
+                                        (null content-length)
+                                        (string (parse-integer content-length))
+                                        (integer content-length))))
+                 (when (= status 0)
+                   (with-retrying
+                       (http-request-failed status
+                                            :body body
+                                            :headers headers
+                                            :uri uri
+                                            :method method)))
+                 (when verbose
+                   (print-verbose-data :outgoing first-line-data headers-data +crlf+)
+                   (print-verbose-data :incoming response-headers-data))
+                 
+                 (when (and (member status '(301 302 303 307 308) :test #'=)
+                            (gethash "location" response-headers)
+                            (/= max-redirects 0))
+                   ;; Need to read the response body
+                   (when (and want-stream
+                              (not (eq method :head)))
+                     (cond
+                       ((integerp content-length)
+                        (dotimes (i content-length)
+                          (loop until (read-byte body nil nil))))
+                       (transfer-encoding-p
+                        (read-until-crlf*2 body))))
+
+                   (let* ((location-uri (uri (gethash "location" response-headers)))
+                          (same-server-p (or (null (uri-host location-uri))
+                                             (and (string= (uri-scheme location-uri)
+                                                           (uri-scheme uri))
+                                                  (string= (uri-host location-uri)
+                                                           (uri-host uri))
+                                                  (eql (uri-port location-uri)
+                                                       (uri-port uri))))))
+                     (if (and same-server-p
+                              (or (= status 307) (= status 308)
+                                  (member method '(:get :head) :test #'eq)))
+                         (progn ;; redirection to the same host
+                           (setq uri (merge-uris location-uri uri))
+                           (setq first-line-data
+                                 (with-fast-output (buffer)
+                                   (write-first-line method uri version buffer)))
+                           (decf max-redirects)
+                           (if (equalp (gethash "connection" response-headers) "close")
+                               (try-again-without-reusing-stream)
+                               (progn
+                                 (setq reusing-stream-p t)
+                                 (go retry))))
+                         (progn ;; this is a redirection to a different host
+                           (setf location-uri (merge-uris location-uri uri))
+                           ;; Close connection if it isn't from our connection pool or from the user and we aren't going to
+                           ;; pass it to our new call.
+                           (when (not same-server-p) (return-stream-to-pool-or-close stream (gethash "connection" response-headers) uri))
+                           (setf (getf args :headers)
+                                 (nconc `((:host . ,(uri-host location-uri))) headers))
+                           (setf (getf args :max-redirects)
+                                 (1- max-redirects))
+                           ;; Redirect as GET if it's 301, 302, 303
+                           (unless (or (= status 307) (= status 308)
+                                       (member method '(:get :head) :test #'eq))
+                             (setf (getf args :method) :get))
+                           (return-from request
+                             (apply #'request location-uri (if same-server-p
+                                                               args
+                                                               (progn (remf args :stream) args))))))))
+                 (unwind-protect
+                      (let* ((keep-connection-alive (connection-keep-alive-p
+                                                     (gethash "connection" response-headers)))
+                             (body (convert-body body
+                                                 (gethash "content-encoding" response-headers)
+                                                 (gethash "content-type" response-headers)
+                                                 content-length
+                                                 transfer-encoding-p
+                                                 force-binary
+                                                 force-string
+                                                 keep-connection-alive
+                                                 (if (and use-connection-pool keep-connection-alive (not user-supplied-stream) (streamp body))
+                                                     (lambda (underlying-stream abort)
+                                                       (declare (ignore abort))
+                                                       (when (and underlying-stream (open-stream-p underlying-stream))
+                                                         ;; read any left overs the user may have not read (in case of errors on user side?)
+                                                         (loop while (ignore-errors (listen underlying-stream)) ;; ssl streams may close
+                                                               do (read-byte underlying-stream nil nil))
+                                                         (when (open-stream-p underlying-stream)
+                                                           (push-connection (format nil "~A://~A"
+                                                                                    (uri-scheme uri)
+                                                                                    (uri-authority uri)) underlying-stream #'close))))
+                                                     #'net.http.keep-alive-stream:keep-alive-stream-close-underlying-stream))))
+                        ;; Raise an error when the HTTP response status code is 4xx or 50x.
+                        (when (<= 400 status)
+                          (with-retrying
+                              (http-request-failed status
+                                                   :body body
+                                                   :headers response-headers
+                                                   :uri uri
+                                                   :method method)))
+                        ;; Have to be a little careful with the fifth value stream we return --
+                        ;; the user may be not aware that keep-alive t without use-connection-pool can leak
+                        ;; sockets, so we wrap the returned last value so when it is garbage
+                        ;; collected it gets closed.  If the user is getting a stream back as BODY,
+                        ;; then we instead add a finalizer to that stream to close it when garbage collected
+                        (return-from request
+                          (values body
+                                  status
+                                  response-headers
+                                  uri
+                                  (when (and keep-alive
+                                             (not (equalp (gethash "connection" response-headers) "close"))
+                                             (or (not use-connection-pool) user-supplied-stream))
+                                    (or (and original-user-supplied-stream ;; user provided a stream
+					     (if (socket-wrapped-stream-p original-user-supplied-stream) ;; but, it came from us
+					         (eql (socket-wrapped-stream-stream original-user-supplied-stream) stream) ;; and we used it
+					         (eql original-user-supplied-stream stream)) ;; user provided a bare stream
+					     original-user-supplied-stream) ;; return what the user sent without wrapping it
+                                        (if want-stream ;; add a finalizer to the body to close the stream
+                                            (progn
+                                              (sys.gc:finalize body (lambda () (close stream)))
+                                              stream)
+                                            (let ((wrapped-stream (make-socket-wrapped-stream :stream stream)))
+                                              (sys.gc:finalize wrapped-stream (lambda () (close stream)))
+                                              wrapped-stream)))))))
+                   (finalize-connection stream (gethash "connection" response-headers) uri))))))))))

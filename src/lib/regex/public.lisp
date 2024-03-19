@@ -1,5 +1,8 @@
 (in-package #:lib.regex)
 
+;; TODO merge all behavior dynamics into a single flag set
+;; TODO Make create-scanner operate on parse tree, configuration block
+
 (defvar *look-ahead-for-suffix* t
   "Controls whether scanners will optimistically look ahead for a
   constant suffix of a regular expression, if there is one.")
