@@ -2,7 +2,8 @@
   (:use
    #:cl
    #:sb-gray
-   #:lib.binding)
+   #:lib.binding
+   #:lib.type)
   (:export
    :chunked-input-stream
    :chunked-io-stream
@@ -17,7 +18,7 @@
 (defconstant +output-buffer-size+ 8192)
 
 (define-constant +crlf+
-  (make-array 2 :element-type '(unsigned-byte 8)
+  (make-array 2 :element-type 'u8
               :initial-contents (mapcar 'char-code '(#\Return #\Linefeed)))
   "A 2-element array consisting of the character codes for a CRLF
 sequence.")
@@ -534,7 +535,7 @@ CHUNKED-STREAM."))
                       :reader chunked-stream-output-chunking-p
                       :documentation "Whether output chunking is
 currently enabled.")
-   (output-buffer :initform (make-array +output-buffer-size+ :element-type '(unsigned-byte 8))
+   (output-buffer :initform (make-array +output-buffer-size+ :element-type 'u8)
                   :accessor output-buffer
                   :documentation "A vector used to temporarily
 store data which will output in one chunk.")
@@ -552,7 +553,7 @@ a CHUNKED-INPUT-STREAM as well as a CHUNKED-OUTPUT-STREAM."))
 
 (defmethod stream-element-type ((stream chunked-stream))
   "Chunked streams are always binary streams."
-  '(unsigned-byte 8))                   ; TODO u8
+  'u8)                   ; TODO u8
 
 (defmethod open-stream-p ((stream chunked-stream))
   "A chunked stream is open if its underlying stream is open."
@@ -703,7 +704,7 @@ extensions) and returns the size."
                  (return-from fill-buffer))
                 ((> chunk-size (length input-buffer))
                  ;; replace buffer if it isn't big enough for the next chunk
-                 (setq input-buffer (make-array chunk-size :element-type '(unsigned-byte 8)))))
+                 (setq input-buffer (make-array chunk-size :element-type 'u8))))
           (unless (= (read-sequence input-buffer inner-stream :start 0 :end chunk-size)
                      chunk-size)
             (error 'input-chunking-unexpected-end-of-file

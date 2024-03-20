@@ -171,13 +171,13 @@ one."))
 (defun open-zip-file (input &key (start 0) end)
   (etypecase input
     ((or pathname string)
-     (let ((streams (list (open input :element-type '(unsigned-byte 8))))
+     (let ((streams (list (open input :element-type 'u8)))
            (success NIL))
        (handler-bind ((archive-file-required
                         (lambda (c)
                           (let ((id (disk c)))
                             (let ((stream (open (make-pathname :type (format NIL "z~2,'0d" (1+ id)) :defaults input)
-                                                :element-type '(unsigned-byte 8))))
+                                                :element-type 'u8)))
                               (push stream streams)
                               (use-value stream))))))
          (unwind-protect
@@ -188,7 +188,7 @@ one."))
              (mapc #'close streams))))))
     (stream
      (decode-file input))
-    ((vector (unsigned-byte 8))
+    ((vector u8)
      (decode-file (make-vector-input input start start (or end (length input)))))))
 
 (defun call-with-input-zip-file (function input &key (start 0) end)

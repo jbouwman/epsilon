@@ -4,6 +4,8 @@
    #:concat
    #:first-char
    #:last-char
+   #:join
+   #:split
    #:random-string
    #:ends-with-p
    #:starts-with-p
@@ -13,6 +15,27 @@
    #:strip-right))
 
 (in-package #:lib.string)
+
+(defun join (sep components)
+  (let ((s (make-string (+ (apply #'+ (mapcar #'length components))
+                           (1- (length components)))
+                        :initial-element sep))
+        (offset 0))
+    (dolist (c components)
+      (dotimes (i (length c))
+        (setf (aref s (+ i offset))
+              (aref c i)))
+      (incf offset (1+ (length c))))
+    s))
+
+(defun split (sep string)
+  (loop :with p := 0
+        :for i :from 0 :to (length string)
+        :when (or (= i (length string))
+                  (char= (aref string i) sep))
+          :collect (let ((s (subseq string p i)))
+                     (setf p (1+ i))
+                     s)))
 
 (deftype string-designator ()
   "A string designator type. A string designator is either a string, a symbol,

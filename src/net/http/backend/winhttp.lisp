@@ -5,6 +5,7 @@
    #:lib.char
    #:lib.stream
    #:lib.string
+   #:lib.type
    #:net.http.body
    #:net.http.error
    #:net.http.util
@@ -69,12 +70,12 @@
      (values (read-file-into-byte-vector content)
              (or preferred-content-type
                  (mimes:mime content))))
-    ((array (unsigned-byte 8) (*))
+    ((array u8 (*))
      (values content
              (or preferred-content-type
                  "application/octet-stream")))
     (null
-     (values (make-array 0 :element-type '(unsigned-byte 8))
+     (values (make-array 0 :element-type 'u8)
              preferred-content-type))))
 
 ;; TODO: Try asynchronous
@@ -185,7 +186,7 @@
                                         args)))))
 
               (let ((body (with-fast-output (body :vector)
-                            (loop with buffer = (make-array 1024 :element-type '(unsigned-byte 8))
+                            (loop with buffer = (make-array 1024 :element-type 'u8)
                                   for bytes = (read-data req buffer)
                                   until (zerop bytes)
                                   do (fast-write-sequence buffer body 0 bytes)))))

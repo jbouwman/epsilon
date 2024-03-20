@@ -2,7 +2,8 @@
   (:use
    #:cl
    #:sb-gray
-   #:lib.control)
+   #:lib.control
+   #:lib.type)
   (:export
    #:make-keep-alive-stream
    #:keep-alive-stream
@@ -106,7 +107,7 @@ keep-alive-stream), and should handle clean-up of it"
   (stream-element-type (chunked-stream stream)))
 
 (defmethod stream-element-type ((stream keep-alive-stream))
-  '(unsigned-byte 8))
+  'u8)
 
 (defmethod open-stream-p ((stream keep-alive-stream))
   (let ((underlying-stream (keep-alive-stream-stream stream)))

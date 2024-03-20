@@ -20,7 +20,7 @@
            :type ->u8)))
 
 (defmethod sb-gray::stream-element-type ((stream octet-stream))
-  '(unsigned-byte 8))
+  'u8)
 
 ;;; input streams
 
@@ -75,14 +75,14 @@
   ((index :accessor index :initform 0 :type array-index)))
 
 (defmethod :stream-write-byte ((stream octet-output-stream) integer)
-  (declare (type (unsigned-byte 8) integer))
+  (declare (type u8 integer))
   (let* ((buffer (buffer stream))
          (length (length buffer))
          (index (index stream)))
     (declare (type ->u8 buffer))
     (when (>= index (length buffer))
       (let ((new-buffer (make-array (* 2 length)
-                                    :element-type '(unsigned-byte 8))))
+                                    :element-type 'u8)))
         (declare (type ->u8 new-buffer))
         (replace new-buffer buffer)
         (setf buffer new-buffer
@@ -103,7 +103,7 @@
          (when (>= (+ index amount) length)
            (let ((new-buffer
                   (make-array (* 2 (max amount length)) :element-type
-                              '(unsigned-byte 8))))
+                              'u8)))
              (declare (type ->u8 new-buffer))
              (replace new-buffer buffer)
              (setf buffer new-buffer
@@ -128,7 +128,7 @@ of a string output-stream."
 (defun make-octet-output-stream ()
   "As MAKE-STRING-OUTPUT-STREAM, only with octets instead of characters."
   (make-instance 'octet-output-stream
-                 :buffer (make-array 128 :element-type '(unsigned-byte 8))))
+                 :buffer (make-array 128 :element-type 'u8)))
 
 (defmacro with-octet-output-stream ((var) &body body)
   `(with-open-stream (,var (make-octet-output-stream))

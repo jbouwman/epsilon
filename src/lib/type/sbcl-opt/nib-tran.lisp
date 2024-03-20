@@ -3,7 +3,7 @@
 (cl:in-package :lib.type)
 
 (sb-c:deftransform %check-bound ((vector bound offset n-bytes)
-				 ((simple-array (unsigned-byte 8) (*)) index
+				 ((simple-array u8 (*)) index
 				  (and fixnum sb-vm:word)
 				  (member 2 4 8 16))
 				 * :node node)
@@ -61,7 +61,7 @@
           for arglist = `(vector offset ,@(when setterp '(value)))
           for external-arg-types = `(array index ,@(when setterp
                                                      `(,arg-type)))
-          for internal-arg-types = (subst '(simple-array (unsigned-byte 8)) 'array
+          for internal-arg-types = (subst '(simple-array u8) 'array
                                           external-arg-types)
           for transform-arglist = `(,arglist ,internal-arg-types ,arg-type)
           for specialized-big-transform

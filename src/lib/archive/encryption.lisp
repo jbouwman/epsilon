@@ -21,7 +21,7 @@
 
 (defstruct (stream-decryption-state
             (:constructor make-stream-decryption-state (buffer)))
-  (buffer NIL :type (simple-array (unsigned-byte 8) (*)))
+  (buffer NIL :type (simple-array u8 (*)))
   (index 0 :type (unsigned-byte 32))
   (start 0 :type (unsigned-byte 32))
   (end 0 :type (unsigned-byte 32)))

@@ -14,7 +14,7 @@
   "Return a string containing the hexadecimal representation of the
 subsequence of VECTOR between START and END.  ELEMENT-TYPE controls
 the element-type of the returned string."
-  (declare (type (vector (unsigned-byte 8)) vector)
+  (declare (type (vector u8) vector)
            (type fixnum start)
            (type (or null fixnum) end))
   (let* ((end (or end (length vector)))
@@ -42,7 +42,7 @@ hexadecimal digits into a byte array."
   (declare (type string string))
   (let* ((end (or end (length string)))
          (length (/ (- end start) 2))
-         (key (make-array length :element-type '(unsigned-byte 8))))
+         (key (make-array length :element-type 'u8)))
     (declare (type ->u8 key))
     (flet ((char-to-digit (char)
              (or (position char "0123456789abcdef" :test #'char-equal)

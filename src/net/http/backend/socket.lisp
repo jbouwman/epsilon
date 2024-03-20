@@ -33,7 +33,7 @@
   (with-fast-output (buf)
     (tagbody
      read-cr
-       (loop for byte of-type (or (unsigned-byte 8) null) = (read-byte stream nil nil)
+       (loop for byte of-type (or u8 null) = (read-byte stream nil nil)
              if byte
                do (fast-write-byte byte buf)
              else
@@ -44,7 +44,7 @@
        (let ((next-byte (read-byte stream nil nil)))
          (unless next-byte
            (go eof))
-         (locally (declare (type (unsigned-byte 8) next-byte))
+         (locally (declare (type u8 next-byte))
            (cond
              ((= next-byte (char-code #\Newline))
               (fast-write-byte next-byte buf)
@@ -60,7 +60,7 @@
        (let ((next-byte (read-byte stream nil nil)))
          (unless next-byte
            (go eof))
-         (locally (declare (type (unsigned-byte 8) next-byte))
+         (locally (declare (type u8 next-byte))
            (cond
              ((= next-byte (char-code #\Return))
               (fast-write-byte next-byte buf)
@@ -73,7 +73,7 @@
        (let ((next-byte (read-byte stream nil nil)))
          (unless next-byte
            (go eof))
-         (locally (declare (type (unsigned-byte 8) next-byte))
+         (locally (declare (type u8 next-byte))
            (cond
              ((= next-byte (char-code #\Newline))
               (fast-write-byte next-byte buf))
@@ -87,7 +87,7 @@
      eof)))
 
 (defvar +empty-body+
-  (make-array 0 :element-type '(unsigned-byte 8)))
+  (make-array 0 :element-type 'u8))
 
 (defun read-response (stream has-body collect-headers read-body)
   (let* ((http (make-http-response))
@@ -132,7 +132,7 @@
        (let ((buf (make-array (etypecase content-length
                                 (integer content-length)
                                 (string (parse-integer content-length)))
-                              :element-type '(unsigned-byte 8))))
+                              :element-type 'u8)))
          (read-sequence buf stream)
          (setq body buf)))
       ((let ((status (http-status http)))
@@ -306,7 +306,7 @@
                                         net.tls:+ssl-verify-peer+)
                                     :verify-location
                                     (cond
-                                      (ca-path (sys.path:native-namestring ca-path))
+                                      (ca-path ca-path)
                                       ((probe-file (ca-bundle)) (ca-bundle))
                                       ;; In executable environment, perhaps *ca-bundle* doesn't exist.
                                       (t :default))))
@@ -366,7 +366,7 @@
                           (connection (net.socket:socket-connect (uri-host con-uri)
                                                                  (uri-port con-uri)
                                                                  #-(or ecl clasp clisp allegro) :timeout #-(or ecl clasp clisp allegro) connect-timeout
-                                                                 :element-type '(unsigned-byte 8)))
+                                                                 :element-type 'u8))
                           (stream
                             (net.socket:socket-stream connection))
                           (scheme (uri-scheme uri)))
@@ -515,7 +515,7 @@
                          (write-header* :content-type (or content-type "text/plain"))
                          (unless chunkedp
                            (write-header* :content-length (content-length content))))
-                        ((array (unsigned-byte 8) *)
+                        ((array u8 *)
                          (write-header* :content-type (or content-type "text/plain"))
                          (unless chunkedp
                            (write-header* :content-length (length content))))

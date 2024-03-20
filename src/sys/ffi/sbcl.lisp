@@ -109,7 +109,7 @@ SIZE-VAR is supplied, it will be bound to SIZE during BODY."
   "Create a Lisp vector of SIZE bytes that can be passed to
 WITH-POINTER-TO-VECTOR-DATA."
   ; (declare (type sb-int:index size))
-  (make-array size :element-type '(unsigned-byte 8)))
+  (make-array size :element-type 'u8))
 
 (defmacro with-pointer-to-vector-data ((ptr-var vector) &body body)
   "Bind PTR-VAR to a foreign pointer to the data in VECTOR."

@@ -27,13 +27,13 @@
 (defun ensure-buffer (buffer)
   (etypecase buffer
     (vector buffer)
-    (integer (make-array buffer :element-type '(unsigned-byte 8)))
-    (null (make-array *default-buffer-size* :element-type '(unsigned-byte 8)))))
+    (integer (make-array buffer :element-type 'u8))
+    (null (make-array *default-buffer-size* :element-type 'u8))))
 
 (defun ensure-password (password)
   (etypecase password
     (string (lib.char:string-to-u8 password :encoding :utf-8))
-    ((vector (unsigned-byte 8)) password)
+    ((vector u8) password)
     (null (restart-case (error 'password-required)
             (use-value (password)
               (ensure-password password))))))

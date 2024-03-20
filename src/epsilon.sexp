@@ -7,8 +7,7 @@
         "collect"
         "type"
         "uuid"
-        ("type" "types"
-                "macro-utils"
+        ("type" "macro-utils"
                 "vectors"
                 "streams"
                 ("sbcl-opt" "fndb"
@@ -34,9 +33,6 @@
                "extended-sequence"
                "public"))
  ("sys" "env"
-        "path"
-        "filesystem"
-        "fs"
         ("ffi" "package"
                "sys-utils"
                "sbcl"
@@ -49,7 +45,7 @@
                "structures"
                "functions"
                "foreign-vars")
-        "file"
+        "fs"
         "gc"
         ("sync" "error"
                 "atomic"

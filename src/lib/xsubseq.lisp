@@ -1,5 +1,7 @@
 (defpackage #:lib.xsubseq
-  (:use :cl)
+  (:use
+   #:cl
+   #:lib.type)
   (:import-from :sb-cltl2
                 :variable-information)
   (:export :xsubseq
@@ -20,7 +22,7 @@
 (in-package #:lib.xsubseq)
 
 (deftype octets (&optional (len '*))
-  `(simple-array (unsigned-byte 8) (,len)))
+  `(simple-array u8 (,len)))
 
 (defstruct (xsubseq (:constructor make-xsubseq (data start &optional (end (length data))
                                                 &aux (len (- end start)))))
@@ -211,7 +213,7 @@
           ((= i end) result)
         (setf (aref result j)
               (code-char
-               (the (unsigned-byte 8)
+               (the u8
                     (aref (the octets data) i))))))))
 
 (defun concatenated-xsubseqs-to-sequence (seq)
@@ -230,7 +232,7 @@
 
 (defun octets-concatenated-xsubseqs-to-sequence (seq)
   (let ((result (make-array (concatenated-xsubseqs-len seq)
-                            :element-type '(unsigned-byte 8))))
+                            :element-type 'u8)))
     (declare (type octets result))
     (loop with current-pos of-type integer = 0
           for seq in (concatenated-xsubseqs-children seq)
@@ -254,7 +256,7 @@
                   (setf current-pos j))
                (setf (aref result j)
                      (code-char
-                      (the (unsigned-byte 8)
+                      (the u8
                            (aref (the octets (xsubseq-data seq)) i))))))
     result))
 

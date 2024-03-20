@@ -2,6 +2,9 @@
 
 (in-package #:lib.type)
 
+(deftype index ()
+  '(mod #.array-dimension-limit))
+
 (defun byte-fun-name (bitsize signedp big-endian-p desc)
   (let ((*package* (find-package :lib.type)))
     (intern (format nil "~A~D~A/~A"
@@ -118,7 +121,7 @@ BIG-ENDIAN-P."
                                    'high-byte))
                  (shifted-into-place
                   (ash signed-high ,(* (1- byte-size) 8))))
-            (declare (type (unsigned-byte 8) high-byte))
+            (declare (type u8 high-byte))
             (declare (type (,(if signedp 'signed-byte 'unsigned-byte) 8)
                            signed-high))
             (logior shifted-into-place ,@(nreverse forms))))
