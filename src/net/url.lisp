@@ -1031,9 +1031,6 @@
   (let ((uri (apply #'%make-uri args)))
     (unless (uri-port uri)
       (setf (uri-port uri) (scheme-default-port (uri-scheme uri))))
-    (when (pathnamep (uri-path uri))
-      (setf (uri-path uri)
-            (sys.path:native-namestring (uri-path uri))))
     uri))
 
 (defun uri-authority (uri)
@@ -1322,9 +1319,6 @@
                      (:constructor %make-uri-file)))
 
 (defun make-uri-file (&rest initargs &key path &allow-other-keys)
-  (when (pathnamep path)
-    (setf (getf initargs :path)
-          (sys.path:native-namestring path)))
   (apply #'%make-uri-file initargs))
 
 (declaim (ftype (function (uri-file) pathname) uri-file-pathname))

@@ -2,7 +2,8 @@
   (:use
    #:cl
    #:sb-gray
-   #:lib.char)
+   #:lib.char
+   #:lib.type)
   (:export
    #:make-decoding-stream
    #:decoding-stream)
@@ -22,8 +23,8 @@
    (encoding :initarg :encoding
              :initform (error ":encoding is required")
              :accessor decoding-stream-encoding)
-   (buffer :type (simple-array (unsigned-byte 8) (#.+buffer-size+))
-           :initform (make-array +buffer-size+ :element-type '(unsigned-byte 8))
+   (buffer :type (->u8 #.+buffer-size+)
+           :initform (make-array +buffer-size+ :element-type 'u8)
            :accessor decoding-stream-buffer)
    (buffer-position :type fixnum
                     :initform +buffer-size+
@@ -57,7 +58,7 @@
 (defun fill-buffer (stream)
   (declare (optimize speed))
   (with-slots (stream buffer buffer-position buffer-end-position) stream
-    (declare (type (simple-array (unsigned-byte 8) (#.+buffer-size+)) buffer)
+    (declare (type (->u8 #.+buffer-size+) buffer)
              (type fixnum buffer-position))
     (let ((to-read (- +buffer-size+ buffer-position)))
       (declare (type fixnum to-read))

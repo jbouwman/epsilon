@@ -1,7 +1,8 @@
 (defpackage #:net.socket
   (:use
    #:cl
-   #:lib.seq)
+   #:lib.seq
+   #:lib.type)
   (:export
    #:host-to-hostname
    #:socket-connect
@@ -579,7 +580,7 @@ such as 3232235777."
               "Unsyntactic IPv6 address literal ~S, too many colon separated address components" string)
       (assert (or (= number-of-words-specified 8) words-after-double-colon) ()
               "Unsyntactic IPv6 address literal ~S, too few address components and no double-colon filler found" string)
-      (loop with vector = (make-array 16 :element-type '(unsigned-byte 8))
+      (loop with vector = (make-array 16 :element-type 'u8)
             for i below 16 by 2
             for word in (append words-before-double-colon
                                 (make-list (- 8 number-of-words-specified) :initial-element 0)
@@ -595,10 +596,10 @@ stringified hostname."
   (etypecase host
     (string host)      ; IPv4 or IPv6
     ((or (vector t 4)  ; IPv4
-         (array (unsigned-byte 8) (4)))
+         (array u8 (4)))
      (vector-quad-to-dotted-quad host))
     ((or (vector t 16) ; IPv6
-         (array (unsigned-byte 8) (16)))
+         (array u8 (16)))
      (vector-to-ipv6-host host))
     (integer (hbo-to-dotted-quad host)) ; integer input is IPv4 only
     (null
@@ -609,9 +610,9 @@ stringified hostname."
     (string (string= ip1                  ; IPv4 or IPv6
                      (host-to-hostname ip2)))
     ((or (vector t 4)                     ; IPv4
-         (array (unsigned-byte 8) (4))    ; IPv4
+         (array u8 (4))    ; IPv4
          (vector t 16)                    ; IPv6
-         (array (unsigned-byte 8) (16)))  ; IPv6
+         (array u8 (16)))  ; IPv6
      (equalp ip1 ip2))
     (integer (= ip1                       ; IPv4 only
                 (host-byte-order ip2))))) ; convert ip2 to integer (hbo)
@@ -654,7 +655,7 @@ to a vector quad."
                   ip
                 (get-random-host-by-name host))))
     ((or (vector t 4)
-         (array (unsigned-byte 8) (4)))
+         (array u8 (4)))
      host)
     (integer (hbo-to-vector-quad host))))
 
@@ -666,7 +667,7 @@ to a vector quad."
                   (host-byte-order ip)
                   (host-to-hbo (get-host-by-name host)))))
     ((or (vector t 4)
-         (array (unsigned-byte 8) (4)))
+         (array u8 (4)))
      (host-byte-order host))
     (integer host)))
 
@@ -1615,11 +1616,11 @@ happen. Use with care."
         (sb-bsd-sockets:socket-send s real-buffer size :address dest)))))
 
 (defmethod socket-receive ((usocket datagram-usocket) buffer length
-                           &key (element-type '(unsigned-byte 8)))
+                           &key (element-type 'u8))
   #+sbcl
-  (declare (values (simple-array (unsigned-byte 8) (*)) ; buffer
+  (declare (values (simple-array u8 (*)) ; buffer
                    (integer 0)                          ; size
-                   (simple-array (unsigned-byte 8) (*)) ; host
+                   (simple-array u8 (*)) ; host
                    (unsigned-byte 16)                   ; port
                    &optional))
   (with-mapped-conditions (usocket)

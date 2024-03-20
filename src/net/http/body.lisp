@@ -109,9 +109,9 @@
 
 (defun write-as-octets (stream val)
   (typecase val
-    ((array (unsigned-byte 8) (*)) (write-sequence val stream))
+    (->u8 (write-sequence val stream))
     (pathname
-     (with-open-file (in val :element-type '(unsigned-byte 8))
+     (with-open-file (in val :element-type 'u8)
        (copy-stream in stream)))
     (string
      (write-sequence (convert-to-octets val) stream))

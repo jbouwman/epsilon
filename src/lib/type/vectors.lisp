@@ -12,7 +12,7 @@
              (let ((ref-name (byte-ref-fun-name bitsize signedp big-endian-p))
                    (bytes (truncate bitsize 8)))
                `(defun ,ref-name (vector index)
-                  (declare (type octet-vector vector))
+                  (declare (type ->u8 vector))
                   (declare (type (integer 0 ,(- array-dimension-limit bytes)) index))
                   (multiple-value-bind (vector start end)
                       (array-data-and-offsets vector index (+ index ,bytes))
@@ -26,7 +26,7 @@
                    (bytes (truncate bitsize 8)))
                `(progn
                  (defun ,set-name (vector index value)
-                   (declare (type octet-vector vector))
+                   (declare (type ->u8 vector))
                    (declare (type (integer 0 ,(- array-dimension-limit bytes)) index))
                    (declare (type (,(if signedp
                                         'signed-byte

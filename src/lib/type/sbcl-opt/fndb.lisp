@@ -4,7 +4,7 @@
 
 ;;; Efficient array bounds checking
 (sb-c:defknown %check-bound
-  ((simple-array (unsigned-byte 8) (*)) index (and fixnum sb-vm:word)
+  ((simple-array u8 (*)) index (and fixnum sb-vm:word)
    (member 2 4 8 16))
     index (sb-c:any) :overwrite-fndb-silently t)
 
@@ -31,7 +31,7 @@
                               ,bitsize)
         for external-arg-types = `(array index ,@(when setterp
                                                    `(,arg-type)))
-        for internal-arg-types = (subst '(simple-array (unsigned-byte 8)) 'array
+        for internal-arg-types = (subst '(simple-array u8) 'array
                                         external-arg-types)
         collect `(sb-c:defknown (,big-fun ,little-fun) ,external-arg-types
                      ,arg-type (sb-c:any) :overwrite-fndb-silently t) into defknowns

@@ -3,6 +3,7 @@
      #:cl
      #:lib.list
      #:lib.stream
+     #:lib.type
      #:net.http.connection-cache
      #:net.http.util
      #-windows #:net.http.backend.socket
@@ -108,7 +109,7 @@
   (unless (and (eql if-exists nil)
                (probe-file destination))
     (with-open-file (out destination
-                         :direction :output :element-type '(unsigned-byte 8)
+                         :direction :output :element-type 'u8
                          :if-exists if-exists
                          :if-does-not-exist :create)
       (let ((body (apply #'get uri :want-stream t :force-binary t

@@ -32,7 +32,7 @@
 (declaim (ftype (function (simple-string) ->u8) string->u8))
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun %string->u8 (string)
-    (let ((result (make-array (length string) :element-type '(unsigned-byte 8))))
+    (let ((result (make-array (length string) :element-type 'u8)))
       (declare (type ->u8 result))
       (dotimes (i (length string) result)
         (declare (type fixnum i))

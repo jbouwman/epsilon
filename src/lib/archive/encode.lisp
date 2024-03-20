@@ -35,17 +35,17 @@
        (unless (file-name entry)
          (setf (file-name entry) (file-namestring content)))
        (unless (attributes entry)
-         (setf (attributes entry) (list `(,(if (sys.path:directory-p content)
+         (setf (attributes entry) (list `(,(if (sys.fs:dir-p content)
                                                :directory
                                                :normal)
                                           T)
                                         *compatibility*
-                                        (sys.file:attributes content))))
-       (unless (sys.path:directory-p content)
+                                        (sys.fs:attributes content))))
+       (unless (sys.fs:dir-p content)
          (typecase content
            (file-stream (setf (uncompressed-size entry) (file-length content)))
            (T
-            (with-open-file (stream content :direction :input :element-type '(unsigned-byte 8))
+            (with-open-file (stream content :direction :input :element-type 'u8)
               (setf (uncompressed-size entry) (file-length stream)))))))
       (stream)
       (vector-input
@@ -85,7 +85,7 @@
 
 (defun entry-to-lf (entry)
   (let ((file-name (lib.char:string-to-u8 (file-name entry) :encoding :utf-8))
-        (extra (make-array 0 :adjustable T :element-type '(unsigned-byte 8)))
+        (extra (make-array 0 :adjustable T :element-type 'u8))
         (size (or (size entry) 0))
         (uncompressed-size (or (uncompressed-size entry) 0)))
     (when (not (n-bit-and-note-zip64-p 32 size))
@@ -132,7 +132,7 @@
 (defun entry-to-cd (entry)
   (let ((file-name (lib.char:string-to-u8 (file-name entry) :encoding :utf-8))
         (comment (encode-string (comment entry)))
-        (extra (make-array 0 :adjustable T :element-type '(unsigned-byte 8)))
+        (extra (make-array 0 :adjustable T :element-type 'u8))
         (size (or (size entry) 0))
         (uncompressed-size (or (uncompressed-size entry) 0))
         (offset (offset entry)))
@@ -173,8 +173,8 @@
                (etypecase input
                  (stream
                   (when (or (not (typep input 'file-stream))
-                            (not (sys.path:directory-p input)))
-                    (loop with buffer = (make-array 4096 :element-type '(unsigned-byte 8))
+                            (not (sys.fs:dir-p input)))
+                    (loop with buffer = (make-array 4096 :element-type 'u8)
                           for read = (read-sequence buffer input)
                           while (< 0 read)
                           do (compress buffer 0 read))))

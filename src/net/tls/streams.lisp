@@ -291,13 +291,12 @@ Install these certificates to use for verifying on all SSL connections.
 After RELOAD, you need to call this again."
   (ensure-initialized)
   (dolist (path pathnames)
-    (let ((namestring (namestring (truename path))))
-      (ffi:with-foreign-strings ((cafile namestring))
-        (unless (eql 1 (ssl-ctx-load-verify-locations
-                        *ssl-global-context*
-                        cafile
-                        (ffi:null-pointer)))
-          (error "ssl-ctx-load-verify-locations failed."))))))
+    (ffi:with-foreign-strings ((cafile path))
+      (unless (eql 1 (ssl-ctx-load-verify-locations
+                      *ssl-global-context*
+                      cafile
+                      (ffi:null-pointer)))
+        (error "ssl-ctx-load-verify-locations failed.")))))
 
 (defun ssl-set-global-default-verify-paths ()
   "Load the system default verification certificates.

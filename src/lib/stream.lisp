@@ -800,7 +800,7 @@ all data has been flushed to the stream."
   (fast-write-byte (signed-to-unsigned value 1) buffer))
 
 (defun writeu8 (value buffer)
-  (declare (type (unsigned-byte 8) value))
+  (declare (type u8 value))
   (fast-write-byte value buffer))
 
 
@@ -853,7 +853,7 @@ all data has been flushed to the stream."
 
 (defmethod stream-element-type ((stream fast-output-stream))
   "Return the underlying array element-type.
-   Should always return '(unsigned-byte 8)."
+   Should always return 'u8."
   (with-slots (buffer) stream
     (array-element-type (output-buffer-vector buffer))))
 

@@ -1,6 +1,7 @@
 (defpackage #:lib.buffer
   (:use #:cl
         #:lib.stream
+        #:lib.type
         #:lib.xsubseq)
   (:export #:*default-memory-limit*
            #:*default-disk-limit*
@@ -44,13 +45,13 @@
                      (slot-value condition 'limit)))))
 
 (defun write-to-buffer (buffer seq &optional (start 0) (end (length seq)))
-  (check-type seq (array (unsigned-byte 8) (*)))
+  (check-type seq (array u8 (*)))
   (incf (buffer-current-len buffer) (- end start))
   (if (buffer-on-memory-p buffer)
       (xnconcf (buffer-memory-buffer buffer) (xsubseq seq start end))
       (with-open-file (out (buffer-disk-buffer buffer)
                            :direction :output
-                           :element-type '(unsigned-byte 8)
+                           :element-type 'u8
                            :if-exists :append)
         (write-sequence seq out :start start :end end))))
 
@@ -60,7 +61,7 @@
        (typecase (buffer-memory-buffer buffer)
          (null-concatenated-xsubseqs #())
          (t (coerce-to-sequence (buffer-memory-buffer buffer)))))
-      (open (buffer-disk-buffer buffer) :direction :input :element-type '(unsigned-byte 8))))
+      (open (buffer-disk-buffer buffer) :direction :input :element-type 'u8)))
 
 (defun delete-stream-file (stream)
   (when (typep stream 'file-stream)

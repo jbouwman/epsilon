@@ -14,8 +14,7 @@
   "List onto which user-defined library paths can be pushed.")
 
 (defun fallback-darwin-framework-directories ()
-  (list (sys.filesystem:current-directory)
-        (merge-pathnames #p"Library/Frameworks/" (user-homedir-pathname))
+  (list (merge-pathnames #p"Library/Frameworks/" (user-homedir-pathname))
         #p"/Library/Frameworks/"
         #p"/System/Library/Frameworks/"))
 

@@ -70,7 +70,7 @@
         collect (let ((name (intern (format nil  "~:@(~:R~)-~A"  i (string '#:byte)))))
                   `(progn
                     (declaim (inline ,name))
-                    (declaim (ftype (function (unsigned-byte) (unsigned-byte 8)) ,name))
+                    (declaim (ftype (function (unsigned-byte) u8) ,name))
                     (defun ,name (ub)
                       (declare (type unsigned-byte ub))
                       (ldb (byte 8 ,(* 8 (1- i))) ub)))) into forms
@@ -354,7 +354,7 @@ OFFSET into the given (UNSIGNED-BYTE 32) BLOCK."
   (values))
 
 (defun fill-block-u8-be (block buffer offset)
-  "Convert a complete 64 (unsigned-byte 8) input vector segment
+  "Convert a complete 64 u8 input vector segment
 starting from offset into the given 16 word SHA1 block.  Calling this function
 without subsequently calling EXPAND-BLOCK results in undefined behavior."
   (declare (type (integer 0 #.(- array-dimension-limit 64)) offset)
@@ -377,7 +377,7 @@ without subsequently calling EXPAND-BLOCK results in undefined behavior."
   (values))
 
 (defun fill-block-u8-le/64 (block buffer offset)
-  "Convert a complete 128 (unsigned-byte 8) input vector segment
+  "Convert a complete 128 u8 input vector segment
 starting from offset into the given 16 qword SHA1 block.  Calling this
 function without subsequently calling EXPAND-BLOCK results in undefined
 behavior."
@@ -402,7 +402,7 @@ behavior."
   (values))
 
 (defun fill-block-u8-be/64 (block buffer offset)
-  "Convert a complete 128 (unsigned-byte 8) input vector segment
+  "Convert a complete 128 u8 input vector segment
 starting from offset into the given 16 qword SHA1 block.  Calling this
 function without subsequently calling EXPAND-BLOCK results in undefined
 behavior."

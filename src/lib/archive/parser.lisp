@@ -40,7 +40,7 @@
 
 (defun binary-type-type (type)
   (ecase type
-    (u8 '(unsigned-byte 8))
+    (u8 'u8)
     (u16 '(unsigned-byte 16))
     (u32 '(unsigned-byte 32))
     (u64 '(unsigned-byte 64))))
@@ -249,12 +249,12 @@
   (let ((compat (file-attribute-name compat))
         (msdos (ldb (byte 8 0) attr))
         (os-specific (ldb (byte 16 16) attr)))
-    (list (sys.file:decode-attributes msdos :windows) compat os-specific)))
+    (list (sys.fs:decode-attributes msdos :windows) compat os-specific)))
 
 (defun encode-file-attribute (thing)
   (destructuring-bind (msdos compat os-specific) thing
     (declare (ignore compat))
     (let ((i 0))
-      (setf (ldb (byte 8 0) i) (logand #xFF (sys.file:encode-attributes msdos :windows)))
+      (setf (ldb (byte 8 0) i) (logand #xFF (sys.fs:encode-attributes msdos :windows)))
       (setf (ldb (byte 16 16) i) (logand #xFFFF os-specific))
       i)))

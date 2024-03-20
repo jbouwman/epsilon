@@ -8,6 +8,7 @@
    #:lib.list
    #:lib.stream
    #:lib.symbol
+   #:lib.type
    #:sb-alien)
   (:export
    ;; C ABI utils

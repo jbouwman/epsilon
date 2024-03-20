@@ -157,13 +157,13 @@ WHITESPACE can be one of:
                       (ecase hose
                         (:stream
                          `((result (make-array 1024
-                                               :element-type '(unsigned-byte 8)
+                                               :element-type 'u8
                                                :adjustable t
                                                :fill-pointer 0)
-                                   (array (unsigned-byte 8) (*)))))
+                                   (array u8 (*)))))
                         (:string
                          `((result (make-array (* 3 (ceiling (length input) 4))
-                                               :element-type '(unsigned-byte 8))
+                                               :element-type 'u8)
                                    ->u8)
                            (rpos 0 array-index)))))
                      (:string
@@ -245,7 +245,7 @@ WHITESPACE can be one of:
                               (let ((byte (logand (the (unsigned-byte 24)
                                                        (ash bitstore (- bitcount)))
                                                   #xFF)))
-                                (declare (type (unsigned-byte 8) byte))
+                                (declare (type u8 byte))
                                 ,@(ecase sink
                                     (:usb8-array
                                      (ecase hose
@@ -331,7 +331,7 @@ with a #\Newline."
                   (:string
                    '((string input)))
                   (:usb8-array
-                   '((type (array (unsigned-byte 8) (*)) input))))
+                   '((type (array u8 (*)) input))))
               (fixnum columns)
               (optimize (speed 3) (safety 1) (space 0)))
      (let ((pad (if uri *uri-pad-char* *pad-char*))

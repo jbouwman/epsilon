@@ -2,7 +2,7 @@
 
 (defstruct (pkware-decrypt-state
             (:constructor %make-pkware-decrypt-state (buffer)))
-  (buffer NIL :type (simple-array (unsigned-byte 8) (*)))
+  (buffer NIL :type (simple-array u8 (*)))
   (k0 305419896 :type (unsigned-byte 32))
   (k1 591751049 :type (unsigned-byte 32))
   (k2 878082192 :type (unsigned-byte 32)))
@@ -37,7 +37,7 @@
     state))
 
 (defmethod make-decryption-state ((format (eql :pkware)) (input stream) password &key buffer)
-  (let ((initial-state (make-array 12 :element-type '(unsigned-byte 8))))
+  (let ((initial-state (make-array 12 :element-type 'u8)))
     (read-sequence initial-state input)
     (make-pkware-decrypt-state (ensure-buffer buffer) (ensure-password password) initial-state 0)))
 
