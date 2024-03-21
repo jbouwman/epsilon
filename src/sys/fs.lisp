@@ -2,13 +2,15 @@
   (:use
    #:cl
    #:lib.string
-   #:lib.type)
+   #:lib.type
+   #:lib.url)
   (:shadow
    #:byte)
   (:export
    #:current-dir
    #:dir-p
    #:file-p
+   #:home-dir
    #:list-dir
    #:list-dirs
    #:list-file
@@ -23,7 +25,6 @@
    #:delete-file*
    #:directory*
    #:ensure-deleted
-   #:file-exists-p
    #:list-contents
    #:list-directories
    #:list-files
@@ -44,14 +45,18 @@
 
 (in-package #:sys.fs)
 
+(defun parent (file)
+  (lib.string:join #\/ (butlast (lib.string:split #\/ file))))
+
 (defun runtime-dir ()
-  (lib.string:join #\/
-                   (butlast (lib.string:split #\/
-                                              (first sb-ext:*posix-argv*)))))
+  (parent  (first sb-ext:*posix-argv*)))
 
 (defun temp-dir ()
   "Return a default directory to use for temporary files"
   (sys.env:getenv "TMPDIR"))
+
+(defun home-dir ()
+  (sb-unix:uid-homedir (sb-unix:unix-getuid)))
 
 (defmacro with-temp-file ((name) &body body)
   `(let ((,name (lib.string:concat
@@ -61,11 +66,14 @@
      (unwind-protect
           (progn
             ,@body)
-       (when (file-exists-p ,name)
+       (when (file-p ,name)
          (delete-file* ,name)))))
 
+;; TODO replace other usages of LPs with URLs
+
 (defun current-dir ()
-  (sb-unix:posix-getcwd/))
+  (make-uri :scheme "file"
+            :path (sb-unix:posix-getcwd/)))
 
 (defun (setf current-dir) (dir)
   (sb-posix:chdir dir)
@@ -83,19 +91,19 @@
 (defmacro with-current-dir ((dir) &body body)
   `(call-with-current-dir (lambda () ,@body) ,dir))
 
-(defun dir-p (file)
-  (eql :directory (sb-impl::native-file-kind file)))
+(defun dir-p (path)
+  (let ((a (attributes path)))
+    (when a
+      (not (zerop (logand #x4000 a))))))
 
-(defun file-p (file)
-  (eql :file (sb-impl::native-file-kind file)))
+(defun file-p (path)
+  (let ((a (attributes path)))
+    (when a
+      (not (zerop (logand #x8000 a))))))
 
 (defun ensure-deleted (pathname)
-  (when (file-exists-p pathname)
+  (when (file-p pathname)
     (delete-file* pathname)))
-
-(defun file-exists-p (pathname)
-  (ignore-errors
-   (probe-file pathname)))
 
 (defun directory* (directory &rest args &key &allow-other-keys)
   (apply #'directory directory :resolve-symlinks NIL args))
@@ -129,7 +137,7 @@
   (if (or (typep pathname 'logical-pathname)
           (not (absolute-p pathname)))
       pathname
-      (or (file-exists-p pathname)
+      (or (file-p pathname)
           (normalize-pathname pathname))))
 
 (defun symbolic-link-p (file)
@@ -156,7 +164,7 @@
          (let ((to (make-pathname :name (pathname-name file)
                                   :type (pathname-type file)
                                   :defaults to)))
-           (when (or (not (file-exists-p to))
+           (when (or (not (file-p to))
                      (ecase replace
                        ((T) T)
                        ((NIL) NIL)
@@ -218,7 +226,6 @@
 (defvar *system*
   #+unix :unix
   #+windows :windows
-  #+mezzano :mezzano
   #-(or unix windows) :unknown)
 
 (defvar *windows-attributes*
@@ -246,10 +253,7 @@
     (:unix
      (decode-bitfield attributes *unix-attributes*))
     (:windows
-     (decode-bitfield attributes *windows-attributes*))
-    (:mezzano
-     (append (decode-attributes (ldb (byte 16  0) attributes) :unix)
-             (decode-attributes (ldb (byte 16 16) attributes) :windows)))))
+     (decode-bitfield attributes *windows-attributes*))))
 
 (defun encode-attributes (attributes &optional (system *system*))
   (case system
@@ -257,19 +261,8 @@
      (encode-bitfield attributes *unix-attributes*))
     (:windows
      (encode-bitfield attributes *windows-attributes*))
-    (:mezzano
-     (let ((i 0))
-       (setf (ldb (byte 16  0) i) (encode-attributes attributes :unix))
-       (setf (ldb (byte 16 16) i) (encode-attributes attributes :windows))
-       i))
     (T
      0)))
-
-(defun enpath (path)
-  (etypecase path
-    (string (namestring (truename path)))
-    (stream (namestring (truename (pathname path))))
-    (pathname (namestring (truename path)))))
 
 ;; Linux 5.7.7 AMD64
 #+linux
@@ -328,53 +321,54 @@
 
 (defun stat (path)
   (sys.ffi:with-foreign-object (ptr '(:struct stat))
-    (if (= 0 (cstat (enpath path) ptr))
-        (sys.ffi:mem-ref ptr '(:struct stat))
-        (error "Stat failed."))))
+    (when (= 0 (cstat path ptr))
+      (sys.ffi:mem-ref ptr '(:struct stat)))))
 
 (defun utimes (path atime mtime)
   (sys.ffi:with-foreign-object (ptr :long 4)
     (setf (sys.ffi:mem-aref ptr :long 0) (universal->unix atime))
     (setf (sys.ffi:mem-aref ptr :long 2) (universal->unix mtime))
-    (unless (= 0 (cutimes (enpath path) ptr))
+    (unless (= 0 (cutimes path ptr))
       (error "Utimes failed."))))
 
 (defun chown (path uid gid)
-  (cchown (enpath path) uid gid))
+  (cchown path uid gid))
 
 (defun chmod (path mode)
-  (cchmod (enpath path) mode))
+  (cchmod path mode))
 
-(define-implementation access-time (file)
+(defun access-time (file)
   (unix->universal (getf (stat file) 'atime)))
 
-(define-implementation (setf access-time) (value file)
+(defun (setf access-time) (value file)
   (utimes file value (modification-time file))
   value)
 
-(define-implementation modification-time (file)
+(defun modification-time (file)
   (unix->universal (getf (stat file) 'mtime)))
 
-(define-implementation (setf modification-time) (value file)
+(defun (setf modification-time) (value file)
   (utimes file (access-time file) value)
   value)
 
-(define-implementation group (file)
+(defun group (file)
   (getf (stat file) 'gid))
 
-(define-implementation (setf group) (value file)
+(defun (setf group) (value file)
   (chown file (owner file) value)
   value)
 
-(define-implementation owner (file)
+(defun owner (file)
   (getf (stat file) 'uid))
 
-(define-implementation (setf owner) (value file)
+(defun (setf owner) (value file)
   (chown file value (group file))
   value)
 
-(define-implementation attributes (file)
-  (getf (stat file) 'mode))
+(defun attributes (file)
+  (let ((s (stat file)))
+    (when s
+      (getf s 'mode))))
 
-(define-implementation (setf attributes) (value file)
+(defun (setf attributes) (value file)
   (chmod file value))

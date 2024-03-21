@@ -9,11 +9,9 @@
 (defun validate-verify-location (location)
   (handler-case
       (cond
-        ((and (sys.fs:file-p location)
-              (sys.fs:file-exists-p location))
+        ((sys.fs:file-p location)
          (values location t))
-        ((and (sys.fs:dir-p location)
-              (sys.fs:file-exists-p location))
+        ((sys.fs:dir-p location)
          (values location nil))
         (t
          (error 'verify-location-not-found-error :location location)))))

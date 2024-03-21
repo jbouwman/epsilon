@@ -16,7 +16,7 @@
    #:run-tests
    #:signals
    #:skip
-   #:test-file))
+   #:test-data))
 
 (defpackage #:tool.test.suites
   (:documentation
@@ -24,9 +24,10 @@
 
 (in-package #:tool.test)
 
-(defun test-file (name)
-  (merge-pathnames (format nil "tests/data/~A" name)
-                   (current-dir)))
+(defun test-data (name)
+  (lib.url::merge-uris name
+                       (lib.url::merge-uris "tests/data/"
+                                            (current-dir))))
 
 (defvar *suite*)
 

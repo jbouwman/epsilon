@@ -67,4 +67,11 @@
    #:unicode-char
    #:unicode-char-code-limit
    #:unicode-string
-   #:vector-size-in-chars))
+   #:vector-size-in-chars
+
+   #:standard-alpha-byte-p
+   #:standard-alpha-char-p
+   #:standard-alphanumeric-p
+   #:standard-alphanumeric-byte-p
+
+   ))

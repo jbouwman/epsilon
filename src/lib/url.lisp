@@ -1,4 +1,4 @@
-(defpackage #:net.url
+(defpackage #:lib.url
   (:use
    #:cl
    #:sb-cltl2
@@ -13,6 +13,7 @@
    #:lib.type)
   (:export
    #:uri
+   #:make-uri
    #:make-basic-uri
    #:uri-p
    #:uri-scheme
@@ -33,7 +34,7 @@
    #:urn-nid
    #:urn-nss))
   
-(in-package #:net.url)
+(in-package #:lib.url)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   
@@ -54,31 +55,6 @@
   (gethash scheme +default-ports+))
 
 )
-
-;; FIXME generalize
-
-(defun standard-alpha-byte-p (byte)
-  (declare (type u8 byte)
-           (optimize (speed 3) (safety 0)))
-  (or (<= #.(char-code #\A) byte #.(char-code #\Z))
-      (<= #.(char-code #\a) byte #.(char-code #\z))))
-
-(defun standard-alpha-char-p (char)
-  (declare (type character char)
-           (optimize (speed 3) (safety 0)))
-  (standard-alpha-byte-p (char-code char)))
-
-(defun standard-alphanumeric-p (char)
-  (declare (type character char)
-           (optimize (speed 3) (safety 0)))
-  (or (digit-char-p char)
-      (standard-alpha-char-p char)))
-
-(defun standard-alphanumeric-byte-p (byte)
-  (declare (type u8 byte)
-           (optimize (speed 3) (safety 0)))
-  (or (<= #.(char-code #\0) byte #.(char-code #\9))
-      (standard-alpha-byte-p byte)))
 
 (define-condition parsing-end-unexpectedly (simple-error)
   ((state :initarg :state

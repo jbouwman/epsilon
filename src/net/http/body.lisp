@@ -5,7 +5,7 @@
    #:lib.list
    #:lib.stream
    #:lib.type
-   #:net.url
+   #:lib.url
    #:net.http.encoding
    #:net.http.decoding-stream
    #:net.http.util)

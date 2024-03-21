@@ -1,7 +1,7 @@
 (defpackage #:net.http.error
   (:use
    #:cl
-   #:net.url)
+   #:lib.url)
   (:export
    #:http-request-failed
    

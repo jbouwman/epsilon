@@ -7,6 +7,7 @@
    #:lib.stream
    #:lib.string
    #:lib.type
+   #:lib.url
    #:net.http.body
    #:net.http.chunked-stream
    #:net.http.connection-cache
@@ -16,7 +17,6 @@
    #:net.http.keep-alive-stream
    #:net.http.parser
    #:net.http.util
-   #:net.url
    #:net.tls
    #:sys.fs)
   (:export
@@ -27,7 +27,7 @@
 (in-package #:net.http.backend.socket)
 
 (defun ca-bundle ()
-  (concatenate 'string (current-dir) "certs/cacert.pem"))
+  (merge-uris "certs/cacert.pem" (current-dir)))
 
 (defun read-until-crlf*2 (stream)
   (with-fast-output (buf)
@@ -307,7 +307,7 @@
                                     :verify-location
                                     (cond
                                       (ca-path ca-path)
-                                      ((probe-file (ca-bundle)) (ca-bundle))
+                                      ((sys.fs:file-p (uri-path (ca-bundle))) (uri-path (ca-bundle)))
                                       ;; In executable environment, perhaps *ca-bundle* doesn't exist.
                                       (t :default))))
           (ssl-cert-pem-p (and ssl-cert-file
