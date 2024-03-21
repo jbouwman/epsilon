@@ -31,7 +31,8 @@
                "vector"
                "list"
                "extended-sequence"
-               "public"))
+               "public")
+        "url")
  ("sys" "env"
         ("ffi" "package"
                "sys-utils"
@@ -112,7 +113,6 @@
                    "decode"
                    "encode"))
  ("net" "socket"
-        "url"
         ("tls" "config"
                "package"
                "reload"

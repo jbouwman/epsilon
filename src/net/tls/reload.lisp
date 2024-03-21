@@ -26,8 +26,8 @@
                          ("/opt/homebrew/opt/openssl/lib/" :net.tls-homebrew-arm64-found)
                          ("/usr/local/lib/" :net.tls-personalized-install-found)))
     (destructuring-bind (dir feature) dir-feature
-      (if (and (probe-file (concatenate 'string dir "libssl.dylib"))
-               (probe-file (concatenate 'string dir "libcrypto.dylib")))
+      (if (and (sys.fs:file-p (concatenate 'string dir "libssl.dylib"))
+               (sys.fs:file-p (concatenate 'string dir "libcrypto.dylib")))
           (pushnew feature *features*)
           (setf *features* (remove feature *features*))))))
 

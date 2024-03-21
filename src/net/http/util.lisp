@@ -3,7 +3,7 @@
    #:cl  
    #:lib.stream
    #:lib.type
-   #:net.url)
+   #:lib.url)
   (:export
    #:*default-connect-timeout*
    #:*default-read-timeout*
@@ -42,6 +42,7 @@
   (defun string->u8 (string)
     (%string->u8 string))
 
+  ;;FIXME merge
   (define-compiler-macro string->u8 (&whole form string)
     (if (constantp string)
         (%string->u8 string)

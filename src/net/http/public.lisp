@@ -107,7 +107,7 @@
                     ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path)
   (declare (ignore version headers basic-auth keep-alive use-connection-pool connect-timeout read-timeout max-redirects ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path))
   (unless (and (eql if-exists nil)
-               (probe-file destination))
+               (sys.fs:file-p destination))
     (with-open-file (out destination
                          :direction :output :element-type 'u8
                          :if-exists if-exists

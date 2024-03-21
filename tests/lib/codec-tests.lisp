@@ -2,17 +2,20 @@
   (:use
    #:lib.codec
    #:lib.stream
+   #:lib.url
    #:sys.fs))
 
 (in-package #:lib.codec/tests)
 
 (defun decompress (codec compressed original)
-  (with-temp-file (decompressed)
+  (with-temp-file (decompressed)        ; FIME to URL
     (decode-file codec compressed decompressed)
     (is (file= original decompressed))))
 
 (defun test-decompress (codec compressed original)
-  (decompress codec (test-file compressed) (test-file original)))
+  (decompress codec
+              (uri-path (test-data compressed))
+              (uri-path (test-data original))))
 
 (defun roundtrip (codec original)
   (with-temp-file (compressed)
@@ -20,7 +23,7 @@
     (decompress codec compressed original)))
 
 (defun test-roundtrip (codec original)
-  (roundtrip codec (test-file original)))
+  (roundtrip codec (uri-path (test-data original))))
 
 (deftest deflate ()
   (skip)
