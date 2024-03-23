@@ -521,15 +521,7 @@ closing #\> will also be consumed."
                   ((#\B)
                    :non-word-boundary)
                   ((#\k)
-                   (cond ((and *allow-named-registers*
-                               (looking-at-p lexer #\<))
-                          ;; back-referencing a named register
-                          (incf (lexer-pos lexer))
-                          (list :back-reference
-                                (parse-register-name-aux lexer)))
-                         (t
-                          ;; false alarm, just unescape \k
-                          #\k)))
+                   #\k)
                   ((#\d #\D #\w #\W #\s #\S)
                    ;; these will be treated like character classes
                    (map-char-to-special-char-class next-char))
@@ -622,12 +614,9 @@ closing #\> will also be consumed."
                             (cond ((and next-char
                                         (alpha-char-p next-char))
                                    ;; we have encountered a named group
-                                   ;; are we supporting register naming?
-                                   (unless *allow-named-registers*
-                                     (signal-syntax-error* (1- (lexer-pos lexer))
-                                                           "Character '~A' may not follow '(?<' (because ~a = NIL)"
-                                                           next-char
-                                                           '*allow-named-registers*))
+                                   (signal-syntax-error* (1- (lexer-pos lexer))
+                                                         "Character '~A' may not follow '(?<'"
+                                                         next-char)
                                    ;; put the letter back
                                    (decf (lexer-pos lexer))
                                    ;; named group

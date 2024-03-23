@@ -12,7 +12,6 @@ The productions are: <group> -> \"\(\"<regex>\")\"
                                 \"\(?<!\"<regex>\")\"
                                 \"\(?\(\"<num>\")\"<regex>\")\"
                                 \"\(?\(\"<regex>\")\"<regex>\")\"
-                                \"\(?<name>\"<regex>\")\" \(when *ALLOW-NAMED-REGISTERS* is T)
                                 <legal-token>
 where <flags> is parsed by the lexer function MAYBE-PARSE-FLAGS.
 Will return <parse-tree> or \(<grouping-type> <parse-tree>) where

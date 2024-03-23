@@ -786,7 +786,5 @@ or an EVERYTHING object \(if the regex starts with something like
               (coerce (slot-value starts-with 'str)
                       'simple-string)))
     (values converted-parse-tree reg-num starts-with
-            ;; we can't simply use *ALLOW-NAMED-REGISTERS*
-            ;; since parse-tree syntax ignores it
             (when named-reg-seen
               (nreverse reg-names)))))

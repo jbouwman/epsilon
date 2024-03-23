@@ -42,10 +42,6 @@
 
 ;;;; Weak Hash-tables
 
-;;; Allegro can apparently create weak hash-tables with both weak keys
-;;; and weak values but it's not obvious whether it's an OR or an AND
-;;; relation. TODO: figure that out.
-
 (defun weakness-keyword-arg (weakness)
   :weakness)
 

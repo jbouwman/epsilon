@@ -2101,60 +2101,15 @@ happen. Use with care."
                           (option (eql :send-timeout)) &key)
   (declare (ignorable option))
   (let ((socket (socket usocket)))
-    (declare (ignorable socket))
-    #+abcl
-    () ; TODO
-    #+allegro
-    () ; TODO
-    #+clisp
-    (socket:socket-options socket :so-sndtimeo)
-    #+clozure
-    (ccl:stream-output-timeout socket)
-    #+cmu
-    (lisp::fd-stream-timeout (socket-stream usocket))
-    #+(or ecl clasp)
-    (sb-bsd-sockets:sockopt-send-timeout socket)
-    #+lispworks
-    (get-socket-send-timeout socket)
-    #+mcl
-    () ; TODO
-    #+mocl
-    () ; unknown
-    #+sbcl
-    (sb-impl::fd-stream-timeout (socket-stream usocket))
-    #+scl
-    ())) ; TODO
+    (sb-impl::fd-stream-timeout (socket-stream usocket))))
 
 (defmethod (setf socket-option) (new-value (usocket stream-usocket)
                                            (option (eql :send-timeout)) &key)
   (declare (type number new-value) (ignorable new-value option))
   (let ((socket (socket usocket))
         (timeout new-value))
-    (declare (ignorable socket timeout))
-    #+abcl
-    () ; TODO
-    #+allegro
-    () ; TODO
-    #+clisp
-    (socket:socket-options socket :so-sndtimeo timeout)
-    #+clozure
-    (setf (ccl:stream-output-timeout socket) timeout)
-    #+cmu
-    (setf (lisp::fd-stream-timeout (socket-stream usocket))
-          (coerce timeout 'integer))
-    #+(or ecl clasp)
-    (setf (sb-bsd-sockets:sockopt-send-timeout socket) timeout)
-    #+lispworks
-    (set-socket-send-timeout socket timeout)
-    #+mcl
-    () ; TODO
-    #+mocl
-    () ; unknown
-    #+sbcl
     (setf (sb-impl::fd-stream-timeout (socket-stream usocket))
           (coerce timeout 'single-float))
-    #+scl
-    () ; TODO
     new-value))
 
 ;;; Socket option: REUSE-ADDRESS (SO_REUSEADDR), for TCP server
@@ -2163,53 +2118,14 @@ happen. Use with care."
                           (option (eql :reuse-address)) &key)
   (declare (ignorable option))
   (let ((socket (socket usocket)))
-    (declare (ignorable socket))
-    #+abcl
-    () ; TODO
-    #+allegro
-    () ; TODO
-    #+clisp
-    (int->bool (socket:socket-options socket :so-reuseaddr))
-    #+clozure
-    (int->bool (get-socket-option-reuseaddr socket))
-    #+cmu
-    () ; TODO
-    #+lispworks
-    (get-socket-reuse-address socket)
-    #+mcl
-    () ; TODO
-    #+mocl
-    () ; unknown
-    #+(or ecl sbcl clasp)
-    (sb-bsd-sockets:sockopt-reuse-address socket)
-    #+scl
-    ())) ; TODO
+    (sb-bsd-sockets:sockopt-reuse-address socket)))
 
 (defmethod (setf socket-option) (new-value (usocket stream-server-usocket)
                                            (option (eql :reuse-address)) &key)
   (declare (type boolean new-value) (ignorable new-value option))
   (let ((socket (socket usocket)))
     (declare (ignorable socket))
-    #+abcl
-    () ; TODO
-    #+allegro
-    (socket:set-socket-options socket option new-value)
-    #+clisp
-    (socket:socket-options socket :so-reuseaddr (bool->int new-value))
-    #+clozure
-    (set-socket-option-reuseaddr socket (bool->int new-value))
-    #+cmu
-    () ; TODO
-    #+lispworks
-    (set-socket-reuse-address socket new-value)
-    #+mcl
-    () ; TODO
-    #+mocl
-    () ; unknown
-    #+(or ecl sbcl clasp)
     (setf (sb-bsd-sockets:sockopt-reuse-address socket) new-value)
-    #+scl
-    () ; TODO
     new-value))
 
 ;;; Socket option: BROADCAST (SO_BROADCAST), for UDP client
@@ -2218,29 +2134,7 @@ happen. Use with care."
                           (option (eql :broadcast)) &key)
   (declare (ignorable option))
   (let ((socket (socket usocket)))
-    (declare (ignorable socket))
-    #+abcl
-    () ; TODO
-    #+allegro
-    () ; TODO
-    #+clisp
-    (int->bool (socket:socket-options socket :so-broadcast))
-    #+clozure
-    (int->bool (get-socket-option-broadcast socket))
-    #+cmu
-    () ; TODO
-    #+(or ecl clasp)
-    () ; TODO
-    #+lispworks
-    (int->bool (get-socket-broadcast socket))
-    #+mcl
-    () ; TODO
-    #+mocl
-    () ; unknown
-    #+sbcl
-    (sb-bsd-sockets:sockopt-broadcast socket)
-    #+scl
-    ())) ; TODO
+    (sb-bsd-sockets:sockopt-broadcast socket)))
 
 (defmethod (setf socket-option) (new-value (usocket datagram-usocket)
                                            (option (eql :broadcast)) &key)
@@ -2248,28 +2142,7 @@ happen. Use with care."
            (ignorable new-value option))
   (let ((socket (socket usocket)))
     (declare (ignorable socket))
-    #+abcl
-    () ; TODO
-    #+allegro
-    (socket:set-socket-options socket option new-value)
-    #+clisp
-    (socket:socket-options socket :so-broadcast (bool->int new-value))
-    #+clozure
-    (set-socket-option-broadcast socket (bool->int new-value))
-    #+cmu
-    () ; TODO
-    #+(or ecl clasp)
-    () ; TODO
-    #+lispworks
-    (set-socket-broadcast socket (bool->int new-value))
-    #+mcl
-    () ; TODO
-    #+mocl
-    () ; unknown
-    #+sbcl
     (setf (sb-bsd-sockets:sockopt-broadcast socket) new-value)
-    #+scl
-    () ; TODO
     new-value))
 
 ;;; Socket option: TCP-NODELAY (TCP_NODELAY), for TCP client
