@@ -1,6 +1,8 @@
 (in-package :cl-user)
 
 (require :sb-cltl2)
+(require :sb-posix)
+(require :sb-bsd-sockets)
 (require :sb-rotate-byte)
 
 (defun load-order (entry)
