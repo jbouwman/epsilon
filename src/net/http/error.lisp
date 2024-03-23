@@ -1,7 +1,8 @@
 (defpackage #:net.http.error
   (:use
-   #:cl
-   #:lib.url)
+   #:cl)
+  (:local-nicknames
+   (#:uri #:lib.uri))
   (:export
    #:http-request-failed
    
@@ -61,7 +62,7 @@
   (:report (lambda (condition stream)
              (with-slots (uri status) condition
                (format stream "An HTTP request to ~S has failed (status=~D)."
-                       (render-uri uri)
+                       (uri:render-uri uri)
                        status)))))
 
 (defmacro define-request-failed-condition (name code)
@@ -72,7 +73,7 @@
                   (format stream ,(format nil "An HTTP request to ~~S returned ~D ~A.~~2%~~A"
                                           code
                                           (substitute #\Space #\- (string-downcase name)))
-                          (render-uri uri)
+                          (uri:render-uri uri)
                           body))))))
 
 
@@ -128,5 +129,5 @@
   (:report (lambda (condition stream)
              (with-slots (uri reason) condition
                (format stream "An HTTP request to ~S via SOCKS5 has failed (reason=~S)."
-                       (render-uri uri)
+                       (uri:render-uri uri)
                        reason)))))

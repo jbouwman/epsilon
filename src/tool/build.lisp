@@ -1,7 +1,6 @@
 (defpackage #:tool.build
   (:use
    #:cl
-   #:lib.url
    #:sys.fs)
   (:export
    #:build))
@@ -20,12 +19,12 @@
        (build-steps '()))
    (labels ((process-file (file-entry &optional changed-files)
               (destructuring-bind (file-url . dependencies) file-entry
-                (let* ((file-path (lib.url:uri-path file-url))
+                (let* ((file-path (lib.uri:path file-url))
                        (file-hash (sha256-file file-path))
                        (build-product (get-build-product file-hash)))
                   (if (or (null build-product)
                           (some (lambda (dep-url)
-                                  (member (lib.url:uri-path dep-url) changed-files :test #'equal))
+                                  (member (lib.uri:path dep-url) changed-files :test #'equal))
                                 dependencies))
                       (progn
                         (push (list :compile file-url) build-steps)
@@ -36,6 +35,8 @@
                 (process-file file-entry changed-files))))
      (process-dependencies build-order '())
      (nreverse build-steps))))
+
+
 
 
 (defclass build-file ()

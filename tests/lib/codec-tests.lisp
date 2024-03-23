@@ -2,8 +2,9 @@
   (:use
    #:lib.codec
    #:lib.stream
-   #:lib.url
-   #:sys.fs))
+   #:sys.fs)
+  (:local-nicknames
+   (#:uri #:lib.uri)))
 
 (in-package #:lib.codec/tests)
 
@@ -13,9 +14,9 @@
     (is (file= original decompressed))))
 
 (defun test-decompress (codec compressed original)
-  (decompress codec
-              (uri-path (test-data compressed))
-              (uri-path (test-data original))))
+  (decompress codec                     ; FIXME native URL
+              (uri:path (test-data compressed))
+              (uri:path (test-data original))))
 
 (defun roundtrip (codec original)
   (with-temp-file (compressed)
@@ -23,7 +24,7 @@
     (decompress codec compressed original)))
 
 (defun test-roundtrip (codec original)
-  (roundtrip codec (uri-path (test-data original))))
+  (roundtrip codec (uri:path (test-data original))))
 
 (deftest deflate ()
   (skip)

@@ -5,10 +5,11 @@
    #:lib.list
    #:lib.stream
    #:lib.type
-   #:lib.url
    #:net.http.encoding
    #:net.http.decoding-stream
    #:net.http.util)
+  (:local-nicknames
+   (#:uri #:lib.uri))
   (:export
    #:decode-body
    #:write-multipart-content
