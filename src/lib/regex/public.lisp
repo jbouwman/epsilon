@@ -326,10 +326,8 @@ declarations."
                               (1+ ,match-end)
                               ,match-end)))))))))
 
-(defmacro do-matches ((match-start match-end regex
-                                   target-string
-                                   &optional result-form
-                                   &key start end)
+(defmacro do-matches ((match-start match-end regex target-string result-form
+                       &key start end)
                       &body body)
   "Iterates over TARGET-STRING and tries to match REGEX as often as
 possible evaluating BODY with MATCH-START and MATCH-END bound to the
@@ -350,9 +348,9 @@ declarations."
       ,@body)))
 
 (defmacro do-matches-as-strings ((match-var regex
-                                            target-string
-                                            &optional result-form
-                                            &key start end sharedp)
+                                  target-string
+                                  result-form
+                                  &key start end sharedp)
                                  &body body)
   "Iterates over TARGET-STRING and tries to match REGEX as often as
 possible evaluating BODY with MATCH-VAR bound to the substring of
@@ -463,7 +461,7 @@ match REGEX. If REGEX matches an empty string the scan is continued
 one position behind this match. If SHAREDP is true, the substrings may
 share structure with TARGET-STRING."
   (let (result-list)
-    (do-matches-as-strings (match regex target-string (nreverse result-list)
+    (do-matches-as-strings (match regex target-string (nreverse result-list) nil
                                   :start start :end end :sharedp sharedp)
       (push match result-list))))
 
@@ -634,7 +632,7 @@ S-expression."))
           ;; COLLECTOR will hold the (reversed) template
           (collector '()))
       ;; scan through all special parts of the replacement string
-      (do-matches (match-start match-end reg-scanner replacement-string)
+      (do-matches (match-start match-end reg-scanner replacement-string nil)
         (when (< from match-start)
           ;; strings between matches are copied verbatim
           (push (subseq replacement-string from match-start) collector))

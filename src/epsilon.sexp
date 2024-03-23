@@ -9,9 +9,7 @@
         "uuid"
         ("type" "macro-utils"
                 "vectors"
-                "streams"
-                ("sbcl-opt" "fndb"
-                            "nib-tran"))
+                "streams")
         "list"
         "sequence"
         "hash"

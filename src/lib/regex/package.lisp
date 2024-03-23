@@ -7,7 +7,6 @@
    #:digit-char-p
    #:defconstant)
   (:export
-   #:*allow-named-registers*
    #:*allow-quoting*
    #:*look-ahead-for-suffix*
    #:*optimize-char-classes*

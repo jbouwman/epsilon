@@ -366,7 +366,7 @@
                    (let* ((con-uri (uri:uri (or proxy uri)))
                           (connection (net.socket:socket-connect (uri:host con-uri)
                                                                  (uri:port con-uri)
-                                                                 #-(or ecl clasp clisp allegro) :timeout #-(or ecl clasp clisp allegro) connect-timeout
+                                                                 :timeout connect-timeout
                                                                  :element-type 'u8))
                           (stream
                             (net.socket:socket-stream connection))

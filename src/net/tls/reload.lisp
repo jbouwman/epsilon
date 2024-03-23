@@ -131,11 +131,10 @@ sudo rm /usr/local/lib/libcrypto.dylib /usr/local/lib/libssl.dylib
                   ;; https://github.com/cl-plus-ssl/cl-plus-ssl/pull/115
                   "libcrypto.dylib"
                   "/usr/lib/libcrypto.dylib"))
-    ((and :unix (not :cygwin)) (:or "libcrypto.so.1.1"
-                                    "libcrypto.so.1.0.0"
-                                    "libcrypto.so.3"
-                                    "libcrypto.so"))
-    (:cygwin (:or "cygcrypto-1.1.dll" "cygcrypto-1.0.0.dll"))))
+    (:unix (:or "libcrypto.so.1.1"
+                "libcrypto.so.1.0.0"
+                "libcrypto.so.3"
+                "libcrypto.so"))))
 
 (unless net.tls/config::*libssl-override*
   (ffi:define-foreign-library libssl
@@ -152,17 +151,17 @@ sudo rm /usr/local/lib/libcrypto.dylib /usr/local/lib/libssl.dylib
     ((:and :darwin :arm64 :net.tls-homebrew-arm64-found) "/opt/homebrew/opt/openssl/lib/libssl.dylib")
     ((:and :darwin :net.tls-personalized-install-found) "/usr/local/lib/libssl.dylib")
     (:darwin (:or ;; System-provided libraries, with version in the file name.
-                  ;; See the comment for the libcryto equivalents above.
-                  "/usr/lib/libssl.48.dylib"
-                  "/usr/lib/libssl.46.dylib"
-                  "/usr/lib/libssl.44.dylib"
-                  "/usr/lib/libssl.43.dylib"
-                  "/usr/lib/libssl.35.dylib"
+              ;; See the comment for the libcryto equivalents above.
+              "/usr/lib/libssl.48.dylib"
+              "/usr/lib/libssl.46.dylib"
+              "/usr/lib/libssl.44.dylib"
+              "/usr/lib/libssl.43.dylib"
+              "/usr/lib/libssl.35.dylib"
 
-                  ;; Default system libssl, versionless file name.
-                  ;; See the coment for the corresponding libcrypto.
-                  "libssl.dylib"
-                  "/usr/lib/libssl.dylib"))
+              ;; Default system libssl, versionless file name.
+              ;; See the coment for the corresponding libcrypto.
+              "libssl.dylib"
+              "/usr/lib/libssl.dylib"))
     (:solaris (:or "/lib/64/libssl.so"
                    "libssl.so.0.9.8" "libssl.so" "libssl.so.4"))
     ;; Unlike some other systems, OpenBSD linker,
@@ -171,24 +170,23 @@ sudo rm /usr/local/lib/libcrypto.dylib /usr/local/lib/libssl.dylib
     ;; so we can just use just "libssl.so".
     ;; More info at https://github.com/cl-plus-ssl/cl-plus-ssl/pull/2.
     (:openbsd "libssl.so")
-    ((and :unix (not :cygwin)) (:or "libssl.so.1.1"
-                                    "libssl.so.1.0.2m"
-                                    "libssl.so.1.0.2k"
-                                    "libssl.so.1.0.2"
-                                    "libssl.so.1.0.1l"
-                                    "libssl.so.1.0.1j"
-                                    "libssl.so.1.0.1f"
-                                    "libssl.so.1.0.1e"
-                                    "libssl.so.1.0.1"
-                                    "libssl.so.1.0.0q"
-                                    "libssl.so.1.0.0"
-                                    "libssl.so.0.9.8ze"
-                                    "libssl.so.0.9.8"
-                                    "libssl.so.10"
-                                    "libssl.so.4"
-                                    "libssl.so.3"
-                                    "libssl.so"))
-    (:cygwin (:or "cygssl-1.1.dll" "cygssl-1.0.0.dll"))
+    (:unix (:or "libssl.so.1.1"
+                "libssl.so.1.0.2m"
+                "libssl.so.1.0.2k"
+                "libssl.so.1.0.2"
+                "libssl.so.1.0.1l"
+                "libssl.so.1.0.1j"
+                "libssl.so.1.0.1f"
+                "libssl.so.1.0.1e"
+                "libssl.so.1.0.1"
+                "libssl.so.1.0.0q"
+                "libssl.so.1.0.0"
+                "libssl.so.0.9.8ze"
+                "libssl.so.0.9.8"
+                "libssl.so.10"
+                "libssl.so.4"
+                "libssl.so.3"
+                "libssl.so"))
     (t (:default "libssl3"))))
 
 (unless (member :net.tls-foreign-libs-already-loaded
