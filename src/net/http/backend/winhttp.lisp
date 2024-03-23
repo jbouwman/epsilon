@@ -11,6 +11,8 @@
    #:net.http.util
    #:winhttp
    #:split-sequence)
+  (:local-nicknames
+   (#:uri #:lib.uri))
   (:export :request
 
            ;; Restarts
@@ -120,15 +122,15 @@
             (setf headers (append `(("Content-Type" . ,detected-content-type)) headers))))
 
       (with-http (session (or user-agent *default-user-agent*))
-        (with-connect (conn session (uri-host uri) (uri-port uri))
+        (with-connect (conn session (uri:host uri) (uri:port uri))
           (with-request (req conn :verb method
                                   :url (format nil "~@[~A~]~@[?~A~]"
-                                               (uri-path uri)
-                                               (uri-query uri))
-                                  :https-p (equalp (uri-scheme uri) "https"))
+                                               (uri:path uri)
+                                               (uri:query uri))
+                                  :https-p (equalp (uri:scheme uri) "https"))
             (cond
-              ((uri-userinfo uri)
-               (destructuring-bind (user pass) (split-sequence #\: (uri-userinfo uri))
+              ((uri:userinfo uri)
+               (destructuring-bind (user pass) (split-sequence #\: (uri:userinfo uri))
                  (set-credentials req user pass)))
               (basic-auth
                (set-credentials req (car basic-auth) (cdr basic-auth))))
@@ -145,7 +147,7 @@
               (add-request-headers req
                                    (format nil "~:(~A~): ~A" (car header) (cdr header))))
 
-            (when (and (equalp (uri-scheme uri) "https")
+            (when (and (equalp (uri:scheme uri) "https")
                        insecure)
               (set-ignore-certificates req))
 
@@ -167,20 +169,20 @@
                          (/= max-redirects 0))
                 (let ((location-uri (uri (gethash "location" response-headers))))
                   (let ((method
-                          (if (and (or (null (uri-host location-uri))
-                                       (and (string= (uri-scheme location-uri)
-                                                     (uri-scheme uri))
-                                            (string= (uri-host location-uri)
-                                                     (uri-host uri))
-                                            (eql (uri-port location-uri)
-                                                 (uri-port uri))))
+                          (if (and (or (null (uri:host location-uri))
+                                       (and (string= (uri:scheme location-uri)
+                                                     (uri:scheme uri))
+                                            (string= (uri:host location-uri)
+                                                     (uri:host uri))
+                                            (eql (uri:port location-uri)
+                                                 (uri:port uri))))
                                    (or (= status 307) (= status 308)
                                        (member method '(:get :head) :test #'eq)))
                               method
                               :get)))
                     ;; TODO: slurp the body
                     (return-from request
-                                 (apply #'request (merge-uris location-uri uri)
+                                 (apply #'request (uri:merge uri location-uri)
                                         :max-redirects (1- max-redirects)
                                         :method method
                                         args)))))

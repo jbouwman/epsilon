@@ -32,7 +32,7 @@
                "list"
                "extended-sequence"
                "public")
-        "url")
+        "uri")
  ("sys" "env"
         ("ffi" "package"
                "sys-utils"

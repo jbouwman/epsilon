@@ -2,8 +2,7 @@
   (:use
    #:cl
    #:lib.string
-   #:lib.type
-   #:lib.url)
+   #:lib.type)
   (:shadow
    #:byte)
   (:export
@@ -71,8 +70,8 @@
 ;; TODO replace other usages of LPs with URLs
 
 (defun current-dir ()
-  (make-uri :scheme "file"
-            :path (sb-unix:posix-getcwd/)))
+  (lib.uri:make-uri :scheme "file"
+                    :path (sb-unix:posix-getcwd/)))
 
 (defun (setf current-dir) (dir)
   (sb-posix:chdir dir)

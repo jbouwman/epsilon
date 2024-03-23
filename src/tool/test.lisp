@@ -25,9 +25,7 @@
 (in-package #:tool.test)
 
 (defun test-data (name)
-  (lib.url::merge-uris name
-                       (lib.url::merge-uris "tests/data/"
-                                            (current-dir))))
+  (lib.uri:merge (lib.uri:merge (current-dir) "tests/data/") name))
 
 (defvar *suite*)
 

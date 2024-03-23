@@ -7,7 +7,6 @@
    #:lib.stream
    #:lib.string
    #:lib.type
-   #:lib.url
    #:net.http.body
    #:net.http.chunked-stream
    #:net.http.connection-cache
@@ -19,6 +18,8 @@
    #:net.http.util
    #:net.tls
    #:sys.fs)
+  (:local-nicknames
+   (#:uri #:lib.uri))
   (:export
    #:request
    #:retry-request
@@ -27,7 +28,7 @@
 (in-package #:net.http.backend.socket)
 
 (defun ca-bundle ()
-  (merge-uris "certs/cacert.pem" (current-dir)))
+  (uri:merge (current-dir) "certs/cacert.pem"))
 
 (defun read-until-crlf*2 (stream)
   (with-fast-output (buf)
@@ -203,7 +204,7 @@
                 key
                 utf8-filename-p
                 (if utf8-filename-p
-                    (url-encode filename :encoding :utf-8)
+                    (uri:url-encode filename :encoding :utf-8)
                     filename)
                 #\Return #\Newline))
       (format nil "Content-Disposition: form-data; name=\"~A\"~C~C"
@@ -219,7 +220,7 @@
     stream))
 
 (defun make-proxy-authorization (uri)
-  (let ((proxy-auth (uri-userinfo uri)))
+  (let ((proxy-auth (uri:userinfo uri)))
     (when proxy-auth
       (format nil "Basic ~A"
               (string-to-base64-string proxy-auth)))))
@@ -259,9 +260,9 @@
     (exact +socks5-no-auth+ "Unsupported auth method")
 
     ;; Send domainname Request
-    (let* ((host (lib.char:string-to-u8 (uri-host uri)))
+    (let* ((host (lib.char:string-to-u8 (uri:host uri)))
            (hostlen (length host))
-           (port (uri-port uri)))
+           (port (uri:port uri)))
       (unless (<= 1 hostlen 255)
         (fail 'net.http.error:socks5-proxy-request-failed :reason "domainname too long"))
       (unless (<= 1 port 65535)
@@ -307,7 +308,7 @@
                                     :verify-location
                                     (cond
                                       (ca-path ca-path)
-                                      ((sys.fs:file-p (uri-path (ca-bundle))) (uri-path (ca-bundle)))
+                                      ((sys.fs:file-p (uri:path (ca-bundle))) (uri:path (ca-bundle)))
                                       ;; In executable environment, perhaps *ca-bundle* doesn't exist.
                                       (t :default))))
           (ssl-cert-pem-p (and ssl-cert-file
@@ -352,7 +353,7 @@
                   (insecure *not-verify-ssl*)
                   ca-path
                 &aux
-                  (proxy-uri (and proxy (uri proxy)))
+                  (proxy-uri (and proxy (uri:uri proxy)))
                   (original-user-supplied-stream stream)
                   (user-supplied-stream (if (socket-wrapped-stream-p stream) (socket-wrapped-stream-stream stream) stream)))
   (declare (ignorable ssl-key-file ssl-cert-file ssl-key-password
@@ -362,14 +363,14 @@
   (with-content-caches
     (labels ((make-new-connection (uri)
                (restart-case
-                   (let* ((con-uri (uri (or proxy uri)))
-                          (connection (net.socket:socket-connect (uri-host con-uri)
-                                                                 (uri-port con-uri)
+                   (let* ((con-uri (uri:uri (or proxy uri)))
+                          (connection (net.socket:socket-connect (uri:host con-uri)
+                                                                 (uri:port con-uri)
                                                                  #-(or ecl clasp clisp allegro) :timeout #-(or ecl clasp clisp allegro) connect-timeout
                                                                  :element-type 'u8))
                           (stream
                             (net.socket:socket-stream connection))
-                          (scheme (uri-scheme uri)))
+                          (scheme (uri:scheme uri)))
                      (declare (type string scheme))
                      (when read-timeout
                        (setf (net.socket:socket-option connection :receive-timeout) read-timeout))
@@ -378,7 +379,7 @@
                      (if (string= scheme "https")
                          (make-ssl-stream (if (http-proxy-p proxy-uri)
                                               (make-connect-stream uri version stream (make-proxy-authorization con-uri))
-                                              stream) ca-path ssl-key-file ssl-cert-file ssl-key-password (uri-host uri) insecure)
+                                              stream) ca-path ssl-key-file ssl-cert-file ssl-key-password (uri:host uri) insecure)
                          stream))
                  (retry-request ()
                    :report "Retry the same request."
@@ -390,13 +391,13 @@
                      (apply #'request uri :use-connection-pool nil :insecure t args)))))
              (http-proxy-p (uri)
                (and uri
-                    (let ((scheme (uri-scheme uri)))
+                    (let ((scheme (uri:scheme uri)))
                       (and (stringp scheme)
                            (or (string= scheme "http")
                                (string= scheme "https"))))))
              (socks5-proxy-p (uri)
                (and uri
-                    (let ((scheme (uri-scheme uri)))
+                    (let ((scheme (uri:scheme uri)))
                       (and (stringp scheme)
                            (string= scheme "socks5")))))
              (connection-keep-alive-p (connection-header)
@@ -406,8 +407,8 @@
                         (not (equalp connection-header "close")))))
              (return-stream-to-pool (stream uri)
                (push-connection (format nil "~A://~A"
-                                        (uri-scheme uri)
-                                        (uri-authority uri)) stream #'close))
+                                        (uri:scheme uri)
+                                        (uri:authority uri)) stream #'close))
              (return-stream-to-pool-or-close (stream connection-header uri)
                (if (and (not user-supplied-stream) use-connection-pool (connection-keep-alive-p connection-header))
                    (return-stream-to-pool stream uri)
@@ -424,7 +425,7 @@
                    ((not (connection-keep-alive-p connection-header))
                     (when (open-stream-p stream)
                       (close stream)))))))
-      (let* ((uri (uri uri))
+      (let* ((uri (uri:uri uri))
              (proxy (when (http-proxy-p proxy-uri) proxy))
              (content-type (cdr (find :content-type headers :key #'car :test #'string-equal)))
              (multipart-p (or (and content-type
@@ -440,13 +441,13 @@
              (boundary (and multipart-p
                             (random-string 12)))
              (content (if (and form-urlencoded-p (not (stringp content))) ;; user can provide already encoded content, trust them.
-                          (url-encode-params content)
+                          (uri:url-encode-params content)
                           content))
              (stream (or user-supplied-stream
                          (and use-connection-pool
                               (steal-connection (format nil "~A://~A"
-                                                        (uri-scheme uri)
-                                                        (uri-authority uri))))))
+                                                        (uri:scheme uri)
+                                                        (uri:authority uri))))))
              (reusing-stream-p (not (null stream))) ;; user provided or from connection-pool
              (stream (or stream
                          (make-new-connection uri)))
@@ -471,7 +472,7 @@
                         (values)))
                  (with-header-output (buffer)
                    (write-header* :user-agent #.*default-user-agent*)
-                   (write-header* :host (uri-authority uri))
+                   (write-header* :host (uri:authority uri))
                    (write-header* :accept "*/*")
                    (cond
                      ((and keep-alive
@@ -488,9 +489,9 @@
                                                      (car basic-auth)
                                                      (cdr basic-auth))))))
                    (when proxy
-                     (let ((scheme (uri-scheme uri)))
+                     (let ((scheme (uri:scheme uri)))
                        (when (string= scheme "http")
-                         (let* ((uri (uri proxy))
+                         (let* ((uri (uri:uri proxy))
                                 (proxy-authorization (make-proxy-authorization uri)))
                            (when proxy-authorization
                              (write-header* :proxy-authorization proxy-authorization))))))
@@ -626,19 +627,19 @@
                        (transfer-encoding-p
                         (read-until-crlf*2 body))))
 
-                   (let* ((location-uri (uri (gethash "location" response-headers)))
-                          (same-server-p (or (null (uri-host location-uri))
-                                             (and (string= (uri-scheme location-uri)
-                                                           (uri-scheme uri))
-                                                  (string= (uri-host location-uri)
-                                                           (uri-host uri))
-                                                  (eql (uri-port location-uri)
-                                                       (uri-port uri))))))
+                   (let* ((location-uri (uri:uri (gethash "location" response-headers)))
+                          (same-server-p (or (null (uri:host location-uri))
+                                             (and (string= (uri:scheme location-uri)
+                                                           (uri:scheme uri))
+                                                  (string= (uri:host location-uri)
+                                                           (uri:host uri))
+                                                  (eql (uri:port location-uri)
+                                                       (uri:port uri))))))
                      (if (and same-server-p
                               (or (= status 307) (= status 308)
                                   (member method '(:get :head) :test #'eq)))
                          (progn ;; redirection to the same host
-                           (setq uri (merge-uris location-uri uri))
+                           (setq uri (uri:merge uri location-uri))
                            (setq first-line-data
                                  (with-fast-output (buffer)
                                    (write-first-line method uri version buffer)))
@@ -649,12 +650,12 @@
                                  (setq reusing-stream-p t)
                                  (go retry))))
                          (progn ;; this is a redirection to a different host
-                           (setf location-uri (merge-uris location-uri uri))
+                           (setf location-uri (uri:merge uri location-uri))
                            ;; Close connection if it isn't from our connection pool or from the user and we aren't going to
                            ;; pass it to our new call.
                            (when (not same-server-p) (return-stream-to-pool-or-close stream (gethash "connection" response-headers) uri))
                            (setf (getf args :headers)
-                                 (nconc `((:host . ,(uri-host location-uri))) headers))
+                                 (nconc `((:host . ,(uri:host location-uri))) headers))
                            (setf (getf args :max-redirects)
                                  (1- max-redirects))
                            ;; Redirect as GET if it's 301, 302, 303
@@ -685,8 +686,8 @@
                                                                do (read-byte underlying-stream nil nil))
                                                          (when (open-stream-p underlying-stream)
                                                            (push-connection (format nil "~A://~A"
-                                                                                    (uri-scheme uri)
-                                                                                    (uri-authority uri)) underlying-stream #'close))))
+                                                                                    (uri:scheme uri)
+                                                                                    (uri:authority uri)) underlying-stream #'close))))
                                                      #'net.http.keep-alive-stream:keep-alive-stream-close-underlying-stream))))
                         ;; Raise an error when the HTTP response status code is 4xx or 50x.
                         (when (<= 400 status)

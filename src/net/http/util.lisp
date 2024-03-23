@@ -2,8 +2,9 @@
   (:use
    #:cl  
    #:lib.stream
-   #:lib.type
-   #:lib.url)
+   #:lib.type)
+  (:local-nicknames
+   (#:uri #:lib.uri))
   (:export
    #:*default-connect-timeout*
    #:*default-read-timeout*
@@ -72,8 +73,8 @@
   (fast-write-byte #.(char-code #\Space) buffer)
   (fast-write-sequence (string->u8
                          (format nil "~A~:[~;~:*?~A~]"
-                                 (or (uri-path uri) "/")
-                                 (uri-query uri)))
+                                 (or (uri:path uri) "/")
+                                 (uri:query uri)))
                        buffer)
   (fast-write-byte #.(char-code #\Space) buffer)
   (fast-write-sequence (ecase version
@@ -122,8 +123,8 @@
   (fast-write-sequence (string->u8 "CONNECT") buffer)
   (fast-write-byte #.(char-code #\Space) buffer)
   (fast-write-sequence (string->u8 (format nil "~A:~A"
-                                           (uri-host uri)
-                                           (uri-port uri)))
+                                           (uri:host uri)
+                                           (uri:port uri)))
                        buffer)
   (fast-write-byte #.(char-code #\Space) buffer)
   (fast-write-sequence (ecase version
@@ -134,8 +135,8 @@
   (fast-write-sequence (string->u8 "Host:") buffer)
   (fast-write-byte #.(char-code #\Space) buffer)
   (fast-write-sequence (string->u8 (format nil "~A:~A"
-                                           (uri-host uri)
-                                           (uri-port uri)))
+                                           (uri:host uri)
+                                           (uri:port uri)))
                        buffer)
   (when proxy-auth
     (fast-write-sequence +crlf+ buffer)

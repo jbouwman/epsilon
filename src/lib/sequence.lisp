@@ -16,7 +16,6 @@
    #:first-elt
    #:last-elt
    #:length=
-   #:length=
    #:map-combinations
    #:map-derangements
    #:map-permutations
@@ -215,9 +214,6 @@ is not a sequence."
 the length of all the sequences and the integers are equal. Hint: there's a
 compiler macro that expands into more efficient code if the first argument
 is a literal integer."
-  (declare (dynamic-extent sequences)
-           (inline sequence-of-length-p)
-           (optimize speed))
   (unless (cdr sequences)
     (error "You must call LENGTH= with at least two arguments"))
   ;; There's room for optimization here: multiple list arguments could be

@@ -1,4 +1,4 @@
-(defpackage #:lib.url
+(defpackage #:lib.uri
   (:use
    #:cl
    #:sb-cltl2
@@ -11,51 +11,53 @@
    #:lib.sequence
    #:lib.symbol
    #:lib.type)
+  (:shadow
+   #:merge)
   (:export
    #:uri
    #:input-stream
    #:make-uri
    #:make-basic-uri
    #:uri-p
-   #:uri-scheme
-   #:uri-userinfo
-   #:uri-host
-   #:uri-port
-   #:uri-path
-   #:uri-query
-   #:uri-fragment
-   #:uri-authority
+   #:scheme
+   #:userinfo
+   #:host
+   #:port
+   #:path
+   #:query
+   #:fragment
+   #:authority
    #:url-encode
    #:url-encode-params
    #:urn
    #:make-urn
    #:render-uri
-   #:merge-uris
+   #:merge
    #:urn-p
    #:urn-nid
    #:urn-nss))
-  
-(in-package #:lib.url)
+
+(in-package #:lib.uri)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   
-(defvar +default-ports+
-  (plist-hash-table
-   '("ftp" 21
-     "ssh" 22
-     "telnet" 23
-     "http" 80
-     "ldap" 389
-     "https" 443
-     "ldaps" 636
-     "ws" 80
-     "wss" 443)
-   :test 'equal))
+  (defvar +default-ports+
+    (plist-hash-table
+     '("ftp" 21
+       "ssh" 22
+       "telnet" 23
+       "http" 80
+       "ldap" 389
+       "https" 443
+       "ldaps" 636
+       "ws" 80
+       "wss" 443)
+     :test 'equal))
 
-(defun scheme-default-port (scheme)
-  (gethash scheme +default-ports+))
+  (defun scheme-default-port (scheme)
+    (gethash scheme +default-ports+))
 
-)
+  )
 
 (define-condition parsing-end-unexpectedly (simple-error)
   ((state :initarg :state
@@ -204,8 +206,8 @@
   (declare (type simple-string data)
            (optimize (speed 3) (safety 2)))
   (let (scheme userinfo host port path query fragment
-        (parse-start start)
-        (parse-end (or end (length data))))
+               (parse-start start)
+               (parse-end (or end (length data))))
     (declare (type fixnum parse-start parse-end))
     (block nil
       (flet ((parse-from-path (data start)
@@ -276,8 +278,8 @@
   (declare (type ->u8 data)
            (optimize (speed 3) (safety 2)))
   (let (scheme userinfo host port path query fragment
-        (parse-start start)
-        (parse-end (or end (length data))))
+               (parse-start start)
+               (parse-end (or end (length data))))
     (declare (type fixnum parse-start parse-end))
     (flet ((subseq* (data &optional (start 0) end)
              (declare (type ->u8 data))
@@ -322,17 +324,17 @@
             (if parsed-data
                 (locally (declare (type fixnum start end))
                   (setq scheme
-                    (or got-scheme
-                        (let ((data-str (make-string (- end start))))
-                          (do ((i start (1+ i))
-                               (j 0 (1+ j)))
-                              ((= i end) data-str)
-                            (let ((code (aref data i)))
-                              (setf (aref data-str j)
-                                    (code-char
-                                     (if (<= #.(char-code #\A) code #.(char-code #\Z))
-                                         (+ code 32)
-                                         code))))))))
+                        (or got-scheme
+                            (let ((data-str (make-string (- end start))))
+                              (do ((i start (1+ i))
+                                   (j 0 (1+ j)))
+                                  ((= i end) data-str)
+                                (let ((code (aref data i)))
+                                  (setf (aref data-str j)
+                                        (code-char
+                                         (if (<= #.(char-code #\A) code #.(char-code #\Z))
+                                             (+ code 32)
+                                             code))))))))
                   (incf end))           ;eat the trailing #\:
                 (setq scheme nil
                       end parse-start))
@@ -382,8 +384,8 @@
            (defun ,name (,data &rest ,args &key ,start ,end)
              (declare (ignore ,start ,end))
              (etypecase ,data
-                 (simple-string (apply ',(intern-proper-case name :string) data ,args))
-                 (->u8 (apply ',(intern-proper-case name :byte-vector) data ,args))))
+               (simple-string (apply ',(intern-proper-case name :string) data ,args))
+               (->u8 (apply ',(intern-proper-case name :byte-vector) data ,args))))
 
            (define-compiler-macro ,name (&whole ,form &environment ,env ,data &rest ,args)
              (declare (ignore ,args))
@@ -428,7 +430,7 @@
                (block ,name
                  (with-byte-array-parsing (,char ,p ,data ,start ,end)
                    (declare (type fixnum ,p))
-                     ,@body)))))))))
+                   ,@body)))))))))
 
 (defun scheme-char-p (char)
   (declare (type character char)
@@ -522,7 +524,7 @@
   (parsing-authority-starting
    (unless (char=* char #\/)
      (return-from parse-authority
-        (values data nil nil start start nil nil)))
+       (values data nil nil start start nil nil)))
    (setq authority-mark (1+ p))
    (gonext))
 
@@ -622,8 +624,8 @@
                (return (values ,data ,start ,p)))
              ,@(when test
                  `((unless (funcall ,test ,char)
-                      (error 'uri-malformed-string
-                             :data ,data :position ,p))))))))))
+                     (error 'uri-malformed-string
+                            :data ,data :position ,p))))))))))
 
 (defmacro parse-until-byte-vector (delimiters data &key start end test)
   (with-gensyms (p byte)
@@ -754,8 +756,7 @@
                           end
                           (lenient nil))
   (declare (type (or string ->u8) data)
-           (type integer start)
-           (optimize (speed 3) (safety 2)))
+           (type integer start))
   (let* ((end (or end (length data)))
          (buffer (make-array (- end start)
                              :element-type 'u8))
@@ -994,6 +995,7 @@
         (write-char #\& s)))))
 
 (defstruct (uri (:constructor %make-uri)
+                (:conc-name nil)
                 (:copier %copy-uri))
   (scheme nil :read-only t)
   userinfo
@@ -1006,19 +1008,19 @@
 (defun make-basic-uri (&rest args &key scheme userinfo host port path query fragment)
   (declare (ignore scheme userinfo host port path query fragment))
   (let ((uri (apply #'%make-uri args)))
-    (unless (uri-port uri)
-      (setf (uri-port uri) (scheme-default-port (uri-scheme uri))))
+    (unless (port uri)
+      (setf (port uri) (scheme-default-port (scheme uri))))
     uri))
 
-(defun uri-authority (uri)
-  (when (uri-host uri)
-    (let ((default-port (scheme-default-port (uri-scheme uri))))
+(defun authority (uri)
+  (when (host uri)
+    (let ((default-port (scheme-default-port (scheme uri))))
       (with-standard-io-syntax
         (format nil "~:[~;~:*~A@~]~A~:[:~A~;~*~]"
-                (uri-userinfo uri)
-                (uri-host uri)
-                (eql (uri-port uri) default-port)
-                (uri-port uri))))))
+                (userinfo uri)
+                (host uri)
+                (eql (port uri) default-port)
+                (port uri))))))
 
 (defstruct (urn (:include uri (scheme :urn))
                 (:constructor %make-urn))
@@ -1027,16 +1029,16 @@
 
 (defun make-urn (&rest initargs)
   (let ((urn (apply #'%make-urn initargs)))
-    (when (uri-path urn)
-      (let ((colon-pos (position #\: (uri-path urn))))
+    (when (path urn)
+      (let ((colon-pos (position #\: (path urn))))
         (if colon-pos
-            (setf (urn-nid urn) (subseq (uri-path urn) 0 colon-pos)
-                  (urn-nss urn) (subseq (uri-path urn) (1+ colon-pos)))
-            (setf (urn-nid urn) (uri-path urn)))))
+            (setf (urn-nid urn) (subseq (path urn) 0 colon-pos)
+                  (urn-nss urn) (subseq (path urn) (1+ colon-pos)))
+            (setf (urn-nid urn) (path urn)))))
     urn))
 
 (defun uri-tld (uri)
-  (let ((host (uri-host uri)))
+  (let ((host (host uri)))
     (when (and host
                (not (ip-addr-p host)))
       (let ((pos (position #\. host :from-end t)))
@@ -1045,7 +1047,7 @@
             host)))))
 
 (defun uri-domain (uri)
-  (uri-host uri))
+  (host uri))
 
 (defun ipv4-addr-p (host)
   (declare (optimize (speed 3) (safety 2))
@@ -1195,14 +1197,14 @@
 (defstruct (uri-https (:include uri-http (scheme "https") (port #.(scheme-default-port "https")))))
 
 (defun uri-query-params (http &key (lenient t))
-  (when-let (query (uri-query http))
+  (when-let (query (query http))
     (url-decode-params query :lenient lenient)))
 
 (defun (setf uri-query-params) (new http &key lenient)
   (declare (ignore lenient))
-  (setf (uri-query http) (if new
-                             (url-encode-params new)
-                             nil)))
+  (setf (query http) (if new
+                         (url-encode-params new)
+                         nil)))
 
 (defstruct (uri-ftp (:include uri (scheme "ftp") (port #.(scheme-default-port "ftp")))
                     (:constructor %make-uri-ftp))
@@ -1211,10 +1213,10 @@
 (defun make-uri-ftp (&rest initargs)
   (let ((ftp (apply #'%make-uri-ftp initargs)))
     (multiple-value-bind (path typecode)
-        (parse-ftp-typecode (uri-path ftp))
+        (parse-ftp-typecode (path ftp))
       (when path
-        (setf (uri-path ftp) path
-              (uri-ftp-typecode ftp) typecode)))
+        (setf (path ftp) path
+              (ftp-typecode ftp) typecode)))
     ftp))
 
 (defun parse-ftp-typecode (path)
@@ -1235,7 +1237,7 @@
 (defstruct (uri-ldaps (:include uri-ldap (scheme "ldaps") (port #.(scheme-default-port "ldaps")))))
 
 (defun uri-ldap-dn (ldap)
-  (let ((path (uri-path ldap)))
+  (let ((path (path ldap)))
     (when (and path
                (/= 0 (length path)))
       (if (char= (aref path 0) #\/)
@@ -1243,20 +1245,20 @@
           path))))
 
 (defun (setf uri-ldap-dn) (new ldap)
-  (setf (uri-path ldap)
+  (setf (path ldap)
         (concatenate 'string "/" new))
   new)
 
 (defun nth-uri-ldap-lists (ldap n)
   (check-type ldap uri-ldap)
-  (when-let (query (uri-query ldap))
+  (when-let (query (query ldap))
     (car (last (lib.seq:split-sequence #\? query :count n)))))
 
 (defun (setf nth-uri-ldap-lists) (new ldap n)
   (check-type ldap uri-ldap)
   (check-type new string)
-  (let ((query (uri-query ldap)))
-    (setf (uri-query ldap)
+  (let ((query (query ldap)))
+    (setf (query ldap)
           (if query
               (let ((parts (lib.seq:split-sequence #\? query)))
                 (with-output-to-string (s)
@@ -1302,7 +1304,7 @@
 (defun uri-file-pathname (file)
   "Get a lisp pathname object from a file URI.
 Assumes that the path of the file URI is correct path syntax for the environment."
-  (parse-namestring (uri-path file)))
+  (parse-namestring (path file)))
 
 (defun scheme-constructor (scheme)
   "Get a constructor function appropriate for the scheme."
@@ -1331,13 +1333,13 @@ Assumes that the path of the file URI is correct path syntax for the environment
                (and port
                     `(:port ,port))))))
 
-(defun copy-uri (uri &key (scheme (uri-scheme uri))
-                          (userinfo (uri-userinfo uri))
-                          (host (uri-host uri))
-                          (port (uri-port uri))
-                          (path (uri-path uri))
-                          (query (uri-query uri))
-                          (fragment (uri-fragment uri)))
+(defun copy-uri (uri &key (scheme (scheme uri))
+                       (userinfo (userinfo uri))
+                       (host (host uri))
+                       (port (port uri))
+                       (path (path uri))
+                       (query (query uri))
+                       (fragment (fragment uri)))
   (make-uri :scheme scheme
             :userinfo userinfo
             :host host
@@ -1367,29 +1369,29 @@ Assumes that the path of the file URI is correct path syntax for the environment
       ((uri-ftp-p uri)
        (format stream
                "~@[~(~A~):~]~@[//~A~]~a~@[~A~]~@[;type=~A~]~@[?~A~]~@[#~A~]"
-               (uri-scheme uri)
-               (uri-authority uri)
-               (maybe-slash (uri-authority uri) (uri-path uri))
-               (uri-path uri)
-               (uri-ftp-typecode uri)
-               (uri-query uri)
-               (uri-fragment uri)))
+               (scheme uri)
+               (authority uri)
+               (maybe-slash (authority uri) (path uri))
+               (path uri)
+               (ftp-typecode uri)
+               (query uri)
+               (fragment uri)))
       ((uri-file-p uri)
        (format stream
                "~@[~(~A~)://~]~@[~A~]~@[?~A~]~@[#~A~]"
-               (uri-scheme uri)
-               (uri-path uri)
-               (uri-query uri)
-               (uri-fragment uri)))
+               (scheme uri)
+               (path uri)
+               (query uri)
+               (fragment uri)))
       (t
        (format stream
                "~@[~(~A~):~]~@[//~A~]~a~@[~A~]~@[?~A~]~@[#~A~]"
-               (uri-scheme uri)
-               (uri-authority uri)
-               (maybe-slash (uri-authority uri) (uri-path uri))
-               (uri-path uri)
-               (uri-query uri)
-               (uri-fragment uri))))))
+               (scheme uri)
+               (authority uri)
+               (maybe-slash (authority uri) (path uri))
+               (path uri)
+               (query uri)
+               (fragment uri))))))
 
 (defun %uri= (uri1 uri2 &key normalize-path-p)
   (check-type uri1 uri)
@@ -1403,12 +1405,12 @@ Assumes that the path of the file URI is correct path syntax for the environment
                  (t
                   (or path "")))))
     (and (eq (type-of uri1) (type-of uri2))
-         (equal (%path (uri-path uri1)) (%path (uri-path uri2)))
-         (equal (uri-query uri1) (uri-query uri2))
-         (equal (uri-fragment uri1) (uri-fragment uri2))
-         (equalp (uri-authority uri1) (uri-authority uri2))
+         (equal (%path (path uri1)) (%path (path uri2)))
+         (equal (query uri1) (query uri2))
+         (equal (fragment uri1) (fragment uri2))
+         (equalp (authority uri1) (authority uri2))
          (or (not (uri-ftp-p uri1))
-             (eql (uri-ftp-typecode uri1) (uri-ftp-typecode uri2))))))
+             (eql (ftp-typecode uri1) (ftp-typecode uri2))))))
 
 (defun uri= (uri1 uri2)
   "Whether URI1 refers to the same URI as URI2.
@@ -1429,7 +1431,7 @@ See `uri='."
               (type-of uri)
               (render-uri uri))))
 
-(defun merge-uri-paths (ref-path base-path)
+(defun merge-paths (ref-path base-path)
   (declare (type (or string null) ref-path base-path))
   (let* ((path-list (and base-path (nreverse (lib.seq:split-sequence #\/ base-path))))
          (ref-components (and ref-path (lib.seq:split-sequence #\/ ref-path)))
@@ -1448,15 +1450,15 @@ See `uri='."
     (setf path-list (nreverse path-list))
     (with-output-to-string (s)
       (loop for (component . more) on path-list
-         do (progn
-              (write-string component s)
-              (when (or more ending-slash-p)
-                (write-char #\/ s)))))))
+            do (progn
+                 (write-string component s)
+                 (when (or more ending-slash-p)
+                   (write-char #\/ s)))))))
 
-(defun merge-uris (reference base)
-  "Merge a reference URI into the base URI as described in RFC 2396 Section 5.2.
-The returned URI is always a new instance. Neither REFERENCE nor BASE is
-mutated."
+(defun merge (base reference)
+  "Merge a reference URI into the base URI as described in RFC 2396 Section 5.a2.
+The returned URI is always a new instance. Neither REFERENCE nor BASE
+is mutated."
   (let* ((reference (uri reference))
          (base (uri base))
          (merged-uri (copy-uri reference)))
@@ -1464,39 +1466,39 @@ mutated."
     ;; Steps described at
     ;; https://datatracker.ietf.org/doc/html/rfc2396#section-5.2
     ;; Step 1 is absent since it's implicit
-    (flet ((return-merged-uri () (return-from merge-uris (uri merged-uri)))
-           (merge-paths () (setf (uri-path merged-uri)
-                                 (merge-uri-paths (uri-path merged-uri) nil))))
+    (flet ((return-merged-uri () (return-from merge (uri merged-uri)))
+           (%merge-paths () (setf (path merged-uri)
+                                  (merge-paths (path merged-uri) nil))))
       ;; Step 2
       (when (uri-equal reference base)
         (return-merged-uri))
       ;; Step 3
-      (when (uri-scheme merged-uri)
-        (merge-paths)
+      (when (scheme merged-uri)
+        (%merge-paths)
         (return-merged-uri))
-      (setf merged-uri (copy-uri merged-uri :scheme (uri-scheme base)))
+      (setf merged-uri (copy-uri merged-uri :scheme (scheme base)))
       ;; Step 4
-      (when (null (uri-port merged-uri))
-        (setf (uri-port merged-uri) (scheme-default-port (uri-scheme merged-uri))))
-      (when (uri-host merged-uri)
-        (merge-paths)
+      (when (null (port merged-uri))
+        (setf (port merged-uri) (scheme-default-port (scheme merged-uri))))
+      (when (host merged-uri)
+        (%merge-paths)
         (return-merged-uri))
-      (setf (uri-userinfo merged-uri) (uri-userinfo base))
-      (setf (uri-host merged-uri) (uri-host base))
-      (setf (uri-port merged-uri) (uri-port base))
+      (setf (userinfo merged-uri) (userinfo base))
+      (setf (host merged-uri) (host base))
+      (setf (port merged-uri) (port base))
       ;; Step 5
-      (when (null (uri-path merged-uri))
-        (setf (uri-path merged-uri) (uri-path base))
+      (when (null (path merged-uri))
+        (setf (path merged-uri) (path base))
         (return-merged-uri))
       ;; Step 6
-      (when-let* ((p (uri-path merged-uri))
+      (when-let* ((p (path merged-uri))
                   (first-char (and (> (length p) 0) (char p 0)))
                   (_ (char= #\/ first-char)))
-        (merge-paths)
+        (%merge-paths)
         (return-merged-uri))
       ;; Step 7
-      (setf (uri-path merged-uri)
-            (merge-uri-paths (uri-path merged-uri) (uri-path base)))
+      (setf (path merged-uri)
+            (merge-paths (path merged-uri) (path base)))
       (return-merged-uri))))
 
 (defvar *stream-providers*
@@ -1513,18 +1515,17 @@ mutated."
 
 (define-stream-provider "file"
     (lambda (uri)
-      (open (uri-path uri)
+      (open (path uri)
             :direction :input
             :element-type 'u8))
   (lambda (uri)
-    (open (uri-path uri)
+    (open (path uri)
           :direction :output
           :element-type 'u8)))
 
 (defun stream-provider (url)
-  (or (gethash (uri-scheme url) *stream-providers*)
-      (error "No stream provider for scheme ~A" (uri-scheme url))))
+  (or (gethash (scheme url) *stream-providers*)
+      (error "No stream provider for scheme ~A" (scheme url))))
 
 (defun input-stream (url)
   (funcall (stream-provider-input (stream-provider url)) url))
-
