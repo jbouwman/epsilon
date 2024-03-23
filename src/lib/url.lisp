@@ -13,6 +13,7 @@
    #:lib.type)
   (:export
    #:uri
+   #:input-stream
    #:make-uri
    #:make-basic-uri
    #:uri-p
@@ -1497,3 +1498,33 @@ mutated."
       (setf (uri-path merged-uri)
             (merge-uri-paths (uri-path merged-uri) (uri-path base)))
       (return-merged-uri))))
+
+(defvar *stream-providers*
+  (make-hash-table :test #'equalp))
+
+(defstruct stream-provider
+  input
+  output)
+
+(defun define-stream-provider (name in-f out-f)
+  (setf (gethash name *stream-providers*)
+        (make-stream-provider :input in-f
+                              :output out-f)))
+
+(define-stream-provider "file"
+    (lambda (uri)
+      (open (uri-path uri)
+            :direction :input
+            :element-type 'u8))
+  (lambda (uri)
+    (open (uri-path uri)
+          :direction :output
+          :element-type 'u8)))
+
+(defun stream-provider (url)
+  (or (gethash (uri-scheme url) *stream-providers*)
+      (error "No stream provider for scheme ~A" (uri-scheme url))))
+
+(defun input-stream (url)
+  (funcall (stream-provider-input (stream-provider url)) url))
+

@@ -93,13 +93,12 @@
                  "huffman"
                  "compress"
                  "public")
-        ("digest" "macro"
-                  "reader"
+        ("digest" "reader"
                   "common"
                   "generic"
-                  "public"
                   "stream"
-                  "sha-2")
+                  "sha-2"
+                  "public")
         ("archive" "package"
                    "toolkit"
                    "parser"

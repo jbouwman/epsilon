@@ -48,7 +48,7 @@
   (etypecase content
     (cons
      (cond (multipart-p
-            (let ((boundary (make-random-string 12)))
+            (let ((boundary (random-string 12)))
               (values
                (let ((stream (make-instance 'fast-output-stream)))
                  (write-multipart-content content boundary stream)
