@@ -1,0 +1,31 @@
+name: Run Unit Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Install SBCL
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y sbcl
+
+    - name: Install Nushell
+      run: |
+        wget https://github.com/nushell/nushell/releases/download/0.60.0/nu_0_60_0_linux.zip
+        unzip nu_0_60_0_linux.zip
+        sudo mv nu_0_60_0_linux/nu /usr/local/bin/
+        rm -rf nu_0_60_0_linux.zip nu_0_60_0_linux
+
+    - name: Run Unit Tests
+      run: |
+        chmod +x make
+        ./make test
