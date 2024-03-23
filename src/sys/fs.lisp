@@ -19,7 +19,6 @@
    #:with-current-dir
    #:with-temp-file
 
-   #:copy-file
    #:create-symbolic-link
    #:delete-directory
    #:delete-file*
@@ -152,31 +151,6 @@
                              (make-pathname :name :unspecific :type :unspecific))))
     (rename-file file to)))
 
-(defun copy-file (file to &key replace skip-root)
-  (cond ((dir-p file)
-         (let ((to (if skip-root
-                       to
-                       (subdirectory to (directory-name file)))))
-           (ensure-directories-exist to)
-           (dolist (file (list-contents file))
-             (copy-file file to :replace replace))))
-        (T
-         (let ((to (make-pathname :name (pathname-name file)
-                                  :type (pathname-type file)
-                                  :defaults to)))
-           (when (or (not (file-p to))
-                     (ecase replace
-                       ((T) T)
-                       ((NIL) NIL)
-                       (:if-newer (< (file-write-date to) (file-write-date file)))))
-             (with-open-file (out to :element-type 'u8 :direction :output :if-exists :rename-and-delete)
-               (with-open-file (in file :element-type 'u8 :direction :input :if-does-not-exist :error)
-                 (let ((buffer (make-array 8096 :element-type 'u8)))
-                   (declare (dynamic-extent buffer))
-                   (loop for read = (read-sequence buffer in)
-                         while (< 0 read)
-                         do (write-sequence buffer out :end read))))))))))
-
 (defun delete-directory (file)
   (sb-ext:delete-directory file :recursive T))
 
@@ -185,30 +159,6 @@
          (delete-directory file))
         (t
          (delete-file file))))
-
-(defmacro define-implementable (name args)
-  `(setf (fdefinition ',name)
-         (lambda ,args
-           (declare (ignore ,@args))
-           (error "Not implemented"))))
-
-(defmacro define-implementation (name args &body body)
-  `(progn
-     (fmakunbound ',name)
-     (defun ,name ,args ,@body)))
-
-(define-implementable access-time (file))
-(define-implementable (setf access-time) (value file))
-(define-implementable modification-time (file))
-(define-implementable (setf modification-time) (value file))
-(define-implementable creation-time (file))
-(define-implementable (setf creation-time) (value file))
-(define-implementable group (file))
-(define-implementable (setf group) (value file))
-(define-implementable owner (file))
-(define-implementable (setf owner) (value file))
-(define-implementable attributes (file))
-(define-implementable (setf attributes) (value file))
 
 (defun enbitfield (list &rest bits)
   (let ((int 0))

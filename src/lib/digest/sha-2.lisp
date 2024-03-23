@@ -1,12 +1,11 @@
 (defpackage #:lib.digest.sha-2
   (:use
    #:cl
+   #:lib.list
    #:lib.type
    #:lib.symbol
    #:lib.digest.common
    #:lib.digest.generic
-   #:lib.digest.macro
-   #:lib.digest.public
    #:lib.digest.reader))
 
 ;;; implementation of SHA-2/256

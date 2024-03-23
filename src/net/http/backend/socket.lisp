@@ -438,7 +438,7 @@
                                          (consp content)
                                          (not multipart-p))))
              (boundary (and multipart-p
-                            (make-random-string 12)))
+                            (random-string 12)))
              (content (if (and form-urlencoded-p (not (stringp content))) ;; user can provide already encoded content, trust them.
                           (url-encode-params content)
                           content))

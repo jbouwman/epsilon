@@ -22,6 +22,7 @@
    #:flatten
    #:lastcar
    #:make-circular-list
+   #:circular-list-subseq
    #:malformed-plist
    #:map-product
    #:mappend
@@ -278,14 +279,23 @@ list."
     (setf (cadr last) object)
     (setf (car fast) object)))
 
-(defun make-circular-list (length &key initial-element)
-  "Creates a circular list of LENGTH with the given INITIAL-ELEMENT."
-  (let ((cycle (make-list length :initial-element initial-element)))
-    (nconc cycle cycle)))
+(defun make-circular-list (&rest elements)
+  "Creates a circular list containing the given ELEMENTS."
+  (let ((list (copy-seq elements)))
+    (nconc list list)))
+
+(defun circular-list-subseq (list start end)
+  (let* ((length (- end start))
+         (subseq (make-list length)))
+    (do ((i 0 (1+ i))
+         (list (nthcdr start list) (cdr list))
+         (xsubseq subseq (cdr xsubseq)))
+        ((>= i length) subseq)
+      (setf (first xsubseq) (first list)))))
 
 (deftype circular-list ()
   "Type designator for circular lists. Implemented as a SATISFIES type, so not
-recommended for performance intensive use. Main usefullness as the
+recommended for performance intensive use. Main use is as the
 expected-type designator of a TYPE-ERROR."
   `(satisfies circular-list-p))
 

@@ -2,8 +2,7 @@
   (:use
    #:cl
    #:lib.codec.hex
-   #:lib.digest.public
-   #:lib.digest.sha-2
+   #:lib.digest
    #:lib.type))
 
 (in-package #:tool.catalog)
