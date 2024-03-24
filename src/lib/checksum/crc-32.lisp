@@ -30,8 +30,7 @@
 
 (defmethod update ((checksum crc-32) buffer start count)
   (declare (type ->u8 buffer)
-           (type array-index start count)
-           (optimize speed))
+           (type array-index start count))
   (with-slots (high low) checksum
     (declare (type u16 high low))
       (loop :with table := (the (->u16 512) *crc-32-table*)

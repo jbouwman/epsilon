@@ -269,7 +269,6 @@
   (field-keywords (ensure-parsed-base-type bitfield-type)))
 
 (defun %foreign-bitfield-value (type symbols)
-  (declare (optimize speed))
   (labels ((process-one (symbol)
              (check-type symbol symbol)
              (or (gethash symbol (keyword-values type))

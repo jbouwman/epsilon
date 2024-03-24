@@ -299,8 +299,8 @@
 (ffi:defcallback lisp-puts :int ((bio :pointer) (buf :string))
   (handler-case
       (progn
-        (write-line buf (make-char-stream *bio-socket*
-                                          :encoding (make-encoding :ascii))) ; TODO preallocate
+        (write-line buf (make-char-output-stream *bio-socket*
+                                                 :encoding (make-encoding :ascii))) ; TODO preallocate
         ;; puts is not specified to return length, but BIO expects it :(
         (1+ (length buf)))
     (serious-condition (c)

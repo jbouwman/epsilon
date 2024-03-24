@@ -21,13 +21,15 @@
 (defun load-file (file)
   (let ((in (format nil "~{~A~^/~}.lisp" file))
         (out (format nil "~{~A~^/~}.fasl" file)))
-    (compile-file in)
+    (compile-file in :verbose nil :print nil)
     (load out)))
 
+(defun load-files (files)
+  (dolist (file files)
+    (load-file file)))
+
 (defun load-epsilon ()
-  (mapc #'load-file
-        (read-order "src" "epsilon.sexp")))
+  (load-files (read-order "src" "epsilon.sexp")))
 
 (defun load-epsilon-tests ()
-  (mapc #'load-file
-        (read-order "tests" "tests.sexp")))
+  (load-files (read-order "tests" "tests.sexp")))

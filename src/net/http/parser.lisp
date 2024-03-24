@@ -293,7 +293,7 @@
                 `(or (advance* ,step)
                      (go :eof)))
               (advance* (&optional (step 1))
-                `(locally (declare (optimize (compilation-speed 0)))
+                `(progn
                    (incf ,',p ,step)
                    ,@(if (eql step 0)
                          ()
@@ -308,7 +308,7 @@
                      (go :eof)))
               (advance-to* (to)
                 (once-only (to)
-                  `(locally (declare (optimize (compilation-speed 0)))
+                  `(progn
                      (check-type ,to fixnum)
                      (setq ,',p ,to)
                      (if (<= ,',end ,',p)
@@ -319,7 +319,7 @@
                            t)))))
               (skip (&rest elems)
                 (check-skip-elems elems)
-                `(locally (declare (optimize (compilation-speed 0)))
+                `(progn
                    (if (skip-conditions ,',elem ,elems)
                        (advance)
                        (error 'match-failed
@@ -327,7 +327,7 @@
                               :expected ',elems))))
               (skip* (&rest elems)
                 (check-skip-elems elems)
-                `(locally (declare (optimize (compilation-speed 0)))
+                `(progn
                    (unless (eofp)
                      (loop
                        (unless (skip-conditions ,',elem ,elems)
@@ -339,7 +339,7 @@
                    (skip* ,@elems)))
               (skip? (&rest elems)
                 (check-skip-elems elems)
-                `(locally (declare (optimize (compilation-speed 0)))
+                `(progn
                    (when (skip-conditions ,',elem ,elems)
                      (or (advance*) (go :eof)))))
               (skip-until (fn)
@@ -1773,7 +1773,7 @@ us a never-ending header that the application keeps buffering.")
       (return-from parse-header-value-parameters 0))
 
     (macrolet ((go-state (state &optional (advance 1))
-                   `(locally (declare (optimize (speed 3) (safety 0)))
+                   `(progn
                       (incf p ,advance)
                       (when (= p end)
                         (go eof))
@@ -2150,11 +2150,10 @@ us a never-ending header that the application keeps buffering.")
     (flet ((collect-prev-header-value ()
              (when header-value-buffer
                (let ((header-value
-                       (locally (declare (optimize (speed 3) (safety 0)))
-                         (coerce-to-string
-                          (the (or octets-concatenated-xsubseqs
-                                   octets-xsubseq)
-                               header-value-buffer)))))
+                       (coerce-to-string
+                        (the (or octets-concatenated-xsubseqs
+                                 octets-xsubseq)
+                             header-value-buffer))))
                  (if (string= parsing-header-field "set-cookie")
                      (push header-value (gethash "set-cookie" headers))
                      (multiple-value-bind (previous-value existp)
@@ -2228,7 +2227,6 @@ us a never-ending header that the application keeps buffering.")
                                  (setq completedp t)))))
 
     (lambda (data &key (start 0) end)
-      (declare (optimize (speed 3) (safety 2)))
       (cond
         ((eql data :eof)
          (setq completedp t)

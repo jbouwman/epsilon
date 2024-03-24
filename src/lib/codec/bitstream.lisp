@@ -9,8 +9,7 @@
            (type (integer 0 32) size)
            (type bitstream-buffer-bit-count bits)
            (type bitstream-buffer buffer)
-           (type function callback)
-           (optimize speed))
+           (type function callback))
   ;; BITS represents how many bits have been added to BUFFER so far,
   ;; so the FLOOR of it by 8 will give both the buffer byte index and
   ;; the bit index within that byte to where new bits should be
@@ -51,8 +50,7 @@
   (declare (type u8 octet)
            (type bitstream-buffer buffer)
            (type bitstream-buffer-bit-count bits)
-           (type function callback)
-           (optimize speed))
+           (type function callback))
   (let ((offset (ceiling bits 8)))
     ;; End of the buffer beforehand
     (when (= offset #.+bitstream-buffer-size+)

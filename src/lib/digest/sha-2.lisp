@@ -53,8 +53,7 @@
 
 (defun update-sha256-block (regs block)
   (declare (type sha256-regs regs))
-  (declare (type (->u32 64) block)
-           #.(burn-baby-burn))
+  (declare (type (->u32 64) block))
   (let ((a (sha256-regs-a regs)) (b (sha256-regs-b regs))
         (c (sha256-regs-c regs)) (d (sha256-regs-d regs))
         (e (sha256-regs-e regs)) (f (sha256-regs-f regs))
@@ -94,8 +93,7 @@
         regs))))
 
 (defun sha256-expand-block (block)
-  (declare (type (->u32 64) block)
-           #.(burn-baby-burn))
+  (declare (type (->u32 64) block))
   (flet ((sigma0 (x)
            (declare (type (unsigned-byte 32) x))
            (logxor (rol32 x 25) (rol32 x 14) (mod32ash x -3)))

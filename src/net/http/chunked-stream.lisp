@@ -314,12 +314,6 @@ Additionally logs this string to LOG-STREAM if it is not NIL."
 where spaces and tab characters are trimmed from the start and the
 end.  Might return STRING."
   ;; optimized version to replace STRING-TRIM, suggested by Jason Kantz
-  (declare (optimize
-            speed
-            (space 0)
-            (debug 1)
-            (compilation-speed 0)
-            #+:lispworks (hcl:fixnum-safety 0)))
   (declare (string string))
   (let* ((start% (loop for i of-type fixnum from start below end
                        while (or (char= #\space (char string i))
@@ -652,9 +646,8 @@ something in the buffer.  Otherwise we poll the underlying stream."
 character is seen."
              (error 'stream-error
                     :stream stream
-                    ;;:last-char last-char
-                    ;;:expected-chars expected-chars
-                    ))))
+                    :format-control "Unexpected char ~A, expected one of ~A."
+                    :format-arguments (list last-char expected-chars)))))
     (labels ((add-extensions ()
                "Reads chunk extensions \(if there are any) and stores
 them into the corresponding slot of the stream."

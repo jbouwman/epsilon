@@ -12,6 +12,7 @@
    #:char-stream
    #:char-stream-column
    #:output-stream-vector
+   #:make-input-stream
    #:make-char-output-stream
    #:make-vector-stream
    #:peek-byte
@@ -94,8 +95,11 @@ explicitly given.  Depends on the OS the code is compiled on.")
 \(i.e. unless explicitly specified).  Depends on the platform
 the code is compiled on.")
 
+(declaim (type fixnum +buffer-size+))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
 (defconstant +buffer-size+ 8192
-  "Default size for buffers used for internal purposes.")
+  "Default size for buffers used for internal purposes."))
 
 (define-condition stream-closed (stream-error)
   ()
@@ -274,159 +278,122 @@ the code is compiled on.")
 (defmethod stream-write-string ((stream output-stream) string &optional (start 0) (end (length string)))
   (stream-write-sequence stream string start (or end (length string))))
 
-(defclass input-stream (char-stream
-                        fundamental-binary-input-stream
-                        fundamental-character-input-stream)
-  ((last-char-code :initform nil
-                   :accessor char-stream-last-char-code
-                   :documentation "This slot either holds NIL or the
-last character \(code) read successfully.  This is mainly used for
-UNREAD-CHAR sanity checks.")
-   (last-octet :initform nil
-               :accessor char-stream-last-octet
-               :documentation "This slot either holds NIL or the last
-octet read successfully from the stream using a `binary' operation
-such as READ-BYTE.  This is mainly used for UNREAD-BYTE sanity
-checks.")
-   (octet-stack :initform nil
-                :accessor char-stream-octet-stack
-                :documentation "A small buffer which holds octets
-that were already read from the underlying stream but not yet
-used to produce characters.  This is mainly used if we have to
-look ahead for a CR/LF line ending.")
-   (position :initform 0
-             :initarg :position
-             :type integer
-             :accessor char-stream-position
-             :documentation "The position within the stream where each
-octet read counts as one.")))
 
-(defmethod read-byte* ((stream input-stream))
-  (with-slots (position octet-stack binary-stream)
-      stream
-    (declare (integer position))
-    (incf position)
-    (or (pop octet-stack)
-        (read-byte binary-stream nil nil)
-        (progn (decf position) nil))))
 
-(defmethod stream-clear-input ((stream input-stream))
-  "Calls the corresponding method for the underlying input stream
-and also clears the value of the OCTET-STACK slot."
-  (with-slots (octet-stack binary-stream) stream
-    (setq octet-stack nil)
-    (clear-input binary-stream)))
 
-(defmethod stream-listen ((stream input-stream))
-  "Calls the corresponding method for the underlying input stream
-but first checks if \(old) input is available in the OCTET-STACK
-slot."
-  (with-slots (position octet-stack binary-stream)
-      stream
-    (declare (integer position))
-    (or octet-stack (listen binary-stream))))
+(defclass input-stream (fundamental-character-input-stream)
+  ((stream :type stream
+           :initarg :stream
+           :initform (error ":stream is required")
+           :accessor input-stream-stream)
+   (encoding :initarg :encoding
+             :initform (error ":encoding is required")
+             :accessor input-stream-encoding)
+   (buffer :type (->u8 #.+buffer-size+)
+           :initform (->u8 +buffer-size+)
+           :accessor input-stream-buffer)
+   (buffer-position :type fixnum
+                    :initform +buffer-size+
+                    :accessor input-stream-buffer-position)
+   (buffer-end-position :type fixnum
+                        :initform -1
+                        :accessor input-stream-buffer-end-position)
+   (last-char :type character
+              :initform #\Nul
+              :accessor input-stream-last-char)
+   (last-char-size :type fixnum
+                   :initform 0
+                   :accessor input-stream-last-char-size)
+   (on-close :type (or null function) :initform nil :initarg :on-close)))
 
-(defmethod stream-read-byte ((stream input-stream))
-  "Reads one byte \(octet) from the underlying stream."
-  (with-slots (last-char-code last-octet) stream
-    (setq last-char-code nil)
-    (let ((octet (read-byte* stream)))
-      (setq last-octet octet)
-      (or octet :eof))))
+(defmethod initialize-instance :after ((stream input-stream) &rest initargs)
+  (declare (ignore initargs))
+  (with-slots (encoding) stream
+    (when (keywordp encoding)
+      (setf encoding (get-character-encoding encoding)))))
 
-(defun unread-char% (char stream)
-  "Used internally to put a character CHAR which was already read back
-on the stream.  Uses the OCTET-STACK slot and decrements the POSITION
-slot accordingly."
-  (with-slots (position octet-stack encoding) stream
-    (let ((counter 0) octets-reversed)
-      (declare (fixnum counter))
-      (flet ((writer (octet)
-               (incf counter)
-               (push octet octets-reversed)))
-        (declare (dynamic-extent (function writer)))
-        (char-to-octets encoding char #'writer)
-        (decf position counter)
-        (setq octet-stack (nreconc octets-reversed octet-stack))))))
+(defun fill-buffer (stream)
+  (with-slots (stream buffer buffer-position buffer-end-position) stream
+    (declare (type (->u8 #.+buffer-size+) buffer)
+             (type fixnum buffer-position))
+    (let ((to-read (- +buffer-size+ buffer-position)))
+      (declare (type fixnum to-read))
+      (replace buffer buffer
+               :start1 0
+               :start2 buffer-position
+               :end2 +buffer-size+)
+      (setf buffer-position 0)
+      (let ((n (read-sequence buffer stream :start to-read)))
+        (declare (type fixnum n))
+        (unless (= n +buffer-size+)
+          (setf buffer-end-position n))))))
+
+(defun make-input-stream (stream &key (encoding lib.char:*default-character-encoding*)
+                                      (on-close))
+  (let ((input-stream (make-instance 'input-stream
+                                     :stream stream
+                                     :encoding encoding
+                                     :on-close on-close)))
+    (fill-buffer input-stream)
+    input-stream))
+
+(defun needs-to-fill-buffer-p (stream)
+  (when (/= -1 (the fixnum (input-stream-buffer-end-position stream)))
+    (return-from needs-to-fill-buffer-p nil))
+
+  (with-slots (buffer-position encoding) stream
+    (< (- +buffer-size+ (the fixnum buffer-position))
+       (the fixnum (enc-max-units-per-char encoding)))))
 
 (defmethod stream-read-char ((stream input-stream))
-  (with-slots (encoding last-octet last-char-code) stream
-    (setq last-octet nil)
-    (flet ((reader ()
-             (read-byte* stream))
-           (unreader (char)
-             (unread-char% char stream)))
-      (declare (dynamic-extent (function reader) (function unreader)))
-      (let* ((*current-unreader* #'unreader)
-             (char-code (or (octets-to-char-code encoding #'reader)
-                            (return-from stream-read-char :eof))))
-        ;; remember this character and its char code for UNREAD-CHAR
-        (setq last-char-code char-code)
-        (or (code-char char-code) char-code)))))
-
-(defmethod stream-read-char-no-hang ((stream input-stream))
-  "Reads one character if the underlying stream has at least one
-octet available."
-  (and (stream-listen stream)
-       (stream-read-char stream)))
-
-(defmethod stream-read-sequence ((stream input-stream) sequence
-                                 &optional (start 0) (end (length sequence)))
-  (with-slots (encoding binary-stream) stream
-    (when (>= start end)
-      (return-from stream-read-sequence start))
-    (read-sequence* encoding binary-stream sequence start end)))
+  (when (needs-to-fill-buffer-p stream)
+    (fill-buffer stream))
+  (when (= (the fixnum (input-stream-buffer-end-position stream))
+           (the fixnum (input-stream-buffer-position stream)))
+    (return-from stream-read-char :eof))
+  (with-slots (buffer buffer-position encoding last-char last-char-size)
+      stream
+    (declare (fixnum buffer-position))
+    (let* ((mapping (lookup-mapping *string-vector-mappings* encoding))
+           (counter (code-point-counter mapping)))
+      (declare (type function counter))
+      (multiple-value-bind (chars new-end)
+          (funcall counter buffer buffer-position +buffer-size+ 1)
+        (declare (ignore chars) (fixnum new-end))
+        (let ((string (make-string 1 :element-type 'lib.char:unicode-char))
+              (size (the fixnum (- new-end buffer-position))))
+          (funcall (the function (lib.char:decoder mapping))
+                   buffer buffer-position new-end string 0)
+          (setf buffer-position new-end
+                last-char (aref string 0)
+                last-char-size size)
+          (aref string 0))))))
 
 (defmethod stream-unread-char ((stream input-stream) char)
-  "Implements UNREAD-CHAR for streams of type INPUT-STREAM.
-Makes sure CHAR will only be unread if it was the last character
-read and if it was read with the same encoding that's currently
-being used by the stream."
-  (with-slots (last-char-code) stream
-    (unless last-char-code
-      (error 'stream-error
-             :stream stream
-             :format-control "No character to unread from this stream \(or external format has changed or last reading operation was binary)."))
-    (unless (= (char-code char) last-char-code)
-      (error 'stream-error
-             :stream stream
-             :format-control "Last character read (~S) was different from ~S."
-             :format-arguments (list (code-char last-char-code) char)))
-    (unread-char% char stream)
-    (setq last-char-code nil)
+  (let ((last-char (input-stream-last-char stream)))
+    (when (char= last-char #\Nul)
+      (error "No character to unread from this stream"))
+    (unless (char= char last-char)
+      (error "Last character read (~S) was different from ~S"
+             last-char char))
+    (with-slots (buffer-position last-char-size) stream
+      (decf buffer-position last-char-size))
+    (with-slots (last-char last-char-size) stream
+      (setf last-char #\Nul
+            last-char-size 0))
     nil))
 
-(defmethod unread-byte (byte (stream input-stream))
-  "Similar to UNREAD-CHAR in that it `unreads' the last octet from
-STREAM.  Note that you can only call UNREAD-BYTE after a corresponding
-READ-BYTE."
-  (with-slots (last-octet octet-stack position) stream
-    (unless last-octet
-      (error 'stream-error
-             :stream stream
-             :format-control "No byte to unread from this stream \(or last reading operation read a character)."))
-    (unless (= byte last-octet)
-      (error 'stream-error
-             :stream stream
-             :format-control "Last byte read was different from #x~X."
-             :format-arguments (list byte)))
-    (setq last-octet nil)
-    (decf (the integer position))
-    (push byte octet-stack)
-    nil))
+(defmethod open-stream-p ((stream input-stream))
+  (open-stream-p (input-stream-stream stream)))
 
-(defmethod peek-byte ((stream input-stream)
-                      &optional peek-type (eof-error-p t) eof-value)
-  "Returns an octet from STREAM without actually removing it."
-  (loop :for octet := (read-byte stream eof-error-p :eof)
-        :until (cond ((eq octet :eof)
-                      (return eof-value))
-                     ((null peek-type))
-                     ((eq peek-type t)
-                      (plusp octet))
-                     ((= octet peek-type)))
-        :finally (unread-byte octet stream)
-                 (return octet)))
+(defmethod stream-element-type ((stream input-stream))
+  'character)
+
+(defmethod close ((stream input-stream) &key abort)
+  (with-slots (stream) stream
+    (when (open-stream-p stream)
+      (close stream :abort abort))))
+
 
 (defun make-char-output-stream (stream &key (encoding (make-encoding :ucs-2)))
   (unless (streamp stream)

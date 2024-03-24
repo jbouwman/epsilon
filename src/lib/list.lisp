@@ -333,7 +333,6 @@ not destructively modified. Keys are compared using EQ."
 (defun delete-from-plist (plist &rest keys)
   "Just like REMOVE-FROM-PLIST, but this version may destructively modify the
 provided PLIST."
-  (declare (optimize speed))
   (loop with head = plist
         with tail = nil   ; a nil tail means an empty result so far
         for (key . rest) on plist by #'cddr

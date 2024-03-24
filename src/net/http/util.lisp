@@ -56,15 +56,10 @@
   (defparameter *net.http-version*
     "3.1")
 
+  ;; The user agent reported by an Applie iPhone 6
+  
   (defparameter *default-user-agent*
-    (format nil "Http/~A (~A~@[ ~A~]); ~A;~@[ ~A~]"
-            *net.http-version*
-            (or (lisp-implementation-type) "Common Lisp")
-            (or (lisp-implementation-version) "")
-            (or #-clisp (software-type)
-                #+(or win32 mswindows) "Windows"
-                #-(or win32 mswindows) "Unix")
-            (or #-clisp (software-version)))))
+    "Mozilla/5.0 (Apple-iPhone7C2/1202.466; U; CPU like Mac OS X; en) AppleWebKit/420+ (KHTML, like Gecko) Version/3.0 Mobile/1A543 Safari/419.3"))
 
 (defparameter *header-buffer* nil)
 

@@ -7,7 +7,6 @@
   (:export
    #:%add-with-carry
    #:%subtract-with-borrow
-   #:burn-baby-burn
    #:copy-block
    #:copy-to-buffer
    #:defconst
@@ -15,7 +14,6 @@
    #:fill-block-u8-be/64
    #:fill-block-u8-le
    #:fill-block-u8-le/64
-   #:hold-me-back
    #:mod32*
    #:mod32+
    #:mod32-
@@ -37,23 +35,11 @@
 
 (in-package #:lib.digest.common)
 
-(defmacro defconst (name value)
+(defmacro defconst (name value)         ; FIXME dedup
   `(defconstant ,name
     (if (boundp ',name)
         (symbol-value ',name)
         ,value)))
-
-;;; a global specification of optimization settings
-
-(eval-when (:compile-toplevel :load-toplevel :execute)
-(defun burn-baby-burn ()
-  '(optimize (speed 3) (safety 0) (space 0)
-    (debug 0) (compilation-speed 0)))
-
-(defun hold-me-back ()
-  '(declare (optimize (speed 3) (space 0) (compilation-speed 0)
-             (safety 1) (debug 1))))
-) ; EVAL-WHEN
 
 ;;; extracting individual bytes from integers
 
@@ -333,8 +319,7 @@ starting at buffer-offset."
   (declare (type array-index from-offset)
            (type (integer 0 127) count buffer-offset)
            (type ->u8 from)
-           (type ->u8 buffer)
-           #.(burn-baby-burn))
+           (type ->u8 buffer))
   (sb-kernel:ub8-bash-copy from from-offset buffer buffer-offset count))
 
 (defun fill-block-u8-le (block buffer offset)
@@ -383,8 +368,7 @@ function without subsequently calling EXPAND-BLOCK results in undefined
 behavior."
   (declare (type (array-index #.(- array-dimension-limit 64)) offset)
            (type ->u64 block)
-           (type ->u8 buffer)
-           #.(burn-baby-burn))
+           (type ->u8 buffer))
   ;; convert to 64-bit words
   #+(and :cmu :little-endian :64-bit)
   (kernel:bit-bash-copy
@@ -408,8 +392,7 @@ function without subsequently calling EXPAND-BLOCK results in undefined
 behavior."
   (declare (type (array-index #.(- array-dimension-limit 128)) offset)
            (type ->u64 block)
-           (type ->u8 buffer)
-           #.(burn-baby-burn))
+           (type ->u8 buffer))
   ;; convert to 64-bit words
   #+(and :cmu :big-endian :64-bit)
   (kernel:bit-bash-copy
@@ -428,8 +411,7 @@ behavior."
 
 (defun xor-block (block-length input-block1 input-block1-start input-block2 input-block2-start output-block output-block-start)
   (declare (type ->u8 input-block1 input-block2 output-block)
-           (type array-index block-length input-block1-start input-block2-start output-block-start)
-           #.(burn-baby-burn))
+           (type array-index block-length input-block1-start input-block2-start output-block-start))
   (macrolet ((xor-bytes (size xor-form)
                `(loop until (< block-length ,size) do
                   ,xor-form
@@ -494,8 +476,7 @@ behavior."
 
 (defun copy-block (block-length input-block input-block-start output-block output-block-start)
   (declare (type ->u8 input-block output-block)
-           (type array-index block-length input-block-start output-block-start)
-           #.(burn-baby-burn))
+           (type array-index block-length input-block-start output-block-start))
   (macrolet ((copy-bytes (size copy-form)
                `(loop until (< block-length ,size) do
                       ,copy-form

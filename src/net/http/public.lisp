@@ -6,8 +6,7 @@
      #:lib.type
      #:net.http.connection-cache
      #:net.http.util
-     #-windows #:net.http.backend.socket
-     #+windows #:net.http.backend.winhttp)
+     #:net.http.backend.socket)
   (:shadow :get
    :delete)
   (:export

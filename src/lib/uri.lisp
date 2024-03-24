@@ -43,13 +43,9 @@
   
   (defvar +default-ports+
     (plist-hash-table
-     '("ftp" 21
-       "ssh" 22
-       "telnet" 23
+     '("ssh" 22
        "http" 80
-       "ldap" 389
        "https" 443
-       "ldaps" 636
        "ws" 80
        "wss" 443)
      :test 'equal))
@@ -95,7 +91,7 @@
                  collect exp
                  do (setq body rest))
          (macrolet ((goto (tag &optional (amount 1))
-                      `(locally (declare (optimize (speed 3) (safety 0)))
+                      `(progn
                          (incf ,',p ,amount)
                          ,@(if (eql amount 0)
                                ()
@@ -111,12 +107,11 @@
            (tagbody
               (when (= ,p ,g-end)
                 (go :eof))
-              (locally (declare (optimize (speed 3) (safety 0)))
-                (setq ,elem ,@(if key
-                                  `((if ,key-fn
-                                        (funcall ,key-fn (aref ,seq ,p))
-                                        (aref ,seq ,p)))
-                                  `((aref ,seq ,p)))))
+              (setq ,elem ,@(if key
+                                `((if ,key-fn
+                                      (funcall ,key-fn (aref ,seq ,p))
+                                      (aref ,seq ,p)))
+                                `((aref ,seq ,p))))
               ,@(loop for (tagpart . rest) on body
                       for (tag . part) = tagpart
                       if (eq tag :eof)
@@ -929,17 +924,16 @@
          (setf (aref res i) #\+)
          (incf i))
         ((< byte #.(char-code #\a))
-         (locally (declare (optimize (speed 3) (safety 0)))
-           (let ((converted (aref +byte-to-string+ byte)))
-             (if (zerop (length converted))
-                 (progn
-                   (setf (aref res i) (code-char byte))
-                   (incf i))
-                 (progn
-                   (setf (aref res i) #\%)
-                   (incf i)
-                   (replace res converted :start1 i)
-                   (incf i 2))))))
+         (let ((converted (aref +byte-to-string+ byte)))
+           (if (zerop (length converted))
+               (progn
+                 (setf (aref res i) (code-char byte))
+                 (incf i))
+               (progn
+                 (setf (aref res i) #\%)
+                 (incf i)
+                 (replace res converted :start1 i)
+                 (incf i 2)))))
         ((unreservedp byte)
          (setf (aref res i) (code-char byte))
          (incf i))
@@ -1180,99 +1174,9 @@
                          (url-encode-params new)
                          nil)))
 
-(defstruct (uri-ftp (:include uri (scheme "ftp") (port #.(scheme-default-port "ftp")))
-                    (:constructor %make-uri-ftp))
-  typecode)
-
-(defun make-uri-ftp (&rest initargs)
-  (let ((ftp (apply #'%make-uri-ftp initargs)))
-    (multiple-value-bind (path typecode)
-        (parse-ftp-typecode (path ftp))
-      (when path
-        (setf (path ftp) path
-              (ftp-typecode ftp) typecode)))
-    ftp))
-
-(defun parse-ftp-typecode (path)
-  (let ((len (length path)))
-    (when (and (< #.(length ";type=") len)
-               (string= path ";type="
-                        :start1 (- len 1 #.(length ";type="))
-                        :end1 (1- len)))
-      (let ((typecode (aref path (1- len))))
-        (when (or (char= typecode #\a)
-                  (char= typecode #\i)
-                  (char= typecode #\d))
-          (values (subseq path 0 (- len #.(1+ (length ";type="))))
-                  typecode))))))
-
-(defstruct (uri-ldap (:include uri (scheme "ldap") (port #.(scheme-default-port "ldap")))))
-
-(defstruct (uri-ldaps (:include uri-ldap (scheme "ldaps") (port #.(scheme-default-port "ldaps")))))
-
-(defun uri-ldap-dn (ldap)
-  (let ((path (path ldap)))
-    (when (and path
-               (/= 0 (length path)))
-      (if (char= (aref path 0) #\/)
-          (subseq path 1)
-          path))))
-
-(defun (setf uri-ldap-dn) (new ldap)
-  (setf (path ldap)
-        (concatenate 'string "/" new))
-  new)
-
-(defun nth-uri-ldap-lists (ldap n)
-  (check-type ldap uri-ldap)
-  (when-let (query (query ldap))
-    (car (last (lib.seq:split-sequence #\? query :count n)))))
-
-(defun (setf nth-uri-ldap-lists) (new ldap n)
-  (check-type ldap uri-ldap)
-  (check-type new string)
-  (let ((query (query ldap)))
-    (setf (query ldap)
-          (if query
-              (let ((parts (lib.seq:split-sequence #\? query)))
-                (with-output-to-string (s)
-                  (dotimes (i n)
-                    (princ (or (pop parts) "") s)
-                    (write-char #\? s))
-                  (princ new s)
-                  (pop parts) ;; ignore
-                  (dolist (part parts)
-                    (write-char #\? s)
-                    (princ part s))))
-              new))))
-
-(defun uri-ldap-attributes (ldap)
-  (nth-uri-ldap-lists ldap 1))
-(defun (setf uri-ldap-attributes) (new ldap)
-  (setf (nth-uri-ldap-lists ldap 0) new))
-
-(defun uri-ldap-scope (ldap)
-  (nth-uri-ldap-lists ldap 2))
-(defun (setf uri-ldap-scope) (new ldap)
-  (setf (nth-uri-ldap-lists ldap 1) new))
-
-(defun uri-ldap-filter (ldap)
-  (nth-uri-ldap-lists ldap 3))
-(defun (setf uri-ldap-filter) (new ldap)
-  (setf (nth-uri-ldap-lists ldap 2) new))
-
-(defun uri-ldap-extensions (ldap)
-  (nth-uri-ldap-lists ldap 4))
-(defun (setf uri-ldap-extensions) (new ldap)
-  (setf (nth-uri-ldap-lists ldap 3) new))
 
 
-
-(defstruct (uri-file (:include uri (scheme "file") (port nil))
-                     (:constructor %make-uri-file)))
-
-(defun make-uri-file (&rest initargs &key path &allow-other-keys)
-  (apply #'%make-uri-file initargs))
+(defstruct (uri-file (:include uri (scheme "file") (port nil))))
 
 (declaim (ftype (function (uri-file) pathname) uri-file-pathname))
 (defun uri-file-pathname (file)
@@ -1285,9 +1189,6 @@ Assumes that the path of the file URI is correct path syntax for the environment
   (cond
     ((string= scheme "http")  #'make-uri-http)
     ((string= scheme "https") #'make-uri-https)
-    ((string= scheme "ldap")  #'make-uri-ldap)
-    ((string= scheme "ldaps") #'make-uri-ldaps)
-    ((string= scheme "ftp")   #'make-uri-ftp)
     ((string= scheme "file")  #'make-uri-file)
     ((string= scheme "urn")   #'make-urn)
     (t                        #'make-basic-uri)))
@@ -1340,16 +1241,6 @@ Assumes that the path of the file URI is correct path syntax for the environment
                "/"
                "")))
     (cond
-      ((uri-ftp-p uri)
-       (format stream
-               "~@[~(~A~):~]~@[//~A~]~a~@[~A~]~@[;type=~A~]~@[?~A~]~@[#~A~]"
-               (scheme uri)
-               (authority uri)
-               (maybe-slash (authority uri) (path uri))
-               (path uri)
-               (ftp-typecode uri)
-               (query uri)
-               (fragment uri)))
       ((uri-file-p uri)
        (format stream
                "~@[~(~A~)://~]~@[~A~]~@[?~A~]~@[#~A~]"
@@ -1382,9 +1273,7 @@ Assumes that the path of the file URI is correct path syntax for the environment
          (equal (%path (path uri1)) (%path (path uri2)))
          (equal (query uri1) (query uri2))
          (equal (fragment uri1) (fragment uri2))
-         (equalp (authority uri1) (authority uri2))
-         (or (not (uri-ftp-p uri1))
-             (eql (ftp-typecode uri1) (ftp-typecode uri2))))))
+         (equalp (authority uri1) (authority uri2)))))
 
 (defun uri= (uri1 uri2)
   "Whether URI1 refers to the same URI as URI2.

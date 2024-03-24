@@ -16,8 +16,7 @@
                 split-extended-sequence-from-start split-extended-sequence-from-end))
 
 (defun split-extended-sequence-from-end (position-fn sequence start end count remove-empty-subseqs)
-  (declare (optimize (speed 3) (debug 0))
-           (type (function (extended-sequence fixnum) (or null fixnum)) position-fn))
+  (declare (type (function (extended-sequence fixnum) (or null fixnum)) position-fn))
   (loop
     :with length = (length sequence)
     :with end = (or end length)
@@ -34,8 +33,7 @@
     :finally (return (values (nreverse subseqs) (1+ left)))))
 
 (defun split-extended-sequence-from-start (position-fn sequence start end count remove-empty-subseqs)
-  (declare (optimize (speed 3) (debug 0))
-           (type (function (extended-sequence fixnum) (or null fixnum)) position-fn))
+  (declare (type (function (extended-sequence fixnum) (or null fixnum)) position-fn))
   (loop
     :with length = (length sequence)
     :with end = (or end length)
