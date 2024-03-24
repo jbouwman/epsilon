@@ -11,8 +11,7 @@ ASN1 string validation references:
 
 (defun copy-bytes-to-lisp-vector (src-ptr vector count)
   (declare (type ->u8 vector)
-           (type fixnum count)
-           (optimize (safety 0) (debug 0) (speed 3)))
+           (type fixnum count))
   (dotimes (i count vector)
     (setf (aref vector i) (ffi:mem-aref src-ptr :unsigned-char i))))
 
@@ -24,17 +23,11 @@ ASN1 string validation references:
     vector))
 
 (defun asn1-iastring-char-p (byte)
-  (declare (type u8 byte)
-           (optimize (speed 3)
-                     (debug 0)
-                     (safety 0)))
+  (declare (type u8 byte))
   (< byte #x80))
 
 (defun asn1-iastring-p (bytes)
-  (declare (type ->u8 bytes)
-           (optimize (speed 3)
-                     (debug 0)
-                     (safety 0)))
+  (declare (type ->u8 bytes))
   (every #'asn1-iastring-char-p bytes))
 
 (defmethod decode-asn1-string (asn1-string (type (eql +v-asn1-iastring+)))
@@ -44,10 +37,7 @@ ASN1 string validation references:
         (error 'invalid-asn1-string :type '+v-asn1-iastring+))))
 
 (defun asn1-printable-char-p (byte)
-  (declare (type u8 byte)
-           (optimize (speed 3)
-                     (debug 0)
-                     (safety 0)))
+  (declare (type u8 byte))
   (cond
     ;; a-z
     ((and (>= byte #.(char-code #\a))
@@ -72,10 +62,7 @@ ASN1 string validation references:
     ((= byte #.(char-code #\?)) t)))
 
 (defun asn1-printable-string-p (bytes)
-  (declare (type ->u8 bytes)
-           (optimize (speed 3)
-                     (debug 0)
-                     (safety 0)))
+  (declare (type ->u8 bytes))
   (every #'asn1-printable-char-p bytes))
 
 (defmethod decode-asn1-string (asn1-string (type (eql +v-asn1-printablestring+)))
@@ -100,18 +87,12 @@ ASN1 string validation references:
       (error 'invalid-asn1-string :type '+v-asn1-universalstring+)))
 
 (defun asn1-teletex-char-p (byte)
-  (declare (type u8 byte)
-           (optimize (speed 3)
-                     (debug 0)
-                     (safety 0)))
+  (declare (type u8 byte))
   (and (>= byte #x20)
        (< byte #x80)))
 
 (defun asn1-teletex-string-p (bytes)
-  (declare (type ->u8 bytes)
-           (optimize (speed 3)
-                     (debug 0)
-                     (safety 0)))
+  (declare (type ->u8 bytes))
   (every #'asn1-teletex-char-p bytes))
 
 (defmethod decode-asn1-string (asn1-string (type (eql +v-asn1-teletexstring+)))

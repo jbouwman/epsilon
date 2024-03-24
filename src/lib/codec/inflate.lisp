@@ -261,7 +261,6 @@ the input and the number of bytes written to the output."
              (decode-value (table state)
                (declare (type huffman-decode-table table))
                (declare (type inflate-state state))
-               (declare (optimize (speed 3)))
                (ensure-bits (hdt-bits table) state)
                (let ((bits (inflate-state-bits state)))
                  (declare (type u32 bits))

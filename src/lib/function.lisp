@@ -41,7 +41,6 @@ PLACES contains a function."
 functions in turn to its arguments, returning the primary value of the first
 predicate that returns true, without calling the remaining predicates.
 If none of the predicates returns true, NIL is returned."
-  (declare (optimize (speed 3) (safety 1) (debug 1)))
   (let ((predicate (ensure-function predicate))
 	(more-predicates (mapcar #'ensure-function more-predicates)))
     (lambda (&rest arguments)
@@ -74,7 +73,6 @@ predicates returns false, returns the primary value of the last predicate."
   "Returns a function composed of FUNCTION and MORE-FUNCTIONS that applies its
 arguments to to each in turn, starting from the rightmost of MORE-FUNCTIONS,
 and then calling the next one with the primary value of the last."
-  (declare (optimize (speed 3) (safety 1) (debug 1)))
   (reduce (lambda (f g)
 	    (let ((f (ensure-function f))
 		  (g (ensure-function g)))
@@ -93,7 +91,6 @@ and then calling the next one with the primary value of the last."
            (funs (make-gensym-list (length args) "COMPOSE")))
       `(let ,(loop for f in funs for arg in args
 		   collect `(,f (ensure-function ,arg)))
-         (declare (optimize (speed 3) (safety 1) (debug 1)))
          (lambda (&rest arguments)
            (declare (dynamic-extent arguments))
            ,(compose-1 funs))))))
@@ -103,7 +100,6 @@ and then calling the next one with the primary value of the last."
 its arguments to each in turn, starting from the rightmost of
 MORE-FUNCTIONS, and then calling the next one with all the return values of
 the last."
-  (declare (optimize (speed 3) (safety 1) (debug 1)))
   (reduce (lambda (f g)
 	    (let ((f (ensure-function f))
 		  (g (ensure-function g)))
@@ -121,7 +117,6 @@ the last."
     (let* ((args (cons function more-functions))
            (funs (make-gensym-list (length args) "MV-COMPOSE")))
       `(let ,(mapcar #'list funs args)
-         (declare (optimize (speed 3) (safety 1) (debug 1)))
          (lambda (&rest arguments)
            (declare (dynamic-extent arguments))
            ,(compose-1 funs))))))
@@ -131,7 +126,6 @@ the last."
 (defun curry (function &rest arguments)
   "Returns a function that applies ARGUMENTS and the arguments
 it is called with to FUNCTION."
-  (declare (optimize (speed 3) (safety 1)))
   (let ((fn (ensure-function function)))
     (lambda (&rest more)
       (declare (dynamic-extent more))
@@ -143,7 +137,6 @@ it is called with to FUNCTION."
         (fun (gensym "FUN")))
     `(let ((,fun (ensure-function ,function))
            ,@(mapcar #'list curries arguments))
-       (declare (optimize (speed 3) (safety 1)))
        (lambda (&rest more)
          (declare (dynamic-extent more))
          (apply ,fun ,@curries more)))))
@@ -151,7 +144,6 @@ it is called with to FUNCTION."
 (defun rcurry (function &rest arguments)
   "Returns a function that applies the arguments it is called
 with and ARGUMENTS to FUNCTION."
-  (declare (optimize (speed 3) (safety 1)))
   (let ((fn (ensure-function function)))
     (lambda (&rest more)
       (declare (dynamic-extent more))
@@ -162,7 +154,6 @@ with and ARGUMENTS to FUNCTION."
         (fun (gensym "FUN")))
     `(let ((,fun (ensure-function ,function))
            ,@(mapcar #'list rcurries arguments))
-       (declare (optimize (speed 3) (safety 1)))
        (lambda (&rest more)
          (declare (dynamic-extent more))
          (multiple-value-call ,fun (values-list more) ,@rcurries)))))

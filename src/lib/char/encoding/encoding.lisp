@@ -202,9 +202,9 @@ a CHARACTER-ENCONDING object, it is returned unmodified."
 ;;; object.
 (defmacro instantiate-concrete-mappings
     (&key (encodings (hash-table-keys *abstract-mappings*))
-     (optimize '((speed 3) (debug 0) (compilation-speed 0)))
-     octet-seq-getter octet-seq-setter octet-seq-type
-     code-point-seq-getter code-point-seq-setter code-point-seq-type
+       (optimize '((speed 3) (debug 0) (compilation-speed 0)))
+       octet-seq-getter octet-seq-setter octet-seq-type
+       code-point-seq-getter code-point-seq-setter code-point-seq-type
      (instantiate-decoders t))
   `(let ((ht (make-hash-table :test 'eq)))
      (declare (optimize ,@optimize)

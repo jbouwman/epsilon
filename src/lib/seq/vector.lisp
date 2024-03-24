@@ -13,8 +13,7 @@
                 split-vector-from-start split-vector-from-end))
 
 (defun split-vector-from-end (position-fn vector start end count remove-empty-subseqs)
-  (declare (optimize (speed 3) (debug 0))
-           (type (function (vector fixnum) (or null fixnum)) position-fn))
+  (declare (type (function (vector fixnum) (or null fixnum)) position-fn))
   (loop
     :with end = (or end (length vector))
     :for right := end :then left
@@ -30,8 +29,7 @@
     :finally (return (values (nreverse subseqs) (1+ left)))))
 
 (defun split-vector-from-start (position-fn vector start end count remove-empty-subseqs)
-  (declare (optimize (speed 3) (debug 0))
-           (type vector vector)
+  (declare (type vector vector)
            (type (function (vector fixnum) (or null fixnum)) position-fn))
   (let ((length (length vector)))
     (loop

@@ -91,7 +91,6 @@ are less than UNICODE-CHAR-CODE-LIMIT."
 (defun string-to-u8 (string &key (encoding *default-character-encoding*)
                               (start 0) end (use-bom :default)
                               (errorp (not *suppress-character-coding-errors*)))
-  (declare (optimize (speed 3) (safety 2)))
   (let ((*suppress-character-coding-errors* (not errorp)))
     (etypecase string
       (simple-base-string
@@ -189,24 +188,20 @@ are less than UNICODE-CHAR-CODE-LIMIT."
                     vector-size-in-chars concatenate-strings-to-octets))
 
 (defun standard-alpha-byte-p (byte)
-  (declare (type u8 byte)
-           (optimize (speed 3) (safety 0)))
+  (declare (type u8 byte))
   (or (<= #.(char-code #\A) byte #.(char-code #\Z))
       (<= #.(char-code #\a) byte #.(char-code #\z))))
 
 (defun standard-alpha-char-p (char)
-  (declare (type character char)
-           (optimize (speed 3) (safety 0)))
+  (declare (type character char))
   (standard-alpha-byte-p (char-code char)))
 
 (defun standard-alphanumeric-p (char)
-  (declare (type character char)
-           (optimize (speed 3) (safety 0)))
+  (declare (type character char))
   (or (digit-char-p char)
       (standard-alpha-char-p char)))
 
 (defun standard-alphanumeric-byte-p (byte)
-  (declare (type u8 byte)
-           (optimize (speed 3) (safety 0)))
+  (declare (type u8 byte))
   (or (<= #.(char-code #\0) byte #.(char-code #\9))
       (standard-alpha-byte-p byte)))
