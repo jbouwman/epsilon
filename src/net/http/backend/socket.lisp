@@ -10,7 +10,6 @@
    #:net.http.body
    #:net.http.chunked-stream
    #:net.http.connection-cache
-   #:net.http.decoding-stream
    #:net.http.encoding
    #:net.http.error
    #:net.http.keep-alive-stream

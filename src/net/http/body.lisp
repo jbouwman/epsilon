@@ -6,7 +6,6 @@
    #:lib.stream
    #:lib.type
    #:net.http.encoding
-   #:net.http.decoding-stream
    #:net.http.util)
   (:local-nicknames
    (#:uri #:lib.uri))
@@ -31,7 +30,7 @@
     (if charset
         (handler-case
             (if (streamp body)
-                (make-decoding-stream body :encoding charset :on-close on-close)
+                (make-input-stream body :encoding charset :on-close on-close)
                 (lib.char:u8-to-string body :encoding charset))
           (lib.char:character-decoding-error (e)
             (warn (format nil "Failed to decode the body to ~S due to the following error (falling back to binary):~%  ~A"
@@ -52,7 +51,7 @@
                key
                utf8-filename-p
                (if utf8-filename-p
-                   (url-encode filename :encoding :utf-8)
+                   (uri:url-encode filename :encoding :utf-8)
                    filename)
                #\Return #\Newline)))
     (otherwise

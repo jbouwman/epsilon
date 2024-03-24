@@ -42,8 +42,7 @@
   "Return true if SEQUENCE is a sequence of length LENGTH. Signals an error if
 SEQUENCE is not a sequence. Returns FALSE for circular lists."
   (declare (type array-index length)
-           #-lispworks (inline length)
-           (optimize speed))
+           (inline length))
   (etypecase sequence
     (null
      (zerop length))

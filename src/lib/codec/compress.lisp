@@ -12,8 +12,7 @@
 INPUT; END is a sentinel position that ends the match length
 check if reached."
   (declare (type input-index p1 p2 end)
-           (type input-buffer input)
-           (optimize speed))
+           (type input-buffer input))
   (let ((length 0))
     (loop
      (when (or (/= (aref input p1) (aref input p2))
@@ -28,8 +27,7 @@ check if reached."
   (declare (type input-index p1 end)
            (type input-buffer input)
            (type chains-buffer chains)
-           (type (integer 0 32) max-tests)
-           (optimize speed))
+           (type (integer 0 32) max-tests))
   (let ((match-length 0)
         (p2 (aref chains p1))
         (test-count 0)
@@ -58,8 +56,7 @@ check if reached."
   (declare (type input-buffer input)
            (type chains-buffer chains)
            (type input-index start end)
-           (type function literal-fun length-fun distance-fun)
-           (optimize speed))
+           (type function literal-fun length-fun distance-fun))
   (let ((p start))
     (loop
      (when (= p end)
@@ -288,8 +285,7 @@ with OUTPUT, a starting offset, and the count of pending data."
            (type hashes-buffer hashes)
            (type chains-buffer chains)
            (type input-index start)
-           (type (integer 0 32768) count)
-           (optimize speed))
+           (type (integer 0 32768) count))
   (when (< count 3)
     (return-from update-chains))
   (let* ((hash (hash-value input start))

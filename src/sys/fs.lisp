@@ -26,7 +26,6 @@
    #:list-contents
    #:list-directories
    #:list-files
-   #:rename-file*
    #:resolve-symbolic-links
    #:symbolic-link-p
 
@@ -143,12 +142,6 @@
 
 (defun create-symbolic-link (link-file destination-file)
   (sb-posix:symlink destination-file link-file))
-
-(defun rename-file* (file to)
-  (let ((file (to-physical file))
-        (to (merge-pathnames (to-physical to)
-                             (make-pathname :name :unspecific :type :unspecific))))
-    (rename-file file to)))
 
 (defun delete-directory (file)
   (sb-ext:delete-directory file :recursive T))

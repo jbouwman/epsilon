@@ -81,7 +81,6 @@ keep-alive-stream), and should handle clean-up of it"
           (or (maybe-close stream t) :eof))))
 
 (defmethod stream-read-sequence ((stream keep-alive-stream) sequence &optional start end)
-  (declare (optimize speed))
   (if (null (keep-alive-stream-stream stream)) ;; we already closed it
       start
       (let* ((to-read (min (- end start) (keep-alive-stream-end stream)))
@@ -93,7 +92,6 @@ keep-alive-stream), and should handle clean-up of it"
         n)))
 
 (defmethod stream-read-sequence ((stream keep-alive-chunked-stream) sequence &optional start end)
-  (declare (optimize speed))
   (if (null (keep-alive-stream-stream stream)) ;; we already closed it
       start
       (if (net.http.chunked-stream:chunked-stream-input-chunking-p (chunked-stream stream))

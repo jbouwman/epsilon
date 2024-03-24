@@ -133,8 +133,7 @@ An error will be signaled if there is insufficient room in DIGEST."))
        (defun ,digest-fun (regs buffer start)
          (declare (type ,struct-name regs)
                   (type ->u8 buffer)
-                  (type (integer 0 ,(- array-dimension-limit digest-size)) start)
-                  ,(burn-baby-burn))
+                  (type (integer 0 ,(- array-dimension-limit digest-size)) start))
          ,(let ((inlined-unpacking
                   `(setf ,@(loop for (reg value) in registers
                                  for index from 0 below digest-size by size
@@ -160,7 +159,6 @@ An error will be signaled if there is insufficient room in DIGEST."))
     `(defmethod update-digest ((state ,digest-name) (sequence vector) &key (start 0) (end (length sequence)))
        ,@(when (stringp maybe-doc-string)
                `(,maybe-doc-string))
-       ,(hold-me-back)
        (check-type sequence ->u8)
        (check-type start array-index)
        (check-type end array-index)

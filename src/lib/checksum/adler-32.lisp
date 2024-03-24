@@ -21,8 +21,7 @@
     (+ (ash high 16) low)))
 
 (defmethod update ((checksum adler-32) buffer start count)
-  (declare (optimize speed)
-           (type ->u8 buffer)
+  (declare (type ->u8 buffer)
            (type array-index start count))
   (with-slots (high low) checksum
     (declare (type u32 high low))

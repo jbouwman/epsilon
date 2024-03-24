@@ -192,7 +192,6 @@
                    (aref base i))))))
 
 (defun undo-rle-obuf-to-output (state)
-  (declare (optimize speed))
   (cond
     ((bzip2-state-block-randomized-p state)
      (error 'bzip2-randomized-blocks-unimplemented))

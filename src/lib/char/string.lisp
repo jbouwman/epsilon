@@ -59,8 +59,8 @@ are less than UNICODE-CHAR-CODE-LIMIT."
                  bom-vector))
 
 (defun u8-to-string (vector &key (start 0) end
-                         (errorp (not *suppress-character-coding-errors*))
-                         (encoding *default-character-encoding*))
+                              (errorp (not *suppress-character-coding-errors*))
+                              (encoding *default-character-encoding*))
   (check-type vector (vector u8))
   (with-checked-bounds ((vector vector) (start start) (end end))
     (declare (type ->u8 vector))
