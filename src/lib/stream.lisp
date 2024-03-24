@@ -502,8 +502,7 @@ READ-BYTE."
   (let* ((pos (input-buffer-pos buffer))
          (vec (input-buffer-vector buffer))
          (vec-len (length vec)))
-    (declare (optimize (speed 3) (safety 1))
-             (type ->u8 vec)
+    (declare (type ->u8 vec)
              (type fixnum pos vec-len new-pos))
     ;; Only need to update if pos or new-pos is in stream range.
     (when-let ((stream-update-needed? (or (> pos vec-len)
@@ -570,8 +569,7 @@ READ-BYTE."
 
 (defun fast-write-byte (byte output-buffer)
   (declare (type u8 byte)
-           (type output-buffer output-buffer)
-           (optimize (speed 3) (safety 1)))
+           (type output-buffer output-buffer))
   (when (= (output-buffer-fill output-buffer)
            (array-dimension (output-buffer-vector output-buffer) 0))
     (if (streamp (output-buffer-output output-buffer))

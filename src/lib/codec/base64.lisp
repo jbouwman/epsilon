@@ -143,8 +143,7 @@ WHITESPACE can be one of:
   :signal - Signal a BAD-BASE64-CHARACTER condition using SIGNAL.
   :error  - Signal a BAD-BASE64-CHARACTER condition using ERROR."
               hose sink)
-     (declare (optimize (speed 3) (safety 1))
-              (type decode-table table)
+     (declare (type decode-table table)
               (type ,(ecase hose
                        (:stream 'stream)
                        (:string 'string))
@@ -308,8 +307,7 @@ WHITESPACE can be one of:
 
 (defun round-next-multiple (x n)
   "Round x up to the next highest multiple of n."
-  (declare (fixnum n)
-           (optimize (speed 3) (safety 1) (space 0)))
+  (declare (fixnum n))
   (let ((remainder (mod x n)))
     (declare (fixnum remainder))
     (if (zerop remainder)
@@ -332,8 +330,7 @@ with a #\Newline."
                    '((string input)))
                   (:usb8-array
                    '((type (array u8 (*)) input))))
-              (fixnum columns)
-              (optimize (speed 3) (safety 1) (space 0)))
+              (fixnum columns))
      (let ((pad (if uri *uri-pad-char* *pad-char*))
            (encode-table (if uri *uri-encode-table* *encode-table*)))
        (declare (simple-string encode-table)
@@ -489,8 +486,7 @@ with a #\Newline."
 (defun integer-to-base64-string (input &key (uri nil) (columns 0))
   "Encode an integer to base64 format."
   (declare (integer input)
-           (fixnum columns)
-           (optimize (speed 3) (space 0) (safety 1)))
+           (fixnum columns))
   (let ((pad (if uri *uri-pad-char* *pad-char*))
         (encode-table (if uri *uri-encode-table* *encode-table*)))
     (declare (simple-string encode-table)
@@ -548,8 +544,7 @@ with a #\Newline."
 (defun integer-to-base64-stream (input stream &key (uri nil) (columns 0))
   "Encode an integer to base64 format."
   (declare (integer input)
-           (fixnum columns)
-           (optimize (speed 3) (space 0) (safety 1)))
+           (fixnum columns))
   (let ((pad (if uri *uri-pad-char* *pad-char*))
         (encode-table (if uri *uri-encode-table* *encode-table*)))
     (declare (simple-string encode-table)

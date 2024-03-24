@@ -203,8 +203,7 @@
       (t form))))
 
 (defun parse-uri-string (data &key (start 0) end)
-  (declare (type simple-string data)
-           (optimize (speed 3) (safety 2)))
+  (declare (type simple-string data))
   (let (scheme userinfo host port path query fragment
                (parse-start start)
                (parse-end (or end (length data))))
@@ -275,8 +274,7 @@
     (values scheme userinfo host port path query fragment)))
 
 (defun parse-uri-byte-vector (data &key (start 0) end)
-  (declare (type ->u8 data)
-           (optimize (speed 3) (safety 2)))
+  (declare (type ->u8 data))
   (let (scheme userinfo host port path query fragment
                (parse-start start)
                (parse-end (or end (length data))))
@@ -285,8 +283,7 @@
              (declare (type ->u8 data))
              (values (u8-to-string data :start start :end end)))
            (parse-integer-from-bv (data &key (start 0) end)
-             (declare (type fixnum start end)
-                      (optimize (speed 3) (safety 2)))
+             (declare (type fixnum start end))
              (when (= start end)
                (return-from parse-integer-from-bv nil))
              (do ((i start (1+ i))
@@ -400,8 +397,7 @@
 
            (defun ,fn-for-string (,data &key (,start 0) (,end (length ,data)) ,@other-args)
              (declare (type simple-string ,data)
-                      (type fixnum ,start ,end)
-                      (optimize (speed 3) (safety 2)))
+                      (type fixnum ,start ,end))
              (macrolet ((char=* (char1 char2)
                           `(char= ,char1 ,char2))
                         (char-code* (char)
@@ -417,8 +413,7 @@
 
            (defun ,fn-for-byte-vector (,data &key (,start 0) (,end (length ,data)) ,@other-args)
              (declare (type ->u8 ,data)
-                      (type fixnum ,start ,end)
-                      (optimize (speed 3) (safety 2)))
+                      (type fixnum ,start ,end))
              (macrolet ((char=* (byte char)
                           `(= ,byte ,(char-code char)))
                         (char-code* (byte)
@@ -433,16 +428,14 @@
                    ,@body)))))))))
 
 (defun scheme-char-p (char)
-  (declare (type character char)
-           (optimize (speed 3) (safety 0)))
+  (declare (type character char))
   (or (standard-alphanumeric-p char)
       (char= char #\+)
       (char= char #\-)
       (char= char #\.)))
 
 (defun scheme-byte-p (byte)
-  (declare (type u8 byte)
-           (optimize (speed 3) (safety 0)))
+  (declare (type u8 byte))
   (or (standard-alphanumeric-byte-p byte)
       (= byte (char-code #\+))
       (= byte (char-code #\-))
@@ -584,28 +577,24 @@
              port-start port-end))))
 
 (defun path-char-p (char)
-  (declare (type character char)
-           (optimize (speed 3) (safety 0)))
+  (declare (type character char))
   (let ((byte (char-code char)))
     (and (< byte 128)
          (or (= (aref +uri-char+ byte) 1)
              (= byte #.(char-code #\/))))))
 
 (defun path-byte-p (byte)
-  (declare (type u8 byte)
-           (optimize (speed 3) (safety 0)))
+  (declare (type u8 byte))
   (or (= (aref +uri-char+ byte) 1)
       (= byte (char-code #\/))))
 
 (defun query-char-p (char)
-  (declare (type character char)
-           (optimize (speed 3) (safety 0)))
+  (declare (type character char))
   (or (path-char-p char)
       (char= char #\?)))
 
 (defun query-byte-p (byte)
-  (declare (type u8 byte)
-           (optimize (speed 3) (safety 0)))
+  (declare (type u8 byte))
   (or (path-byte-p byte)
       (= byte (char-code #\?))))
 
@@ -654,13 +643,11 @@
 
 (defun parse-path-string (data &key (start 0) (end (length data)))
   (declare (type simple-string data)
-           (optimize (speed 3) (safety 2))
            #+sbcl (sb-ext:muffle-conditions sb-ext:compiler-note))
   (parse-until-string (#\? #\#) data :start start :end end))
 
 (defun parse-path-byte-vector (data &key (start 0) (end (length data)))
   (declare (type ->u8 data)
-           (optimize (speed 3) (safety 2))
            #+sbcl (sb-ext:muffle-conditions sb-ext:compiler-note))
   (parse-until-byte-vector (#\? #\#) data :start start :end end))
 
@@ -684,16 +671,14 @@
 
 (defun parse-query-string (data &key (start 0) (end (length data)))
   (declare (type simple-string data)
-           (type fixnum start end)
-           (optimize (speed 3) (safety 2)))
+           (type fixnum start end))
   (let ((?-pos (position #\? data :start start :end end)))
     (when ?-pos
       (parse-until-string (#\#) data :start (1+ (the fixnum ?-pos)) :end end))))
 
 (defun parse-query-byte-vector (data &key (start 0) (end (length data)))
   (declare (type ->u8 data)
-           (type fixnum start end)
-           (optimize (speed 3) (safety 2)))
+           (type fixnum start end))
   (let ((?-pos (position #.(char-code #\?) data :start start :end end)))
     (when ?-pos
       (parse-until-byte-vector (#\#) data :start (1+ (the fixnum ?-pos)) :end end))))
@@ -716,8 +701,7 @@
 
 (defun parse-fragment-string (data &key (start 0) (end (length data)))
   (declare (type simple-string data)
-           (type fixnum start end)
-           (optimize (speed 3) (safety 2)))
+           (type fixnum start end))
   (let ((|#-pos| (position #\# data
                            :start start
                            :end end)))
@@ -726,8 +710,7 @@
 
 (defun parse-fragment-byte-vector (data &key (start 0) (end (length data)))
   (declare (type ->u8 data)
-           (type fixnum start end)
-           (optimize (speed 3) (safety 2)))
+           (type fixnum start end))
   (let ((|#-pos| (position #\# data
                            :start start
                            :end end
@@ -737,8 +720,7 @@
 
 (declaim (ftype (function (character) (unsigned-byte 4)) hexdigit-to-integer))
 (defun hexdigit-to-integer (char)
-  (declare (type character char)
-           (optimize (speed 3) (safety 0)))
+  (declare (type character char))
   (let ((code (char-code char)))
     (declare (type fixnum code))
     (cond
@@ -765,7 +747,6 @@
     (declare (type integer end i)
              (type ->u8 buffer))
     (flet ((write-to-buffer (byte)
-             (declare (optimize (speed 3) (safety 0)))
              (setf (aref buffer i) byte)
              (incf i)))
       (with-array-parsing (char p data start end (and (not (stringp data))
@@ -814,8 +795,7 @@
                                  (lenient nil))
   (declare (type (or string ->u8) data)
            (type integer start)
-           (type character delimiter)
-           (optimize (speed 3) (safety 2)))
+           (type character delimiter))
   (let ((end (or end (length data)))
         (start-mark nil)
         (=-mark nil))
@@ -903,8 +883,7 @@
     ary))
 
 (defun integer-to-hexdigit (byte)
-  (declare (type u8 byte)
-           (optimize (speed 3) (safety 0)))
+  (declare (type u8 byte))
   (let ((res (make-string 2)))
     (multiple-value-bind (quotient remainder)
         (floor byte 16)
@@ -913,8 +892,7 @@
     res))
 
 (defun unreservedp (byte)
-  (declare (type u8 byte)
-           (optimize (speed 3) (safety 0)))
+  (declare (type u8 byte))
   (or (<= (char-code #\A) byte (char-code #\Z))
       (<= (char-code #\a) byte (char-code #\z))
       (<= (char-code #\0) byte (char-code #\9))
@@ -935,8 +913,7 @@
                           end
                           space-to-plus)
   (declare (type (or string ->u8) data)
-           (type integer start)
-           (optimize (speed 3) (safety 2)))
+           (type integer start))
   (let* ((octets (if (stringp data)
                      (lib.char:string-to-u8 data :encoding encoding :start start :end end)
                      data))
@@ -976,7 +953,6 @@
 
 (defun url-encode-params (params-alist &key (encoding lib.char:*default-character-encoding*)
                                          space-to-plus)
-  (declare (optimize (speed 3)))
   (check-type params-alist list)
   (with-output-to-string (s)
     (loop for ((field . value) . rest) on params-alist do
@@ -1050,8 +1026,7 @@
   (host uri))
 
 (defun ipv4-addr-p (host)
-  (declare (optimize (speed 3) (safety 2))
-           #+sbcl (sb-ext:muffle-conditions sb-ext:compiler-note))
+  (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (check-type host string)
   (flet ((read-byte-string (string start)
            (declare (type fixnum start))
@@ -1098,8 +1073,7 @@
       host))
 
 (defun ipv6-addr-p (host)
-  (declare (optimize (speed 3) (safety 2))
-           #+sbcl (sb-ext:muffle-conditions sb-ext:compiler-note))
+  (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (check-type host string)
   (when (= (length host) 0)
     (return-from ipv6-addr-p nil))

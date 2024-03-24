@@ -323,7 +323,6 @@ expected-type designator of a TYPE-ERROR."
 in the list designated by KEYS and values corresponding to them are removed.
 The returned property-list may share structure with the PLIST, but PLIST is
 not destructively modified. Keys are compared using EQ."
-  (declare (optimize (speed 3)))
   ;; FIXME: possible optimization: (remove-from-plist '(:x 0 :a 1 :b 2) :a)
   ;; could return the tail without consing up a new list.
   (loop for (key . rest) on plist by #'cddr
