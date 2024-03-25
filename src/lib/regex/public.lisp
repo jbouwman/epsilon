@@ -225,50 +225,9 @@ share structure with TARGET-STRING."
                            ,target-string ,@rest))
         (t form)))
 
-(defmacro register-groups-bind (var-list (regex target-string
-                                                &key start end sharedp)
-                                &body body)
-  "Executes BODY with the variables in VAR-LIST bound to the
-corresponding register groups after TARGET-STRING has been matched
-against REGEX, i.e. each variable is either bound to a string or to
-NIL.  If there is no match, BODY is _not_ executed. For each element
-of VAR-LIST which is NIL there's no binding to the corresponding
-register group.  The number of variables in VAR-LIST must not be
-greater than the number of register groups.  If SHAREDP is true, the
-substrings may share structure with TARGET-STRING."
-  (with-rebinding (target-string)
-    (with-unique-names (match-start match-end reg-starts reg-ends
-                                    start-index substr-fn)
-      (let ((var-bindings
-              (loop for (function var) in (normalize-var-list var-list)
-                    for counter from 0
-                    when var
-                      collect `(,var (let ((,start-index
-                                             (aref ,reg-starts ,counter)))
-                                       (if ,start-index
-                                           (funcall ,function
-                                                    (funcall ,substr-fn
-                                                             ,target-string
-                                                             ,start-index
-                                                             (aref ,reg-ends ,counter)))
-                                           nil))))))
-        `(multiple-value-bind (,match-start ,match-end ,reg-starts ,reg-ends)
-             (scan ,regex ,target-string :start (or ,start 0)
-                                         :end (or ,end (length ,target-string)))
-           (declare (ignore ,match-end))
-           ,@(unless var-bindings
-               `((declare (ignore ,reg-starts ,reg-ends))))
-           (when ,match-start
-             ,@(if var-bindings
-                   `((let* ,(list*
-                             `(,substr-fn (if ,sharedp #'nsubseq #'subseq))
-                             var-bindings)
-                       ,@body))
-                   body)))))))
-
 (defmacro do-scans ((match-start match-end reg-starts reg-ends regex
                                  target-string
-                                 &optional result-form
+                                 result-form
                                  &key start end)
                     &body body
                     &environment env)
@@ -370,46 +329,6 @@ with declarations."
           (let ((,match-var
                   (funcall ,substr-fn
                            ,target-string ,match-start ,match-end)))
-            ,@body))))))
-
-(defmacro do-register-groups (var-list (regex target-string
-                                              &optional result-form
-                                              &key start end sharedp)
-                                       &body body)
-  "Iterates over TARGET-STRING and tries to match REGEX as often as
-possible evaluating BODY with the variables in VAR-LIST bound to the
-corresponding register groups for each match in turn, i.e. each
-variable is either bound to a string or to NIL.  For each element of
-VAR-LIST which is NIL there's no binding to the corresponding register
-group. The number of variables in VAR-LIST must not be greater than
-the number of register groups.  After the last match, returns
-RESULT-FORM if provided or NIL otherwise.  An implicit block named NIL
-surrounds DO-REGISTER-GROUPS; RETURN may be used to terminate the loop
-immediately. If REGEX matches an empty string the scan is continued
-one position behind this match.  If SHAREDP is true, the substrings
-may share structure with TARGET-STRING.  BODY may start with
-declarations."
-  (with-rebinding (target-string)
-    (with-unique-names (substr-fn match-start match-end
-                                  reg-starts reg-ends start-index)
-      `(let ((,substr-fn (if ,sharedp
-                          #'nsubseq
-                          #'subseq)))
-        (do-scans (,match-start ,match-end ,reg-starts ,reg-ends
-                                ,regex ,target-string
-                                ,result-form :start ,start :end ,end)
-          (let ,(loop for (function var) in (normalize-var-list var-list)
-                      for counter from 0
-                      when var
-                        collect `(,var (let ((,start-index
-                                               (aref ,reg-starts ,counter)))
-                                         (if ,start-index
-                                           (funcall ,function
-                                                    (funcall ,substr-fn
-                                                             ,target-string
-                                                             ,start-index
-                                                             (aref ,reg-ends ,counter)))
-                                           nil))))
             ,@body))))))
 
 (defun count-matches (regex target-string

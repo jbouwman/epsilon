@@ -26,7 +26,6 @@
    #:list-contents
    #:list-directories
    #:list-files
-   #:resolve-symbolic-links
    #:symbolic-link-p
 
    #:access-time
@@ -130,15 +129,8 @@
                (not (dir-p (lib.string:join #\/ (list directory entry)))))
              (list-dir directory)))
 
-(defun resolve-symbolic-links (pathname)
-  (if (or (typep pathname 'logical-pathname)
-          (not (absolute-p pathname)))
-      pathname
-      (or (file-p pathname)
-          (normalize-pathname pathname))))
-
 (defun symbolic-link-p (file)
-  (eql :symlink (sb-impl::native-file-kind (native-namestring file))))
+  (eql :symlink (sb-impl::native-file-kind file)))
 
 (defun create-symbolic-link (link-file destination-file)
   (sb-posix:symlink destination-file link-file))

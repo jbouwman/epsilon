@@ -97,7 +97,7 @@ will use this value.")
       (t
        (error "fell through")))))
 
-(defvar *threads* (sys.gc:make-weak-hash-table :weakness :key))
+(defvar *threads* (make-hash-table :weakness :key))
 (defvar *thread-counter* 0)
 
 (defparameter *global-lock*

@@ -33,5 +33,5 @@ use getenvp to return NIL in such a case."
   "Predicate that is true if the named variable is present in the libc environment,
 then returning the non-empty string value of the variable"
   (let ((g (getenv x)))
-    (and (not (emptyp g))
+    (and (not (= 0 (length g)))
          g)))

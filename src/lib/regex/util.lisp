@@ -48,17 +48,6 @@ match [\\s] in Perl."
               :displaced-to sequence
               :displaced-index-offset start))
 
-(defun normalize-var-list (var-list)
-  "Utility function for REGISTER-GROUPS-BIND and DO-REGISTER-GROUPS.
-Creates the long form \(a list of \(FUNCTION VAR) entries) out of the
-short form of VAR-LIST."
-  (loop for element in var-list
-        if (consp element)
-          nconc (loop for var in (rest element)
-                      collect (list (first element) var))
-        else
-          collect (list '(function identity) element)))
-
 (defun string-list-to-simple-string (string-list)
   "Concatenates a list of strings to one simple-string."
   ;; this function provided by JP Massar; note that we can't use APPLY

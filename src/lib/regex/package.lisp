@@ -21,7 +21,6 @@
    #:define-parse-tree-synonym
    #:do-matches
    #:do-matches-as-strings
-   #:do-register-groups
    #:do-scans
    #:parse-string
    #:parse-tree-synonym
@@ -35,7 +34,6 @@
    #:regex-apropos-list
    #:regex-replace
    #:regex-replace-all
-   #:register-groups-bind
    #:scan
    #:scan-to-strings
    #:split))

@@ -151,8 +151,7 @@
                          (vector-push-extend (make-instance 'zip-entry :content path :file-name (enough-namestring path file)) entries)))
                       ((or (pathname-name file) (pathname-type file))
                        (vector-push-extend (make-instance 'zip-entry :content file) entries))
-                      (T
-                       (setf file (sys.fs:resolve-symbolic-links file))
+                      (t
                        (loop with base = (truename file)
                              :for path in (sys.fs:list-dir file)
                              :for file-name = (enough-namestring path base)

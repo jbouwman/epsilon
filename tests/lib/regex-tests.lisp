@@ -35,23 +35,3 @@
 
   (is (equalp (multiple-value-list (re:scan-to-strings "(([^b])*)b" "aaabd"))
               (list "aaab" #("aaa" "a")))))
-
-(deftest register-groups-bind ()
-  (is (equalp (re:register-groups-bind (first second third fourth)
-                  ("((a)|(b)|(c))+" "abababc" :sharedp t)
-                (list first second third fourth))
-              (list "c" "a" "b" "c")))
-
-  (is (equalp (re:register-groups-bind (nil second third fourth)
-                  ("((a)|(b)|(c))()+" "abababc" :start 6)
-                (list second third fourth))
-              (list nil nil "c")))
-
-  (is (null (re:register-groups-bind (first)
-                ("(a|b)+" "accc" :start 1)
-              first)))
-
-  (is (equalp (re:register-groups-bind (fname lname (#'parse-integer date month year))
-                  ("(\\w+)\\s+(\\w+)\\s+(\\d{1,2})\\.(\\d{1,2})\\.(\\d{4})" "Frank Zappa 21.12.1940")
-                (list fname lname (encode-universal-time 0 0 0 date month year 0)))
-              (list "Frank" "Zappa" 1292889600))))

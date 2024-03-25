@@ -355,9 +355,6 @@ WITH-POINTER-TO-VECTOR-DATA."
   "Closes a foreign library."
   (sb-alien:unload-shared-object handle))
 
-(defun native-namestring (pathname)
-  (sb-ext:native-namestring pathname))
-
 ;;;# Foreign Globals
 
 (defun %foreign-symbol-pointer (name library)
