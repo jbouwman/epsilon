@@ -50,7 +50,6 @@
    ;; Foreign libraries
    #:%load-foreign-library
    #:%close-foreign-library
-   #:native-namestring
 
    ;; Callbacks
    #:%defcallback

@@ -36,14 +36,14 @@
                "sys-utils"
                "sbcl"
                "utils"
-               "libraries"
                "early-types"
+               "foreign-vars"
+               "libraries"
                "types"
                "enum"
                "strings"
                "structures"
-               "functions"
-               "foreign-vars")
+               "functions")
         "fs"
         "gc"
         ("sync" "error"
@@ -119,11 +119,11 @@
                "ssl-funcall"
                "init"
                "ffi-buffer"
+               "verify-hostname"
                "streams"
                "x509"
                "random"
-               "context"
-               "verify-hostname")
+               "context")
         ("http" "chunked-stream"
                 "parser"
                 "encoding"

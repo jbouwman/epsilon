@@ -244,7 +244,7 @@ in *DARWIN-FRAMEWORK-DIRECTORIES*. If unable to find FRAMEWORK-NAME,
 it signals a LOAD-FOREIGN-LIBRARY-ERROR."
   (let ((framework (find-darwin-framework framework-name)))
     (if framework
-        (load-foreign-library-path name (native-namestring framework))
+        (load-foreign-library-path name framework)
         (fl-error "Unable to find framework ~A" framework-name))))
 
 (defun report-simple-error (name error)
@@ -267,7 +267,7 @@ ourselves."
       (let ((dirs (parse-directories *foreign-library-directories*)))
         (if-let (file (find-file path (append search-path dirs)))
           (handler-case
-              (values (%load-foreign-library name (native-namestring file))
+              (values (%load-foreign-library name file)
                       file)
             (simple-error (error)
               (report-simple-error name error)))
