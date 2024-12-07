@@ -1,4 +1,4 @@
-(in-package :net.tls)
+(in-package :epsilon.net.tls)
 
 (define-condition hostname-verification-error (error)
   ())

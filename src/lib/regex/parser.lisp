@@ -1,4 +1,4 @@
-(in-package #:lib.regex)
+(in-package #:epsilon.lib.regex)
 
 (defun group (lexer)
   "Parses and consumes a <group>.

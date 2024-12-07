@@ -1,4 +1,4 @@
-(in-package :net.tls)
+(in-package :epsilon.net.tls)
 
 (defun random-bytes (count)
   "Generates COUNT cryptographically strong pseudo-random bytes. Returns

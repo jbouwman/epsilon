@@ -1,12 +1,12 @@
-(defpackage #:lib.stream
+(defpackage #:epsilon.lib.stream
   (:use
    #:cl
    #:sb-gray
-   #:lib.binding
-   #:lib.char
-   #:lib.list
-   #:lib.symbol
-   #:lib.type)
+   #:epsilon.lib.binding
+   #:epsilon.lib.char
+   #:epsilon.lib.list
+   #:epsilon.lib.symbol
+   #:epsilon.lib.type)
   (:export
    #:binary-stream
    #:char-stream
@@ -22,6 +22,10 @@
    #:stream-position
    #:unread-byte
    #:vector-stream
+
+   #:make-line-stream
+   #:read-line-from
+   #:peek-line
    
    #:file=
    #:stream=
@@ -59,7 +63,7 @@
    #:fast-output-stream #:fast-input-stream
    #:finish-output-stream))
 
-(in-package #:lib.stream)
+(in-package #:epsilon.lib.stream)
 
 (defgeneric char-to-octets (format char writer))
 
@@ -328,7 +332,7 @@ the code is compiled on.")
         (unless (= n +buffer-size+)
           (setf buffer-end-position n))))))
 
-(defun make-input-stream (stream &key (encoding lib.char:*default-character-encoding*)
+(defun make-input-stream (stream &key (encoding epsilon.lib.char:*default-character-encoding*)
                                       (on-close))
   (let ((input-stream (make-instance 'input-stream
                                      :stream stream
@@ -360,9 +364,9 @@ the code is compiled on.")
       (multiple-value-bind (chars new-end)
           (funcall counter buffer buffer-position +buffer-size+ 1)
         (declare (ignore chars) (fixnum new-end))
-        (let ((string (make-string 1 :element-type 'lib.char:unicode-char))
+        (let ((string (make-string 1 :element-type 'epsilon.lib.char:unicode-char))
               (size (the fixnum (- new-end buffer-position))))
-          (funcall (the function (lib.char:decoder mapping))
+          (funcall (the function (epsilon.lib.char:decoder mapping))
                    buffer buffer-position new-end string 0)
           (setf buffer-position new-end
                 last-char (aref string 0)
@@ -882,8 +886,6 @@ all data has been flushed to the stream."
   (declare (ignore abort))
   (setf (slot-value stream 'openp) nil))
 
-
-
 (defun copy-stream (input output &key (element-type (stream-element-type input))
                     (buffer-size 4096)
                     (buffer (make-array buffer-size :element-type element-type))
@@ -924,3 +926,32 @@ compatible element-types."
     (when finish-output
       (finish-output output))
     output-position))
+
+(defclass line-stream ()
+  ((underlying-stream
+    :initarg :stream
+    :reader line-stream-underlying-stream)
+   (peek-buffer
+    :initform nil
+    :accessor line-stream-peek-buffer)
+   (line-number
+    :initform 0
+    :accessor line-stream-line-number)))
+
+(defun make-line-stream (stream)
+  (make-instance 'line-stream :stream stream))
+
+(defun peek-line (line-stream)
+  "Returns the next line without consuming it. Returns nil at end of stream."
+  (with-slots (peek-buffer underlying-stream) line-stream
+    (or peek-buffer
+        (setf peek-buffer (read-line underlying-stream nil nil)))))
+
+(defun read-line-from (line-stream)
+  "Reads and returns the next line. Returns nil at end of stream."
+  (with-slots (peek-buffer line-number) line-stream
+    (incf line-number)
+    (if peek-buffer
+        (prog1 peek-buffer
+          (setf peek-buffer nil))
+        (read-line (line-stream-underlying-stream line-stream) nil nil))))

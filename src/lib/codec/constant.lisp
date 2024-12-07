@@ -1,4 +1,4 @@
-(in-package #:lib.codec)
+(in-package #:epsilon.lib.codec)
 
 ;;;; DEFLATE constants.
 

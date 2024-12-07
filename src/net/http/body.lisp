@@ -1,14 +1,14 @@
-(defpackage #:net.http.body
+(defpackage #:epsilon.net.http.body
   (:use
    #:cl
-   #:lib.char
-   #:lib.list
-   #:lib.stream
-   #:lib.type
-   #:net.http.encoding
-   #:net.http.util)
+   #:epsilon.lib.char
+   #:epsilon.lib.list
+   #:epsilon.lib.stream
+   #:epsilon.lib.type
+   #:epsilon.net.http.encoding
+   #:epsilon.net.http.util)
   (:local-nicknames
-   (#:uri #:lib.uri))
+   (#:uri #:epsilon.lib.uri))
   (:export
    #:decode-body
    #:write-multipart-content
@@ -20,19 +20,19 @@
    #:with-content-caches
    #:content-type))
 
-(in-package #:net.http.body)
+(in-package #:epsilon.net.http.body)
 
 (defun decode-body (content-type body &key default-charset on-close)
   (let ((charset (or (and content-type
                           (detect-charset content-type body))
                      default-charset))
-        (lib.char:*suppress-character-coding-errors* t))
+        (epsilon.lib.char:*suppress-character-coding-errors* t))
     (if charset
         (handler-case
             (if (streamp body)
                 (make-input-stream body :encoding charset :on-close on-close)
-                (lib.char:u8-to-string body :encoding charset))
-          (lib.char:character-decoding-error (e)
+                (epsilon.lib.char:u8-to-string body :encoding charset))
+          (epsilon.lib.char:character-decoding-error (e)
             (warn (format nil "Failed to decode the body to ~S due to the following error (falling back to binary):~%  ~A"
                           charset
                           e))
@@ -101,11 +101,11 @@
   (or (lookup-in-content-encoding-cache val)
       (setf (lookup-in-content-encoding-cache val)
             (typecase val
-              (string (lib.char:string-to-u8 val))
+              (string (epsilon.lib.char:string-to-u8 val))
               (->u8 val)
-              (symbol (lib.char:string-to-u8 (princ-to-string val)))
+              (symbol (epsilon.lib.char:string-to-u8 (princ-to-string val)))
               (cons (convert-to-octets (first val)))
-              (otherwise (lib.char:string-to-u8 (princ-to-string val)))))))
+              (otherwise (epsilon.lib.char:string-to-u8 (princ-to-string val)))))))
 
 (defun write-as-octets (stream val)
   (typecase val
@@ -175,10 +175,10 @@
   (cond
     ((string= content-encoding "gzip")
      (if (streamp body)
-         (lib.codec:make-decompressing-stream :gzip body)
-         (lib.codec::decompress nil (lib.codec::make-dstate :gzip) body)))
+         (epsilon.lib.codec:make-decompressing-stream :gzip body)
+         (epsilon.lib.codec::decompress nil (epsilon.lib.codec::make-dstate :gzip) body)))
     ((string= content-encoding "deflate")
      (if (streamp body)
-         (lib.codec:make-decompressing-stream :zlib body)
-         (lib.codec::decompress nil (lib.codec::make-dstate :zlib) body)))
+         (epsilon.lib.codec:make-decompressing-stream :zlib body)
+         (epsilon.lib.codec::decompress nil (epsilon.lib.codec::make-dstate :zlib) body)))
     (t body)))

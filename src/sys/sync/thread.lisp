@@ -1,8 +1,8 @@
-(defpackage #:sys.sync.thread
+(defpackage #:epsilon.sys.sync.thread
   (:use
    #:cl
-   #:lib.function
-   #:sys.sync.error)
+   #:epsilon.lib.function
+   #:epsilon.sys.sync.error)
   (:export
    #:all-threads
    #:current-thread
@@ -21,7 +21,7 @@
    #:*default-special-bindings*
    #:*standard-io-bindings*))
 
-(in-package #:sys.sync.thread)
+(in-package #:epsilon.sys.sync.thread)
 
 (defun all-threads ()
   "Returns a sequence of all of the threads. This may not

@@ -1,4 +1,4 @@
-(in-package #:lib.regex)
+(in-package #:epsilon.lib.regex)
 
 (defvar *syntax-error-string* nil
   "The string which caused the syntax error.")

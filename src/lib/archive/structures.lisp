@@ -1,4 +1,4 @@
-(in-package #:lib.archive)
+(in-package #:epsilon.lib.archive)
 
 (define-byte-structure (local-file #x04034B50)
   (version u16)

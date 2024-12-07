@@ -1,4 +1,4 @@
-(in-package #:lib.codec)
+(in-package #:epsilon.lib.codec)
 
 (defclass decompressing-stream (fundamental-binary-input-stream)
   ((wrapped-stream :initarg :stream :reader wrapped-stream)

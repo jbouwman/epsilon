@@ -1,4 +1,4 @@
-(in-package #:lib.regex)
+(in-package #:epsilon.lib.regex)
 
 ;;; The following four methods allow a VOID object to behave like a
 ;;; zero-length STR object (only readers needed)

@@ -1,4 +1,4 @@
-(in-package #:lib.regex)
+(in-package #:epsilon.lib.regex)
 
 (declaim (inline map-char-to-special-class))
 (defun map-char-to-special-char-class (chr)

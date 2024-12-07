@@ -1,4 +1,4 @@
-(defpackage #:lib.condition
+(defpackage #:epsilon.lib.condition
   (:use
    #:cl)
   (:export
@@ -6,7 +6,7 @@
    #:simple-style-warning
    #:unwind-protect-case))
 
-(in-package :lib.condition)
+(in-package :epsilon.lib.condition)
 
 (defun required-argument (&optional name)
   "Signals an error for a missing argument of NAME. Intended for

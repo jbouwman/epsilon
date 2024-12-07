@@ -1,4 +1,4 @@
-(in-package #:lib.archive)
+(in-package #:epsilon.lib.archive)
 
 (define-condition zippy-condition () ())
 

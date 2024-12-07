@@ -1,4 +1,4 @@
-(in-package #:lib.codec)
+(in-package #:epsilon.lib.codec)
 
 (defconstant +maximum-match-length+ 258
   "The maximum match length allowed.")

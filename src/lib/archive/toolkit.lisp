@@ -1,4 +1,4 @@
-(in-package #:lib.archive)
+(in-package #:epsilon.lib.archive)
 
 (defvar *default-version-made*
   '(4 5))
@@ -32,7 +32,7 @@
 
 (defun ensure-password (password)
   (etypecase password
-    (string (lib.char:string-to-u8 password :encoding :utf-8))
+    (string (epsilon.lib.char:string-to-u8 password :encoding :utf-8))
     ((vector u8) password)
     (null (restart-case (error 'password-required)
             (use-value (password)

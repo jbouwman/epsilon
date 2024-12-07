@@ -1,8 +1,8 @@
-(defpackage #:net.socket
+(defpackage #:epsilon.net.socket
   (:use
    #:cl
-   #:lib.seq
-   #:lib.type)
+   #:epsilon.lib.seq
+   #:epsilon.lib.type)
   (:export
    #:host-to-hostname
    #:socket-connect
@@ -12,7 +12,7 @@
    #:with-server-socket
    #:with-client-socket))
 
-(in-package #:net.socket)
+(in-package #:epsilon.net.socket)
 
 (defvar *ipv6-only-p* nil
   "When enabled, all SOCKET functions assume IPv6 addresses only.")

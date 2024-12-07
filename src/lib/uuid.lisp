@@ -1,11 +1,11 @@
-(defpackage #:lib.id
+(defpackage #:epsilon.lib.id
   (:use
    #:cl
-   #:lib.type)
+   #:epsilon.lib.type)
   (:export
    #:uuid))
 
-(in-package #:lib.id)
+(in-package #:epsilon.lib.id)
 
 (defvar +uuid-re+
   "[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}")

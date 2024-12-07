@@ -1,4 +1,4 @@
-(in-package #:lib.regex)
+(in-package #:epsilon.lib.regex)
 
 (defstruct (charmap  (:constructor make-charmap%))
   ;; a bit vector mapping char codes to "booleans" (1 for set members,

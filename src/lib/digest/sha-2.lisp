@@ -1,16 +1,16 @@
-(defpackage #:lib.digest.sha-2
+(defpackage #:epsilon.lib.digest.sha-2
   (:use
    #:cl
-   #:lib.list
-   #:lib.type
-   #:lib.symbol
-   #:lib.digest.common
-   #:lib.digest.generic
-   #:lib.digest.reader))
+   #:epsilon.lib.list
+   #:epsilon.lib.type
+   #:epsilon.lib.symbol
+   #:epsilon.lib.digest.common
+   #:epsilon.lib.digest.generic
+   #:epsilon.lib.digest.reader))
 
 ;;; implementation of SHA-2/256
 
-(in-package #:lib.digest.sha-2)
+(in-package #:epsilon.lib.digest.sha-2)
 
 (in-ironclad-readtable)
 

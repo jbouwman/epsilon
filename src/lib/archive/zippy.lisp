@@ -1,4 +1,4 @@
-(in-package #:lib.archive)
+(in-package #:epsilon.lib.archive)
 
 (defclass zip-file ()
   ((entries :initarg :entries
@@ -96,7 +96,7 @@
   (when (and restore-attributes
              (eql *compatibility* (second (attributes entry))))
     ;; TODO: restore other extended attributes from the extra blocks (uid/gid/etc)
-    (setf (sys.fs:attributes path) (third (attributes entry)))))
+    (setf (epsilon.sys.fs:attributes path) (third (attributes entry)))))
 
 (defun entry-to-stream (stream entry &key password)
   (flet ((output (buffer start end)
@@ -153,7 +153,7 @@
                        (vector-push-extend (make-instance 'zip-entry :content file) entries))
                       (t
                        (loop with base = (truename file)
-                             :for path in (sys.fs:list-dir file)
+                             :for path in (epsilon.sys.fs:list-dir file)
                              :for file-name = (enough-namestring path base)
                              :do (vector-push-extend (make-instance 'zip-entry :content path :file-name file-name) entries))))))
          (if (listp file)

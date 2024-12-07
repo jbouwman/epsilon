@@ -1,12 +1,12 @@
 ;;;; macro-utils.lisp -- functions for compile-time macros
 
-(in-package #:lib.type)
+(in-package #:epsilon.lib.type)
 
 (deftype index ()
   '(mod #.array-dimension-limit))
 
 (defun byte-fun-name (bitsize signedp big-endian-p desc)
-  (let ((*package* (find-package :lib.type)))
+  (let ((*package* (find-package :epsilon.lib.type)))
     (intern (format nil "~A~D~A/~A"
                     (symbol-name (if signedp :s :u))
                     bitsize
@@ -14,7 +14,7 @@
                     (symbol-name (if big-endian-p :be :le))))))
 
 (defun float-fun-name (float-type big-endian-p desc)
-  (let ((*package* (find-package :lib.type)))
+  (let ((*package* (find-package :epsilon.lib.type)))
     (intern (format nil "~A-~A-~A/~A"
                     (symbol-name :ieee)
                     (symbol-name float-type)
@@ -34,7 +34,7 @@
   (float-fun-name float-type big-endian-p :set))
 
 (defun stream-ref-fun-name (bitsize readp signedp big-endian-p)
-  (let ((*package* (find-package :lib.type)))
+  (let ((*package* (find-package :epsilon.lib.type)))
     (intern (format nil "~A-~A~D/~A"
                     (symbol-name (if readp :read :write))
                     (symbol-name (if signedp :s :u))
@@ -42,7 +42,7 @@
                     (symbol-name (if big-endian-p :be :le))))))
 
 (defun stream-float-ref-fun-name (float-type readp big-endian-p)
-  (let ((*package* (find-package :lib.type)))
+  (let ((*package* (find-package :epsilon.lib.type)))
     (intern (format nil "~A-~A-~A/~A"
                     (symbol-name (if readp :read :write))
                     (symbol-name :ieee)
@@ -50,7 +50,7 @@
                     (symbol-name (if big-endian-p :be :le))))))
 
 (defun stream-seq-fun-name (bitsize readp signedp big-endian-p)
-  (let ((*package* (find-package :lib.type)))
+  (let ((*package* (find-package :epsilon.lib.type)))
     (intern (format nil "~A-~A~D/~A-~A"
                     (symbol-name (if readp :read :write))
                     (symbol-name (if signedp :s :u))
@@ -59,7 +59,7 @@
                     (symbol-name :sequence)))))
 
 (defun stream-float-seq-fun-name (float-type readp big-endian-p)
-  (let ((*package* (find-package :lib.type)))
+  (let ((*package* (find-package :epsilon.lib.type)))
     (intern (format nil "~A-~A-~A/~A-~A"
                     (symbol-name (if readp :read :write))
                     (symbol-name :ieee)
@@ -68,7 +68,7 @@
                     (symbol-name :sequence)))))
 
 (defun stream-into-seq-fun-name (bitsize signedp big-endian-p)
-  (let ((*package* (find-package :lib.type)))
+  (let ((*package* (find-package :epsilon.lib.type)))
     (intern (format nil "~A-~A~D/~A-~A"
                     (symbol-name :read)
                     (symbol-name (if signedp :s :u))
@@ -77,7 +77,7 @@
                     (symbol-name :into-sequence)))))
 
 (defun stream-float-into-seq-fun-name (float-type big-endian-p)
-  (let ((*package* (find-package :lib.type)))
+  (let ((*package* (find-package :epsilon.lib.type)))
     (intern (format nil "~A-~A/~A-~A"
                     (symbol-name :read-ieee)
                     (symbol-name float-type)
@@ -85,7 +85,7 @@
                     (symbol-name :into-sequence)))))
 
 (defun internalify (s)
-  (let ((*package* (find-package :lib.type)))
+  (let ((*package* (find-package :epsilon.lib.type)))
     (intern (concatenate 'string "%" (string s)))))
 
 (defun format-docstring (&rest args)

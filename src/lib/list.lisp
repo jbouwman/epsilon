@@ -1,8 +1,8 @@
-(defpackage #:lib.list
+(defpackage #:epsilon.lib.list
   (:use
    #:cl
-   #:lib.function
-   #:lib.symbol)
+   #:epsilon.lib.function
+   #:epsilon.lib.symbol)
   (:export
    #:alist-plist
    #:assoc-value
@@ -43,7 +43,7 @@
    #:setp
    #:unionf))
 
-(in-package #:lib.list)
+(in-package #:epsilon.lib.list)
 
 (declaim (inline safe-endp))
 (defun safe-endp (x)

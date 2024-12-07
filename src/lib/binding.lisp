@@ -1,4 +1,4 @@
-(defpackage #:lib.binding
+(defpackage #:epsilon.lib.binding
   (:use
    #:cl)
   (:export
@@ -7,7 +7,7 @@
    #:when-let
    #:when-let*))
 
-(in-package #:lib.binding)
+(in-package #:epsilon.lib.binding)
 
 (defmacro define-constant (name value &optional doc)
   ;; http://www.sbcl.org/manual#Defining-Constants

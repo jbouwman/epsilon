@@ -1,12 +1,12 @@
-(defpackage #:net.http
+(defpackage #:epsilon.net.http
     (:use
      #:cl
-     #:lib.list
-     #:lib.stream
-     #:lib.type
-     #:net.http.connection-cache
-     #:net.http.util
-     #:net.http.backend.socket)
+     #:epsilon.lib.list
+     #:epsilon.lib.stream
+     #:epsilon.lib.type
+     #:epsilon.net.http.connection-cache
+     #:epsilon.net.http.util
+     #:epsilon.net.http.backend.socket)
   (:shadow :get
    :delete)
   (:export
@@ -32,7 +32,7 @@
    :retry-request
    :ignore-and-continue))
 
-(in-package #:net.http)
+(in-package #:epsilon.net.http)
 
 (defun get (uri &rest args
             &key version headers basic-auth keep-alive use-connection-pool connect-timeout read-timeout max-redirects
@@ -106,7 +106,7 @@
                     ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path)
   (declare (ignore version headers basic-auth keep-alive use-connection-pool connect-timeout read-timeout max-redirects ssl-key-file ssl-cert-file ssl-key-password stream verbose proxy insecure ca-path))
   (unless (and (eql if-exists nil)
-               (sys.fs:file-p destination))
+               (epsilon.sys.fs:file-p destination))
     (with-open-file (out destination
                          :direction :output :element-type 'u8
                          :if-exists if-exists

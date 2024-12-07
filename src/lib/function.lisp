@@ -1,7 +1,7 @@
-(defpackage #:lib.function
+(defpackage #:epsilon.lib.function
   (:use
    #:cl
-   #:lib.symbol)
+   #:epsilon.lib.symbol)
   (:export
    #:ensure-function
    #:ensure-functionf
@@ -12,7 +12,7 @@
    #:named-lambda
    #:rcurry))
 
-(in-package #:lib.function)
+(in-package #:epsilon.lib.function)
 
 ;;; To propagate return type and allow the compiler to eliminate the IF when
 ;;; it is known if the argument is function or not.

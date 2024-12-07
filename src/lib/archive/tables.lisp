@@ -1,4 +1,4 @@
-(in-package #:lib.archive)
+(in-package #:epsilon.lib.archive)
 
 (defparameter *file-attribute-compatibility-map*
   (alist-vector '((0 . :ms-dos)

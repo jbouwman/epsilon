@@ -1,4 +1,4 @@
-(in-package #:lib.archive)
+(in-package #:epsilon.lib.archive)
 
 (defvar *structures* (make-hash-table :test 'eql))
 
@@ -124,7 +124,7 @@
                      (incf ,index ,(binary-type-size btype)))))
           (count
            (if (eql type 'character)
-               `(let ((vec (lib.char:string-to-u8 ,name :encoding :utf-8)))
+               `(let ((vec (epsilon.lib.char:string-to-u8 ,name :encoding :utf-8)))
                   (loop for char across vec
                         do (setf (aref ,vector ,index) char)
                            (incf ,index)
@@ -144,7 +144,7 @@
              `(,(binary-type-writer btype) ,type ,stream)))
           (count
            (if (eql type 'character)
-               `(let ((vec (lib.char:string-to-u8 ,name :encoding :utf-8)))
+               `(let ((vec (epsilon.lib.char:string-to-u8 ,name :encoding :utf-8)))
                   (loop for char across vec
                         do (write-byte char ,stream)))
                `(loop for i from 0 below ,count
@@ -201,11 +201,11 @@
                            (list #',decode-name #',read-name #',encode-name #',write-name)))))))))
 
 (defun decode-string (octets flags)
-  (lib.char:u8-to-string octets :encoding (if (logbitp 11 flags) :utf-8 :cp437)))
+  (epsilon.lib.char:u8-to-string octets :encoding (if (logbitp 11 flags) :utf-8 :cp437)))
 
 (defun encode-string (string)
   (if string
-      (lib.char:string-to-u8 string :encoding :utf-8)
+      (epsilon.lib.char:string-to-u8 string :encoding :utf-8)
       #()))
 
 (defun decode-msdos-timestamp (date time)
@@ -249,12 +249,12 @@
   (let ((compat (file-attribute-name compat))
         (msdos (ldb (byte 8 0) attr))
         (os-specific (ldb (byte 16 16) attr)))
-    (list (sys.fs:decode-attributes msdos :windows) compat os-specific)))
+    (list (epsilon.sys.fs:decode-attributes msdos :windows) compat os-specific)))
 
 (defun encode-file-attribute (thing)
   (destructuring-bind (msdos compat os-specific) thing
     (declare (ignore compat))
     (let ((i 0))
-      (setf (ldb (byte 8 0) i) (logand #xFF (sys.fs:encode-attributes msdos :windows)))
+      (setf (ldb (byte 8 0) i) (logand #xFF (epsilon.sys.fs:encode-attributes msdos :windows)))
       (setf (ldb (byte 16 16) i) (logand #xFFFF os-specific))
       i)))

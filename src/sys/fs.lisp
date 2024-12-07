@@ -1,8 +1,11 @@
-(defpackage #:sys.fs
+(defpackage #:epsilon.sys.fs
   (:use
    #:cl
-   #:lib.string
-   #:lib.type)
+   #:epsilon.lib.string
+   #:epsilon.lib.type
+   #:epsilon.sys.ffi)
+  (:local-nicknames
+   (:string :epsilon.lib.string))
   (:shadow
    #:byte)
   (:export
@@ -39,23 +42,23 @@
    #:decode-attributes
    ))
 
-(in-package #:sys.fs)
+(in-package #:epsilon.sys.fs)
 
 (defun parent (file)
-  (lib.string:join #\/ (butlast (lib.string:split #\/ file))))
+  (string:join #\/ (butlast (string:split #\/ file))))
 
 (defun runtime-dir ()
   (parent  (first sb-ext:*posix-argv*)))
 
 (defun temp-dir ()
   "Return a default directory to use for temporary files"
-  (sys.env:getenv "TMPDIR"))
+  (epsilon.sys.env:getenv "TMPDIR"))
 
 (defun home-dir ()
   (sb-unix:uid-homedir (sb-unix:unix-getuid)))
 
 (defmacro with-temp-file ((name) &body body)
-  `(let ((,name (lib.string:concat
+  `(let ((,name (string:concat
                  (temp-dir)
                  (random-string 16)
                  ".tmp")))
@@ -68,8 +71,8 @@
 ;; TODO replace other usages of LPs with URLs
 
 (defun current-dir ()
-  (lib.uri:make-uri :scheme "file"
-                    :path (sb-unix:posix-getcwd/)))
+  (epsilon.lib.uri:make-uri :scheme "file"
+                            :path (sb-unix:posix-getcwd/)))
 
 (defun (setf current-dir) (dir)
   (sb-posix:chdir dir)
@@ -121,12 +124,12 @@
 
 (defun list-files (directory)
   (remove-if (lambda (entry)
-               (not (file-p (lib.string:join #\/ (list directory entry)))))
+               (not (file-p (string:join #\/ (list directory entry)))))
              (list-dir directory)))
 
 (defun list-dirs (directory)
   (remove-if (lambda (entry)
-               (not (dir-p (lib.string:join #\/ (list directory entry)))))
+               (not (dir-p (string:join #\/ (list directory entry)))))
              (list-dir directory)))
 
 (defun symbolic-link-p (file)
@@ -210,7 +213,7 @@
 
 ;; OS X 10.14
 #+darwin
-(sys.ffi:defcstruct (stat :size 144)
+(defcstruct (stat :size 144)
   (mode    :uint16 :offset  4)
   (uid     :uint32 :offset 16)
   (gid     :uint32 :offset 20)
@@ -218,24 +221,24 @@
   (mtime   :uint64 :offset 48)
   (size    :uint64 :offset 96))
 
-(sys.ffi:defcfun (cgstat "stat") :int
+(defcfun (cgstat "stat") :int
   (path :string)
   (buffer :pointer))
 
-(sys.ffi:defcfun (cxstat "__xstat") :int
+(defcfun (cxstat "__xstat") :int
   (path :string)
   (buffer :pointer))
 
-(sys.ffi:defcfun (cutimes "utimes") :int
+(defcfun (cutimes "utimes") :int
   (path :string)
   (times :pointer))
 
-(sys.ffi:defcfun (cchown "chown") :int
+(defcfun (cchown "chown") :int
   (path :string)
   (owner :uint32)
   (group :uint32))
 
-(sys.ffi:defcfun (cchmod "chmod") :int
+(defcfun (cchmod "chmod") :int
   (path :string)
   (mode :uint32))
 
@@ -246,22 +249,22 @@
   (- universal (encode-universal-time 0 0 0 1 1 1970 0)))
 
 (defun cstat (path buffer)
-  (cond ((sys.ffi:foreign-symbol-pointer "stat")
+  (cond ((foreign-symbol-pointer "stat")
          (cgstat path buffer))
-        ((sys.ffi:foreign-symbol-pointer "__xstat")
+        ((foreign-symbol-pointer "__xstat")
          (cxstat path buffer))
         (T
          1)))
 
 (defun stat (path)
-  (sys.ffi:with-foreign-object (ptr '(:struct stat))
+  (with-foreign-object (ptr '(:struct stat))
     (when (= 0 (cstat path ptr))
-      (sys.ffi:mem-ref ptr '(:struct stat)))))
+      (mem-ref ptr '(:struct stat)))))
 
 (defun utimes (path atime mtime)
-  (sys.ffi:with-foreign-object (ptr :long 4)
-    (setf (sys.ffi:mem-aref ptr :long 0) (universal->unix atime))
-    (setf (sys.ffi:mem-aref ptr :long 2) (universal->unix mtime))
+  (with-foreign-object (ptr :long 4)
+    (setf (mem-aref ptr :long 0) (universal->unix atime))
+    (setf (mem-aref ptr :long 2) (universal->unix mtime))
     (unless (= 0 (cutimes path ptr))
       (error "Utimes failed."))))
 

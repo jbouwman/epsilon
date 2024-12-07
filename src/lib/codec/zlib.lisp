@@ -1,4 +1,4 @@
-(in-package #:lib.codec)
+(in-package #:epsilon.lib.codec)
 
 (defclass zlib-header ()
   ((flags :initarg :flags :accessor flags)

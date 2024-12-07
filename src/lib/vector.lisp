@@ -1,16 +1,15 @@
-(defpackage #:lib.vector
+(defpackage #:epsilon.lib.vector
   (:use
    #:cl
-   #:lib.symbol
-   #:lib.type)
+   #:epsilon.lib.symbol
+   #:epsilon.lib.type)
   (:export
    #:check-bounds
    #:with-checked-bounds
    #:u8-get
-   #:u8-set
-   ))
+   #:u8-set))
  
-(in-package #:lib.vector)
+(in-package #:epsilon.lib.vector)
 
 (defun check-bounds (vector start end)
   (let ((len (length vector)))

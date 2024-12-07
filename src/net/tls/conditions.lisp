@@ -1,4 +1,4 @@
-(in-package :net.tls)
+(in-package :epsilon.net.tls)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defconstant +ssl-error-none+ 0)
@@ -53,10 +53,10 @@ by READ-SSL-ERROR-QUEUE) or an SSL-ERROR condition."
                (get-output-stream-string s)))
       (otherwise (body stream-designator)))))
 
-(define-condition net.tls-error (error)
+(define-condition epsilon.net.tls-error (error)
   ())
 
-(define-condition ssl-error (net.tls-error)
+(define-condition ssl-error (epsilon.net.tls-error)
   (
    ;; Stores list of error codes
    ;; (as returned by the READ-SSL-ERROR-QUEUE function)
@@ -87,7 +87,7 @@ by READ-SSL-ERROR-QUEUE) or an SSL-ERROR condition."
    ;; Unfortunately, SSL-ERROR-CODE is already used
    ;; by SSL-ERROR-VERIFY condition class below
    ;; for return values of SSL_get_verify_result,
-   ;; and that's already exported from net.tls package.
+   ;; and that's already exported from epsilon.net.tls package.
    ;; Using the same generic function for two different
    ;; types of error codes is not the best approach.
    ;; Keeping it as is for now.
@@ -343,13 +343,13 @@ ERROR-CODE is return value of SSL_get_error - an explanation of the failure.
     ;;
     ;; In such protocols a malicious middle-man can insert an unencrypted
     ;; TCP FIN packet, thus giving the client a partial response. OpenSSL treats
-    ;; this as an Unexpected EOF error, but net.tls turns it into
+    ;; this as an Unexpected EOF error, but epsilon.net.tls turns it into
     ;; the ssl-error-zero-return condition, which is then internally
     ;; converted simply to an end of ssl-stream. Thus the user will treat
     ;; the truncated response as authoritative and complete.
     ;;
     ;; Since OpenSSL 3.0 the suppression does not happen
-    ;; and net.tls user receives an error condition, because
+    ;; and epsilon.net.tls user receives an error condition, because
     ;; the Unexpected EOF is reported as error-code = SSL_ERROR_SSL.
     ;;
     ;; The only reason we currently keep this not fixed for older OpenSSL
@@ -453,16 +453,16 @@ ERROR-CODE is return value of SSL_get_error - an explanation of the failure.
                      (slot-value condition 'message))
              (format-ssl-error-queue stream condition))))
 
-(define-condition asn1-error (net.tls-error)
+(define-condition asn1-error (epsilon.net.tls-error)
   ()
   (:documentation "Asn1 syntax error"))
 
-(define-condition invalid-asn1-string (net.tls-error)
+(define-condition invalid-asn1-string (epsilon.net.tls-error)
   ((type :initarg :type :initform nil))
   (:documentation "ASN.1 string parsing/validation error")
   (:report (lambda (condition stream)
              (format stream "ASN.1 syntax error: invalid asn1 string (expected type ~a)" (slot-value condition 'type))))) ;; TODO: when moved to grovel use enum symbol here
 
-(define-condition server-certificate-missing (net.tls-error simple-error)
+(define-condition server-certificate-missing (epsilon.net.tls-error simple-error)
   ()
   (:documentation "SSL server didn't present a certificate"))

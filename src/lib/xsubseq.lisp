@@ -1,7 +1,7 @@
-(defpackage #:lib.xsubseq
+(defpackage #:epsilon.lib.xsubseq
   (:use
    #:cl
-   #:lib.type)
+   #:epsilon.lib.type)
   (:import-from :sb-cltl2
                 :variable-information)
   (:export :xsubseq
@@ -19,7 +19,7 @@
            :coerce-to-string
            :with-xsubseqs))
 
-(in-package #:lib.xsubseq)
+(in-package #:epsilon.lib.xsubseq)
 
 (deftype octets (&optional (len '*))
   `(simple-array u8 (,len)))

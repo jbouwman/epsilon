@@ -1,4 +1,4 @@
-(in-package #:lib.seq)
+(in-package #:epsilon.lib.seq)
 
 (deftype extended-sequence ()
   '(and sequence (not list) (not vector)))

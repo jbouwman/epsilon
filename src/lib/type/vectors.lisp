@@ -1,6 +1,6 @@
 ;;;; vectors.lisp -- signed/unsigned byte accessors
 
-(in-package #:lib.type)
+(in-package #:epsilon.lib.type)
 
 (declaim (inline array-data-and-offsets))
 (defun array-data-and-offsets (v start end)

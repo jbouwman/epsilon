@@ -1,16 +1,16 @@
-(defpackage #:lib.uri
+(defpackage #:epsilon.lib.uri
   (:use
    #:cl
    #:sb-cltl2
-   #:lib.binding
-   #:lib.char
-   #:lib.collect
-   #:lib.control
-   #:lib.hash
-   #:lib.list
-   #:lib.sequence
-   #:lib.symbol
-   #:lib.type)
+   #:epsilon.lib.binding
+   #:epsilon.lib.char
+   #:epsilon.lib.collect
+   #:epsilon.lib.control
+   #:epsilon.lib.hash
+   #:epsilon.lib.list
+   #:epsilon.lib.sequence
+   #:epsilon.lib.symbol
+   #:epsilon.lib.type)
   (:shadow
    #:merge)
   (:export
@@ -37,7 +37,7 @@
    #:urn-nid
    #:urn-nss))
 
-(in-package #:lib.uri)
+(in-package #:epsilon.lib.uri)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   
@@ -728,7 +728,7 @@
       (t (error 'url-decoding-error)))))
 
 (defun url-decode (data &key
-                          (encoding lib.char:*default-character-encoding*)
+                          (encoding epsilon.lib.char:*default-character-encoding*)
                           (start 0)
                           end
                           (lenient nil))
@@ -784,7 +784,7 @@
 
 (defun url-decode-params (data &key
                                  (delimiter #\&)
-                                 (encoding lib.char:*default-character-encoding*)
+                                 (encoding epsilon.lib.char:*default-character-encoding*)
                                  (start 0)
                                  end
                                  (lenient nil))
@@ -903,14 +903,14 @@
     ary))
 
 (defun url-encode (data &key
-                          (encoding lib.char:*default-character-encoding*)
+                          (encoding epsilon.lib.char:*default-character-encoding*)
                           (start 0)
                           end
                           space-to-plus)
   (declare (type (or string ->u8) data)
            (type integer start))
   (let* ((octets (if (stringp data)
-                     (lib.char:string-to-u8 data :encoding encoding :start start :end end)
+                     (epsilon.lib.char:string-to-u8 data :encoding encoding :start start :end end)
                      data))
          (res (make-array (* (length octets) 3) :element-type 'character :fill-pointer t))
          (i 0))
@@ -945,7 +945,7 @@
     (setf (fill-pointer res) i)
     res))
 
-(defun url-encode-params (params-alist &key (encoding lib.char:*default-character-encoding*)
+(defun url-encode-params (params-alist &key (encoding epsilon.lib.char:*default-character-encoding*)
                                          space-to-plus)
   (check-type params-alist list)
   (with-output-to-string (s)
@@ -1145,7 +1145,7 @@
               (setq ip (concatenate 'string "0" ip)))
              ((char= (aref ip (1- (length ip))) #\:)
               (setq ip (concatenate 'string ip "0"))))
-           (let* ((ip-parsed (lib.seq:split-sequence #\: ip))
+           (let* ((ip-parsed (epsilon.lib.seq:split-sequence #\: ip))
                   (len (length ip-parsed)))
              (loop for section in ip-parsed
                    if (string= section "")
@@ -1236,8 +1236,8 @@ Assumes that the path of the file URI is correct path syntax for the environment
 (defun render-uri (uri &optional stream)
   (flet ((maybe-slash (authority path)
            (if (and (not (emptyp authority)) (not (emptyp path))
-                    (char/= (lib.string:last-char authority) #\/)
-                    (char/= (lib.string:first-char path) #\/))
+                    (char/= (epsilon.lib.string:last-char authority) #\/)
+                    (char/= (epsilon.lib.string:first-char path) #\/))
                "/"
                "")))
     (cond
@@ -1296,8 +1296,8 @@ See `uri='."
 
 (defun merge-paths (ref-path base-path)
   (declare (type (or string null) ref-path base-path))
-  (let* ((path-list (and base-path (nreverse (lib.seq:split-sequence #\/ base-path))))
-         (ref-components (and ref-path (lib.seq:split-sequence #\/ ref-path)))
+  (let* ((path-list (and base-path (nreverse (epsilon.lib.seq:split-sequence #\/ base-path))))
+         (ref-components (and ref-path (epsilon.lib.seq:split-sequence #\/ ref-path)))
          ending-slash-p)
     ;; remove last component of base
     (pop path-list)
@@ -1363,32 +1363,3 @@ is mutated."
       (setf (path merged-uri)
             (merge-paths (path merged-uri) (path base)))
       (return-merged-uri))))
-
-(defvar *stream-providers*
-  (make-hash-table :test #'equalp))
-
-(defstruct stream-provider
-  input
-  output)
-
-(defun define-stream-provider (name in-f out-f)
-  (setf (gethash name *stream-providers*)
-        (make-stream-provider :input in-f
-                              :output out-f)))
-
-(define-stream-provider "file"
-    (lambda (uri)
-      (open (path uri)
-            :direction :input
-            :element-type 'u8))
-  (lambda (uri)
-    (open (path uri)
-          :direction :output
-          :element-type 'u8)))
-
-(defun stream-provider (url)
-  (or (gethash (scheme url) *stream-providers*)
-      (error "No stream provider for scheme ~A" (scheme url))))
-
-(defun input-stream (url)
-  (funcall (stream-provider-input (stream-provider url)) url))

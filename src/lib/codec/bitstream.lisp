@@ -1,4 +1,4 @@
-(in-package #:lib.codec)
+(in-package #:epsilon.lib.codec)
 
 (defun bitstream-callback-missing (&rest args)
   (declare (ignore args))

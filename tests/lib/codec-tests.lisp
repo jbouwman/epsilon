@@ -1,12 +1,17 @@
-(tool.test:define-test-package #:lib.codec/tests
+(epsilon.tool.test:define-test-package #:epsilon.lib.codec/tests
   (:use
-   #:lib.codec
-   #:lib.stream
-   #:sys.fs)
+   #:epsilon.lib.codec
+   #:epsilon.lib.stream
+   #:epsilon.sys.fs)
   (:local-nicknames
-   (#:uri #:lib.uri)))
+   (#:uri #:epsilon.lib.uri)))
 
-(in-package #:lib.codec/tests)
+(in-package #:epsilon.lib.codec/tests)
+
+
+
+;; (get-test-relative-path 'deflate "../shilling.txt")
+
 
 (defun decompress (codec compressed original)
   (with-temp-file (decompressed)        ; FIME to URL
@@ -15,8 +20,8 @@
 
 (defun test-decompress (codec compressed original)
   (decompress codec                     ; FIXME native URL
-              (uri:path (test-data compressed))
-              (uri:path (test-data original))))
+              (get-test-relative-path 'zlib compressed)
+              (get-test-relative-path 'zlib original)))
 
 (defun roundtrip (codec original)
   (with-temp-file (compressed)
@@ -24,7 +29,8 @@
     (decompress codec compressed original)))
 
 (defun test-roundtrip (codec original)
-  (roundtrip codec (uri:path (test-data original))))
+  (let ((path (get-test-relative-path 'zlib original)))
+    (roundtrip codec path)))
 
 (deftest deflate ()
   (skip)

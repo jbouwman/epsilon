@@ -1,10 +1,10 @@
-(defpackage #:sys.env
+(defpackage #:epsilon.sys.env
   (:use #:cl)
   (:export #:featurep
            #:getenv
            #:getenvp))
 
-(in-package #:sys.env)
+(in-package #:epsilon.sys.env)
 
 (defun featurep (x &optional (*features* *features*))
   "Checks whether a feature expression X is true with respect to the *FEATURES* set,

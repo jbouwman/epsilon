@@ -1,9 +1,9 @@
-(defpackage #:lib.digest.common
+(defpackage #:epsilon.lib.digest.common
   (:use
    #:cl
    #:sb-rotate-byte
-   #:lib.type
-   #:lib.symbol)
+   #:epsilon.lib.type
+   #:epsilon.lib.symbol)
   (:export
    #:%add-with-carry
    #:%subtract-with-borrow
@@ -33,7 +33,7 @@
 
 ;;;; common.lisp -- efficient implementations of mod32 arithmetic and macros
 
-(in-package #:lib.digest.common)
+(in-package #:epsilon.lib.digest.common)
 
 (defmacro defconst (name value)         ; FIXME dedup
   `(defconstant ,name

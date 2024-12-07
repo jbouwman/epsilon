@@ -1,4 +1,4 @@
-(in-package #:lib.char)
+(in-package #:epsilon.lib.char)
 
 ;;; Typically, ISO-8859-* codes in the range #x00-#x9f map straight
 ;;; through, while codes #xa0-#xff select arbitrary Unicode characters

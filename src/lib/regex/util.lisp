@@ -1,4 +1,4 @@
-(in-package #:lib.regex)
+(in-package #:epsilon.lib.regex)
 
 (defmacro defconstant (name value &optional doc)
   "Make sure VALUE is evaluated only once \(to appease SBCL)."

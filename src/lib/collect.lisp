@@ -1,15 +1,15 @@
-(defpackage #:lib.collect
+(defpackage #:epsilon.lib.collect
   (:use
    #:cl
-   #:lib.function
-   #:lib.symbol)
+   #:epsilon.lib.function
+   #:epsilon.lib.symbol)
   (:export
    #:collect
    #:collecting
    #:with-collectors
    ))
 
-(in-package #:lib.collect)
+(in-package #:epsilon.lib.collect)
 
 ;; Opinions differ on how a collection macro should work. There are
 ;; two major points for discussion: multiple collection variables and

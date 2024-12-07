@@ -1,12 +1,12 @@
-(defpackage #:lib.checksum.crc-32
+(defpackage #:epsilon.lib.checksum.crc-32
   (:use
    #:cl
-   #:lib.type
-   #:lib.checksum.generic)
+   #:epsilon.lib.type
+   #:epsilon.lib.checksum.generic)
   (:export
    #:crc-32))
 
-(in-package #:lib.checksum.crc-32)
+(in-package #:epsilon.lib.checksum.crc-32)
 
 (defun crc-32-table ()
   (let ((table (->u16 512)))

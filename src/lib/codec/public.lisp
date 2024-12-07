@@ -1,4 +1,4 @@
-(in-package #:lib.codec)
+(in-package #:epsilon.lib.codec)
 
 (defun make-stream-output-callback (stream)
   "Return a function suitable for use as a compressor callback that

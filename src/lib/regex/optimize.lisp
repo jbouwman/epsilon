@@ -1,4 +1,4 @@
-(in-package #:lib.regex)
+(in-package #:epsilon.lib.regex)
 
 (defgeneric flatten (regex)
   (:documentation "Merges adjacent sequences and alternations, i.e. it

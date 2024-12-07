@@ -1,9 +1,9 @@
-(defpackage #:lib.digest.reader
+(defpackage #:epsilon.lib.digest.reader
   (:use #:cl)
   (:export
    #:in-ironclad-readtable))
 
-(in-package #:lib.digest.reader)
+(in-package #:epsilon.lib.digest.reader)
 
 ;;; easy-to-type readmacro for creating s-boxes and the like
 
