@@ -1,4 +1,4 @@
-(in-package #:sys.ffi)
+(in-package #:epsilon.sys.ffi)
 
 ;;;# Foreign String Conversion
 ;;;
@@ -82,9 +82,9 @@
    :octet-seq-getter bget
    :octet-seq-setter bset
    :octet-seq-type foreign-pointer
-   :code-point-seq-getter lib.char::string-get
-   :code-point-seq-setter lib.char::string-set
-   :code-point-seq-type lib.char:simple-unicode-string))
+   :code-point-seq-getter epsilon.lib.char::string-get
+   :code-point-seq-setter epsilon.lib.char::string-set
+   :code-point-seq-type epsilon.lib.char:simple-unicode-string))
 
 (defun null-terminator-len (encoding)
   (length (enc-nul-encoding (get-character-encoding encoding))))
@@ -94,7 +94,7 @@
   (check-type string string)
   (when offset
     (setq buffer (inc-pointer buffer offset)))
-  (with-checked-bounds ((string (coerce string 'lib.char:unicode-string))
+  (with-checked-bounds ((string (coerce string 'epsilon.lib.char:unicode-string))
                                (start start) (end end))
     (declare (type simple-string string))
     (let ((mapping (lookup-mapping *foreign-string-mappings* encoding))
@@ -142,7 +142,7 @@ pointer, NIL is returned."
       (multiple-value-bind (size new-end)
           (funcall (code-point-counter mapping)
                    pointer offset (+ offset count) max-chars)
-        (let ((string (make-string size :element-type 'lib.char:unicode-char)))
+        (let ((string (make-string size :element-type 'epsilon.lib.char:unicode-char)))
           (funcall (decoder mapping) pointer offset new-end string 0)
           (values string (- new-end offset)))))))
 
@@ -153,7 +153,7 @@ pointer, NIL is returned."
   "Allocate a foreign string containing Lisp string STRING.
 The string must be freed with FOREIGN-STRING-FREE."
   (check-type string string)
-  (with-checked-bounds ((string (coerce string 'lib.char:unicode-string))
+  (with-checked-bounds ((string (coerce string 'epsilon.lib.char:unicode-string))
                                (start start) (end end))
     (declare (type simple-string string))
     (let* ((mapping (lookup-mapping *foreign-string-mappings* encoding))

@@ -1,15 +1,15 @@
-(defpackage #:net.http.parser
+(defpackage #:epsilon.net.http.parser
   (:use
    #:cl
    #:sb-cltl2
-   #:lib.binding
-   #:lib.buffer
-   #:lib.char
-   #:lib.collect
-   #:lib.list
-   #:lib.symbol
-   #:lib.type
-   #:lib.xsubseq)
+   #:epsilon.lib.binding
+   #:epsilon.lib.buffer
+   #:epsilon.lib.char
+   #:epsilon.lib.collect
+   #:epsilon.lib.list
+   #:epsilon.lib.symbol
+   #:epsilon.lib.type
+   #:epsilon.lib.xsubseq)
   (:export
 
    :make-parser
@@ -92,8 +92,7 @@
    :invalid-parameter-key
    :invalid-parameter-value))
    
-
-(in-package #:net.http.parser)
+(in-package #:epsilon.net.http.parser)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
 

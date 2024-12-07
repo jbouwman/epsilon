@@ -1,8 +1,8 @@
-(defpackage #:lib.buffer
+(defpackage #:epsilon.lib.buffer
   (:use #:cl
-        #:lib.stream
-        #:lib.type
-        #:lib.xsubseq)
+        #:epsilon.lib.stream
+        #:epsilon.lib.type
+        #:epsilon.lib.xsubseq)
   (:export #:*default-memory-limit*
            #:*default-disk-limit*
 
@@ -15,7 +15,7 @@
 
            #:buffer-limit-exceeded))
 
-(in-package #:lib.buffer)
+(in-package #:epsilon.lib.buffer)
 
 (defvar *default-memory-limit* (expt 2 20))
 (defvar *default-disk-limit* (expt 2 30))

@@ -1,30 +1,30 @@
-(defpackage #:net.http.backend.socket
+(defpackage #:epsilon.net.http.backend.socket
   (:use
    #:cl
-   #:lib.binding
-   #:lib.codec.base64
-   #:lib.sequence
-   #:lib.stream
-   #:lib.string
-   #:lib.type
-   #:net.http.body
-   #:net.http.chunked-stream
-   #:net.http.connection-cache
-   #:net.http.encoding
-   #:net.http.error
-   #:net.http.keep-alive-stream
-   #:net.http.parser
-   #:net.http.util
-   #:net.tls
-   #:sys.fs)
+   #:epsilon.lib.binding
+   #:epsilon.lib.codec.base64
+   #:epsilon.lib.sequence
+   #:epsilon.lib.stream
+   #:epsilon.lib.string
+   #:epsilon.lib.type
+   #:epsilon.net.http.body
+   #:epsilon.net.http.chunked-stream
+   #:epsilon.net.http.connection-cache
+   #:epsilon.net.http.encoding
+   #:epsilon.net.http.error
+   #:epsilon.net.http.keep-alive-stream
+   #:epsilon.net.http.parser
+   #:epsilon.net.http.util
+   #:epsilon.net.tls
+   #:epsilon.sys.fs)
   (:local-nicknames
-   (#:uri #:lib.uri))
+   (#:uri #:epsilon.lib.uri))
   (:export
    #:request
    #:retry-request
    #:ignore-and-continue))
 
-(in-package #:net.http.backend.socket)
+(in-package #:epsilon.net.http.backend.socket)
 
 (defun ca-bundle ()
   (uri:merge (current-dir) "certs/cacert.pem"))
@@ -190,7 +190,7 @@
         body
         (decode-body content-type body
                      :default-charset (if force-string
-                                          lib.char:*default-character-encoding*
+                                          epsilon.lib.char:*default-character-encoding*
                                           nil)))))
 
 (defun content-disposition (key val)
@@ -242,11 +242,11 @@
                                     :reason reason)))
            (exact (n reason)
              (unless (eql n (read-byte input nil 'eof))
-               (fail 'net.http.error:socks5-proxy-request-failed :reason reason)))
+               (fail 'epsilon.net.http.error:socks5-proxy-request-failed :reason reason)))
            (drop (n reason)
              (dotimes (i n)
                (when (eq (read-byte input nil 'eof) 'eof)
-                 (fail 'net.http.error:socks5-proxy-request-failed :reason reason)))))
+                 (fail 'epsilon.net.http.error:socks5-proxy-request-failed :reason reason)))))
     ;; Send Version + Auth Method
     ;; Currently, only supports no-auth method.
     (write-byte +socks5-version+ output)
@@ -259,13 +259,13 @@
     (exact +socks5-no-auth+ "Unsupported auth method")
 
     ;; Send domainname Request
-    (let* ((host (lib.char:string-to-u8 (uri:host uri)))
+    (let* ((host (epsilon.lib.char:string-to-u8 (uri:host uri)))
            (hostlen (length host))
            (port (uri:port uri)))
       (unless (<= 1 hostlen 255)
-        (fail 'net.http.error:socks5-proxy-request-failed :reason "domainname too long"))
+        (fail 'epsilon.net.http.error:socks5-proxy-request-failed :reason "domainname too long"))
       (unless (<= 1 port 65535)
-        (fail 'net.http.error:socks5-proxy-request-failed :reason "Invalid port"))
+        (fail 'epsilon.net.http.error:socks5-proxy-request-failed :reason "Invalid port"))
       (write-byte +socks5-version+ output)
       (write-byte +socks5-connect+ output)
       (write-byte +socks5-reserved+ output)
@@ -289,33 +289,33 @@
           ((eql atyp +socks5-domainname+)
            (let ((n (read-byte input nil 'eof)))
              (when (eq n 'eof)
-               (fail 'net.http.error:socks5-proxy-request-failed :reason "Invalid domainname length"))
+               (fail 'epsilon.net.http.error:socks5-proxy-request-failed :reason "Invalid domainname length"))
              (drop n "Should be domainname and port")))
           (t
-           (fail 'net.http.error:socks5-proxy-request-failed :reason "Unknown address")))))))
+           (fail 'epsilon.net.http.error:socks5-proxy-request-failed :reason "Unknown address")))))))
 
 (defun make-ssl-stream (stream ca-path ssl-key-file ssl-cert-file ssl-key-password hostname insecure)
-  #+(or windows net.http-no-ssl)
-  (error "SSL not supported. Remove :net.http-no-ssl from *features* to enable SSL.")
-  #-(or windows net.http-no-ssl)
+  #+(or windows epsilon.net.http-no-ssl)
+  (error "SSL not supported. Remove :epsilon.net.http-no-ssl from *features* to enable SSL.")
+  #-(or windows epsilon.net.http-no-ssl)
   (progn
-    (net.tls:ensure-initialized)
-    (let ((ctx (net.tls:make-context :verify-mode
+    (epsilon.net.tls:ensure-initialized)
+    (let ((ctx (epsilon.net.tls:make-context :verify-mode
                                     (if insecure
-                                        net.tls:+ssl-verify-none+
-                                        net.tls:+ssl-verify-peer+)
+                                        epsilon.net.tls:+ssl-verify-none+
+                                        epsilon.net.tls:+ssl-verify-peer+)
                                     :verify-location
                                     (cond
                                       (ca-path ca-path)
-                                      ((sys.fs:file-p (uri:path (ca-bundle))) (uri:path (ca-bundle)))
+                                      ((epsilon.sys.fs:file-p (uri:path (ca-bundle))) (uri:path (ca-bundle)))
                                       ;; In executable environment, perhaps *ca-bundle* doesn't exist.
                                       (t :default))))
           (ssl-cert-pem-p (and ssl-cert-file
                                (ends-with-subseq ".pem" ssl-cert-file))))
-      (net.tls:with-global-context (ctx :auto-free-p t)
+      (epsilon.net.tls:with-global-context (ctx :auto-free-p t)
         (when ssl-cert-pem-p
-          (net.tls:use-certificate-chain-file ssl-cert-file))
-        (net.tls:make-ssl-client-stream stream
+          (epsilon.net.tls:use-certificate-chain-file ssl-cert-file))
+        (epsilon.net.tls:make-ssl-client-stream stream
                                        :hostname hostname
                                        :verify (not insecure)
                                        :key ssl-key-file
@@ -363,16 +363,16 @@
     (labels ((make-new-connection (uri)
                (restart-case
                    (let* ((con-uri (uri:uri (or proxy uri)))
-                          (connection (net.socket:socket-connect (uri:host con-uri)
+                          (connection (epsilon.net.socket:socket-connect (uri:host con-uri)
                                                                  (uri:port con-uri)
                                                                  :timeout connect-timeout
                                                                  :element-type 'u8))
                           (stream
-                            (net.socket:socket-stream connection))
+                            (epsilon.net.socket:socket-stream connection))
                           (scheme (uri:scheme uri)))
                      (declare (type string scheme))
                      (when read-timeout
-                       (setf (net.socket:socket-option connection :receive-timeout) read-timeout))
+                       (setf (epsilon.net.socket:socket-option connection :receive-timeout) read-timeout))
                      (when (socks5-proxy-p proxy-uri)
                        (ensure-socks5-connected stream stream uri method))
                      (if (string= scheme "https")
@@ -520,7 +520,7 @@
                          (unless chunkedp
                            (write-header* :content-length (length content))))
                         (pathname
-                         (write-header* :content-type (or content-type (net.http.body:content-type content)))
+                         (write-header* :content-type (or content-type (epsilon.net.http.body:content-type content)))
                          (unless chunkedp
                            (write-header :content-length
                                          (or (cdr (assoc :content-length headers :test #'string-equal))
@@ -555,7 +555,7 @@
                                                ;; We should not retry errors received from the server.
                                                ;; Only technical errors such as disconnection or some
                                                ;; problems with the protocol should be retried automatically.
-                                               ;; This solves https://github.com/fukamachi/net.http/issues/137 issue.
+                                               ;; This solves https://github.com/fukamachi/epsilon.net.http/issues/137 issue.
                                                (not http-request-failed))
                                            (lambda (e)
                                              (declare (ignorable e))
@@ -585,8 +585,8 @@
                    (setf (chunked-stream-output-chunking-p stream) t))
                  (with-retrying
                      (if (consp content)
-                         (net.http.body:write-multipart-content content boundary stream)
-                         (net.http.body:write-as-octets stream content))
+                         (epsilon.net.http.body:write-multipart-content content boundary stream)
+                         (epsilon.net.http.body:write-as-octets stream content))
                    (when chunkedp
                      (setf (chunked-stream-output-chunking-p stream) nil))
                    (finish-output stream))))
@@ -687,7 +687,7 @@
                                                            (push-connection (format nil "~A://~A"
                                                                                     (uri:scheme uri)
                                                                                     (uri:authority uri)) underlying-stream #'close))))
-                                                     #'net.http.keep-alive-stream:keep-alive-stream-close-underlying-stream))))
+                                                     #'epsilon.net.http.keep-alive-stream:keep-alive-stream-close-underlying-stream))))
                         ;; Raise an error when the HTTP response status code is 4xx or 50x.
                         (when (<= 400 status)
                           (with-retrying
@@ -716,9 +716,9 @@
 					     original-user-supplied-stream) ;; return what the user sent without wrapping it
                                         (if want-stream ;; add a finalizer to the body to close the stream
                                             (progn
-                                              (sys.gc:finalize body (lambda () (close stream)))
+                                              (epsilon.sys.gc:finalize body (lambda () (close stream)))
                                               stream)
                                             (let ((wrapped-stream (make-socket-wrapped-stream :stream stream)))
-                                              (sys.gc:finalize wrapped-stream (lambda () (close stream)))
+                                              (epsilon.sys.gc:finalize wrapped-stream (lambda () (close stream)))
                                               wrapped-stream)))))))
                    (finalize-connection stream (gethash "connection" response-headers) uri))))))))))

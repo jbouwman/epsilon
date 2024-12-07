@@ -1,10 +1,10 @@
-(defpackage #:lib.sequence
+(defpackage #:epsilon.lib.sequence
   (:use
    #:cl
-   #:lib.function
-   #:lib.list
-   #:lib.symbol
-   #:lib.type)
+   #:epsilon.lib.function
+   #:epsilon.lib.list
+   #:epsilon.lib.symbol
+   #:epsilon.lib.type)
   (:export
    #:copy-sequence
    #:delete/swapped-arguments
@@ -31,7 +31,7 @@
    #:starts-with
    #:starts-with-subseq))
   
-(in-package #:lib.sequence)
+(in-package #:epsilon.lib.sequence)
 
 ;; Make these inlinable by declaiming them INLINE here and some of them
 ;; NOTINLINE at the end of the file. Exclude functions that have a compiler

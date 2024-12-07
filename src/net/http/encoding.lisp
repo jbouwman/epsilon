@@ -1,15 +1,16 @@
-(defpackage net.http.encoding
+(defpackage epsilon.net.http.encoding
   (:use
    #:cl
-   #:lib.char
-   #:lib.type)
+   #:epsilon.lib.char
+   #:epsilon.lib.type)
   (:export :detect-charset))
-(in-package :net.http.encoding)
+
+(in-package :epsilon.net.http.encoding)
 
 (defun parse-content-type (content-type)
   (let ((types
           (nth-value 1
-                     (lib.regex:scan-to-strings "^\\s*?(\\w+)/([^;\\s]+)(?:\\s*;\\s*charset=([A-Za-z0-9_-]+))?"
+                     (epsilon.lib.regex:scan-to-strings "^\\s*?(\\w+)/([^;\\s]+)(?:\\s*;\\s*charset=([A-Za-z0-9_-]+))?"
                                             content-type))))
     (when types
       (values (aref types 0)
@@ -17,7 +18,7 @@
               (aref types 2)))))
 
 (defun charset-to-encoding (charset &optional
-                                      (default lib.char:*default-character-encoding*))
+                                      (default epsilon.lib.char:*default-character-encoding*))
   (cond
     ((null charset)
      default)
@@ -30,7 +31,7 @@
      :cp932)
     ((string-equal charset "windows-31j")
      :cp932)
-    (t (or (find charset (lib.char:list-character-encodings)
+    (t (or (find charset (epsilon.lib.char:list-character-encodings)
                  :test #'string-equal)
            default))))
 
@@ -60,13 +61,13 @@
        ;; like application/json I leave it to the future.
        (charset-to-encoding charset :utf-8))
       ((and (string-equal type "application")
-            (lib.regex:scan "(?:[^+]+\\+)?xml" subtype))
+            (epsilon.lib.regex:scan "(?:[^+]+\\+)?xml" subtype))
        (charset-to-encoding charset)))))
 
 (defun detect-charset-from-html (body)
   "Detect the body's charset by (roughly) searching meta tags which has \"charset\" attribute."
   (labels ((find-meta (start)
-             (search #.(lib.char:string-to-u8 "<meta ") body :start2 start))
+             (search #.(epsilon.lib.char:string-to-u8 "<meta ") body :start2 start))
            (main (start)
              (let ((start (find-meta start)))
                (unless start
@@ -75,9 +76,9 @@
                  (unless end
                    (return-from main nil))
                  (incf end)
-                 (let ((match (nth-value 1 (lib.regex:scan-to-strings
+                 (let ((match (nth-value 1 (epsilon.lib.regex:scan-to-strings
                                             "charset=[\"']?([^\\s\"'>]+)[\"']?"
-                                            (lib.char:u8-to-string body :start start :end end :errorp nil)))))
+                                            (epsilon.lib.char:u8-to-string body :start start :end end :errorp nil)))))
                    (if match
                        (aref match 0)
                        (main end)))))))

@@ -1,14 +1,14 @@
-(defpackage #:lib.codec
+(defpackage #:epsilon.lib.codec
   (:use
    #:cl
    #:sb-gray
-   #:lib.binding
-   #:lib.checksum.adler-32
-   #:lib.checksum.crc-32
-   #:lib.checksum.generic
-   #:lib.function
-   #:lib.type
-   #:lib.stream)
+   #:epsilon.lib.binding
+   #:epsilon.lib.checksum.adler-32
+   #:epsilon.lib.checksum.crc-32
+   #:epsilon.lib.checksum.generic
+   #:epsilon.lib.function
+   #:epsilon.lib.type
+   #:epsilon.lib.stream)
   (:export
    #:encode
    #:encode-file

@@ -1,9 +1,9 @@
-(defpackage #:net.http.keep-alive-stream
+(defpackage #:epsilon.net.http.keep-alive-stream
   (:use
    #:cl
    #:sb-gray
-   #:lib.control
-   #:lib.type)
+   #:epsilon.lib.control
+   #:epsilon.lib.type)
   (:export
    #:make-keep-alive-stream
    #:keep-alive-stream
@@ -11,7 +11,7 @@
    #:keep-alive-stream-close-underlying-stream
    #:keep-alive-stream-stream))
 
-(in-package #:net.http.keep-alive-stream)
+(in-package #:epsilon.net.http.keep-alive-stream)
 
 (defclass keep-alive-stream (fundamental-input-stream)
   ((stream :type (or null stream)
@@ -71,7 +71,7 @@ keep-alive-stream), and should handle clean-up of it"
   "Return :EOF or byte read.  When we hit :EOF or finish reading our chunk,
    call the close-action on our underlying-stream and return :EOF"
   (or (maybe-close stream)
-      (if (net.http.chunked-stream:chunked-stream-input-chunking-p (chunked-stream stream))
+      (if (epsilon.net.http.chunked-stream:chunked-stream-input-chunking-p (chunked-stream stream))
           (let ((byte (read-byte (chunked-stream stream) nil :eof)))
             (if (eql byte :eof)
                 (prog1
@@ -94,11 +94,11 @@ keep-alive-stream), and should handle clean-up of it"
 (defmethod stream-read-sequence ((stream keep-alive-chunked-stream) sequence &optional start end)
   (if (null (keep-alive-stream-stream stream)) ;; we already closed it
       start
-      (if (net.http.chunked-stream:chunked-stream-input-chunking-p (chunked-stream stream))
+      (if (epsilon.net.http.chunked-stream:chunked-stream-input-chunking-p (chunked-stream stream))
           (prog1
               (let ((num-read (read-sequence sequence (chunked-stream stream) :start start :end end)))
                 num-read)
-            (maybe-close stream (not (net.http.chunked-stream:chunked-stream-input-chunking-p (chunked-stream stream)))))
+            (maybe-close stream (not (epsilon.net.http.chunked-stream:chunked-stream-input-chunking-p (chunked-stream stream)))))
           start)))
 
 (defmethod stream-element-type ((stream keep-alive-chunked-stream))

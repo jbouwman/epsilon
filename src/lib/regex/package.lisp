@@ -1,8 +1,8 @@
-(defpackage #:lib.regex
+(defpackage #:epsilon.lib.regex
   (:use
    #:cl
-   #:lib.symbol
-   #:lib.type)
+   #:epsilon.lib.symbol
+   #:epsilon.lib.type)
   (:shadow
    #:digit-char-p
    #:defconstant)

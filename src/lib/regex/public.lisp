@@ -1,4 +1,4 @@
-(in-package #:lib.regex)
+(in-package #:epsilon.lib.regex)
 
 ;; TODO merge all behavior dynamics into a single flag set
 ;; TODO Make create-scanner operate on parse tree, configuration block
@@ -380,8 +380,8 @@ match REGEX. If REGEX matches an empty string the scan is continued
 one position behind this match. If SHAREDP is true, the substrings may
 share structure with TARGET-STRING."
   (let (result-list)
-    (do-matches-as-strings (match regex target-string (nreverse result-list) nil
-                                  :start start :end end :sharedp sharedp)
+    (do-matches-as-strings (match regex target-string (nreverse result-list)
+                             :start start :end end :sharedp sharedp)
       (push match result-list))))
 
 (define-compiler-macro all-matches-as-strings (&whole form regex &rest rest)

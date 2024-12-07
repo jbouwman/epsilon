@@ -1,12 +1,12 @@
-(defpackage #:lib.char
+(defpackage #:epsilon.lib.char
   (:use
    #:cl
-   #:lib.binding
-   #:lib.function
-   #:lib.hash
-   #:lib.symbol
-   #:lib.type
-   #:lib.vector)
+   #:epsilon.lib.binding
+   #:epsilon.lib.function
+   #:epsilon.lib.hash
+   #:epsilon.lib.symbol
+   #:epsilon.lib.type
+   #:epsilon.lib.vector)
   (:export
    #:*string-vector-mappings*
    ;; character encoding objects

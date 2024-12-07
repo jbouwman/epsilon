@@ -1,4 +1,4 @@
-(in-package :net.tls)
+(in-package :epsilon.net.tls)
 
 ;;; Global state
 ;;;
@@ -193,7 +193,7 @@ Keyword arguments:
 
 (defun use-certificate-chain-file (certificate-chain-file)
   "Applies OpenSSL function SSL_CTX_use_certificate_chain_file
-to the net.tls's global SSL_CTX object and the specified
+to the epsilon.net.tls's global SSL_CTX object and the specified
 CERTIFICATE-CHAIN-FILE.
 
 OpenSSL requires the certificates in the file to be sorted
@@ -209,7 +209,7 @@ the loaded certificate chain."
 (defun reload ()
   "If you save your application as a Lisp image,
 call this function when that image is loaded,
-to perform the necessary net.tls re-initialization
+to perform the necessary epsilon.net.tls re-initialization
 (unless your lisp implementation automatically
 re-loads foreign libraries and preserves their
 memory accross image reloads).
@@ -220,7 +220,7 @@ If they have changed, you may get errors, as users report:
 https://github.com/cl-plus-ssl/cl-plus-ssl/issues/167
 "
   (detect-custom-openssl-installations-if-macos)
-  (unless (member :net.tls-foreign-libs-already-loaded
+  (unless (member :epsilon.net.tls-foreign-libs-already-loaded
                   *features*)
     (ffi:use-foreign-library libcrypto)
     (ffi:load-foreign-library 'libssl))

@@ -1,7 +1,7 @@
-(defpackage #:net.http.connection-cache
+(defpackage #:epsilon.net.http.connection-cache
   (:use
    #:cl
-   #:sys.sync.thread)
+   #:epsilon.sys.sync.thread)
   (:export :*connection-pool*
    :*use-connection-pool*
            :*max-active-connections*
@@ -10,7 +10,7 @@
            :push-connection
            :clear-connection-pool))
 
-(in-package #:net.http.connection-cache)
+(in-package #:epsilon.net.http.connection-cache)
 
 (defvar *use-connection-pool* t)
 (defvar *max-active-connections* 8

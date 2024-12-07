@@ -1,10 +1,12 @@
-(defpackage #:tool.test
+(defpackage #:epsilon.tool.test
   (:use
    #:cl
    #:sb-gray
-   #:lib.list
-   #:lib.symbol
-   #:sys.fs)
+   #:epsilon.lib.list
+   #:epsilon.lib.symbol
+   #:epsilon.sys.fs)
+  (:local-nicknames
+   (:uri :epsilon.lib.uri))
   (:export
    #:define-test-package
    #:deftest
@@ -16,16 +18,17 @@
    #:run-tests
    #:signals
    #:skip
+   #:get-test-relative-path
    #:test-data))
 
-(defpackage #:tool.test.suites
+(defpackage #:epsilon.tool.test.suites
   (:documentation
    "Namespace for test suites defined via DEFINE-TEST-PACKAGE."))
 
-(in-package #:tool.test)
+(in-package #:epsilon.tool.test)
 
 (defun test-data (name)
-  (lib.uri:merge (lib.uri:merge (current-dir) "tests/data/") name))
+  (uri:merge (uri:merge (current-dir) "tests/data/") name))
 
 (defvar *suite*)
 
@@ -787,6 +790,8 @@ there a superfulous quote at ~S?)" condition-type))
                  :initarg :declarations)
    (documentation :initform nil :accessor documentation-of
                   :initarg :documentation)
+   (source-file :initform nil :accessor source-file-of
+         :initarg :source-file)
    (body :initform nil :accessor body-of
          :initarg :body)))
 
@@ -795,6 +800,11 @@ there a superfulous quote at ~S?)" condition-type))
     (if test
         (apply #'reinitialize-instance test args)
         (apply #'make-instance 'test :name name args))))
+
+(defun get-test-relative-path (test relative-path)
+  (let ((source-file (source-file-of (find-test test))))
+    (when source-file
+      (merge-pathnames relative-path (make-pathname :directory (pathname-directory source-file))))))
 
 (defun call-with-test-handlers (function)
   ;; NOTE: the order of the bindings in this handler-bind is important
@@ -856,6 +866,7 @@ returning (values)~@:>" (name-of test)))
                           :declarations ',declarations
                           :documentation ',documentation
                           :body ',remaining-forms
+                          :source-file ,(or *compile-file-pathname* *load-pathname*)
                           ,@(when in-provided?
                               `(:in (find-test ',in)))
                           ,@test-args))
@@ -946,11 +957,11 @@ returning (values)~@:>" (name-of test)))
 (setf *root-suite* (make-suite 'root-suite :documentation "Root Suite" :in nil))
 (setf *suite* *root-suite*)
 
-(defsuite (tool.test.suites::all-tests :in root-suite))
+(defsuite (epsilon.tool.test.suites::all-tests :in root-suite))
 
 (defun run-all-tests ()
   "Run all currently defined tests."
-  (run-tests 'tool.test.suites::all-tests))
+  (run-tests 'epsilon.tool.test.suites::all-tests))
 
 (defmacro define-test-package (name-or-name-with-args &body package-options)
   "Defines a new package and binds to it a new test suite.
@@ -967,16 +978,16 @@ PARENT-SUITE designated the suite previously created with
 DEFSUITE that should parent the newly created suite.
 
 Package NAME is defined via normal `defpackage', and in addition to
-processing PACKAGE-OPTIONS, automatically USES the :TOOL.TEST and :CL
+processing PACKAGE-OPTIONS, automatically USES the :EPSILON.TOOL.TEST and :CL
 packages."
-  (destructuring-bind (name &key (in 'tool.test.suites::all-tests))
+  (destructuring-bind (name &key (in 'epsilon.tool.test.suites::all-tests))
       (ensure-list name-or-name-with-args)
     (unless (find-package name)
       (make-package name :use nil))
-    (let ((suite-sym (intern (string name) :tool.test.suites)))
+    (let ((suite-sym (intern (string name) :epsilon.tool.test.suites)))
       `(progn
 	 (defpackage ,name
-	   ,@(append `((:use :tool.test :cl))
+	   ,@(append `((:use :epsilon.tool.test :cl))
 		     package-options))
 	 (defsuite (,suite-sym :bind-to-package ,name
 			       :in ,in))))))
@@ -1093,9 +1104,7 @@ See RUN-TESTS for the meaning of the remaining keyword arguments."
          (apply #'format *pretty-log-stream* format-control format-args))
        (suite-p ()
          (not (zerop (hash-table-count (children-of test))))))
-    (if (suite-p)
-        (pp "~A (Suite)" (name-of test))
-        (pp "~A" (name-of test)))
+    (pp "~A" (name-of test))
     (let* ((*error-output* *pretty-log-stream*)
            (*standard-output* *pretty-log-stream*)
            (*within-non-suite-test* (not (suite-p)))

@@ -1,4 +1,4 @@
-(in-package #:lib.regex)
+(in-package #:epsilon.lib.regex)
 
 ;;; The flags that represent the "ism" modifiers are always kept
 ;;; together in a three-element list. We use the following macros to

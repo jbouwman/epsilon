@@ -1,13 +1,13 @@
-(defpackage #:lib.digest.stream
+(defpackage #:epsilon.lib.digest.stream
   (:use
    #:cl
    #:sb-gray
-   #:lib.type
-   #:lib.digest.generic)
+   #:epsilon.lib.type
+   #:epsilon.lib.digest.generic)
   (:export
    #:with-authenticating-stream))
 
-(in-package #:lib.digest.stream)
+(in-package #:epsilon.lib.digest.stream)
 
 ;;; implementation via Gray streams
 

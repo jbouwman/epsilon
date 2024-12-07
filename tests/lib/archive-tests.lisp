@@ -1,23 +1,24 @@
-(tool.test:define-test-package #:lib.archive/tests
+(epsilon.tool.test:define-test-package #:epsilon.lib.archive/tests
   (:use
    #:cl
-   #:lib.char
-   #:lib.stream
-   #:lib.string
-   #:lib.type)
+   #:epsilon.lib.char
+   #:epsilon.lib.stream
+   #:epsilon.lib.string
+   #:epsilon.lib.type)
   (:local-nicknames
-   (#:uri #:lib.uri)))
+   (#:uri #:epsilon.lib.uri)))
 
-(in-package #:lib.archive/tests)
+(in-package #:epsilon.lib.archive/tests)
 
 (deftest zipfile ()
-  (lib.archive:with-zip-file (file (uri:path (test-data "nibbles-0.15-a46a67736e07.zip")))
-    (let* ((entry (aref (lib.archive:entries file) 12))
-           (stream (make-instance 'fast-output-stream)))
-      (flet ((output (buffer start end)
-               (write-sequence buffer stream :start start :end end)
-               end))
-        (lib.archive:decode-entry #'output entry)
-        (is (starts-with-p (u8-to-string (finish-output-stream stream))
-                           ";;;; types.lisp"))))))
+  (let ((nibbles (get-test-relative-path 'zipfile "nibbles-0.15-a46a67736e07.zip")))
+    (epsilon.lib.archive:with-zip-file (file nibbles)
+      (let* ((entry (aref (epsilon.lib.archive:entries file) 12))
+             (stream (make-instance 'fast-output-stream)))
+        (flet ((output (buffer start end)
+                 (write-sequence buffer stream :start start :end end)
+                 end))
+          (epsilon.lib.archive:decode-entry #'output entry)
+          (is (starts-with-p (u8-to-string (finish-output-stream stream))
+                             ";;;; types.lisp")))))))
     

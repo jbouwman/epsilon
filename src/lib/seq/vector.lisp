@@ -1,4 +1,4 @@
-(in-package #:lib.seq)
+(in-package #:epsilon.lib.seq)
 
 (declaim (inline
           split-vector split-vector-if split-vector-if-not

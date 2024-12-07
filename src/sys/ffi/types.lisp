@@ -1,4 +1,4 @@
-(in-package #:sys.ffi)
+(in-package #:epsilon.sys.ffi)
 
 ;;;# Built-In Types
 
@@ -29,13 +29,13 @@
 
 (defparameter *built-in-integer-types*
   (set-difference
-   sys.ffi:*built-in-foreign-types*
+   epsilon.sys.ffi:*built-in-foreign-types*
    (append *possible-float-types* *other-builtin-types*))
   "List of integer types supported by FFI.")
 
 (defparameter *built-in-float-types*
   (set-difference
-   sys.ffi:*built-in-foreign-types*
+   epsilon.sys.ffi:*built-in-foreign-types*
    (append *built-in-integer-types* *other-builtin-types*))
   "List of real float types supported by FFI.")
 

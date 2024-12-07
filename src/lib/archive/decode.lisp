@@ -1,4 +1,4 @@
-(in-package #:lib.archive)
+(in-package #:epsilon.lib.archive)
 
 (define-condition archive-file-required (error)
   ((disk :initarg :disk :initform (error "DISK required.") :reader disk))

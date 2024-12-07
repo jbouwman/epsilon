@@ -1,4 +1,4 @@
-(in-package #:lib.archive)
+(in-package #:epsilon.lib.archive)
 
 (deftype io ()
   `(or stream vector-input directory-input))
@@ -110,7 +110,7 @@
 (defun call-with-io (function io &key (start 0) end (if-exists :error) (direction :input))
   (etypecase io
     ((or string pathname)
-     (if (sys.fs:dir-p io)
+     (if (epsilon.sys.fs:dir-p io)
          (funcall function (make-directory-input))
          (with-open-file (stream io :direction direction
                                     :element-type 'u8

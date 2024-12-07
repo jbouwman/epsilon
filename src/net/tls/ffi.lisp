@@ -1,4 +1,4 @@
-(in-package :net.tls)
+(in-package :epsilon.net.tls)
 
 ;;; Some lisps (CMUCL) fail when we try to define
 ;;; a foreign function which is absent in the loaded
@@ -78,24 +78,24 @@ variants if you have use cases for them.)"
 
 ;;; Code for checking that we got the correct foreign symbols right.
 ;;; Implemented only for LispWorks for now.
-(defvar *net.tls-ssl-foreign-function-names* nil)
-(defvar *net.tls-crypto-foreign-function-names* nil)
+(defvar *epsilon.net.tls-ssl-foreign-function-names* nil)
+(defvar *epsilon.net.tls-crypto-foreign-function-names* nil)
 
 #+lispworks
-(defun check-net.tls-symbols ()
-  (dolist (ssl-symbol *net.tls-ssl-foreign-function-names*)
+(defun check-epsilon.net.tls-symbols ()
+  (dolist (ssl-symbol *epsilon.net.tls-ssl-foreign-function-names*)
     (when (fli:null-pointer-p (fli:make-pointer :symbol-name ssl-symbol :module 'libssl :errorp nil))
-      (format *error-output* "net.tls can not locate symbol ~s in the module 'libssl~%" ssl-symbol)))
-  (dolist (crypto-symbol *net.tls-crypto-foreign-function-names*)
+      (format *error-output* "epsilon.net.tls can not locate symbol ~s in the module 'libssl~%" ssl-symbol)))
+  (dolist (crypto-symbol *epsilon.net.tls-crypto-foreign-function-names*)
     (when (fli:null-pointer-p (fli:make-pointer :symbol-name crypto-symbol :module 'libcrypto :errorp nil))
-      (format *error-output* "net.tls can not locate symbol ~s in the module 'libcrypto~%" crypto-symbol))))
+      (format *error-output* "epsilon.net.tls can not locate symbol ~s in the module 'libcrypto~%" crypto-symbol))))
 
 (defmacro define-ssl-function-ex ((&key since vanished) name-and-options &body body)
   `(progn
      ;; debugging
      ,@(unless (or since vanished)
          `((pushnew ,(car name-and-options)
-                    *net.tls-ssl-foreign-function-names*
+                    *epsilon.net.tls-ssl-foreign-function-names*
                     :test 'equal)))
      (defcfun-versioned (:since ,since :vanished ,vanished)
          ,(append name-and-options '(:library libssl))
@@ -109,11 +109,11 @@ variants if you have use cases for them.)"
      ;; debugging
      ,@(unless (or since vanished)
          `(( pushnew ,(car name-and-options)
-                     *net.tls-crypto-foreign-function-names*
+                     *epsilon.net.tls-crypto-foreign-function-names*
                      :test 'equal)))
      (defcfun-versioned (:since ,since :vanished ,vanished)
          ,(append name-and-options
-                  #-net.tls-foreign-libs-already-loaded '(:library libcrypto))
+                  #-epsilon.net.tls-foreign-libs-already-loaded '(:library libcrypto))
        ,@body)))
 
 (defmacro define-crypto-function (name-and-options &body body)
@@ -608,9 +608,9 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
   (cmd :int)
   ;; Despite declared as long in the original OpenSSL headers,
   ;; passing to larg for example 2181041151 which is the result of
-  ;;     (logior net.tls::+SSL-OP-ALL+
-  ;;             net.tls::+SSL-OP-NO-SSLv2+
-  ;;             net.tls::+SSL-OP-NO-SSLv3+)
+  ;;     (logior epsilon.net.tls::+SSL-OP-ALL+
+  ;;             epsilon.net.tls::+SSL-OP-NO-SSLv2+
+  ;;             epsilon.net.tls::+SSL-OP-NO-SSLv3+)
   ;; causes FFI on 32 bit platforms to signal an error
   ;; "The value 2181041151 is not of the expected type (SIGNED-BYTE 32)"
   ;; The problem is that 2181041151 requires 32 bits by itself and

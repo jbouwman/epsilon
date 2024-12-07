@@ -1,10 +1,10 @@
-(defpackage #:lib.digest.generic
+(defpackage #:epsilon.lib.digest.generic
   (:use
    #:cl
    #:sb-gray
-   #:lib.type
-   #:lib.digest.common
-   #:lib.symbol)
+   #:epsilon.lib.type
+   #:epsilon.lib.digest.common
+   #:epsilon.lib.symbol)
   (:export
    #:block-length
    #:buffer-index
@@ -17,7 +17,6 @@
    #:digestp
    #:end                                ; fixme
    #:finalize-registers
-   #:make-digest
    #:mdx
    #:mdx-updater
    #:produce-digest
@@ -30,7 +29,7 @@
 
 ;;; defining digest (hash) functions
 
-(in-package #:lib.digest.generic)
+(in-package #:epsilon.lib.digest.generic)
 
 (defgeneric block-length (cipher)
   (:documentation "Return the number of bytes in an encryption or
@@ -83,9 +82,8 @@ An error will be signaled if there is insufficient room in DIGEST."))
              (declare (dynamic-extent buffer))
              (frob buffer 0 +buffer-size+)))))
     (t
-     (error 'ironclad-error
-            :format-control "Unsupported stream element-type ~S for stream ~S."
-            :format-arguments (list (stream-element-type stream) stream)))))
+     (error "Unsupported stream element-type ~S for stream ~S."
+            (stream-element-type stream) stream))))
 
 (declaim (inline update-digest-from-vector))
 
@@ -288,9 +286,6 @@ An error will be signaled if there is insufficient room in DIGEST."))
 (defmethod sb-gray::stream-element-type ((stream digesting-stream))
   'u8)
 
-(defun make-digesting-stream (digest &rest args)
-  (make-instance 'digesting-stream :digest (apply #'make-digest digest args)))
-
 (defmethod sb-gray::stream-write-byte ((stream digesting-stream) byte)
   (declare (type u8 byte))
   (with-slots (digest buffer position) stream
@@ -326,13 +321,3 @@ An error will be signaled if there is insufficient room in DIGEST."))
       (update-digest %digest buffer :start 0 :end position)
       (setf position 0))
     (produce-digest %digest :digest digest :digest-start digest-start)))
-
-(defun execute-with-digesting-stream (digest fn)
-  (with-open-stream (stream (make-digesting-stream digest))
-    (funcall fn stream)
-    (produce-digest stream)))
-
-(defmacro with-digesting-stream ((var digest &rest args) &body body)
-  `(with-open-stream (,var (make-digesting-stream ,digest ,@args))
-     ,@body
-     (produce-digest ,var)))

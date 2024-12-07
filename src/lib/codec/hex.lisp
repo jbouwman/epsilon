@@ -1,14 +1,14 @@
-(defpackage #:lib.codec.hex
+(defpackage #:epsilon.lib.codec.hex
   (:use
    #:cl
-   #:lib.type)
+   #:epsilon.lib.type)
   (:export
    #:u8-to-hex
    #:hex-to-u8))
 
 ;; Hexadecimal string encoding
 
-(in-package #:lib.codec.hex)
+(in-package #:epsilon.lib.codec.hex)
 
 (defun u8-to-hex (vector &key (start 0) end (element-type 'base-char))
   "Return a string containing the hexadecimal representation of the
@@ -46,7 +46,7 @@ hexadecimal digits into a byte array."
     (declare (type ->u8 key))
     (flet ((char-to-digit (char)
              (or (position char "0123456789abcdef" :test #'char-equal)
-                 (error 'ironclad-error
+                 (error 'error
                         :format-control "~A is not a hex digit"
                         :format-arguments (list char)))))
       (loop for i from 0

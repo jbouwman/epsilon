@@ -1,11 +1,11 @@
-(defpackage #:lib.checksum.generic
+(defpackage #:epsilon.lib.checksum.generic
   (:use
    #:cl)
   (:export
    #:checksum
    #:update))
 
-(in-package #:lib.checksum.generic)
+(in-package #:epsilon.lib.checksum.generic)
 
 (defgeneric update (state buffer start count))
 

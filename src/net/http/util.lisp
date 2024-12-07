@@ -1,10 +1,10 @@
-(defpackage #:net.http.util
+(defpackage #:epsilon.net.http.util
   (:use
    #:cl  
-   #:lib.stream
-   #:lib.type)
+   #:epsilon.lib.stream
+   #:epsilon.lib.type)
   (:local-nicknames
-   (#:uri #:lib.uri))
+   (#:uri #:epsilon.lib.uri))
   (:export
    #:*default-connect-timeout*
    #:*default-read-timeout*
@@ -19,15 +19,15 @@
    #:with-header-output
    #:write-connect-header))
 
-(in-package #:net.http.util)
+(in-package #:epsilon.net.http.util)
 
 (defvar *default-connect-timeout* 10)
 (defvar *default-read-timeout* 10)
 (defvar *verbose* nil)
 (defvar *not-verify-ssl* nil)
-(defvar *default-proxy* (or #-windows (sys.env:getenv "HTTPS_PROXY")
-                            #-windows (sys.env:getenv "HTTP_PROXY"))
-  "If specified will be used as the default value of PROXY in calls to net.http.  Defaults to
+(defvar *default-proxy* (or #-windows (epsilon.sys.env:getenv "HTTPS_PROXY")
+                            #-windows (epsilon.sys.env:getenv "HTTP_PROXY"))
+  "If specified will be used as the default value of PROXY in calls to epsilon.net.http.  Defaults to
  the value of the environment variable HTTPS_PROXY or HTTP_PROXY if not on Windows.")
 
 (declaim (ftype (function (simple-string) ->u8) string->u8))
@@ -53,7 +53,7 @@
   (defvar +crlf+ (string->u8 (format nil "~C~C" #\Return #\Newline))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defparameter *net.http-version*
+  (defparameter *epsilon.net.http-version*
     "3.1")
 
   ;; The user agent reported by an Applie iPhone 6

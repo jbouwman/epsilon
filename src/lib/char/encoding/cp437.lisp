@@ -1,4 +1,4 @@
-(in-package #:lib.char)
+(in-package #:epsilon.lib.char)
 
 (define-character-encoding :cp437
     "An 8-bit, fixed-width character encoding from IBM."

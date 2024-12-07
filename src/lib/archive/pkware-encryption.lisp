@@ -1,4 +1,4 @@
-(in-package #:lib.archive)
+(in-package #:epsilon.lib.archive)
 
 (defstruct (pkware-decrypt-state
             (:constructor %make-pkware-decrypt-state (buffer)))
@@ -8,8 +8,8 @@
   (k2 878082192 :type (unsigned-byte 32)))
 
 (defun crc-nth (n)
-  (logior (ash (aref lib.checksum.crc-32::*crc-32-table* (* 2 n)) 16)
-          (aref lib.checksum.crc-32::*crc-32-table* (1+ (* 2 n)))))
+  (logior (ash (aref epsilon.lib.checksum.crc-32::*crc-32-table* (* 2 n)) 16)
+          (aref epsilon.lib.checksum.crc-32::*crc-32-table* (1+ (* 2 n)))))
 
 (defun crc32-rotate (crc byte)
   (logxor (ldb (byte 24 8) crc)

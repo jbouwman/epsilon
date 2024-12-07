@@ -1,4 +1,4 @@
-(in-package #:lib.archive)
+(in-package #:epsilon.lib.archive)
 
 (defvar *zip64-needed*)
 
@@ -35,13 +35,13 @@
        (unless (file-name entry)
          (setf (file-name entry) (file-namestring content)))
        (unless (attributes entry)
-         (setf (attributes entry) (list `(,(if (sys.fs:dir-p content)
+         (setf (attributes entry) (list `(,(if (epsilon.sys.fs:dir-p content)
                                                :directory
                                                :normal)
                                           T)
                                         *compatibility*
-                                        (sys.fs:attributes content))))
-       (unless (sys.fs:dir-p content)
+                                        (epsilon.sys.fs:attributes content))))
+       (unless (epsilon.sys.fs:dir-p content)
          (typecase content
            (file-stream (setf (uncompressed-size entry) (file-length content)))
            (T
@@ -84,7 +84,7 @@
     extra))
 
 (defun entry-to-lf (entry)
-  (let ((file-name (lib.char:string-to-u8 (file-name entry) :encoding :utf-8))
+  (let ((file-name (epsilon.lib.char:string-to-u8 (file-name entry) :encoding :utf-8))
         (extra (make-array 0 :adjustable T :element-type 'u8))
         (size (or (size entry) 0))
         (uncompressed-size (or (uncompressed-size entry) 0)))
@@ -130,7 +130,7 @@
         (make-data-descriptor/64 (crc-32 entry) (size entry) uncompressed-size))))
 
 (defun entry-to-cd (entry)
-  (let ((file-name (lib.char:string-to-u8 (file-name entry) :encoding :utf-8))
+  (let ((file-name (epsilon.lib.char:string-to-u8 (file-name entry) :encoding :utf-8))
         (comment (encode-string (comment entry)))
         (extra (make-array 0 :adjustable T :element-type 'u8))
         (size (or (size entry) 0))
@@ -173,7 +173,7 @@
                (etypecase input
                  (stream
                   (when (or (not (typep input 'file-stream))
-                            (not (sys.fs:dir-p input)))
+                            (not (epsilon.sys.fs:dir-p input)))
                     (loop with buffer = (make-array 4096 :element-type 'u8)
                           for read = (read-sequence buffer input)
                           while (< 0 read)

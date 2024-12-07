@@ -1,10 +1,10 @@
-(defpackage #:sys.gc
+(defpackage #:epsilon.sys.gc
   (:use #:cl)
   (:export
    #:finalize
    #:cancel-finalization))
 
-(in-package #:sys.gc)
+(in-package #:epsilon.sys.gc)
 
 ;;;; Finalizers
 

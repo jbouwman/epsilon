@@ -1,4 +1,4 @@
-(in-package :net.tls)
+(in-package :epsilon.net.tls)
 
 #|
 ASN1 string validation references:
@@ -204,7 +204,7 @@ we are going to pass them to FFI:WITH-POINTER-TO-VECTOR-DATA)"))
                       (case type
                         (#. +GEN-IPADD+
                          (let ((address (asn1-string-bytes-vector data)))
-                           (net.socket:host-to-hostname address)))
+                           (epsilon.net.socket:host-to-hostname address)))
                         (#. +GEN-DNS+
                          (or (try-get-asn1-string-data data '(#. +v-asn1-iastring+))
                              (error "Malformed certificate: possibly NULL in dns-alt-name")))))))
@@ -298,4 +298,4 @@ designator for the digest algorithm to use (it defaults to SHA-1)."
     ;; The write routines return 1 for success or 0 for failure.
     (unless (= 1 (pem-write-x509 bio x509))
       (error "X509 cert cant be printed: ~s"
-             (net.tls::err-error-string (net.tls::err-get-error) (ffi:null-pointer))))))
+             (epsilon.net.tls::err-error-string (epsilon.net.tls::err-get-error) (ffi:null-pointer))))))

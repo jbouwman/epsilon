@@ -1,4 +1,4 @@
-(in-package #:lib.regex)
+(in-package #:epsilon.lib.regex)
 
 (declaim (inline *string*= *string*-equal))
 (defun *string*= (string2 start1 end1 start2 end2)

@@ -1,7 +1,7 @@
-(defpackage #:lib.control
+(defpackage #:epsilon.lib.control
   (:use
    #:cl
-   #:lib.symbol)
+   #:epsilon.lib.symbol)
   (:export
    #:extract-function-name
    #:generate-switch-body
@@ -13,7 +13,7 @@
    #:nth-value-or
    #:multiple-value-prog2))
 
-(in-package :lib.control)
+(in-package :epsilon.lib.control)
 
 (defun extract-function-name (spec)
   "Useful for macros that want to mimic the functional interface for functions

@@ -1,4 +1,4 @@
-(in-package #:lib.type)
+(in-package #:epsilon.lib.type)
 
 ;;;; streams.lisp -- reading/writing signed/unsigned bytes to streams
 

@@ -1,7 +1,7 @@
-(defpackage #:sys.sync.atomic
+(defpackage #:epsilon.sys.sync.atomic
   (:use
    #:cl
-   #:lib.symbol)
+   #:epsilon.lib.symbol)
   (:export
    #:make-atomic-integer
    #:atomic-integer-compare-and-swap
@@ -9,7 +9,7 @@
    #:atomic-integer-incf
    #:atomic-integer-value))
 
-(in-package #:sys.sync.atomic)
+(in-package #:epsilon.sys.sync.atomic)
 
 (defmacro atomic-cas (place old new)
   (with-gensyms (tmp)

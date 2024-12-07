@@ -1,4 +1,4 @@
-(defpackage #:lib.symbol
+(defpackage #:epsilon.lib.symbol
   (:use
    #:cl)
   (:export
@@ -16,7 +16,7 @@
    #:once-only
    #:parse-body))
  
-(in-package #:lib.symbol)
+(in-package #:epsilon.lib.symbol)
 
 (deftype string-designator ()
   "A string designator type. A string designator is either a string, a symbol,

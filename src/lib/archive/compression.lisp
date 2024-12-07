@@ -1,4 +1,4 @@
-(in-package #:lib.archive)
+(in-package #:epsilon.lib.archive)
 
 (defgeneric make-decompression-state (format))
 
@@ -30,7 +30,7 @@
 
 (defmethod call-with-decompressed-buffer (function input start end (state deflate-state-2))
   (with-slots (output-buffer) state
-    (lib.codec::decompress output-buffer (lib.codec::make-dstate :deflate) input
+    (epsilon.lib.codec::decompress output-buffer (epsilon.lib.codec::make-dstate :deflate) input
                            :input-state start
                            :input-end end)
     (let ((result (finish-output-stream output-buffer)))
@@ -53,12 +53,12 @@
 
 (defmethod make-compression-state ((format (eql :deflate)) &key buffer)
   (declare (ignore buffer))
-  (make-instance 'lib.codec::deflate-compressor))
+  (make-instance 'epsilon.lib.codec::deflate-compressor))
 
-(defmethod call-with-compressed-buffer (function vector start end (state lib.codec::deflate-compressor))
-  (setf (lib.codec::callback state) (lambda (buffer end) (funcall function buffer 0 end)))
-  (lib.codec::compress-u8-vector vector state :start start :end end))
+(defmethod call-with-compressed-buffer (function vector start end (state epsilon.lib.codec::deflate-compressor))
+  (setf (epsilon.lib.codec::callback state) (lambda (buffer end) (funcall function buffer 0 end)))
+  (epsilon.lib.codec::compress-u8-vector vector state :start start :end end))
 
-(defmethod call-with-completed-compressed-buffer (function (state lib.codec::deflate-compressor))
-  (setf (lib.codec::callback state) (lambda (buffer end) (funcall function buffer 0 end)))
-  (lib.codec::finish-compression state))
+(defmethod call-with-completed-compressed-buffer (function (state epsilon.lib.codec::deflate-compressor))
+  (setf (epsilon.lib.codec::callback state) (lambda (buffer end) (funcall function buffer 0 end)))
+  (epsilon.lib.codec::finish-compression state))

@@ -1,4 +1,4 @@
-(in-package :net.tls)
+(in-package :epsilon.net.tls)
 
 (define-condition verify-location-not-found-error (ssl-error)
   ((location :initarg :location))
@@ -9,9 +9,9 @@
 (defun validate-verify-location (location)
   (handler-case
       (cond
-        ((sys.fs:file-p location)
+        ((epsilon.sys.fs:file-p location)
          (values location t))
-        ((sys.fs:dir-p location)
+        ((epsilon.sys.fs:dir-p location)
          (values location nil))
         (t
          (error 'verify-location-not-found-error :location location)))))
@@ -21,7 +21,7 @@
     (multiple-value-bind (location isfile)
         (validate-verify-location location)
       (ffi:with-foreign-strings ((location-ptr location))
-        (unless (= 1 (net.tls::ssl-ctx-load-verify-locations
+        (unless (= 1 (epsilon.net.tls::ssl-ctx-load-verify-locations
                       ssl-ctx
                       (if isfile location-ptr (ffi:null-pointer))
                       (if isfile (ffi:null-pointer) location-ptr)))
@@ -153,7 +153,7 @@ Keyword arguments:
       ;;
       ;; As an aside: OpenSSL had the "SSL_OP_NO_TLSv1_2" constant since
       ;;   7409d7ad517    2011-04-29 22:56:51 +0000
-      ;; so requiring a "new"er OpenSSL to match net.tls's defauls shouldn't be a problem.
+      ;; so requiring a "new"er OpenSSL to match epsilon.net.tls's defauls shouldn't be a problem.
       (if min-proto-version
         (if (zerop (ssl-ctx-set-min-proto-version ssl-ctx min-proto-version))
           (error "Couldn't set minimum SSL protocol version!")))

@@ -1,4 +1,4 @@
-(in-package #:lib.regex)
+(in-package #:epsilon.lib.regex)
 
 (defun create-hash-table-from-test-function (test-function start end)
   "Creates and returns a hash table representing all characters with

@@ -1,4 +1,4 @@
-(in-package #:lib.codec)
+(in-package #:epsilon.lib.codec)
 
 ;;; This structure is never meant to be instantiated.  It exists only to
 ;;; provide common framework for other decompressors.

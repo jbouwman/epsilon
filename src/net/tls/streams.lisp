@@ -1,4 +1,4 @@
-(in-package :net.tls)
+(in-package :epsilon.net.tls)
 
 ;; Default Cipher List
 (defvar *default-cipher-list* nil)
@@ -208,7 +208,7 @@
 (defvar *default-unwrap-stream-p* t
   "Default value for UNWRAP-STREAM-P function parameter.
 
-If true (the default), net.tls will try to extract file descriptor
+If true (the default), epsilon.net.tls will try to extract file descriptor
 from the given TCP Lisp stream and tell OpenSSL to use a socket BIO
 based on that file descriptor;
 otherwise use a Lisp BIO wrapping the TCP Lisp stream.")
@@ -353,7 +353,7 @@ MAKE-CONTEXT also allows to enab/disable verification."
                (or (verify-hostname srv-cert hostname)
                    ;; verify-hostname must either return true
                    ;; or signal an error
-                   (error "Unexpected NIL returned by net.tls:VERIFY-HOSTNAME for ~A"
+                   (error "Unexpected NIL returned by epsilon.net.tls:VERIFY-HOSTNAME for ~A"
                           hostname))))
         (unless (ffi:null-pointer-p srv-cert)
           (x509-free srv-cert))))))
@@ -459,7 +459,7 @@ passed as a parameter to an internall call of SSL_new.)
 
         Note, the VERIFY logic expects that the global
         SSL_CTX object does not have the SSL_VERIFY_PEER
-        flag enabled - the default for the net.tls's global SSL_CTX.
+        flag enabled - the default for the epsilon.net.tls's global SSL_CTX.
         If the current global SSL_CTX object has SSL_VERIFY_PEER enabled,
         the SSL_Connect will perform certificate (but not hostname)
         verification on its own, and an error will be signalled for a
@@ -485,7 +485,7 @@ passed as a parameter to an internall call of SSL_new.)
 
     METHOD - usually you want to leave the default value. It is used
         to compute the parameter for OpenSSL function SSL_CTX_new when
-        creating the global SSL_CTX object for net.tls. This parameter only has
+        creating the global SSL_CTX object for epsilon.net.tls. This parameter only has
         effect on the first call, when the global SSL_CTX is not yet created.
         The default value is TLS_method on OpenSSL > 1.1.0 and SSLv23_method
         for older OpenSSL versions.

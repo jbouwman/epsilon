@@ -1,4 +1,4 @@
-(in-package #:sys.ffi)
+(in-package #:epsilon.sys.ffi)
 
 ;;; Definitions for conversion of foreign structures.
 
@@ -42,7 +42,7 @@
 
 (defmacro define-translation-method ((object type method) &body body)
   "Define a translation method for the foreign structure type; 'method is one of :into, :from, or :to, meaning relation to foreign memory.  If :into, the variable 'pointer is the foreign pointer.  Note: type must be defined and loaded before this macro is expanded, and just the bare name (without :struct) should be specified."
-  (let ((tclass (class-name (class-of (sys.ffi::parse-type `(:struct ,type))))))
+  (let ((tclass (class-name (class-of (epsilon.sys.ffi::parse-type `(:struct ,type))))))
     (when (eq tclass 'foreign-struct-type)
       (error "Won't replace existing translation method for foreign-struct-type"))
     `(defmethod

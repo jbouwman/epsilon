@@ -1,7 +1,7 @@
-(defpackage #:lib.module
+(defpackage #:epsilon.lib.module
   (:use #:cl))
 
-(in-package #:lib.module)
+(in-package #:epsilon.lib.module)
 
 (defun read-module (file)
   "Return the first form in FILE that looks like a module declaration."

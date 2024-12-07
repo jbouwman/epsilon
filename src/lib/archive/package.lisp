@@ -1,8 +1,8 @@
-(defpackage #:lib.archive
+(defpackage #:epsilon.lib.archive
   (:use
    #:cl
-   #:lib.stream
-   #:lib.type)
+   #:epsilon.lib.stream
+   #:epsilon.lib.type)
   (:export
    #:with-zip-file
    #:entries

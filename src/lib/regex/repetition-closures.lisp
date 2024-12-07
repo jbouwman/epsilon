@@ -1,4 +1,4 @@
-(in-package #:lib.regex)
+(in-package #:epsilon.lib.regex)
 
 (defmacro incf-after (place &optional (delta 1) &environment env)
   "Utility macro inspired by C's \"place++\", i.e. first return the

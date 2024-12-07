@@ -1,14 +1,14 @@
-(defpackage #:sys.ffi.sys
+(defpackage #:epsilon.sys.ffi.sys
   (:use
    #:cl
-   #:lib.array
-   #:lib.binding
-   #:lib.function
-   #:lib.hash
-   #:lib.list
-   #:lib.stream
-   #:lib.symbol
-   #:lib.type
+   #:epsilon.lib.array
+   #:epsilon.lib.binding
+   #:epsilon.lib.function
+   #:epsilon.lib.hash
+   #:epsilon.lib.list
+   #:epsilon.lib.stream
+   #:epsilon.lib.symbol
+   #:epsilon.lib.type
    #:sb-alien)
   (:export
    ;; C ABI utils
@@ -63,21 +63,21 @@
    #:constant-form-p
    #:constant-form-value))
 
-(defpackage #:sys.ffi
+(defpackage #:epsilon.sys.ffi
   (:use
    #:common-lisp
-   #:sys.ffi.sys
-   #:lib.array
-   #:lib.binding
-   #:lib.char
-   #:lib.condition
-   #:lib.function
-   #:lib.hash
-   #:lib.list
-   #:lib.stream
-   #:lib.symbol
-   #:lib.vector
-   #:sys.env)
+   #:epsilon.sys.ffi.sys
+   #:epsilon.lib.array
+   #:epsilon.lib.binding
+   #:epsilon.lib.char
+   #:epsilon.lib.condition
+   #:epsilon.lib.function
+   #:epsilon.lib.hash
+   #:epsilon.lib.list
+   #:epsilon.lib.stream
+   #:epsilon.lib.symbol
+   #:epsilon.lib.vector
+   #:epsilon.sys.env)
   (:export
    ;; Types.
    #:foreign-pointer

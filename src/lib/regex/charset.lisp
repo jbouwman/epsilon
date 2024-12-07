@@ -1,4 +1,4 @@
-(in-package #:lib.regex)
+(in-package #:epsilon.lib.regex)
 
 (defconstant +probe-depth+ 3
   "Maximum number of collisions \(for any element) we accept before we

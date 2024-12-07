@@ -1,16 +1,16 @@
-(defpackage :net.tls
+(defpackage :epsilon.net.tls
   (:use :common-lisp
         #:sb-gray
-        #:lib.binding
-        #:lib.char
-        #:lib.list
-        #:lib.stream
-        #:lib.symbol
-        #:lib.type
-        #:sys.sync.lock
-        #:sys.sync.thread)
+        #:epsilon.lib.binding
+        #:epsilon.lib.char
+        #:epsilon.lib.list
+        #:epsilon.lib.stream
+        #:epsilon.lib.symbol
+        #:epsilon.lib.type
+        #:epsilon.sys.sync.lock
+        #:epsilon.sys.sync.thread)
   (:local-nicknames
-   (#:ffi #:sys.ffi))
+   (#:ffi #:epsilon.sys.ffi))
   (:export
    ;;; Create TLS stream over TCP stream
    make-ssl-client-stream
@@ -104,5 +104,5 @@
    ssl-check-verify-p
    ))
 
-(import '(net.tls/config::libssl
-          net.tls/config::libcrypto))
+(import '(epsilon.net.tls/config::libssl
+          epsilon.net.tls/config::libcrypto))

@@ -1,4 +1,4 @@
-(in-package #:lib.char)
+(in-package #:epsilon.lib.char)
 
 (defvar *default-eol-style*
   #+windows :crlf
@@ -51,7 +51,7 @@ denoting a character encoding name or one of its aliases."
   (or (etypecase encoding
         (keyword
          (gethash encoding ht))
-        (lib.char::concrete-mapping
+        (epsilon.lib.char::concrete-mapping
          encoding)
         (character-encoding
          (gethash (enc-name encoding) ht))

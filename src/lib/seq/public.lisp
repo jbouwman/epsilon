@@ -1,4 +1,4 @@
-(in-package #:lib.seq)
+(in-package #:epsilon.lib.seq)
 
 (defun list-long-enough-p (list length)
   (or (zerop length)

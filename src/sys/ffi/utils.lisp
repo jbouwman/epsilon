@@ -1,4 +1,4 @@
-(in-package #:sys.ffi)
+(in-package #:epsilon.sys.ffi)
 
 (defun single-bit-p (integer)
   "Answer whether INTEGER, which must be an integer, is a single
@@ -16,7 +16,7 @@ set twos-complement bit."
 
 (defun warn-if-kw-or-belongs-to-cl (name)
   (let ((package (symbol-package name)))
-    (when (and (not (eq *package* (find-package '#:sys.ffi)))
+    (when (and (not (eq *package* (find-package '#:epsilon.sys.ffi)))
                (member package '(#:common-lisp #:keyword)
                        :key #'find-package))
       (warn "Defining a foreign type named ~S.  This symbol belongs to the ~A ~

@@ -1,4 +1,4 @@
-(in-package net.tls)
+(in-package epsilon.net.tls)
 
 (defparameter *bio-blockp* t)
 (defvar *bio-socket*)
@@ -115,7 +115,7 @@
   (let ((new (bio-new *bio-lisp-method*)))
     (if (or (null new) (ffi:null-pointer-p new))
         (error "Cannot create bio method: ~a"
-               (net.tls::err-error-string (net.tls::err-get-error) (ffi:null-pointer)))
+               (epsilon.net.tls::err-error-string (epsilon.net.tls::err-get-error) (ffi:null-pointer)))
         new)))
 
 (defun bio-set-flags-slots (bio &rest flags)
@@ -164,9 +164,9 @@
 ;;; as CFFI tutorial recommends:
 ;;; https://common-lisp.net/project/cffi/manual/html_node/Tutorial_002dCallbacks.html.
 ;;;
-;;; In net.tls this means the following nested calls:
+;;; In epsilon.net.tls this means the following nested calls:
 ;;;
-;;;   1) Lisp: net.tls stream user code ->
+;;;   1) Lisp: epsilon.net.tls stream user code ->
 ;;;   2) C: OpenSSL C functions ->
 ;;;   3) Lisp: BIO implementation function
 ;;;        signals error and the controls is passed
@@ -193,7 +193,7 @@
 ;;; the condition. Our main goal is to avoid crossing C stack,
 ;;; and we only consider unexpected errors here.
 
-(defparameter *file-name* (ffi:foreign-string-alloc "net.tls/src/bio.lisp"))
+(defparameter *file-name* (ffi:foreign-string-alloc "epsilon.net.tls/src/bio.lisp"))
 
 (defparameter *lib-num-for-errors*
   (if (openssl-is-at-least 1 0 2)

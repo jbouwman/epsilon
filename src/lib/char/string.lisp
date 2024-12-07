@@ -1,4 +1,4 @@
-(in-package #:lib.char)
+(in-package #:epsilon.lib.char)
 
 (defmacro string-get (string index)
   `(char-code (schar ,string ,index)))

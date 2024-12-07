@@ -1,4 +1,4 @@
-(in-package #:lib.char)
+(in-package #:epsilon.lib.char)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defconstant +repl+ #xfffd "Unicode replacement character code point.")

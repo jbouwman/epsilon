@@ -1,4 +1,4 @@
-(in-package #:lib.char)
+(in-package #:epsilon.lib.char)
 
 (define-character-encoding :ascii
     "A 7-bit, fixed-width character encoding in which all

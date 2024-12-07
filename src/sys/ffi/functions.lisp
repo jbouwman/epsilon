@@ -1,4 +1,4 @@
-(in-package #:sys.ffi)
+(in-package #:epsilon.sys.ffi)
 
 ;;;# Calling Foreign Functions
 ;;;

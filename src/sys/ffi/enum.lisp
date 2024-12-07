@@ -1,4 +1,4 @@
-(in-package #:sys.ffi)
+(in-package #:epsilon.sys.ffi)
 
 ;; TODO the accessors names are rather inconsistent:
 ;; FOREIGN-ENUM-VALUE           FOREIGN-BITFIELD-VALUE

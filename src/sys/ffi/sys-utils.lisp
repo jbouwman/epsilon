@@ -1,4 +1,4 @@
-(in-package #:sys.ffi.sys)
+(in-package #:epsilon.sys.ffi.sys)
 
 (defun quoted-form-p (form)
   (and (proper-list-p form)

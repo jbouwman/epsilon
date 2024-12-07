@@ -1,4 +1,4 @@
-(in-package #:lib.archive)
+(in-package #:epsilon.lib.archive)
 
 (defgeneric make-decryption-state (format input password &key buffer &allow-other-keys))
 (defgeneric call-with-decrypted-buffer (function input length state))

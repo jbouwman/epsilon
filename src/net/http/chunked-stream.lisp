@@ -1,9 +1,9 @@
-(defpackage #:net.http.chunked-stream
+(defpackage #:epsilon.net.http.chunked-stream
   (:use
    #:cl
    #:sb-gray
-   #:lib.binding
-   #:lib.type)
+   #:epsilon.lib.binding
+   #:epsilon.lib.type)
   (:export
    :chunked-input-stream
    :chunked-io-stream
@@ -13,7 +13,7 @@
    :chunked-stream-output-chunking-p
    :make-chunked-stream))
 
-(in-package #:net.http.chunked-stream)
+(in-package #:epsilon.net.http.chunked-stream)
 
 (defconstant +output-buffer-size+ 8192)
 

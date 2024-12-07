@@ -1,4 +1,4 @@
-(in-package #:lib.regex)
+(in-package #:epsilon.lib.regex)
 
 (defmacro bmh-matcher-aux (&key case-insensitive-p)
   "Auxiliary macro used by CREATE-BMH-MATCHER."

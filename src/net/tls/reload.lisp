@@ -4,7 +4,7 @@
 ;;;   - but not every time ffi.lisp is re-loaded as would happen if we
 ;;;     put this directly into ffi.lisp
 
-(in-package :net.tls)
+(in-package :epsilon.net.tls)
 
 ;; The default OS-X libssl seems have had insufficient crypto algos
 ;; (missing TLSv1_[1,2]_XXX methods,
@@ -20,14 +20,14 @@
 ;; as conditions in the FFI library definitions.
 
 (defun detect-macos-custom-openssl-installations ()
-  (dolist (dir-feature '(("/opt/local/lib/" :net.tls-macports-found)
-                         ("/sw/lib/" :net.tls-fink-found)
-                         ("/usr/local/opt/openssl/lib/" :net.tls-homebrew-found)
-                         ("/opt/homebrew/opt/openssl/lib/" :net.tls-homebrew-arm64-found)
-                         ("/usr/local/lib/" :net.tls-personalized-install-found)))
+  (dolist (dir-feature '(("/opt/local/lib/" :epsilon.net.tls-macports-found)
+                         ("/sw/lib/" :epsilon.net.tls-fink-found)
+                         ("/usr/local/opt/openssl/lib/" :epsilon.net.tls-homebrew-found)
+                         ("/opt/homebrew/opt/openssl/lib/" :epsilon.net.tls-homebrew-arm64-found)
+                         ("/usr/local/lib/" :epsilon.net.tls-personalized-install-found)))
     (destructuring-bind (dir feature) dir-feature
-      (if (and (sys.fs:file-p (concatenate 'string dir "libssl.dylib"))
-               (sys.fs:file-p (concatenate 'string dir "libcrypto.dylib")))
+      (if (and (epsilon.sys.fs:file-p (concatenate 'string dir "libssl.dylib"))
+               (epsilon.sys.fs:file-p (concatenate 'string dir "libcrypto.dylib")))
           (pushnew feature *features*)
           (setf *features* (remove feature *features*))))))
 
@@ -52,7 +52,7 @@ sudo touch /sw/lib/libssl.dylib /sw/lib/libcrypto.dylib
 sudo touch /usr/local/lib/libcrypto.dylib /usr/local/lib/libssl.dylib
 
 (detect-macos-custom-openssl-installations)
-(remove-if-not (lambda (f) (search "net.tls" (string-downcase f)))
+(remove-if-not (lambda (f) (search "epsilon.net.tls" (string-downcase f)))
                *features*)
 
 sudo rm -rf /sw/
@@ -77,7 +77,7 @@ sudo rm /usr/local/lib/libcrypto.dylib /usr/local/lib/libssl.dylib
 ;;
 ;; These are 32-bit only.
 
-(unless net.tls/config::*libcrypto-override*
+(unless epsilon.net.tls/config::*libcrypto-override*
   (ffi:define-foreign-library libcrypto
     (:windows (:or #+(and windows x86-64) "libcrypto-3-x64.dll"
                    #+(and windows x86) "libcrypto-3.dll"
@@ -91,9 +91,9 @@ sudo rm /usr/local/lib/libcrypto.dylib /usr/local/lib/libssl.dylib
     ;; More info at https://github.com/cl-plus-ssl/cl-plus-ssl/pull/2.
     (:openbsd "libcrypto.so")
 
-    ((:and :darwin :net.tls-macports-found) "/opt/local/lib/libcrypto.dylib")
-    ((:and :darwin :net.tls-fink-found) "/sw/lib/libcrypto.dylib")
-    ((:and :darwin :arm64 :net.tls-homebrew-arm64-found) "/opt/homebrew/opt/openssl/lib/libcrypto.dylib")
+    ((:and :darwin :epsilon.net.tls-macports-found) "/opt/local/lib/libcrypto.dylib")
+    ((:and :darwin :epsilon.net.tls-fink-found) "/sw/lib/libcrypto.dylib")
+    ((:and :darwin :arm64 :epsilon.net.tls-homebrew-arm64-found) "/opt/homebrew/opt/openssl/lib/libcrypto.dylib")
     ((:and :darwin
            ;; despite Homebriew currently only
            ;; supports :arm64 and :x86-64,
@@ -102,8 +102,8 @@ sudo rm /usr/local/lib/libcrypto.dylib /usr/local/lib/libssl.dylib
            ;; seems to be used by Tigerbiew,
            ;; which supports PPC and :x86.
            (:not :arm64)
-           :net.tls-homebrew-found) "/usr/local/opt/openssl/lib/libcrypto.dylib")
-    ((:and :darwin :net.tls-personalized-install-found) "/usr/local/lib/libcrypto.dylib")
+           :epsilon.net.tls-homebrew-found) "/usr/local/opt/openssl/lib/libcrypto.dylib")
+    ((:and :darwin :epsilon.net.tls-personalized-install-found) "/usr/local/lib/libcrypto.dylib")
     (:darwin (:or ;; System-provided libraries. Must be loaded from files with
                   ;; names that include version explicitly, instead of any
                   ;; versionless symlink file. Otherwise macOS crushes the
@@ -136,7 +136,7 @@ sudo rm /usr/local/lib/libcrypto.dylib /usr/local/lib/libssl.dylib
                 "libcrypto.so.3"
                 "libcrypto.so"))))
 
-(unless net.tls/config::*libssl-override*
+(unless epsilon.net.tls/config::*libssl-override*
   (ffi:define-foreign-library libssl
     (:windows (:or #+(and windows x86-64) "libssl-3-x64.dll"
                    #+(and windows x86) "libssl-3.dll"
@@ -145,11 +145,11 @@ sudo rm /usr/local/lib/libcrypto.dylib /usr/local/lib/libssl.dylib
                    "libssl32.dll"
                    "ssleay32.dll"))
 
-    ((:and :darwin :net.tls-macports-found) "/opt/local/lib/libssl.dylib")
-    ((:and :darwin :net.tls-fink-found) "/sw/lib/libssl.dylib")
-    ((:and :darwin :x86-64 :net.tls-homebrew-found) "/usr/local/opt/openssl/lib/libssl.dylib")
-    ((:and :darwin :arm64 :net.tls-homebrew-arm64-found) "/opt/homebrew/opt/openssl/lib/libssl.dylib")
-    ((:and :darwin :net.tls-personalized-install-found) "/usr/local/lib/libssl.dylib")
+    ((:and :darwin :epsilon.net.tls-macports-found) "/opt/local/lib/libssl.dylib")
+    ((:and :darwin :epsilon.net.tls-fink-found) "/sw/lib/libssl.dylib")
+    ((:and :darwin :x86-64 :epsilon.net.tls-homebrew-found) "/usr/local/opt/openssl/lib/libssl.dylib")
+    ((:and :darwin :arm64 :epsilon.net.tls-homebrew-arm64-found) "/opt/homebrew/opt/openssl/lib/libssl.dylib")
+    ((:and :darwin :epsilon.net.tls-personalized-install-found) "/usr/local/lib/libssl.dylib")
     (:darwin (:or ;; System-provided libraries, with version in the file name.
               ;; See the comment for the libcryto equivalents above.
               "/usr/lib/libssl.48.dylib"
@@ -189,7 +189,7 @@ sudo rm /usr/local/lib/libcrypto.dylib /usr/local/lib/libssl.dylib
                 "libssl.so"))
     (t (:default "libssl3"))))
 
-(unless (member :net.tls-foreign-libs-already-loaded
+(unless (member :epsilon.net.tls-foreign-libs-already-loaded
                 *features*)
   (ffi:use-foreign-library libcrypto)
   (ffi:use-foreign-library libssl))

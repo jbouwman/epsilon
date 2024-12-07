@@ -1,4 +1,4 @@
-(defpackage #:lib.string
+(defpackage #:epsilon.lib.string
   (:use :cl)
   (:export
    #:concat
@@ -14,7 +14,7 @@
    #:strip-left
    #:strip-right))
 
-(in-package #:lib.string)
+(in-package #:epsilon.lib.string)
 
 (defun join (sep components)
   (let ((s (make-string (+ (apply #'+ (mapcar #'length components))

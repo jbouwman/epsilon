@@ -1,8 +1,8 @@
-(tool.test:define-test-package #:lib.regex/tests
+(epsilon.tool.test:define-test-package #:epsilon.lib.regex/tests
   (:local-nicknames
-   (#:re #:lib.regex)))
+   (#:re #:epsilon.lib.regex)))
 
-(in-package #:lib.regex/tests)
+(in-package #:epsilon.lib.regex/tests)
 
 (deftest scan ()
   (is (equalp (multiple-value-list (re:scan "(a)*b" "xaaabd"))

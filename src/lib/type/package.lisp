@@ -1,7 +1,7 @@
-(defpackage #:lib.type
+(defpackage #:epsilon.lib.type
   (:use
    #:cl
-   #:lib.symbol)
+   #:epsilon.lib.symbol)
   (:export
 
    #:array-index
@@ -115,7 +115,7 @@
    #:s64ref/be
    #:s64ref/le))
 
-(in-package #:lib.type)
+(in-package #:epsilon.lib.type)
 
 (deftype array-index (&optional (length array-dimension-limit))
   `(mod ,length))

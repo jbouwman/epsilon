@@ -1,7 +1,7 @@
-(defpackage #:lib.seq
+(defpackage #:epsilon.lib.seq
   (:use
    #:cl
-   #:lib.type)
+   #:epsilon.lib.type)
   (:export
    #:split-sequence
    #:split-sequence-if

@@ -1,7 +1,7 @@
-(defpackage #:lib.codec.base64
+(defpackage #:epsilon.lib.codec.base64
   (:use
    #:cl
-   #:lib.type)
+   #:epsilon.lib.type)
   (:export
    #:base64-stream-to-integer
    #:base64-stream-to-string
@@ -30,7 +30,7 @@
    #:+decode-table+
    #:+uri-decode-table+))
 
-(in-package #:lib.codec.base64)
+(in-package #:epsilon.lib.codec.base64)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defvar *encode-table*

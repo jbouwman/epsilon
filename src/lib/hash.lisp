@@ -1,7 +1,7 @@
-(defpackage #:lib.hash
+(defpackage #:epsilon.lib.hash
   (:use
    #:cl
-   #:lib.symbol)
+   #:epsilon.lib.symbol)
   (:export
    #:alist-hash-table
    #:copy-hash-table
@@ -13,7 +13,7 @@
    #:maphash-values
    #:plist-hash-table))
 
-(in-package #:lib.hash)
+(in-package #:epsilon.lib.hash)
 
 (defmacro ensure-gethash (key hash-table &optional default)
   "Like GETHASH, but if KEY is not found in the HASH-TABLE saves the DEFAULT

@@ -1,4 +1,4 @@
-(in-package #:lib.codec)
+(in-package #:epsilon.lib.codec)
 
 ;;; bzip2's decompress.c looks relatively simple, but a great deal of
 ;;; complexity and cleverness is hidden behind C preprocessor macro.

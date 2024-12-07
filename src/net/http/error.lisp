@@ -1,8 +1,8 @@
-(defpackage #:net.http.error
+(defpackage #:epsilon.net.http.error
   (:use
    #:cl)
   (:local-nicknames
-   (#:uri #:lib.uri))
+   (#:uri #:epsilon.lib.uri))
   (:export
    #:http-request-failed
    
@@ -46,7 +46,8 @@
 
    ;; Proxy errors
    :socks5-proxy-request-failed))
-(in-package :net.http.error)
+
+(in-package :epsilon.net.http.error)
 
 (define-condition http-request-failed (error)
   ((body :initarg :body

@@ -1,11 +1,11 @@
-(defpackage #:lib.array
+(defpackage #:epsilon.lib.array
   (:use
    #:cl)
   (:export
    #:array-elts-eql
    #:copy-array))
 
-(in-package #:lib.array)
+(in-package #:epsilon.lib.array)
 
 (defun array-elts-eql (data1 data2 &optional (test #'eql))
   (cond ((not (= (length data1) (length data2)))
