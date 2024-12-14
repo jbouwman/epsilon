@@ -13,10 +13,6 @@
   ;; whether the charmap actually represents the complement of the set  
   (complementp nil :type boolean))
 
-;; seems to be necessary for some Lisps like ClozureCL
-(defmethod make-load-form ((map charmap) &optional environment)
-  (make-load-form-saving-slots map :environment environment))
-
 (declaim (inline in-charmap-p))
 (defun in-charmap-p (char charmap)
   "Tests whether the character CHAR belongs to the set represented by CHARMAP."

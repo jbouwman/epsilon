@@ -65,13 +65,13 @@
 ;;;   ;; automagically appended to the name passed to :default
 ;;;   (t (:default "libGL")))
 ;;;
-;;; This information is stored in the *FOREIGN-LIBRARIES* hashtable
+;;; This information is stored in the *FOREIGN-LIBRARIES* map
 ;;; and when the library is loaded through LOAD-FOREIGN-LIBRARY (or
 ;;; USE-FOREIGN-LIBRARY) the first clause matched by FEATUREP is
 ;;; processed.
 
-(defvar *foreign-libraries* (make-hash-table :test 'eq)
-  "Hashtable of defined libraries.")
+(defvar *foreign-libraries* map:+empty+
+  "Map of defined libraries.")
 
 (defclass foreign-library ()
   ((name :initform nil :initarg :name :accessor foreign-library-name)
@@ -100,11 +100,12 @@
   "Look up a library by NAME, signalling an error if not found."
   (if (typep lib 'foreign-library)
       lib
-      (or (gethash lib *foreign-libraries*)
+      (or (map:map-get *foreign-libraries* lib)
           (error 'foreign-library-undefined-error :name lib))))
 
 (defun (setf get-foreign-library) (value name)
-  (setf (gethash name *foreign-libraries*) value))
+  (setf *foreign-libraries*
+        (map:map-assoc *foreign-libraries* name value)))
 
 (defun foreign-library-type (lib)
   (slot-value (get-foreign-library lib) 'type))
@@ -139,7 +140,7 @@
 If LOADED-ONLY is non-null only loaded libraries are returned.
 TYPE restricts the output to a specific library type: if NIL
 all libraries are returned."
-  (let ((libs (hash-table-values *foreign-libraries*)))
+  (let ((libs (map::map-vals *foreign-libraries*)))
     (remove-if (lambda (lib)
                  (or (and type
                           (not (eql type (foreign-library-type lib))))
@@ -199,7 +200,7 @@ all libraries are returned."
 
 (defun register-foreign-library (name spec &rest options)
   (let ((old-handle
-         (when-let ((old-lib (gethash name *foreign-libraries*)))
+         (when-let ((old-lib (map:map-get *foreign-libraries* name)))
            (foreign-library-handle old-lib))))
     (setf (get-foreign-library name)
           (apply #'make-instance 'foreign-library

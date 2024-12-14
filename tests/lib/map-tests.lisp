@@ -1,8 +1,10 @@
-(epsilon.tool.test:define-test-package #:epsilon.lib.map/tests
+(defpackage #:epsilon.lib.map.tests
+  (:use :cl
+        :epsilon.tool.test)
   (:local-nicknames (#:map #:epsilon.lib.map)
                     (#:bind #:epsilon.lib.binding)))
 
-(in-package #:epsilon.lib.map/tests)
+(in-package #:epsilon.lib.map.tests)
 
 (deftest empty-map-has-zero-count ()
   (let ((m map:+empty+))

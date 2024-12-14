@@ -6,13 +6,13 @@
    #:epsilon.lib.char
    #:epsilon.lib.collect
    #:epsilon.lib.control
-   #:epsilon.lib.hash
    #:epsilon.lib.list
    #:epsilon.lib.sequence
    #:epsilon.lib.symbol
    #:epsilon.lib.type)
   (:shadow
    #:merge)
+  (:local-nicknames (#:map #:epsilon.lib.map))
   (:export
    #:uri
    #:input-stream
@@ -40,20 +40,16 @@
 (in-package #:epsilon.lib.uri)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  
+
   (defvar +default-ports+
-    (plist-hash-table
-     '("ssh" 22
-       "http" 80
-       "https" 443
-       "ws" 80
-       "wss" 443)
-     :test 'equal))
+    (map::make-map "ssh" 22
+                   "http" 80
+                   "https" 443
+                   "ws" 80
+                   "wss" 443))
 
   (defun scheme-default-port (scheme)
-    (gethash scheme +default-ports+))
-
-  )
+    (map:map-get +default-ports+ scheme)))
 
 (define-condition parsing-end-unexpectedly (simple-error)
   ((state :initarg :state
