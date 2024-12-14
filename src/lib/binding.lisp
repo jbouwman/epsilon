@@ -3,6 +3,7 @@
    #:cl)
   (:export
    #:define-constant
+   #:->
    #:if-let
    #:when-let
    #:when-let*))
@@ -10,9 +11,29 @@
 (in-package #:epsilon.lib.binding)
 
 (defmacro define-constant (name value &optional doc)
-  ;; http://www.sbcl.org/manual#Defining-Constants
-  `(defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
+  "Define a constant that can be redefined if the new value is equalp to the old."
+  `(defconstant ,name 
+     (if (boundp ',name)
+         (let ((old (symbol-value ',name)))
+           (if (equalp old ,value)
+               old
+               ,value))
+         ,value)
      ,@(when doc (list doc))))
+
+(defmacro -> (x &rest forms)
+  "Thread-first macro (similar to Clojure's ->).
+   Takes a value and a series of forms, threading the value as the first argument
+   through each form in succession."
+  (if (null forms)
+      x
+      (let ((form (car forms)))
+        (if (listp form)
+            `(-> ,(append (list (car form) x) (cdr form))
+                 ,@(cdr forms))
+            `(-> (,form ,x)
+                 ,@(cdr forms))))))
+
 
 (defmacro if-let (bindings &body (then-form &optional else-form))
     "Creates new variable bindings, and conditionally executes either

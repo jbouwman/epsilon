@@ -13,6 +13,7 @@
     ((:module "lib"
       :components ((:file "symbol")
                    (:file "binding")
+                   (:file "map")
                    (:file "array")
                    (:file "condition")
                    (:file "string")
@@ -20,7 +21,6 @@
                    (:file "list")
                    (:file "hash")
                    (:file "json")
-                   (:file "yaml")
                    (:file "collect")
                    (:file "control")
                    (:module "type"
@@ -50,6 +50,7 @@
                                  (:file "string")))
                    (:file "uri")
                    (:file "stream")
+                   (:file "yaml")
                    (:file "buffer")
                    (:module "digest"
                     :components ((:file "reader")
@@ -184,6 +185,7 @@
                            (:file "checksum-tests")
                            (:file "codec-tests")
                            (:file "digest-tests")
+                           (:file "map-tests")
                            (:file "regex-tests")
                            (:file "yaml-tests")
                            (:file "stream-tests")))
