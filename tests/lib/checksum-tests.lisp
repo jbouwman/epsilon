@@ -1,13 +1,14 @@
-(epsilon.tool.test:define-test-package #:epsilon.lib.checksum/tests
+(defpackage #:epsilon.lib.checksum.tests
   (:use
    #:cl
+   #:epsilon.tool.test
    #:epsilon.lib.checksum.adler-32
    #:epsilon.lib.checksum.generic
    #:epsilon.lib.codec
    #:epsilon.lib.stream
    #:epsilon.lib.type))
 
-(in-package #:epsilon.lib.checksum/tests)
+(in-package #:epsilon.lib.checksum.tests)
 
 (deftest adler-32 ()
   (let ((adler (make-instance 'adler-32))

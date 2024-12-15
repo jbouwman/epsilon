@@ -46,7 +46,7 @@
 encodings.  This list does not include aliases."
   *supported-character-encodings*)
 
-(defvar *character-encodings* (make-hash-table :test 'eq))
+(defvar *character-encodings* map:+empty+)
 
 (defvar *default-character-encoding* :utf-8
   "Special variable used to determine the default character
@@ -60,7 +60,7 @@ a CHARACTER-ENCONDING object, it is returned unmodified."
     (return-from get-character-encoding name))
   (when (eq name :default)
     (setq name *default-character-encoding*))
-  (or (gethash name *character-encodings*)
+  (or (map:map-get *character-encodings* name)
       (error "Unknown character encoding: ~S" name)))
 
 (defmethod ambiguous-encoding-p ((encoding symbol))
@@ -69,7 +69,8 @@ a CHARACTER-ENCONDING object, it is returned unmodified."
 (defun notice-character-encoding (enc)
   (pushnew (enc-name enc) *supported-character-encodings*)
   (dolist (kw (cons (enc-name enc) (enc-aliases enc)))
-    (setf (gethash kw *character-encodings*) enc))
+    (setf *character-encodings*
+          (map:map-assoc *character-encodings* kw enc)))
   (enc-name enc))
 
 (defmacro define-character-encoding (name docstring &body options)
@@ -121,13 +122,14 @@ a CHARACTER-ENCONDING object, it is returned unmodified."
    (octet-counter :accessor octet-counter)
    (code-point-counter :accessor code-point-counter)))
 
-(defparameter *abstract-mappings* (make-hash-table :test 'eq))
+(defparameter *abstract-mappings* map:+empty+)
 
 (defun get-abstract-mapping (encoding)
-  (gethash encoding *abstract-mappings*))
+  (map:map-get *abstract-mappings* encoding))
 
 (defun (setf get-abstract-mapping) (value encoding)
-  (setf (gethash encoding *abstract-mappings*) value))
+  (setf *abstract-mappings*
+        (map:map-assoc *abstract-mappings* encoding value)))
 
 (defun %register-mapping-part (encoding slot-name fn)
   (let ((mapping (get-abstract-mapping encoding)))
@@ -201,22 +203,22 @@ a CHARACTER-ENCONDING object, it is returned unmodified."
 ;;; then saved in their respective slots of the CONCRETE-MAPPING
 ;;; object.
 (defmacro instantiate-concrete-mappings
-    (&key (encodings (hash-table-keys *abstract-mappings*))
+    (&key (encodings (map::map-keys *abstract-mappings*))
      (optimize '((speed 3) (debug 0) (compilation-speed 0)))
      octet-seq-getter octet-seq-setter octet-seq-type
      code-point-seq-getter code-point-seq-setter code-point-seq-type
      (instantiate-decoders t))
-  `(let ((ht (make-hash-table :test 'eq)))
+  `(let ((ht map:+empty+))
      (declare (optimize ,@optimize)
               #+sbcl (sb-ext:muffle-conditions sb-ext:compiler-note))
      (flet ((notice-mapping (encoding-name cm)
               (let* ((encoding (get-character-encoding encoding-name))
                      (aliases (enc-aliases encoding)))
                 (dolist (kw (cons (enc-name encoding) aliases))
-                  (setf (gethash kw ht) cm)))))
+                  (setf ht (map:map-assoc ht kw cm))))))
        ,@(loop for encoding-name in encodings
                for encoding = (get-character-encoding encoding-name)
-               for am = (gethash encoding-name *abstract-mappings*)
+               for am = (map:map-get *abstract-mappings* encoding-name)
                collect
                `(let ((cm (make-instance 'concrete-mapping)))
                   (setf (encoder cm)

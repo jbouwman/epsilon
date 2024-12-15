@@ -1,10 +1,12 @@
-(epsilon.tool.test:define-test-package #:epsilon.lib.stream/tests
+(defpackage #:epsilon.lib.stream.tests
   (:use
+   #:cl
+   #:epsilon.tool.test
    #:epsilon.lib.binding)
   (:local-nicknames
    (#:stream #:epsilon.lib.stream)))
 
-(in-package #:epsilon.lib.stream/tests)
+(in-package #:epsilon.lib.stream.tests)
 
 (define-constant +hello->u8+
   #(104 101 108 108 111 32 119 111 114 108 100))

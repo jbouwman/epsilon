@@ -1,8 +1,11 @@
-(epsilon.tool.test:define-test-package #:epsilon.lib.yaml/tests
+(defpackage #:epsilon.lib.yaml.tests
+  (:use
+   :cl
+   :epsilon.tool.test)
   (:local-nicknames
    (#:yaml #:epsilon.lib.yaml)))
 
-(in-package #:epsilon.lib.yaml/tests)
+(in-package #:epsilon.lib.yaml.tests)
 
 ;; Tests
 (deftest basic-scalar-test ()

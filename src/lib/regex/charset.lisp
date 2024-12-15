@@ -29,10 +29,6 @@ initialized to #\Null except for the first one which is initialized to
   ;; the storage vector
   (vector (make-char-vector 12) :type (simple-array character (*))))
 
-;; seems to be necessary for some Lisps like ClozureCL
-(defmethod make-load-form ((set charset) &optional environment)
-  (make-load-form-saving-slots set :environment environment))
-
 (declaim (inline mix))
 (defun mix (code hash)
   "Given a character code CODE and a hash code HASH, computes and

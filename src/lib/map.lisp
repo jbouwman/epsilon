@@ -38,6 +38,9 @@ Returns (values new-node inserted-p) where inserted-p is true for new insertions
     (count 0 :type fixnum)
     root))
 
+(defmethod make-load-form ((self hamt) &optional environment)
+  (make-load-form-saving-slots self :environment environment))
+
 (define-constant +empty+ (make-hamt nil 0))
 
 (defstruct bitmap-node
@@ -440,6 +443,14 @@ Returns (values new-node inserted-p) where inserted-p is true for new insertions
             (funcall function acc (car pair) (cdr pair)))
           (map-seq map)
           :initial-value initial-value))
+
+(defun map-map (map fn)
+  "Apply FN to each value in MAP, returning a new map with the same keys but transformed values.
+   FN should take two arguments: key and value."
+  (map-reduce (lambda (result k v)
+                (map-assoc result k (funcall fn k v)))
+              map
+              +empty+))
 
 (defun map-merge (map1 map2)
   "Merge two maps, with map2 values taking precedence"

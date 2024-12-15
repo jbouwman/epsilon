@@ -1,48 +1,102 @@
-(defpackage #:tool.build
-  (:use
-   #:cl
-   #:sys.fs)
-  (:export
-   #:build))
+(defpackage :epsilon.tool.build
+  (:use :cl)
+  (:local-nicknames
+   (#:yaml #:epsilon.lib.yaml))
+  (:export #:load-project
+           #:compile-project
+           #:package-project
+           #:make-binary-distribution))
 
-(in-package #:tool.build)
+(in-package :epsilon.tool.build)
 
-;;; Generates an ordered list of build steps for a module, given the
-;;; repository root URL.  Uses `compute-build-order` to determine the
-;;; build order and dependencies of the source files.  Checks the hash
-;;; of each file's contents against the build products to determine if
-;;; compilation is needed.  Returns a list of `:compile` and `:load`
-;;; steps in the correct order to build the module.
+;; Project configuration structure
+(defstruct project
+  name
+  version
+  author
+  dependencies
+  sources          ; List of source files in compilation order
+  hash-version)    ; Computed during compilation
 
-(defun build-module (repo-root-url)
- (let ((build-order (compute-build-order repo-root-url))
-       (build-steps '()))
-   (labels ((process-file (file-entry &optional changed-files)
-              (destructuring-bind (file-url . dependencies) file-entry
-                (let* ((file-path (lib.uri:path file-url))
-                       (file-hash (sha256-file file-path))
-                       (build-product (get-build-product file-hash)))
-                  (if (or (null build-product)
-                          (some (lambda (dep-url)
-                                  (member (lib.uri:path dep-url) changed-files :test #'equal))
-                                dependencies))
-                      (progn
-                        (push (list :compile file-url) build-steps)
-                        (push file-path changed-files))
-                      (push (list :load (slot-value build-product 'fasl-url)) build-steps)))))
-            (process-dependencies (file-entries changed-files)
-              (dolist (file-entry file-entries)
-                (process-file file-entry changed-files))))
-     (process-dependencies build-order '())
-     (nreverse build-steps))))
+;; YAML configuration parser
+(defun parse-project-yaml (path)
+  "Parse project YAML file into a project structure"
+  (let ((yaml-content (yaml:parse-file path)))
+    (make-project
+     :name (get-value yaml-content "name")
+     :version (get-yaml-value yaml-content "version")
+     :author (get-yaml-value yaml-content "author")
+     :dependencies (get-yaml-value yaml-content "dependencies")
+     :sources (get-yaml-value yaml-content "sources"))))
 
+;; Hash computation for versioning
+(defun compute-source-hash (project)
+  "Compute SHA-256 hash of all source files"
+  (epsilon:compute-files-hash (project-sources project)))
 
+;; Compilation management
+(defun compile-source-file (source output-path)
+  "Compile a single source file"
+  (compile-file source :output-file output-path))
 
+(defun compile-project (project &key (output-dir "build"))
+  "Compile all project sources in specified order"
+  (let* ((hash (compute-source-hash project))
+         (build-dir (format nil "~A/~A" output-dir hash)))
+    (ensure-directories-exist build-dir)
+    (dolist (source (project-sources project))
+      (let ((output-path (compute-output-path build-dir source)))
+        (compile-source-file source output-path)))
+    (setf (project-hash-version project) hash)
+    build-dir))
 
-(defclass build-file ()
-  (source-url :initarg :source
-   fasl-url :initarg :fasl
-   ))
+;; Binary packaging
+(defun create-fasl-bundle (project &key (output-dir "build"))
+  "Create concatenated FASL bundle"
+  (let ((output-path (format nil "~A/~A-bundle.fasl"
+                            output-dir
+                            (project-name project))))
+    (with-open-file (out output-path
+                         :direction :output
+                         :element-type '(unsigned-byte 8)
+                         :if-exists :supersede)
+      (dolist (fasl (collect-project-fasls project output-dir))
+        (write-fasl-to-stream fasl out)))
+    output-path))
 
-(defun build (build-file)
-  )
+;; Distribution packaging
+(defun package-project (project &key (type :source) (output-dir "build"))
+  "Create project distribution package"
+  (case type
+    (:source (create-source-package project output-dir))
+    (:binary (create-binary-package project output-dir))
+    (:bundle (create-fasl-bundle project :output-dir output-dir))))
+
+;; Utility functions adjusted to take output-dir
+(defun create-source-package (project output-dir)
+  "Create source distribution package"
+  (let ((output-path (format nil "~A/~A-~A-src.tar.gz"
+                            output-dir
+                            (project-name project)
+                            (project-version project))))
+    (epsilon:create-tar-gz output-path
+                          (project-sources project))
+    output-path))
+
+(defun create-binary-package (project output-dir)
+  "Create binary distribution package for current architecture"
+  (let ((output-path (format nil "~A/~A-~A-~A.tar.gz"
+                            output-dir
+                            (project-name project)
+                            (project-version project)
+                            (epsilon:system-architecture))))
+    (epsilon:create-tar-gz output-path
+                          (collect-project-fasls project output-dir))
+    output-path))
+
+(defun collect-project-fasls (project output-dir)
+  "Collect all FASL files for the project"
+  (let ((pattern (format nil "~A/~A/*.fasl"
+                        output-dir
+                        (project-hash-version project))))
+    (epsilon:glob pattern)))

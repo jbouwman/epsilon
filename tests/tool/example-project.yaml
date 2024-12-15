@@ -1,0 +1,9 @@
+name: my-project
+version: 1.0.0
+author: Example Author
+dependencies:
+  - other-project
+sources:
+  - src/package.lisp    # First file to compile
+  - src/core.lisp
+  - src/main.lisp

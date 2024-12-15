@@ -926,32 +926,3 @@ compatible element-types."
     (when finish-output
       (finish-output output))
     output-position))
-
-(defclass line-stream ()
-  ((underlying-stream
-    :initarg :stream
-    :reader line-stream-underlying-stream)
-   (peek-buffer
-    :initform nil
-    :accessor line-stream-peek-buffer)
-   (line-number
-    :initform 0
-    :accessor line-stream-line-number)))
-
-(defun make-line-stream (stream)
-  (make-instance 'line-stream :stream stream))
-
-(defun peek-line (line-stream)
-  "Returns the next line without consuming it. Returns nil at end of stream."
-  (with-slots (peek-buffer underlying-stream) line-stream
-    (or peek-buffer
-        (setf peek-buffer (read-line underlying-stream nil nil)))))
-
-(defun read-line-from (line-stream)
-  "Reads and returns the next line. Returns nil at end of stream."
-  (with-slots (peek-buffer line-number) line-stream
-    (incf line-number)
-    (if peek-buffer
-        (prog1 peek-buffer
-          (setf peek-buffer nil))
-        (read-line (line-stream-underlying-stream line-stream) nil nil))))

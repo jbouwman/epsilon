@@ -1,6 +1,7 @@
-(epsilon.tool.test:define-test-package #:epsilon.lib.archive/tests
+(defpackage #:epsilon.lib.archive.tests
   (:use
    #:cl
+   #:epsilon.tool.test
    #:epsilon.lib.char
    #:epsilon.lib.stream
    #:epsilon.lib.string
@@ -8,10 +9,11 @@
   (:local-nicknames
    (#:uri #:epsilon.lib.uri)))
 
-(in-package #:epsilon.lib.archive/tests)
+(in-package #:epsilon.lib.archive.tests)
 
 (deftest zipfile ()
-  (let ((nibbles (get-test-relative-path 'zipfile "nibbles-0.15-a46a67736e07.zip")))
+  (let ((nibbles (project-file :epsilon/tests
+                               "tests/lib/nibbles-0.15-a46a67736e07.zip")))
     (epsilon.lib.archive:with-zip-file (file nibbles)
       (let* ((entry (aref (epsilon.lib.archive:entries file) 12))
              (stream (make-instance 'fast-output-stream)))

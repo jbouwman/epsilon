@@ -43,18 +43,18 @@ explicitly given.  Depends on the OS the code is compiled on.")
        (eq (encoding-eol-style ef1) (encoding-eol-style ef2))))
 
 (declaim (inline lookup-mapping))
-(defun lookup-mapping (ht encoding)
-  "HT should be an hashtable created by
+(defun lookup-mapping (m encoding)
+  "M should be a map created by
 INSTANTIATE-CONCRETE-MAPPINGS. ENCODING should be either an
 external format, an encoding object or a keyword symbol
 denoting a character encoding name or one of its aliases."
   (or (etypecase encoding
         (keyword
-         (gethash encoding ht))
+         (map:map-get m encoding))
         (epsilon.lib.char::concrete-mapping
          encoding)
         (character-encoding
-         (gethash (enc-name encoding) ht))
+         (map:map-get m (enc-name encoding)))
         (encoding
-         (gethash (enc-name (encoding-encoding encoding)) ht)))
+         (map:map-get m (enc-name (encoding-encoding encoding)))))
       (error "~S is not a valid encoding designator" encoding)))

@@ -3,10 +3,10 @@
    #:cl
    #:epsilon.lib.binding
    #:epsilon.lib.function
-   #:epsilon.lib.hash
    #:epsilon.lib.symbol
    #:epsilon.lib.type
    #:epsilon.lib.vector)
+  (:local-nicknames (#:map #:epsilon.lib.map))
   (:export
    #:*string-vector-mappings*
    ;; character encoding objects
