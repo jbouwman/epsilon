@@ -22,17 +22,17 @@
 
 ;; Main parsing functions
 
-(defun parse-yaml-string (string)
+(defun parse-string (string)
   (with-input-from-string (s string)
     (let ((state (make-parser-state 
                   :stream (stream:make-line-stream s))))
-      (parse-document state))))
+      (parse-next-node state))))
 
-(defun parse-yaml-file (pathname)
+(defun parse-file (pathname)
   (with-open-file (s pathname)
     (let ((state (make-parser-state 
                   :stream (stream:make-line-stream s))))
-      (parse-document state))))
+      (parse-next-node state))))
 
 ;; Sequence parsing
 
@@ -106,9 +106,9 @@
         (t (parse-scalar state line indent))))))
 
 (defun parse-sequence (state line indent)
-  (make-yaml-node :kind :sequence
-                  :value (parse-sequence-items state line indent)
-                  :indent-level indent))
+  (make-node :kind :sequence
+             :value (parse-sequence-items state line indent)
+             :indent-level indent))
 
 (defun skip-empty-lines (state)
   (loop for line = (stream:peek-line (parser-state-stream state))
@@ -134,11 +134,6 @@
 (defun parse-scalar (state line indent)
   (make-node :kind :scalar
              :value (string-trim '(#\Space #\Tab) line)
-             :indent-level indent))
-
-(defun parse-sequence (state line indent)
-  (make-node :kind :sequence
-             :value (parse-sequence-items state line indent)
              :indent-level indent))
 
 (defun parse-mapping (state line indent)
