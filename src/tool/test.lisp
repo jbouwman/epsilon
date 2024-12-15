@@ -408,11 +408,11 @@ The test's package hierarchy position is derived from the symbol's package."
          :form form))
 
 (defmacro is (form &optional (message nil message-p) &rest message-args)
-  `(record-assertion 
-    (lambda () ,form)
-    (lambda (result)
-      (unless result
-        (fail-assertion ',form 
-                       ,(if message-p
-                            `(format nil ,message ,@message-args)
-                            `(format nil "Assertion ~S failed" ',form)))))))
+  `(if ,form
+       (when *test-result*
+         (push (list t (lambda (r) r)) 
+               (test-assertions *test-result*)))
+       (fail-assertion ',form 
+                      ,(if message-p
+                           `(format nil ,message ,@message-args)
+                           `(format nil "Assertion ~S failed" ',form)))))
