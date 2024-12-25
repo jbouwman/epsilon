@@ -1,8 +1,9 @@
+(require :asdf)
+
+(load "epsilon.asd")
+
 (handler-case
-    (progn
-      (require :asdf)
-      (load "epsilon.asd")
-      (asdf:load-system "epsilon/tests"))
+    (asdf:load-system "epsilon/tests")
   (error (condition)
     (format *error-output "~A~%" condition)
     (sb-debug:print-backtrace :stream *error-output*)))
