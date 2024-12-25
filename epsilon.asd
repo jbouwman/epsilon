@@ -3,7 +3,8 @@
 (asdf:defsystem "epsilon"
   :version "0.1.0"
   :description "A utility library for SBCL"
-  :depends-on (:sb-rotate-byte
+  :depends-on (:sb-posix
+               :sb-rotate-byte
                :sb-cltl2
                :sb-bsd-sockets
                :sb-rotate-byte)

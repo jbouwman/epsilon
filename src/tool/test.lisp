@@ -5,7 +5,8 @@
   (:export #:deftest
            #:is
            #:project-file
-           #:run-tests))
+           #:run-tests
+           #:run-success-p))
 
 (in-package #:epsilon.tool.test)
 
