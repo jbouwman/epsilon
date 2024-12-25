@@ -4,12 +4,12 @@
    #:epsilon.lib.array
    #:epsilon.lib.binding
    #:epsilon.lib.function
-   #:epsilon.lib.hash
    #:epsilon.lib.list
    #:epsilon.lib.stream
    #:epsilon.lib.symbol
    #:epsilon.lib.type
    #:sb-alien)
+  (:local-nicknames (#:map #:epsilon.lib.map))
   (:export
    ;; C ABI utils
    #:canonicalize-symbol-name-case
@@ -72,12 +72,12 @@
    #:epsilon.lib.char
    #:epsilon.lib.condition
    #:epsilon.lib.function
-   #:epsilon.lib.hash
    #:epsilon.lib.list
    #:epsilon.lib.stream
    #:epsilon.lib.symbol
    #:epsilon.lib.vector
    #:epsilon.sys.env)
+  (:local-nicknames (#:map #:epsilon.lib.map))
   (:export
    ;; Types.
    #:foreign-pointer

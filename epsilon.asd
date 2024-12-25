@@ -3,7 +3,8 @@
 (asdf:defsystem "epsilon"
   :version "0.1.0"
   :description "A utility library for SBCL"
-  :depends-on (:sb-rotate-byte
+  :depends-on (:sb-posix
+               :sb-rotate-byte
                :sb-cltl2
                :sb-bsd-sockets
                :sb-rotate-byte)
@@ -17,9 +18,9 @@
                    (:file "array")
                    (:file "condition")
                    (:file "string")
+                   (:file "format")
                    (:file "function")
                    (:file "list")
-                   (:file "hash")
                    (:file "json")
                    (:file "collect")
                    (:file "control")
@@ -193,5 +194,5 @@
      (:module "net"
               :components ((:file "http-tests"))))))
   :perform (test-op (o c)
-                   (symbol-call :epsilon.tool.test ':run-all-tests)))
+                   (symbol-call :epsilon.tool.test ':run-tests)))
 

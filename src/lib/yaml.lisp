@@ -1,3 +1,51 @@
+;;;; A YAML parser for Common Lisp.
+;;;; 
+;;;; This package provides functionality to parse YAML documents into
+;;;; Lisp data structures.  The parser supports a subset of YAML 1.2
+;;;; specification including:
+;;;; 
+;;;; Supported Features:
+;;;;   * Basic scalar values
+;;;;   * Sequences (lists) with '-' marker
+;;;;   * Mappings (key-value pairs)
+;;;;   * Nested structures (sequences and mappings)
+;;;;   * Multi-line scalar values
+;;;;   * Proper indentation-based structure parsing
+;;;; 
+;;;; Limitations:
+;;;;   * Does not support YAML directives or tags
+;;;;   * No support for anchors and aliases
+;;;;   * No support for complex scalar types (timestamps, binary, etc.)
+;;;;   * No support for flow style (inline arrays/objects)
+;;;;   * No support for document separators
+;;;; 
+;;;; Data Representation:
+;;;;   * Sequences are converted to Lisp lists
+;;;;   * Mappings are converted to alists (key . value)
+;;;;   * Scalar values are represented as strings
+;;;; 
+;;;; Usage:
+;;;;   (yaml:parse-string \"key: value\")  ; Parse YAML from string
+;;;;   (yaml:parse-file #P\"config.yml\")  ; Parse YAML from file
+;;;; 
+;;;; Example:
+;;;;   Input YAML:
+;;;;     name: Irv
+;;;;     details:
+;;;;       - age: 30
+;;;;       - city: Peoria
+;;;;   
+;;;;   Will produce:
+;;;;   ((\"name\" . \"Irv\")
+;;;;    (\"details\" . ((\"age\" . \"30\")
+;;;;                    (\"city\" . \"Peoria\"))))
+;;;; 
+;;;; Notes:
+;;;;   * Indentation must be consistent within the document
+;;;;   * Keys in mappings must be scalar values
+;;;;   * The parser is designed for clarity and correctness over performance
+;;;;   * Input is assumed to be in UTF-8 encoding
+
 (defpackage #:epsilon.lib.yaml
   (:use #:cl)
   (:local-nicknames
@@ -9,6 +57,64 @@
 
 (in-package #:epsilon.lib.yaml)
 
+;; Input
+
+(defclass line-stream ()
+  ((underlying-stream
+    :initarg :stream
+    :reader line-stream-underlying-stream)
+   (peek-buffer
+    :initform nil
+    :accessor line-stream-peek-buffer)
+   (line-number
+    :initform 0
+    :accessor line-stream-line-number)))
+
+(defun make-line-stream (stream)
+  (make-instance 'line-stream :stream stream))
+
+(defun strip-comment (line)
+  "Remove comments and their preceding whitespace from a line.
+   Returns nil if the line is only a comment.
+   For lines with content, strips trailing whitespace before comments.
+   For indent-only lines with comments, preserves the indentation."
+  (when line
+    (let ((comment-pos (position #\# line)))
+      (if comment-pos
+          ;; If there's a comment, check if there's content before it
+          (let ((content (string-trim '(#\Space #\Tab) 
+                                    (subseq line 0 comment-pos))))
+            (if (string= content "")
+                nil  ; Line is only whitespace + comment
+                content))  ; Return content without trailing spaces
+          line))))
+
+
+(defun peek-line (line-stream)
+  "Returns the next line without consuming it. Returns nil at end of stream.
+   Comments are stripped."
+  (with-slots (peek-buffer underlying-stream) line-stream
+    (or peek-buffer
+        (setf peek-buffer 
+              (loop for line = (read-line underlying-stream nil nil)
+                    while line
+                    for stripped = (strip-comment line)
+                    when stripped return stripped
+                    finally (return nil))))))
+
+(defun read-line-from (line-stream)
+  "Reads and returns the next line. Returns nil at end of stream.
+   Comments are stripped."
+  (with-slots (peek-buffer underlying-stream) line-stream
+    (if peek-buffer
+        (prog1 peek-buffer
+          (setf peek-buffer nil))
+        (loop for line = (read-line underlying-stream nil nil)
+              while line
+              for stripped = (strip-comment line)
+              when stripped return stripped
+              finally (return nil)))))
+
 ;; Basic data structures
 
 (defstruct node
@@ -17,7 +123,7 @@
   (indent-level 0 :type integer))
 
 (defstruct parser-state
-  (stream nil :type (or null stream::line-stream))
+  (stream nil :type (or null line-stream))
   (current-indent 0 :type integer))
 
 ;; Main parsing functions
@@ -25,14 +131,30 @@
 (defun parse-string (string)
   (with-input-from-string (s string)
     (let ((state (make-parser-state 
-                  :stream (stream:make-line-stream s))))
-      (parse-next-node state))))
+                  :stream (make-line-stream s))))
+      (parse-document state))))
 
 (defun parse-file (pathname)
   (with-open-file (s pathname)
     (let ((state (make-parser-state 
                   :stream (stream:make-line-stream s))))
       (parse-next-node state))))
+
+
+
+(defun parse-document (state)
+  (let ((nodes (loop for node = (parse-next-node state)
+                     while node
+                     collect node)))
+    (construct-document nodes)))
+
+(defun combine-top-level-nodes (nodes)
+  "Combine multiple top-level nodes into a single mapping."
+  (loop for node in nodes
+        when (and (node-p node)
+                 (eq :mapping (node-kind node)))
+        append (node-value node)))
+
 
 ;; Sequence parsing
 
@@ -45,14 +167,14 @@
     
     ;; Process subsequent items
     (loop
-      (let ((next-line (stream:peek-line (parser-state-stream state))))
+      (let ((next-line (peek-line (parser-state-stream state))))
         ;; Exit if we're at the end or found a line with less indentation
         (when (or (null next-line)
                   (< (count-indent next-line) base-indent))
           (return))
         
         ;; Read the line and check if it's a new sequence item at our level
-        (setf next-line (stream:read-line-from (parser-state-stream state)))
+        (setf next-line (read-line-from (parser-state-stream state)))
         (let ((indent (count-indent next-line)))
           (cond
             ;; If it's a new item at our level
@@ -92,9 +214,16 @@
       ;; Simple scalar
       (t (string-trim '(#\Space #\Tab) content)))))
 
+
+(defun parse-sequence (state line indent)
+  (make-node :kind :sequence
+             :value (parse-sequence-items state line indent)
+             :indent-level indent))
+
+
 (defun parse-next-node (state)
   (skip-empty-lines state)
-  (let* ((line (stream:read-line-from (parser-state-stream state)))
+  (let* ((line (read-line-from (parser-state-stream state)))
          (indent (when line (count-indent line))))
     (when line
       (setf (parser-state-current-indent state) indent)
@@ -105,15 +234,10 @@
          (parse-mapping state line indent))
         (t (parse-scalar state line indent))))))
 
-(defun parse-sequence (state line indent)
-  (make-node :kind :sequence
-             :value (parse-sequence-items state line indent)
-             :indent-level indent))
-
 (defun skip-empty-lines (state)
-  (loop for line = (stream:peek-line (parser-state-stream state))
+  (loop for line = (peek-line (parser-state-stream state))
         while (and line (string= (string-trim '(#\Space #\Tab) line) ""))
-        do (stream:read-line-from (parser-state-stream state))))
+        do (read-line-from (parser-state-stream state))))
 
 (defun count-indent (line)
   (or (position-if-not #'whitespace-p line) 0))
@@ -132,6 +256,7 @@
 
 ;; Parsing specific types
 (defun parse-scalar (state line indent)
+  (declare (ignore state))
   (make-node :kind :scalar
              :value (string-trim '(#\Space #\Tab) line)
              :indent-level indent))
@@ -163,7 +288,7 @@
     
     ;; Process subsequent pairs
     (loop
-      (let ((next-line (stream:peek-line (parser-state-stream state))))
+      (let ((next-line (peek-line (parser-state-stream state))))
         ;; Exit if we're at the end or found a line with less indentation
         (when (or (null next-line)
                   (< (count-indent next-line) base-indent))
@@ -174,7 +299,7 @@
             ;; New mapping pair at same level
             ((and (= indent base-indent)
                   (starts-with-mapping-marker? next-line))
-             (setf next-line (stream:read-line-from (parser-state-stream state)))
+             (setf next-line (read-line-from (parser-state-stream state)))
              (multiple-value-bind (key value) (split-mapping-line next-line)
                (push (cons key (parse-mapping-value state value base-indent))
                      pairs)))
@@ -210,7 +335,7 @@
   (cond
     ;; No value on the same line, check for indented block
     ((null initial-value)
-     (let ((next-line (stream:peek-line (parser-state-stream state))))
+     (let ((next-line (peek-line (parser-state-stream state))))
        (if (and next-line 
                 (> (count-indent next-line) base-indent))
            (parse-indented-value state (1+ base-indent))
@@ -229,28 +354,28 @@
 
 (defun parse-indented-value (state indent)
   "Parse an indented value block (sequence, mapping, or multiline scalar)"
-  (let ((line (stream:peek-line (parser-state-stream state))))
+  (let ((line (peek-line (parser-state-stream state))))
     (cond
       ((starts-with-sequence-marker? line)
-       (setf line (stream:read-line-from (parser-state-stream state)))
+       (setf line (read-line-from (parser-state-stream state)))
        (parse-sequence-items state line indent))
       ((starts-with-mapping-marker? line)
-       (setf line (stream:read-line-from (parser-state-stream state)))
+       (setf line (read-line-from (parser-state-stream state)))
        (parse-mapping-pairs state line indent))
       (t (parse-multiline-scalar state 
-                                (stream:read-line-from (parser-state-stream state))
+                                (read-line-from (parser-state-stream state))
                                 indent)))))
 
 (defun parse-multiline-scalar (state first-line base-indent)
   "Parse a multiline scalar value"
   (let ((lines (list (string-trim '(#\Space #\Tab) first-line))))
     (loop
-      (let ((next-line (stream:peek-line (parser-state-stream state))))
+      (let ((next-line (peek-line (parser-state-stream state))))
         (when (or (null next-line)
                   (< (count-indent next-line) base-indent))
           (return))
         
-        (setf next-line (stream:read-line-from (parser-state-stream state)))
+        (setf next-line (read-line-from (parser-state-stream state)))
         (push (string-trim '(#\Space #\Tab) next-line) lines)))
     
     (format nil "~{~A~^~%~}" (nreverse lines))))
