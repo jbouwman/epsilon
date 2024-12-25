@@ -10,6 +10,7 @@ def build [] {
 def test [] {
     (sbcl --noinform
           --non-interactive
+          --eval "(require :asdf)"
           --eval "(load \"epsilon.asd\")"
           --eval "(asdf:test-system \"epsilon\")")
 }
