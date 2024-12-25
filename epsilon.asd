@@ -193,5 +193,5 @@
      (:module "net"
               :components ((:file "http-tests"))))))
   :perform (test-op (o c)
-                   (symbol-call :epsilon.tool.test ':run-all-tests)))
+                   (symbol-call :epsilon.tool.test ':run-tests)))
 
