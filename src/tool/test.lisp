@@ -10,6 +10,9 @@
 
 (in-package #:epsilon.tool.test)
 
+(defvar *test-result* nil
+  "Dynamically bound to current test result during execution")
+
 (defun project-file (system-name relative-path)
   "Returns the absolute path of a file relative to the system's .asd file location.
    SYSTEM-NAME: The name of the ASDF system (string or symbol)
@@ -66,11 +69,11 @@ Returns the leaf node for package-name."
   (let ((components (split-package-name package-name)))
     (loop with current-node = *test-root*
           for name in components
-          for existing = (map:map-get (children-of current-node) name)
+          for existing = (map:get (children-of current-node) name)
           do (unless existing
                (setf existing (make-instance 'test-suite :name name))
                (setf (children-of current-node)
-                     (map:map-assoc (children-of current-node)
+                     (map:assoc (children-of current-node)
                                     name existing)))
           do (setf current-node existing)
           finally (return existing))))
@@ -122,26 +125,26 @@ Returns the leaf node for package-name."
 (defun test-failures (run)
   "Return list of failed test results"
   (remove-if-not (lambda (r) (eq :failure (test-status r)))
-                 (map::map-vals (tests run))))
+                 (map:vals (tests run))))
 
 (defun test-errors (run)
   "Return list of errored test results"
   (remove-if-not (lambda (r) (eq :error (test-status r)))
-                 (map::map-vals (tests run))))
+                 (map:vals (tests run))))
 
 (defun test-skips (run)
   "Return list of skipped test results"
   (remove-if-not (lambda (r) (eq :skip (test-status r)))
-                 (map::map-vals (tests run))))
+                 (map:vals (tests run))))
 
 ;;; Metric implementations
 
 (defun get-metric (result name)
-  (map:map-get (test-metrics result) name))
+  (map:get (test-metrics result) name))
 
 (defun set-metric (result name metric)
   (setf (test-metrics result)
-        (map:map-assoc (test-metrics result) name metric)))
+        (map:assoc (test-metrics result) name metric)))
 
 (defmethod start-metric ((type (eql :wall-time)) result)
   (let ((metric (make-instance 'timing-metric :name :wall-time)))
@@ -194,7 +197,7 @@ Returns the leaf node for package-name."
 
 (defun find-test-package (path node)
   "Find all tests defined in package and its subpackages."
-  (loop :for package := (map:map-get (children-of node) (car path))
+  (loop :for package := (map:get (children-of node) (car path))
         :unless (and package (cdr path))
           :return package
         :do (setf node package
@@ -233,17 +236,17 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
   "Group tests by their package, returning alist of (package-name . tests)"
   (let ((groups (reduce (lambda (m test)
                          (let ((pkg-name (package-name (symbol-package (test-symbol test)))))
-                           (map:map-assoc m pkg-name
-                                          (cons test (map:map-get m pkg-name)))))
+                           (map:assoc m pkg-name
+                                          (cons test (map:get m pkg-name)))))
                        tests
                        :initial-value map:+empty+)))
-    (sort (map::map-seq
-           (map::map-map groups
-                         (lambda (pkg pkg-tests)
-                           (declare (ignore pkg))
-                           (sort pkg-tests #'string< 
-                                 :key (lambda (test)
-                                        (symbol-name (test-symbol test)))))))
+    (sort (map:seq
+           (map:map groups
+                    (lambda (pkg pkg-tests)
+                      (declare (ignore pkg))
+                      (sort pkg-tests #'string< 
+                            :key (lambda (test)
+                                   (symbol-name (test-symbol test)))))))
           #'string< :key #'car)))
 
 (defun collect-tests (test-suite)
@@ -251,10 +254,10 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
   (let ((tests '()))
     (labels ((collect (node)
                (when (typep node 'test-suite)
-                 (loop for test in (map::map-vals (tests-of node))
+                 (loop for test in (map:vals (tests-of node))
                        do (push test tests)))
                (when (typep node 'test-node)
-                 (loop for child in (map::map-vals (children-of node))
+                 (loop for child in (map:vals (children-of node))
                        do (collect child)))))
       (collect test-suite)
       tests)))
@@ -316,7 +319,7 @@ SHOW-FAILURES controls whether to show detailed failure information."
     
     (when verbose
       (format t "~&~%Test Run Complete:~%")
-      (format t ";;   Tests: ~D~%" (map::hamt-count (tests run)))
+      (format t ";;   Tests: ~D~%" (map:size (tests run)))
       (format t ";;   Failures: ~D~%" (length (test-failures run)))
       (format t ";;   Errors: ~D~%" (length (test-errors run)))
       (format t ";;   Time: ~,2F seconds~%"
@@ -342,7 +345,7 @@ SHOW-FAILURES controls whether to show detailed failure information."
    SLOT-NAME is the slot containing the map to be modified."
   `(defun ,name (object key value)
      (with-slots (,slot-name) object
-       (setf ,slot-name (map:map-assoc ,slot-name key value)))))
+       (setf ,slot-name (map:assoc ,slot-name key value)))))
 
 (def-map-setter set-result! tests)
 
@@ -372,11 +375,11 @@ Returns the test-result instance."
   (sb-debug:print-backtrace :stream stream))
 
 (defun get-test (suite name)
-  (map:map-get (tests-of suite) name))
+  (map:get (tests-of suite) name))
 
 (defun set-test! (suite name test)
   (setf (tests-of suite)
-        (map:map-assoc (tests-of suite) name test)))
+        (map:assoc (tests-of suite) name test)))
 
 (defun ensure-test (symbol)
   "Find or create a test named by SYMBOL. If test exists, reinitialize it with ARGS.
@@ -392,9 +395,6 @@ The test's package hierarchy position is derived from the symbol's package."
     `(progn
        (defun ,test-name () ,@body)
        (ensure-test ',test-name))))
-
-(defvar *test-result* nil
-  "Dynamically bound to current test result during execution")
 
 (defun record-assertion (test-fn report-fn)
   (let ((result (funcall test-fn)))

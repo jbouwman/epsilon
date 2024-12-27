@@ -32,12 +32,6 @@
                    (:file "vector")
                    (:file "uuid")
                    (:file "xsubseq")
-                   (:module "seq"
-                    :components ((:file "package")
-                                 (:file "vector")
-                                 (:file "list")
-                                 (:file "extended-sequence")
-                                 (:file "public")))
                    (:file "sequence")
                    (:module "char"
                     :components ((:file "package")
@@ -82,9 +76,7 @@
                                  (:file "huffman")
                                  (:file "compress")
                                  (:file "public")))))
-     (:module "io"
-      :components ((:file "package")
-                   (:file "stream")))
+     (:file "io")
      (:module "sys"
       :components ((:file "env")
                    (:module "ffi"
@@ -141,37 +133,14 @@
                    (:file "zippy")
                    (:file "decode")
                    (:file "encode")))
-     #+disable
      (:module "net"
       :components ((:file "socket")
-                   (:module "tls"
-                    :components ((:file "config")
-                                 (:file "package")
-                                 (:file "reload")
-                                 (:file "ffi")
-                                 (:file "bio")
-                                 (:file "conditions")
-                                 (:file "streams")
-                                 (:file "ssl-funcall")
-                                 (:file "init")
-                                 (:file "ffi-buffer")
-                                 (:file "verify-hostname")
-                                 (:file "x509")
-                                 (:file "random")
-                                 (:file "context")))
-                   (:module "http"
-                            :components ((:file "chunked-stream")
-                                         (:file "parser")
-                                         (:file "encoding")
-                                         (:file "connection-cache")
-                                         (:file "keep-alive-stream")
-                                         (:file "util")
-                                         (:file "body")
-                                         (:file "error")
-                                         (:file "backend/socket")
-                                         (:file "public")))))
+                   (:file "tls")
+                   (:file "http")))
      (:module "tool"
-      :components ((:file "test"))))))
+      :components ((:file "build")
+                   (:file "test")))
+     (:file "epsilon"))))
   :in-order-to ((test-op (test-op "epsilon/tests")))
   :perform (load-op :after (o c)
                     (provide :epsilon)))
@@ -188,9 +157,9 @@
                            (:file "digest-tests")
                            (:file "map-tests")
                            (:file "regex-tests")
+                           (:file "uri-tests")
                            (:file "yaml-tests")
                            (:file "stream-tests")))
-     #+disable
      (:module "net"
               :components ((:file "http-tests"))))))
   :perform (test-op (o c)

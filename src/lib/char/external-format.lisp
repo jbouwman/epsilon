@@ -50,11 +50,11 @@ external format, an encoding object or a keyword symbol
 denoting a character encoding name or one of its aliases."
   (or (etypecase encoding
         (keyword
-         (map:map-get m encoding))
+         (map:get m encoding))
         (epsilon.lib.char::concrete-mapping
          encoding)
         (character-encoding
-         (map:map-get m (enc-name encoding)))
+         (map:get m (enc-name encoding)))
         (encoding
-         (map:map-get m (enc-name (encoding-encoding encoding)))))
+         (map:get m (enc-name (encoding-encoding encoding)))))
       (error "~S is not a valid encoding designator" encoding)))

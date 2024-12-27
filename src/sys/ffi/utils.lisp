@@ -23,17 +23,6 @@ set twos-complement bit."
              package and that may interfere with other code using FFI."
             name (package-name package)))))
 
-(define-condition obsolete-argument-warning (style-warning)
-  ((old-arg :initarg :old-arg :reader old-arg)
-   (new-arg :initarg :new-arg :reader new-arg))
-  (:report (lambda (c s)
-             (format s "Keyword ~S is obsolete, please use ~S"
-                     (old-arg c) (new-arg c)))))
-
-(defun warn-obsolete-argument (old-arg new-arg)
-  (warn 'obsolete-argument-warning
-        :old-arg old-arg :new-arg new-arg))
-
 (defun split-if (test seq &optional (dir :before))
   (remove-if #'(lambda (x) (equal x (subseq seq 0 0)))
              (loop for start fixnum = 0

@@ -1,11 +1,12 @@
-(defpackage #:tool.catalog
+(defpackage #:epsilon.tool.catalog
   (:use
-   #:cl
-   #:lib.codec.hex
-   #:lib.digest
-   #:lib.type))
+   #:cl)
+  (:local-nicknames
+   (#:hex #:epsilon.lib.codec.hex)
+   (#:digest #:epsilon.lib.digest)
+   (#:type #:epsilon.lib.type)))
 
-(in-package #:tool.catalog)
+(in-package #:epsilon.tool.catalog)
 
 (defun sha-256 (->u8)
   (let ((digest (lib.digest.sha-2::%make-sha256-digest)))

@@ -40,14 +40,8 @@
 ;;; precedence, we also grab its library's options, if possible.
 (defun parse-function-options (options &key pointer)
   (destructuring-bind (&key (library :default libraryp)
-                            (cconv nil cconv-p)
-                            (calling-convention cconv calling-convention-p)
-                            (convention calling-convention))
+                            (convention nil))
       options
-    (when cconv-p
-      (warn-obsolete-argument :cconv :convention))
-    (when calling-convention-p
-      (warn-obsolete-argument :calling-convention :convention))
     (list* :convention
            (or convention
                (when libraryp
@@ -244,6 +238,8 @@ arguments and does type promotion for the variadic arguments."
           when p do (return-from check-prefix (values (nth p pl) (1+ p))))
     (values (first l) 1)))
 
+;; TODO library
+
 (defgeneric translate-camelcase-name (name &key upper-initial-p special-words)
   (:method ((name string) &key upper-initial-p special-words)
     (declare (ignore upper-initial-p))
@@ -376,14 +372,8 @@ arguments and does type promotion for the variadic arguments."
      ,(expand-to-foreign call (parse-type rettype))))
 
 (defun parse-defcallback-options (options)
-  (destructuring-bind (&key (cconv :cdecl cconv-p)
-                            (calling-convention cconv calling-convention-p)
-                            (convention calling-convention))
+  (destructuring-bind (&key (convention :cdecl))
       options
-    (when cconv-p
-      (warn-obsolete-argument :cconv :convention))
-    (when calling-convention-p
-      (warn-obsolete-argument :calling-convention :convention))
     (list :convention convention)))
 
 (defmacro defcallback (name-and-options return-type args &body body)

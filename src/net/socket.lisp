@@ -1,8 +1,9 @@
 (defpackage #:epsilon.net.socket
   (:use
    #:cl
-   #:epsilon.lib.seq
    #:epsilon.lib.type)
+  (:local-nicknames
+   (#:string #:epsilon.lib.string))
   (:export
    #:host-to-hostname
    #:socket-connect
@@ -487,7 +488,7 @@ parse-integer) on each of the string elements."
           (aref vector 3)))
 
 (defun dotted-quad-to-vector-quad (string) ; exported
-  (let ((list (list-of-strings-to-integers (split-sequence #\. string))))
+  (let ((list (list-of-strings-to-integers (string:split #\. string))))
     (vector (first list) (second list) (third list) (fourth list))))
 
 (defgeneric host-byte-order (address)) ; exported
@@ -495,7 +496,7 @@ parse-integer) on each of the string elements."
 (defmethod host-byte-order ((string string))
   "Convert a string, such as 192.168.1.1, to host-byte-order,
 such as 3232235777."
-  (let ((list (list-of-strings-to-integers (split-sequence #\. string))))
+  (let ((list (list-of-strings-to-integers (string:split #\. string))))
     (+ (* (first list) 256 256 256) (* (second list) 256 256)
        (* (third list) 256) (fourth list))))
 
@@ -2063,6 +2064,7 @@ happen. Use with care."
 ;;; Handling of wrong type of arguments
 
 (defmethod socket-option ((socket usocket) (option t) &key)
+  (declare (ignore socket))
   (error 'type-error :datum option :expected-type 'keyword))
 
 (defmethod (setf socket-option) (new-value (socket usocket) (option t) &key)
@@ -2070,6 +2072,7 @@ happen. Use with care."
   (socket-option socket option))
 
 (defmethod socket-option ((socket usocket) (option symbol) &key)
+  (declare (ignore socket))
   (if (keywordp option)
     (error 'unimplemented :feature option :context 'socket-option)
     (error 'type-error :datum option :expected-type 'keyword)))

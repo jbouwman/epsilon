@@ -51,6 +51,7 @@
   (:local-nicknames
    (#:stream #:epsilon.lib.stream))
   (:export
+   :node-value
    :parse
    :parse-file
    :parse-string))
@@ -137,7 +138,7 @@
 (defun parse-file (pathname)
   (with-open-file (s pathname)
     (let ((state (make-parser-state 
-                  :stream (stream:make-line-stream s))))
+                  :stream (make-line-stream s))))
       (parse-next-node state))))
 
 
@@ -278,6 +279,8 @@
     (if (stringp existing-value)
         (format nil "~A~%~A" existing-value trimmed-line)
         existing-value))) ; If not a string, return unchanged
+
+;; TODO represent with lib.map
 
 (defun parse-mapping-pairs (state first-line base-indent)
   "Parse a mapping, returning an alist of key-value pairs."

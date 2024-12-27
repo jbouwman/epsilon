@@ -5,7 +5,8 @@
    #:epsilon.lib.type
    #:epsilon.sys.ffi)
   (:local-nicknames
-   (:string :epsilon.lib.string))
+   (:string :epsilon.lib.string)
+   (:uri :epsilon.lib.uri))
   (:shadow
    #:byte)
   (:export
@@ -15,12 +16,14 @@
    #:home-dir
    #:list-dir
    #:list-dirs
-   #:list-file
+   #:make-dirs
+   #:exists-p
    #:runtime-dir
    #:temp-dir
    #:with-current-dir
    #:with-temp-file
-
+   #:replace-extension
+   
    #:create-symbolic-link
    #:delete-directory
    #:delete-file*
@@ -71,12 +74,115 @@
 ;; TODO replace other usages of LPs with URLs
 
 (defun current-dir ()
-  (epsilon.lib.uri:make-uri :scheme "file"
-                            :path (sb-unix:posix-getcwd/)))
+  (uri:make-uri :scheme "file"
+                :path (sb-unix:posix-getcwd/)))
 
 (defun (setf current-dir) (dir)
   (sb-posix:chdir dir)
   dir)
+
+(defun file-info (path)
+  (sb-posix:stat path))
+
+(defun dir-p (path)
+  (handler-case
+      (sb-posix:s-isdir (sb-posix:stat-mode (sb-posix:stat path)))
+    (sb-posix:syscall-error ()
+      nil)))
+
+(defun file-p (path)
+  (handler-case
+      (sb-posix:s-isreg (sb-posix:stat-mode (sb-posix:stat path)))
+    (sb-posix:syscall-error ()
+      nil)))
+
+(defun file-info-type (stat)
+  (cond ((sb-posix:s-isreg (sb-posix:stat-mode stat)) :file)
+        ((sb-posix:s-isdir (sb-posix:stat-mode stat)) :directory)
+        ((sb-posix:s-islnk (sb-posix:stat-mode stat)) :link)))
+
+(defun file-info-size (stat)
+  (sb-posix:stat-size stat))
+
+(defun file-info-mtime (stat)
+  (sb-posix:stat-mtime stat))
+
+(defun file-info-atime (stat)
+  (sb-posix:stat-atime stat))
+
+(defun file-info-ctime (stat)
+  (sb-posix:stat-ctime stat))
+
+(defun file-info-mode (stat)
+  (sb-posix:stat-mode stat))
+
+(defun file-info-uid (stat)
+  (sb-posix:stat-uid stat))
+
+(defun file-info-gid (stat)
+  (sb-posix:stat-gid stat))
+
+(defun %walk-dir (dirpath f)
+  (let (dir)
+    (unwind-protect
+         (progn
+           (setf dir (sb-unix:unix-opendir dirpath))
+           (when dir
+             (loop :for ent := (sb-unix:unix-readdir dir nil)
+                   :while ent
+                   :for name := (sb-unix:unix-dirent-name ent)
+                   :when (and (not (string= name "."))
+                              (not (string= name "..")))
+                     :do (funcall f
+                                  (uri:make-uri :scheme "file"
+                                                :path (format nil "~a/~a" dirpath name))))))
+        (when dir
+          (sb-unix:unix-closedir dir nil)))))
+
+(defun walk-uri (uri f &key (recursive t) (test (constantly t)))
+  (%walk-dir (uri::path uri)
+             (lambda (entry)
+               (when (funcall test entry)
+                 (funcall f entry))
+               (when (and recursive (dir-p (uri::path entry)))
+                 (walk-uri entry f :recursive t :test test)))))
+
+(defun delete-extension (path-string)
+  (subseq path-string 0 (position #\. path-string :from-end t)))
+
+(defun add-extension (path-string extension)
+  (string:join #\. (list path-string extension)))
+
+(defun replace-extension (path-string extension)
+  (add-extension (delete-extension path-string) extension))
+
+(defun exists-p (uri)
+  (not (null (probe-file (uri:path uri)))))
+
+(defun make-dirs (uri)
+  (loop :with path := ""
+        :for component :in (remove-if #'string:empty-p
+                                      (string:split #\/
+                                                    (uri:path uri)))
+        :do (setf path (format nil "~a/~a" path component))
+            (unless (probe-file path)
+              (sb-unix:unix-mkdir path #o775))))
+
+#++
+(make-dirs (uri:uri "file:///tmp/hello/goodbye"))
+
+
+
+
+(defun list-files (uri extension)
+  (let (files)
+    (walk-uri uri
+              (lambda (entry)
+                (push entry files))
+              :test (lambda (entry)
+                      (and (file-p (uri::path entry))
+                           (string:ends-with-p (uri::path entry) extension))))
+    (sort files #'string<= :key #'uri::path)))
 
 (defun call-with-current-dir (function dir)
   (let ((current (current-dir)))
@@ -89,16 +195,6 @@
 
 (defmacro with-current-dir ((dir) &body body)
   `(call-with-current-dir (lambda () ,@body) ,dir))
-
-(defun dir-p (path)
-  (let ((a (attributes path)))
-    (when a
-      (not (zerop (logand #x4000 a))))))
-
-(defun file-p (path)
-  (let ((a (attributes path)))
-    (when a
-      (not (zerop (logand #x8000 a))))))
 
 (defun ensure-deleted (pathname)
   (when (file-p pathname)
@@ -122,16 +218,6 @@
         (when dir
           (sb-unix:unix-closedir dir nil)))))
 
-(defun list-files (directory)
-  (remove-if (lambda (entry)
-               (not (file-p (string:join #\/ (list directory entry)))))
-             (list-dir directory)))
-
-(defun list-dirs (directory)
-  (remove-if (lambda (entry)
-               (not (dir-p (string:join #\/ (list directory entry)))))
-             (list-dir directory)))
-
 (defun symbolic-link-p (file)
   (eql :symlink (sb-impl::native-file-kind file)))
 
@@ -146,19 +232,6 @@
          (delete-directory file))
         (t
          (delete-file file))))
-
-(defun enbitfield (list &rest bits)
-  (let ((int 0))
-    (loop for i from 0
-          for bit in bits
-          do (when (find bit list) (setf (ldb (cl:byte 1 i) int) 1)))
-    int))
-
-(defun debitfield (int &rest bits)
-  (loop for i from 0
-        for bit in bits
-        when (logbitp i int)
-        collect bit))
 
 (defvar *system*
   #+unix :unix

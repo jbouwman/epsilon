@@ -2,6 +2,7 @@
   (:use :cl)
   (:export
    #:concat
+   #:empty-p
    #:first-char
    #:last-char
    #:join
@@ -61,6 +62,10 @@ or a character."
               ((0 1) (code-char (+ #.(char-code #\a) (random 26))))
               ((2 3) (code-char (+ #.(char-code #\A) (random 26))))
               ((4) (code-char (+ #.(char-code #\0) (random 10)))))))))
+
+(defun empty-p (s)
+  "Return t if S is a string and non-zero-length"
+  (not (and (stringp s) (plusp (length s)))))
 
 (defun first-char (s)
   "Return the first character of a non-empty string S, or NIL"

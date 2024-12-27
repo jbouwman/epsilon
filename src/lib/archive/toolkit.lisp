@@ -68,18 +68,5 @@
           do (when bit (setf (ldb (byte 1 i) int) 1)))
     int))
 
-(defun enbitfield (list &rest bits)
-  (let ((int 0))
-    (loop for i from 0
-          for bit in bits
-          do (when (find bit list) (setf (ldb (byte 1 i) int) 1)))
-    int))
-
-(defun debitfield (int &rest bits)
-  (loop for i from 0
-        for bit in bits
-        when (logbitp i int)
-        collect bit))
-
 (defun enlist (thing &rest values)
   (if (listp thing) thing (list* thing values)))

@@ -6,7 +6,8 @@
    #:->
    #:if-let
    #:when-let
-   #:when-let*))
+   #:when-let*
+   #:while))
 
 (in-package #:epsilon.lib.binding)
 
@@ -20,6 +21,9 @@
                ,value))
          ,value)
      ,@(when doc (list doc))))
+
+(defmacro while (cond &body body)
+  `(do () ((not ,cond)) ,@body))
 
 (defmacro -> (x &rest forms)
   "Thread-first macro (similar to Clojure's ->).
