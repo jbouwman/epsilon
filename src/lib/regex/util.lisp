@@ -1,10 +1,5 @@
 (in-package #:epsilon.lib.regex)
 
-(defmacro defconstant (name value &optional doc)
-  "Make sure VALUE is evaluated only once \(to appease SBCL)."
-  `(cl:defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
-     ,@(when doc (list doc))))
-
 (declaim (inline digit-char-p))  
 (defun digit-char-p (chr)
   "Tests whether a character is a decimal digit, i.e. the same as
@@ -20,7 +15,7 @@ Perl's [\\w]."
   (or (alphanumericp chr)
       (char= chr #\_)))
 
-(defconstant +whitespace-char-string+
+(define-constant +whitespace-char-string+
   (coerce '(#\Space #\Tab #\Linefeed #\Return #\Page) 'string)
   "A string of all characters which are considered to be whitespace.
 Same as Perl's [\\s].")

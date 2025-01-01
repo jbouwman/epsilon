@@ -1,6 +1,7 @@
 (defpackage #:epsilon.lib.digest.sha-2
   (:use
    #:cl
+   #:epsilon.lib.binding
    #:epsilon.lib.list
    #:epsilon.lib.type
    #:epsilon.lib.symbol
@@ -24,7 +25,7 @@
   (g #x64f98fa7)
   (h #xbefa4fa4))
 
-(defconst +pristine-sha224-registers+ (initial-sha224-regs))
+(define-constant +pristine-sha224-registers+ (initial-sha224-regs))
 
 (define-digest-registers (sha256 :endian :big)
   (a #x6a09e667)
@@ -36,9 +37,9 @@
   (g #x1f83d9ab)
   (h #x5be0cd19))
 
-(defconst +pristine-sha256-registers+ (initial-sha256-regs))
+(define-constant +pristine-sha256-registers+ (initial-sha256-regs))
 
-(defconst +sha256-round-constants+
+(define-constant +sha256-round-constants+
   #32@(#x428A2F98 #x71374491 #xB5C0FBCF #xE9B5DBA5 #x3956C25B #x59F111F1
        #x923F82A4 #xAB1C5ED5 #xD807AA98 #x12835B01 #x243185BE #x550C7DC3
        #x72BE5D74 #x80DEB1FE #x9BDC06A7 #xC19BF174 #xE49B69C1 #xEFBE4786

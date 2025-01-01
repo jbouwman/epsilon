@@ -2,6 +2,7 @@
   (:use
    #:cl
    #:sb-rotate-byte
+   #:epsilon.lib.binding
    #:epsilon.lib.type
    #:epsilon.lib.symbol)
   (:export
@@ -9,7 +10,6 @@
    #:%subtract-with-borrow
    #:copy-block
    #:copy-to-buffer
-   #:defconst
    #:fill-block-u8-be
    #:fill-block-u8-be/64
    #:fill-block-u8-le
@@ -34,12 +34,6 @@
 ;;;; common.lisp -- efficient implementations of mod32 arithmetic and macros
 
 (in-package #:epsilon.lib.digest.common)
-
-(defmacro defconst (name value)         ; FIXME dedup
-  `(defconstant ,name
-    (if (boundp ',name)
-        (symbol-value ',name)
-        ,value)))
 
 ;;; extracting individual bytes from integers
 
@@ -435,45 +429,6 @@ behavior."
                        (logxor (aref input-block1 input-block1-start)
                                (aref input-block2 input-block2-start))))))
 
-(define-compiler-macro xor-block (&whole form &environment env block-length input-block1 input-block1-start input-block2 input-block2-start output-block output-block-start)
-  (cond
-    #+(and sbcl x86-64 ironclad-assembly)
-    ((and (constantp block-length env)
-          (= block-length 16))
-     `(xor128 ,input-block1 ,input-block1-start
-              ,input-block2 ,input-block2-start
-              ,output-block ,output-block-start))
-    #+(and sbcl x86-64 ironclad-assembly)
-    ((and (constantp block-length env)
-          (zerop (mod block-length 16)))
-     (let ((i (gensym)))
-       `(loop for ,i from 0 below ,block-length by 16 do
-          (xor128 ,input-block1 (+ ,input-block1-start ,i)
-                  ,input-block2 (+ ,input-block2-start ,i)
-                  ,output-block (+ ,output-block-start ,i)))))
-    #+(and sbcl x86-64)
-    ((and (constantp block-length env)
-          (= block-length 8))
-     `(setf (u64ref/le ,output-block ,output-block-start)
-            (logxor (u64ref/le ,input-block1 ,input-block1-start)
-                    (u64ref/le ,input-block2 ,input-block2-start))))
-    #+(and sbcl (or x86 x86-64))
-    ((and (constantp block-length env)
-          (= block-length 4))
-     `(setf (u32ref/le ,output-block ,output-block-start)
-            (logxor (u32ref/le ,input-block1 ,input-block1-start)
-                    (u32ref/le ,input-block2 ,input-block2-start))))
-    #+(and sbcl x86)
-    ((and (constantp block-length env)
-          (zerop (mod block-length 4)))
-     (let ((i (gensym)))
-       `(loop for ,i from 0 below ,block-length by 4 do
-          (setf (u32ref/le ,output-block (+ ,output-block-start ,i))
-                (logxor (u32ref/le ,input-block1 (+ ,input-block1-start ,i))
-                        (u32ref/le ,input-block2 (+ ,input-block2-start ,i)))))))
-    (t
-     form)))
-
 (defun copy-block (block-length input-block input-block-start output-block output-block-start)
   (declare (type ->u8 input-block output-block)
            (type array-index block-length input-block-start output-block-start))
@@ -495,40 +450,3 @@ behavior."
     (replace output-block input-block
              :start1 output-block-start :end1 (+ output-block-start block-length)
              :start2 input-block-start :end2 (+ input-block-start block-length))))
-
-(define-compiler-macro copy-block (&whole form &environment env
-                                          block-length
-                                          input-block input-block-start
-                                          output-block output-block-start)
-  (cond
-    #+(and sbcl x86-64 ironclad-assembly)
-    ((and (constantp block-length env)
-          (= block-length 16))
-     `(mov128  ,input-block ,input-block-start
-               ,output-block ,output-block-start))
-    #+(and sbcl x86-64 ironclad-assembly)
-    ((and (constantp block-length env)
-          (zerop (mod block-length 16)))
-     (let ((i (gensym)))
-       `(loop for ,i from 0 below ,block-length by 16 do
-          (mov128 ,input-block (+ ,input-block-start ,i)
-                  ,output-block (+ ,output-block-start ,i)))))
-    #+(and sbcl x86-64)
-    ((and (constantp block-length env)
-          (= block-length 8))
-     `(setf (u64ref/le ,output-block ,output-block-start)
-            (u64ref/le ,input-block ,input-block-start)))
-    #+(and sbcl (or x86 x86-64))
-    ((and (constantp block-length env)
-          (= block-length 4))
-     `(setf (u32ref/le ,output-block ,output-block-start)
-            (u32ref/le ,input-block ,input-block-start)))
-    #+(and sbcl x86)
-    ((and (constantp block-length env)
-          (zerop (mod block-length 4)))
-     (let ((i (gensym)))
-       `(loop for ,i from 0 below ,block-length by 4 do
-          (setf (u32ref/le ,output-block (+ ,output-block-start ,i))
-                (u32ref/le ,input-block (+ ,input-block-start ,i))))))
-    (t
-     form)))

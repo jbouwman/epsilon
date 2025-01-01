@@ -1,16 +1,27 @@
+(defpackage :epsilon.io
+  (:use :cl)
+  (:local-nicknames
+   (:map :epsilon.lib.map)
+   (:uri :epsilon.lib.uri))
+  (:export #:read-string
+           #:read-bytes
+           #:open-stream
+           #:open-text-stream))
+
 (in-package #:epsilon.io)
 
 (defvar *stream-providers*
-  (make-hash-table :test #'equalp))
+  map:+empty+)
 
 (defstruct stream-provider
   input
   output)
 
 (defun define-stream-provider (name in-f out-f)
-  (setf (gethash name *stream-providers*)
-        (make-stream-provider :input in-f
-                              :output out-f)))
+  (setf *stream-providers*
+        (map:assoc *stream-providers* name
+                   (make-stream-provider :input in-f
+                                         :output out-f))))
 
 (define-stream-provider "file"
     (lambda (uri)
@@ -23,14 +34,14 @@
           :element-type 'epsilon.lib.type:u8)))
 
 (defun stream-provider (url)
-  (or (gethash (uri:scheme url) *stream-providers*)
+  (or (map:get *stream-providers* (uri:scheme url))
       (error "No stream provider for scheme ~A" (uri:scheme url))))
 
 (defun open-stream (url)
   (funcall (stream-provider-input (stream-provider url)) url))
 
 (defun read-bytes (url)
-  (error "fixme"))
+  (error "fixme"))                      ; FIXME
 
 (defun open-text-stream (url)
   (epsilon.lib.stream:make-input-stream (open-stream url)))

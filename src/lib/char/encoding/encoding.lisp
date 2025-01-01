@@ -60,7 +60,7 @@ a CHARACTER-ENCONDING object, it is returned unmodified."
     (return-from get-character-encoding name))
   (when (eq name :default)
     (setq name *default-character-encoding*))
-  (or (map:map-get *character-encodings* name)
+  (or (map:get *character-encodings* name)
       (error "Unknown character encoding: ~S" name)))
 
 (defmethod ambiguous-encoding-p ((encoding symbol))
@@ -70,7 +70,7 @@ a CHARACTER-ENCONDING object, it is returned unmodified."
   (pushnew (enc-name enc) *supported-character-encodings*)
   (dolist (kw (cons (enc-name enc) (enc-aliases enc)))
     (setf *character-encodings*
-          (map:map-assoc *character-encodings* kw enc)))
+          (map:assoc *character-encodings* kw enc)))
   (enc-name enc))
 
 (defmacro define-character-encoding (name docstring &body options)
@@ -125,11 +125,11 @@ a CHARACTER-ENCONDING object, it is returned unmodified."
 (defparameter *abstract-mappings* map:+empty+)
 
 (defun get-abstract-mapping (encoding)
-  (map:map-get *abstract-mappings* encoding))
+  (map:get *abstract-mappings* encoding))
 
 (defun (setf get-abstract-mapping) (value encoding)
   (setf *abstract-mappings*
-        (map:map-assoc *abstract-mappings* encoding value)))
+        (map:assoc *abstract-mappings* encoding value)))
 
 (defun %register-mapping-part (encoding slot-name fn)
   (let ((mapping (get-abstract-mapping encoding)))
@@ -203,7 +203,7 @@ a CHARACTER-ENCONDING object, it is returned unmodified."
 ;;; then saved in their respective slots of the CONCRETE-MAPPING
 ;;; object.
 (defmacro instantiate-concrete-mappings
-    (&key (encodings (map::map-keys *abstract-mappings*))
+    (&key (encodings (map::keys *abstract-mappings*))
      (optimize '((speed 3) (debug 0) (compilation-speed 0)))
      octet-seq-getter octet-seq-setter octet-seq-type
      code-point-seq-getter code-point-seq-setter code-point-seq-type
@@ -215,10 +215,10 @@ a CHARACTER-ENCONDING object, it is returned unmodified."
               (let* ((encoding (get-character-encoding encoding-name))
                      (aliases (enc-aliases encoding)))
                 (dolist (kw (cons (enc-name encoding) aliases))
-                  (setf ht (map:map-assoc ht kw cm))))))
+                  (setf ht (map:assoc ht kw cm))))))
        ,@(loop for encoding-name in encodings
                for encoding = (get-character-encoding encoding-name)
-               for am = (map:map-get *abstract-mappings* encoding-name)
+               for am = (map:get *abstract-mappings* encoding-name)
                collect
                `(let ((cm (make-instance 'concrete-mapping)))
                   (setf (encoder cm)

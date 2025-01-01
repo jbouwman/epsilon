@@ -12,7 +12,8 @@
    #:epsilon.lib.type)
   (:shadow
    #:merge)
-  (:local-nicknames (#:map #:epsilon.lib.map))
+  (:local-nicknames (#:map #:epsilon.lib.map)
+                    (#:string #:epsilon.lib.string))
   (:export
    #:uri
    #:input-stream
@@ -24,6 +25,7 @@
    #:host
    #:port
    #:path
+   #:parent-dir
    #:query
    #:fragment
    #:authority
@@ -32,6 +34,7 @@
    #:urn
    #:make-urn
    #:render-uri
+   #:extend
    #:merge
    #:urn-p
    #:urn-nid
@@ -42,14 +45,14 @@
 (eval-when (:compile-toplevel :load-toplevel :execute)
 
   (defvar +default-ports+
-    (map::make-map "ssh" 22
-                   "http" 80
-                   "https" 443
-                   "ws" 80
-                   "wss" 443))
+    (map:make-map "ssh" 22
+                  "http" 80
+                  "https" 443
+                  "ws" 80
+                  "wss" 443))
 
   (defun scheme-default-port (scheme)
-    (map:map-get +default-ports+ scheme)))
+    (map:get +default-ports+ scheme)))
 
 (define-condition parsing-end-unexpectedly (simple-error)
   ((state :initarg :state
@@ -1141,7 +1144,7 @@
               (setq ip (concatenate 'string "0" ip)))
              ((char= (aref ip (1- (length ip))) #\:)
               (setq ip (concatenate 'string ip "0"))))
-           (let* ((ip-parsed (epsilon.lib.seq:split-sequence #\: ip))
+           (let* ((ip-parsed (string:split #\: ip))
                   (len (length ip-parsed)))
              (loop for section in ip-parsed
                    if (string= section "")
@@ -1229,11 +1232,11 @@ Assumes that the path of the file URI is correct path syntax for the environment
           (setf (getf initargs :query) (url-encode-params query)))
         (apply (scheme-constructor scheme) initargs))))
 
-(defun render-uri (uri &optional stream)
+(defun render-uri (uri &optional stream) ; TODO global 'render' generic
   (flet ((maybe-slash (authority path)
            (if (and (not (emptyp authority)) (not (emptyp path))
-                    (char/= (epsilon.lib.string:last-char authority) #\/)
-                    (char/= (epsilon.lib.string:first-char path) #\/))
+                    (char/= (string:last-char authority) #\/)
+                    (char/= (string:first-char path) #\/))
                "/"
                "")))
     (cond
@@ -1292,8 +1295,8 @@ See `uri='."
 
 (defun merge-paths (ref-path base-path)
   (declare (type (or string null) ref-path base-path))
-  (let* ((path-list (and base-path (nreverse (epsilon.lib.seq:split-sequence #\/ base-path))))
-         (ref-components (and ref-path (epsilon.lib.seq:split-sequence #\/ ref-path)))
+  (let* ((path-list (and base-path (nreverse (string:split #\/ base-path))))
+         (ref-components (and ref-path (string:split #\/ ref-path)))
          ending-slash-p)
     ;; remove last component of base
     (pop path-list)
@@ -1359,3 +1362,19 @@ is mutated."
       (setf (path merged-uri)
             (merge-paths (path merged-uri) (path base)))
       (return-merged-uri))))
+
+(defun extend (base path)
+  "Merge a reference URI into the base URI as described in RFC 2396 Section 5.a2.
+The returned URI is always a new instance. Neither REFERENCE nor BASE
+is mutated."
+  (let ((base (copy-uri base)))
+    (setf (path base)
+          (string:join #\/ (append (string:split #\/ (path base))
+                                   (string:split #\/ path))))
+    base))
+
+(defun parent-dir (uri)
+  "Delete the last path component."
+  (make-uri :scheme :file
+            :path (subseq (path uri) 0 (position #\/ (path uri) :from-end t))))
+

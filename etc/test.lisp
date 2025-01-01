@@ -5,7 +5,7 @@
 (handler-case
     (asdf:load-system "epsilon/tests")
   (error (condition)
-    (format *error-output "~A~%" condition)
+    (format *error-output* "~A~%" condition)
     (sb-debug:print-backtrace :stream *error-output*)))
 
 (sb-posix:exit (if (epsilon.tool.test:run-success-p (epsilon.tool.test:run-tests))

@@ -125,7 +125,6 @@
           (decode-entry #'slow-copy entry :password password))
       vector)))
 
-;; Early define
 (defmacro with-zip-file ((file input &key (start 0) end) &body body)
   `(call-with-input-zip-file (lambda (,file) ,@body) ,input :start ,start :end ,end))
 
@@ -141,7 +140,7 @@
      (with-zip-file (zip file)
        (extract-zip zip path :if-exists if-exists)))))
 
-(defun ensure-zip-file (file &key (strip-root NIL))
+(defun ensure-zip-file (file)
   (etypecase file
     ((or pathname string list)
      (let ((entries (make-array 0 :adjustable T :fill-pointer T)))
@@ -167,8 +166,8 @@
     (zip-file
      file)))
 
-(defun compress-zip (file target &key (start 0) end (if-exists :error) strip-root password)
-  (let ((file (ensure-zip-file file :strip-root strip-root)))
+(defun compress-zip (file target &key (start 0) end (if-exists :error) password)
+  (let ((file (ensure-zip-file file)))
     (when password
       (loop :for entry across (entries file)
             :do (setf (encryption-method entry) :pkware)))

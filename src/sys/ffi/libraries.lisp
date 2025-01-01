@@ -100,12 +100,12 @@
   "Look up a library by NAME, signalling an error if not found."
   (if (typep lib 'foreign-library)
       lib
-      (or (map:map-get *foreign-libraries* lib)
+      (or (map:get *foreign-libraries* lib)
           (error 'foreign-library-undefined-error :name lib))))
 
 (defun (setf get-foreign-library) (value name)
   (setf *foreign-libraries*
-        (map:map-assoc *foreign-libraries* name value)))
+        (map:assoc *foreign-libraries* name value)))
 
 (defun foreign-library-type (lib)
   (slot-value (get-foreign-library lib) 'type))
@@ -140,7 +140,7 @@
 If LOADED-ONLY is non-null only loaded libraries are returned.
 TYPE restricts the output to a specific library type: if NIL
 all libraries are returned."
-  (let ((libs (map::map-vals *foreign-libraries*)))
+  (let ((libs (map::vals *foreign-libraries*)))
     (remove-if (lambda (lib)
                  (or (and type
                           (not (eql type (foreign-library-type lib))))
@@ -148,25 +148,15 @@ all libraries are returned."
                           (not (foreign-library-loaded-p lib)))))
                libs)))
 
-;; :CONVENTION, :CALLING-CONVENTION and :CCONV are coalesced,
-;; the former taking priority
 ;; options with NULL values are removed
 (defun clean-spec-up (spec)
   (mapcar (lambda (x)
             (list* (first x) (second x)
                    (let* ((opts (cddr x))
-                          (cconv (getf opts :cconv))
-                          (calling-convention (getf opts :calling-convention))
                           (convention (getf opts :convention))
                           (search-path (getf opts :search-path)))
-                     (remf opts :cconv) (remf opts :calling-convention)
-                     (when cconv
-                       (warn-obsolete-argument :cconv :convention))
-                     (when calling-convention
-                       (warn-obsolete-argument :calling-convention
-                                               :convention))
                      (setf (getf opts :convention)
-                           (or convention calling-convention cconv))
+                           convention)
                      (setf (getf opts :search-path)
                            (mapcar #'pathname (ensure-list search-path)))
                      (loop for (opt val) on opts by #'cddr
@@ -176,9 +166,7 @@ all libraries are returned."
 
 (defmethod initialize-instance :after
     ((lib foreign-library) &key canary search-path
-     (cconv :cdecl cconv-p)
-     (calling-convention cconv calling-convention-p)
-     (convention calling-convention))
+     (convention :cdecl))
   (with-slots (type options spec) lib
     (check-type type (member :system :test :grovel-wrapper))
     (setf spec (clean-spec-up spec))
@@ -187,10 +175,6 @@ all libraries are returned."
       (assert (subsetp (loop for (key . nil) on all-options by #'cddr
                              collect key)
                        '(:convention :search-path)))
-      (when cconv-p
-        (warn-obsolete-argument :cconv :convention))
-      (when calling-convention-p
-        (warn-obsolete-argument :calling-convention :convention))
       (flet ((set-option (key value)
                (when value (setf (getf options key) value))))
         (set-option :convention convention)
@@ -200,7 +184,7 @@ all libraries are returned."
 
 (defun register-foreign-library (name spec &rest options)
   (let ((old-handle
-         (when-let ((old-lib (map:map-get *foreign-libraries* name)))
+         (when-let ((old-lib (map:get *foreign-libraries* name)))
            (foreign-library-handle old-lib))))
     (setf (get-foreign-library name)
           (apply #'make-instance 'foreign-library

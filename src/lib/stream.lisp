@@ -23,7 +23,6 @@
    #:unread-byte
    #:vector-stream
 
-   #:make-line-stream
    #:read-line-from
    #:peek-line
    
