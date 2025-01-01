@@ -1,9 +1,9 @@
 (defpackage #:epsilon.lib.regex
   (:use #:cl
+        #:epsilon.lib.binding
         #:epsilon.lib.symbol
         #:epsilon.lib.type)
-  (:shadow #:digit-char-p
-           #:defconstant)
+  (:shadow #:digit-char-p)
   (:export #:*allow-quoting*
            #:*look-ahead-for-suffix*
            #:*optimize-char-classes*

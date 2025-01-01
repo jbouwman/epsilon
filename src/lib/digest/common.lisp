@@ -2,6 +2,7 @@
   (:use
    #:cl
    #:sb-rotate-byte
+   #:epsilon.lib.binding
    #:epsilon.lib.type
    #:epsilon.lib.symbol)
   (:export
@@ -9,7 +10,6 @@
    #:%subtract-with-borrow
    #:copy-block
    #:copy-to-buffer
-   #:defconst
    #:fill-block-u8-be
    #:fill-block-u8-be/64
    #:fill-block-u8-le
@@ -34,12 +34,6 @@
 ;;;; common.lisp -- efficient implementations of mod32 arithmetic and macros
 
 (in-package #:epsilon.lib.digest.common)
-
-(defmacro defconst (name value)         ; FIXME dedup
-  `(defconstant ,name
-    (if (boundp ',name)
-        (symbol-value ',name)
-        ,value)))
 
 ;;; extracting individual bytes from integers
 

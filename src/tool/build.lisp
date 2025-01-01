@@ -44,6 +44,12 @@
   ((source-info :initarg :source-info :accessor source-info)
    (target-info :initarg :target-info :accessor target-info)))
 
+(defmethod print-object ((obj build-step) stream)
+  (print-unreadable-object (obj stream :type t)
+    (format stream "~a (~a)"
+            (path (source-info obj))
+            (build-step-status obj))))
+
 (defmethod source-uri ((self build-step))
   (uri (source-info self)))
 
@@ -209,4 +215,12 @@
        (compile-source step)))))
 
 
-(build-order (uri:uri "file:///Users/jbouwman/git/epsilon"))
+(defun find-files-without-packages (uri)
+  "Returns a list of source files that don't define their own packages"
+  (let* ((project (load-project uri))
+         (sources (project-sources project)))
+    (remove-if #'source-info-defines sources)))
+
+
+#++
+(find-files-without-packages (uri:uri "file:///Users/jbouwman/git/epsilon"))
