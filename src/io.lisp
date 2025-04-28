@@ -44,10 +44,10 @@
   (error "fixme"))                      ; FIXME
 
 (defun open-text-stream (url)
-  (epsilon.lib.stream:make-input-stream (open-stream url)))
+  (epsilon.lib.stream:make-decoding-stream (open-stream url)))
 
 (defun read-string (url)
   (with-open-stream (stream (open-stream url))
-    (let ((input (epsilon.lib.stream:make-input-stream stream)))
+    (let ((input (epsilon.lib.stream:make-decoding-stream stream)))
       (with-output-to-string (output)
         (epsilon.lib.stream:copy-stream input output)))))

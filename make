@@ -17,10 +17,7 @@ def coverage [] {
     mkdir target/coverage
     (sbcl --noinform
           --non-interactive
-          --eval "(require :sb-cover)"
-          --eval "(load \"epsilon.asd\" :force t)"
-          --eval "(asdf:test-system \"epsilon\")"
-          --eval "(sb-cover:report \"target/coverage/\")")
+          --eval "(load \"etc/coverage.lisp\")")
     open target/coverage/cover-index.html
 }
 

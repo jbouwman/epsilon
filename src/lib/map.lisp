@@ -1,5 +1,5 @@
-(defpackage :epsilon.lib.map
-  (:use :cl
+(defpackage #:epsilon.lib.map
+  (:use #:cl
         #:epsilon.lib.binding)
   (:shadow #:assoc
            #:dissoc
@@ -11,6 +11,7 @@
            #:seq)
   (:export #:+empty+
            #:assoc
+           #:assoc-in
            #:contains-p
            #:difference
            #:dissoc
@@ -18,6 +19,7 @@
            #:filter
            #:from-pairs
            #:get
+           #:get-in
            #:invert
            #:keys
            #:make-map
@@ -29,6 +31,8 @@
            #:seq
            #:size
            #:subset-p
+           #:update
+           #:update-in
            #:vals))
 
 (in-package :epsilon.lib.map)
@@ -46,7 +50,7 @@
 
 (defgeneric node-assoc (node hash shift key value)
   (:documentation "Associate key-value pair in node structure.
-Returns (values new-node inserted-p) where inserted-p is true for new insertions."))
+Returns (values new-node inserted) where inserted is true for new insertions."))
 
 (defgeneric node-dissoc (node hash shift key parent)
   (:documentation "Remove key from node structure"))
@@ -84,9 +88,7 @@ Returns (values new-node inserted-p) where inserted-p is true for new insertions
   (hash 0 :type fixnum)
   entries)
 
-(defun hash-key (key)
-  "Generate a hash for a key"
-  (sxhash key))
+(declaim (inline get-index bitmap-present-p bitmap-index))
 
 (defun get-index (hash shift)
   "Get index in the current level's array based on hash and shift"
@@ -104,13 +106,14 @@ Returns (values new-node inserted-p) where inserted-p is true for new insertions
   "Get value for key from map, returning default if not found"
   (let ((root (hamt-root map)))
     (if root
-        (node-get root (hash-key key) 0 key default)
+        (node-get root (sxhash key) 0 key default)
         default)))
 
 (defun contains-p (map key)
   "Return true if map contains key"
   (let ((not-found (gensym)))
-    (not (eq (get map key not-found) not-found))))
+    (not (eq (get map key not-found)
+             not-found))))
 
 (defun seq (map)
   "Return a sequence of key-value pairs from the map"
@@ -179,13 +182,13 @@ Returns (values new-node inserted-p) where inserted-p is true for new insertions
                     (collision-node-entries node2)
                     (list (cons (leaf-node-key node2)
                               (leaf-node-value node2)))))))
-      
+
       ;; Same index: recurse deeper
       ((= index1 index2)
        (let ((new-child (merge-nodes (make-bitmap-node :bitmap 0 :array #())
                                     node1 node2 (+ shift +bit-partition+))))
          (insert-node parent (ash 1 index1) 0 new-child)))
-      
+
       ;; Different indices: store both
       (t
        (let ((bitmap (logior (ash 1 index1) (ash 1 index2)))
@@ -401,13 +404,24 @@ Returns (values new-node inserted-p) where inserted-p is true for new insertions
 
 (defun assoc (map key value)
   "Return a new map with key-value pair added/updated"
-  (let ((hash (hash-key key)))
+  (let ((hash (sxhash key)))
     (multiple-value-bind (new-root inserted)
         (if (hamt-root map)
             (node-assoc (hamt-root map) hash 0 key value)
             (values (make-leaf-node :hash hash :key key :value value) t))
       (make-hamt new-root (+ (hamt-count map)
                              (if inserted 1 0))))))
+
+(defun assoc-in (map keys value)
+  "Associate a value in a nested map structure, where keys is a sequence of keys
+   and value is the new value to be associated and return a new nested structure.
+   Maps are created for nonexistent intermediate levels."
+  (if (null keys)
+      value
+      (let ((k (car keys)))
+        (if (null (cdr keys))
+            (assoc map k value)
+            (assoc map k (assoc-in (get map k +empty+) (cdr keys) value))))))
 
 (defun reduce (function map &optional (initial-value +empty+))
   "Reduce over key-value pairs in the map"
@@ -478,7 +492,7 @@ Returns (values new-node inserted-p) where inserted-p is true for new insertions
   (unless (contains-p map key)
     ;; if key doesn't exist, return unchanged map
     (return-from dissoc map))
-  (let* ((hash (hash-key key))
+  (let* ((hash (sxhash key))
          (new-root (and (hamt-root map)
                         (node-dissoc (hamt-root map) hash 0 key nil))))
     (make-hamt new-root (1- (hamt-count map)))))
@@ -499,6 +513,56 @@ Returns (values new-node inserted-p) where inserted-p is true for new insertions
   "Return a new map with keys and values swapped"
   (reduce (lambda (m a b)
             (assoc m b a))
+          map))
+
+(defun get-in (map keys &optional default)
+  "Get value in nested map structure following key sequence"
+  (if (null keys)
+      map
+      (let ((v (get map (car keys) nil)))
+        (if (null (cdr keys))
+            (or v default)
+            (get-in v (cdr keys) default)))))
+
+(defun update (map key f &rest args)
+  "Update value in map at key by applying f"
+  (assoc map key (apply f (get map key) args)))
+
+(defun update-in (map keys f &rest args)
+  "Update value in nested map structure at key sequence by applying f"
+  (if (null keys)
+      (apply f map args)
+      (let* ((k (car keys))
+             (v (get map k nil)))
+        (assoc map k
+               (if (null (cdr keys))
+                   (apply f (or v nil) args)
+                   (apply #'update-in v (cdr keys) f args))))))
+
+(defun map-entry-p (x)
+  "Returns true if x is a map entry (key-value pair)"
+  (and (consp x)
+       (not (consp (cdr x)))))
+
+(defun map-p (x)
+  "Returns true if x is a map"
+  (typep x 'hamt))
+
+(defun map-concat (&rest maps)
+  "Returns a map that consists of the rest of the maps conj-ed onto
+      the first. If a key occurs in more than one map, the mapping from
+      the latter (left-to-right) will be the mapping in the result."
+  (cl:reduce #'merge maps :initial-value +empty+))
+
+(defun rename-keys (map kmap)
+  "Returns the map with the keys in kmap renamed to the vals in kmap"
+  (reduce (lambda (m k v)
+            (let ((new-key (get kmap k k)))
+              (if (eq k new-key)
+                  m
+                  (-> m
+                      (dissoc k)
+                      (assoc new-key v)))))
           map))
 
 ;;; Reader syntax

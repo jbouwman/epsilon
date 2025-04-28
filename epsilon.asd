@@ -14,6 +14,7 @@
     ((:module "lib"
       :components ((:file "symbol")
                    (:file "binding")
+                   (:file "process")
                    (:file "map")
                    (:file "array")
                    (:file "condition")
@@ -47,6 +48,7 @@
                    (:file "stream")
                    (:file "yaml")
                    (:file "buffer")
+                   (:file "time")
                    (:module "digest"
                     :components ((:file "reader")
                                  (:file "common")
@@ -75,7 +77,8 @@
                                  (:file "bitstream")
                                  (:file "huffman")
                                  (:file "compress")
-                                 (:file "public")))))
+                                 (:file "public")))
+                   (:file "msgpack")))
      (:file "io")
      (:module "sys"
       :components ((:file "env")
@@ -156,6 +159,7 @@
                            (:file "codec-tests")
                            (:file "digest-tests")
                            (:file "map-tests")
+                           (:file "msgpack-tests")
                            (:file "regex-tests")
                            (:file "uri-tests")
                            (:file "yaml-tests")
