@@ -1,69 +1,61 @@
+;;;; In-memory byte-array-valued streams
+
 (defpackage #:epsilon.lib.buffer
   (:use #:cl
-        #:epsilon.lib.stream
-        #:epsilon.lib.type
-        #:epsilon.lib.xsubseq)
-  (:export #:*default-memory-limit*
-           #:*default-disk-limit*
-
-           #:smart-buffer
-           #:make-smart-buffer
-           #:write-to-buffer
-           #:finalize-buffer
-           #:buffer-on-memory-p
-           #:delete-stream-file
-
-           #:buffer-limit-exceeded))
+        #:sb-gray
+        #:epsilon.lib.type)
+  (:export #:make-buffer
+           #:make-input-stream
+           #:make-output-stream
+           #:stream-buffer
+           #:with-buffer))
 
 (in-package #:epsilon.lib.buffer)
 
-(defvar *default-memory-limit* (expt 2 20))
-(defvar *default-disk-limit* (expt 2 30))
+(defun make-buffer (&key (initial-length 32))
+  (make-array initial-length :element-type 'u8 
+                             :fill-pointer 0 :adjustable t))
 
-(defstruct (smart-buffer (:conc-name :buffer-)
-                         (:constructor %make-smart-buffer))
-  (memory-limit *default-memory-limit*)
-  (disk-limit *default-disk-limit*)
-  (current-len 0)
-  (on-memory-p t)
-  (memory-buffer (make-concatenated-xsubseqs))
-  (disk-buffer nil))
+(defclass buffer-output-stream (fundamental-binary-output-stream)
+  ((buffer :initform (make-buffer)
+           :accessor stream-buffer)
+   (position :initform 0
+             :accessor stream-position)))
 
-(defun make-smart-buffer (&rest initargs &key memory-limit disk-limit &allow-other-keys)
-  (let ((buffer (apply #'%make-smart-buffer initargs)))
-    (when (and memory-limit
-               disk-limit
-               (< disk-limit memory-limit))
-      (setf (buffer-memory-limit buffer) disk-limit))
-    buffer))
+(defun make-output-stream ()
+  (make-instance 'buffer-output-stream))
 
-(define-condition buffer-limit-exceeded (error)
-  ((limit :initarg :limit
-          :initform nil))
-  (:report (lambda (condition stream)
-             (format stream "Buffer exceeded the limit~:[~;~:*: ~A~]"
-                     (slot-value condition 'limit)))))
+(defmethod stream-write-byte ((stream buffer-output-stream) byte)
+  (vector-push-extend byte (stream-buffer stream))
+  (incf (stream-position stream))
+  byte)
 
-(defun write-to-buffer (buffer seq &optional (start 0) (end (length seq)))
-  (check-type seq (array u8 (*)))
-  (incf (buffer-current-len buffer) (- end start))
-  (if (buffer-on-memory-p buffer)
-      (xnconcf (buffer-memory-buffer buffer) (xsubseq seq start end))
-      (with-open-file (out (buffer-disk-buffer buffer)
-                           :direction :output
-                           :element-type 'u8
-                           :if-exists :append)
-        (write-sequence seq out :start start :end end))))
+(defmethod stream-write-sequence ((stream buffer-output-stream) seq &optional (start 0) end)
+  (let* ((buffer (stream-buffer stream))
+         (end (or end (length seq)))
+         (count (- end start))
+         (current-size (length buffer))
+         (new-size (+ current-size count)))
+    (adjust-array buffer new-size :fill-pointer new-size)
+    (replace buffer seq :start1 current-size :start2 start :end2 end)
+    (incf (stream-position stream) count))
+  seq)
 
-(defun finalize-buffer (buffer)
-  (if (buffer-on-memory-p buffer)
-      (make-vector-stream
-       (typecase (buffer-memory-buffer buffer)
-         (null-concatenated-xsubseqs #())
-         (t (coerce-to-sequence (buffer-memory-buffer buffer)))))
-      (open (buffer-disk-buffer buffer) :direction :input :element-type 'u8)))
+(defclass buffer-input-stream (fundamental-binary-input-stream)
+  ((buffer :initarg :buffer             ; array of unsigned-byte 8
+           :accessor stream-buffer)
+   (position :initform 0
+             :accessor stream-position)))
 
-(defun delete-stream-file (stream)
-  (when (typep stream 'file-stream)
-    (ignore-errors (delete-file (pathname stream))))
-  (values))
+(defun make-input-stream (buffer)
+  (make-instance 'buffer-input-stream :buffer buffer))
+
+(defmethod stream-element-type ((stream buffer-input-stream))
+  'u8)
+
+(defmethod stream-read-byte ((stream buffer-input-stream))
+  (with-slots (buffer position) stream
+    (when (< position (length buffer))
+      (let ((byte (aref buffer position)))
+        (incf position)
+        byte))))

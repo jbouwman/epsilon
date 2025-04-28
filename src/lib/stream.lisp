@@ -12,7 +12,7 @@
    #:char-stream
    #:char-stream-column
    #:output-stream-vector
-   #:make-input-stream
+   #:make-encoding-stream
    #:make-char-output-stream
    #:make-vector-stream
    #:peek-byte
@@ -39,7 +39,7 @@
    #:buffer-position
 
    #:make-input-buffer #:input-buffer-vector #:input-buffer-stream
-
+   #:make-decoding-stream
    #:fast-read-byte #:fast-write-byte
    #:fast-read-sequence #:fast-write-sequence
    #:with-fast-input #:with-fast-output
@@ -120,7 +120,7 @@ the code is compiled on.")
      (format stream "Stream ~S exhausted."
              (stream-error-stream condition)))))
 
-(defclass vector-stream ()
+(defclass vector-stream ()              ; FIXE merge with lib.buffer
   ((open :initform t)))
 
 (defmethod stream-element-type ((stream vector-stream))
@@ -284,32 +284,32 @@ the code is compiled on.")
 
 
 
-(defclass input-stream (fundamental-character-input-stream)
+(defclass decoding-stream (fundamental-character-input-stream)
   ((stream :type stream
            :initarg :stream
            :initform (error ":stream is required")
-           :accessor input-stream-stream)
+           :accessor decoding-stream-stream)
    (encoding :initarg :encoding
              :initform (error ":encoding is required")
-             :accessor input-stream-encoding)
+             :accessor decoding-stream-encoding)
    (buffer :type (->u8 #.+buffer-size+)
            :initform (->u8 +buffer-size+)
-           :accessor input-stream-buffer)
+           :accessor decoding-stream-buffer)
    (buffer-position :type fixnum
                     :initform +buffer-size+
-                    :accessor input-stream-buffer-position)
+                    :accessor decoding-stream-buffer-position)
    (buffer-end-position :type fixnum
                         :initform -1
-                        :accessor input-stream-buffer-end-position)
+                        :accessor decoding-stream-buffer-end-position)
    (last-char :type character
               :initform #\Nul
-              :accessor input-stream-last-char)
+              :accessor decoding-stream-last-char)
    (last-char-size :type fixnum
                    :initform 0
-                   :accessor input-stream-last-char-size)
+                   :accessor decoding-stream-last-char-size)
    (on-close :type (or null function) :initform nil :initarg :on-close)))
 
-(defmethod initialize-instance :after ((stream input-stream) &rest initargs)
+(defmethod initialize-instance :after ((stream decoding-stream) &rest initargs)
   (declare (ignore initargs))
   (with-slots (encoding) stream
     (when (keywordp encoding)
@@ -331,28 +331,28 @@ the code is compiled on.")
         (unless (= n +buffer-size+)
           (setf buffer-end-position n))))))
 
-(defun make-input-stream (stream &key (encoding epsilon.lib.char:*default-character-encoding*)
+(defun make-decoding-stream (stream &key (encoding epsilon.lib.char:*default-character-encoding*)
                                       (on-close))
-  (let ((input-stream (make-instance 'input-stream
+  (let ((decoding-stream (make-instance 'decoding-stream
                                      :stream stream
                                      :encoding encoding
                                      :on-close on-close)))
-    (fill-buffer input-stream)
-    input-stream))
+    (fill-buffer decoding-stream)
+    decoding-stream))
 
 (defun needs-to-fill-buffer-p (stream)
-  (when (/= -1 (the fixnum (input-stream-buffer-end-position stream)))
+  (when (/= -1 (the fixnum (decoding-stream-buffer-end-position stream)))
     (return-from needs-to-fill-buffer-p nil))
 
   (with-slots (buffer-position encoding) stream
     (< (- +buffer-size+ (the fixnum buffer-position))
        (the fixnum (enc-max-units-per-char encoding)))))
 
-(defmethod stream-read-char ((stream input-stream))
+(defmethod stream-read-char ((stream decoding-stream))
   (when (needs-to-fill-buffer-p stream)
     (fill-buffer stream))
-  (when (= (the fixnum (input-stream-buffer-end-position stream))
-           (the fixnum (input-stream-buffer-position stream)))
+  (when (= (the fixnum (decoding-stream-buffer-end-position stream))
+           (the fixnum (decoding-stream-buffer-position stream)))
     (return-from stream-read-char :eof))
   (with-slots (buffer buffer-position encoding last-char last-char-size)
       stream
@@ -372,8 +372,8 @@ the code is compiled on.")
                 last-char-size size)
           (aref string 0))))))
 
-(defmethod stream-unread-char ((stream input-stream) char)
-  (let ((last-char (input-stream-last-char stream)))
+(defmethod stream-unread-char ((stream decoding-stream) char)
+  (let ((last-char (decoding-stream-last-char stream)))
     (when (char= last-char #\Nul)
       (error "No character to unread from this stream"))
     (unless (char= char last-char)
@@ -386,13 +386,13 @@ the code is compiled on.")
             last-char-size 0))
     nil))
 
-(defmethod open-stream-p ((stream input-stream))
-  (open-stream-p (input-stream-stream stream)))
+(defmethod open-stream-p ((stream decoding-stream))
+  (open-stream-p (decoding-stream-stream stream)))
 
-(defmethod stream-element-type ((stream input-stream))
+(defmethod stream-element-type ((stream decoding-stream))
   'character)
 
-(defmethod close ((stream input-stream) &key abort)
+(defmethod close ((stream decoding-stream) &key abort)
   (with-slots (stream) stream
     (when (open-stream-p stream)
       (close stream :abort abort))))
@@ -925,3 +925,4 @@ compatible element-types."
     (when finish-output
       (finish-output output))
     output-position))
+

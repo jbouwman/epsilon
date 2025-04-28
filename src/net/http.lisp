@@ -3567,7 +3567,7 @@ keep-alive-stream), and should handle clean-up of it"
     (if charset
         (handler-case
             (if (streamp body)
-                (make-input-stream body :encoding charset :on-close on-close)
+                (make-decoding-stream body :encoding charset :on-close on-close)
                 (epsilon.lib.char:u8-to-string body :encoding charset))
           (epsilon.lib.char:character-decoding-error (e)
             (warn (format nil "Failed to decode the body to ~S due to the following error (falling back to binary):~%  ~A"
