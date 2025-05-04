@@ -275,7 +275,7 @@
 
 ;; Linux 5.7.7 AMD64
 #+linux
-(sys.ffi:defcstruct (stat :size 144)
+(ffi:defcstruct (stat :size 144)
   (mode    :uint32 :offset 24)
   (uid     :uint32 :offset 28)
   (gid     :uint32 :offset 32)
