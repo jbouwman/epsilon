@@ -44,7 +44,12 @@
    
    ;; MessagePack compatibility
    #:encode-unix-timestamp
-   #:decode-unix-timestamp))
+   #:decode-unix-timestamp
+
+   #:format-rfc1123-timestring
+   #:format-rfc3339-timestring
+   #:universal-to-timestamp
+   ))
 
 (in-package #:epsilon.lib.time)
 

@@ -1,7 +1,11 @@
 (defpackage #:epsilon.tool.test
-  (:use #:cl)
-  (:local-nicknames (#:map #:epsilon.lib.map)
-                    (#:re #:epsilon.lib.regex))
+  (:use
+   #:cl)
+  (:local-nicknames
+   (#:map #:epsilon.lib.map)
+   (#:seq #:epsilon.lib.sequence)
+   (#:str #:epsilon.lib.string)
+   (#:pkg #:epsilon.sys.pkg))
   (:export #:deftest
            #:is
            #:project-file
@@ -59,14 +63,10 @@ Ensures tests are re-registered in their suites when loaded from fasl files."
                     :symbol ',symbol)
      `(ensure-test ',symbol))))
 
-(defun split-package-name (package-name)
-  "Split package name into hierarchical components."
-  (re:split "\\." (string-downcase (string package-name))))
-
 (defun ensure-test-suite (package-name)
   "Ensure package hierarchy exists, creating nodes as needed.
 Returns the leaf node for package-name."
-  (let ((components (split-package-name package-name)))
+  (let ((components (pkg:parse package-name)))
     (loop with current-node = *test-root*
           for name in components
           for existing = (map:get (children-of current-node) name)
@@ -265,7 +265,7 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
 (defun list-tests (&optional package)
   "List all tests, optionally filtered by package prefix."
   (let* ((node (if package
-                   (find-test-package (split-package-name package) *test-root*)
+                   (find-test-package (pkg:parse package) *test-root*)
                    *test-root*))
          (tests (collect-tests node))
          (grouped-tests (group-tests-by-package tests)))
@@ -294,7 +294,7 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
   "Run tests, optionally filtered by package.
 SHOW-FAILURES controls whether to show detailed failure information."
   (let* ((node (if package
-                   (find-test-package (split-package-name package) *test-root*)
+                   (find-test-package (pkg:parse package) *test-root*)
                    *test-root*))
          (tests (collect-tests node))
          (grouped-tests (group-tests-by-package tests))

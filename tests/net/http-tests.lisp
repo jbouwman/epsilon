@@ -1,6 +1,8 @@
-(defpackage #:net.http.tests)
+(defpackage #:epsilon.net.http.tests
+  (:use 
+   #:cl
+   #:epsilon.tool.test)
+  (:local-nicknames
+   (#:http #:epsilon.net.http)))
 
-(in-package #:net.http.tests)
-
-(deftest http ()
-  (epsilon.net.http:get "https://lisp.org/"))
+(in-package #:epsilon.net.http.tests)

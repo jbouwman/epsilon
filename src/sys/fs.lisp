@@ -1,11 +1,10 @@
 (defpackage #:epsilon.sys.fs
   (:use
    #:cl
-   #:epsilon.lib.string
-   #:epsilon.lib.type
-   #:epsilon.sys.ffi)
+   #:epsilon.lib.type)
   (:local-nicknames
-   (:string :epsilon.lib.string)
+   (:ffi :epsilon.sys.ffi)
+   (:str :epsilon.lib.string)
    (:uri :epsilon.lib.uri))
   (:shadow
    #:byte)
@@ -48,7 +47,7 @@
 (in-package #:epsilon.sys.fs)
 
 (defun parent (file)
-  (string:join #\/ (butlast (string:split #\/ file))))
+  (str:join #\/ (butlast (str:split #\/ file))))
 
 (defun runtime-dir ()
   (parent  (first sb-ext:*posix-argv*)))
@@ -61,9 +60,9 @@
   (sb-unix:uid-homedir (sb-unix:unix-getuid)))
 
 (defmacro with-temp-file ((name) &body body)
-  `(let ((,name (string:concat
+  `(let ((,name (str:concat
                  (temp-dir)
-                 (random-string 16)
+                 (str:random-string 16)
                  ".tmp")))
      (unwind-protect
           (progn
@@ -136,22 +135,22 @@
                      :do (funcall f
                                   (uri:make-uri :scheme "file"
                                                 :path (format nil "~a/~a" dirpath name))))))
-        (when dir
-          (sb-unix:unix-closedir dir nil)))))
+      (when dir
+        (sb-unix:unix-closedir dir nil)))))
 
 (defun walk-uri (uri f &key (recursive t) (test (constantly t)))
-  (%walk-dir (uri::path uri)
+  (%walk-dir (uri:path uri)
              (lambda (entry)
                (when (funcall test entry)
                  (funcall f entry))
-               (when (and recursive (dir-p (uri::path entry)))
+               (when (and recursive (dir-p (uri:path entry)))
                  (walk-uri entry f :recursive t :test test)))))
 
 (defun delete-extension (path-string)
   (subseq path-string 0 (position #\. path-string :from-end t)))
 
 (defun add-extension (path-string extension)
-  (string:join #\. (list path-string extension)))
+  (str:join #\. (list path-string extension)))
 
 (defun replace-extension (path-string extension)
   (add-extension (delete-extension path-string) extension))
@@ -161,9 +160,9 @@
 
 (defun make-dirs (uri)
   (loop :with path := ""
-        :for component :in (remove-if #'string:empty-p
-                                      (string:split #\/
-                                                    (uri:path uri)))
+        :for component :in (remove-if #'str:empty-p
+                                      (str:split #\/
+                                                 (uri:path uri)))
         :do (setf path (format nil "~a/~a" path component))
             (unless (probe-file path)
               (sb-unix:unix-mkdir path #o775))))
@@ -180,9 +179,9 @@
               (lambda (entry)
                 (push entry files))
               :test (lambda (entry)
-                      (and (file-p (uri::path entry))
-                           (string:ends-with-p (uri::path entry) extension))))
-    (sort files #'string<= :key #'uri::path)))
+                      (and (file-p (uri:path entry))
+                           (str:ends-with-p (uri:path entry) extension))))
+    (sort files #'string<= :key #'uri:path)))
 
 (defun call-with-current-dir (function dir)
   (let ((current (current-dir)))
@@ -215,8 +214,8 @@
                    :when (and (not (string= name "."))
                               (not (string= name "..")))
                      :collect name)))
-        (when dir
-          (sb-unix:unix-closedir dir nil)))))
+      (when dir
+        (sb-unix:unix-closedir dir nil)))))
 
 (defun symbolic-link-p (file)
   (eql :symlink (sb-impl::native-file-kind file)))
@@ -248,7 +247,7 @@
   (loop for i from 0
         for bit in bits
         when bit collect bit
-        when bit collect (logbitp i int)))
+          when bit collect (logbitp i int)))
 
 (defun encode-bitfield (field bits)
   (loop with int = 0
@@ -276,7 +275,7 @@
 
 ;; Linux 5.7.7 AMD64
 #+linux
-(sys.ffi:defcstruct (stat :size 144)
+(ffi:defcstruct (stat :size 144)
   (mode    :uint32 :offset 24)
   (uid     :uint32 :offset 28)
   (gid     :uint32 :offset 32)
@@ -286,7 +285,7 @@
 
 ;; OS X 10.14
 #+darwin
-(defcstruct (stat :size 144)
+(ffi:defcstruct (stat :size 144)
   (mode    :uint16 :offset  4)
   (uid     :uint32 :offset 16)
   (gid     :uint32 :offset 20)
@@ -294,24 +293,24 @@
   (mtime   :uint64 :offset 48)
   (size    :uint64 :offset 96))
 
-(defcfun (cgstat "stat") :int
+(ffi:defcfun (cgstat "stat") :int
   (path :string)
   (buffer :pointer))
 
-(defcfun (cxstat "__xstat") :int
+(ffi:defcfun (cxstat "__xstat") :int
   (path :string)
   (buffer :pointer))
 
-(defcfun (cutimes "utimes") :int
+(ffi:defcfun (cutimes "utimes") :int
   (path :string)
   (times :pointer))
 
-(defcfun (cchown "chown") :int
+(ffi:defcfun (cchown "chown") :int
   (path :string)
   (owner :uint32)
   (group :uint32))
 
-(defcfun (cchmod "chmod") :int
+(ffi:defcfun (cchmod "chmod") :int
   (path :string)
   (mode :uint32))
 
@@ -322,22 +321,22 @@
   (- universal (encode-universal-time 0 0 0 1 1 1970 0)))
 
 (defun cstat (path buffer)
-  (cond ((foreign-symbol-pointer "stat")
+  (cond ((ffi:foreign-symbol-pointer "stat")
          (cgstat path buffer))
-        ((foreign-symbol-pointer "__xstat")
+        ((ffi:foreign-symbol-pointer "__xstat")
          (cxstat path buffer))
         (T
          1)))
 
 (defun stat (path)
-  (with-foreign-object (ptr '(:struct stat))
+  (ffi:with-foreign-object (ptr '(:struct stat))
     (when (= 0 (cstat path ptr))
-      (mem-ref ptr '(:struct stat)))))
+      (ffi:mem-ref ptr '(:struct stat)))))
 
 (defun utimes (path atime mtime)
-  (with-foreign-object (ptr :long 4)
-    (setf (mem-aref ptr :long 0) (universal->unix atime))
-    (setf (mem-aref ptr :long 2) (universal->unix mtime))
+  (ffi:with-foreign-object (ptr :long 4)
+    (setf (ffi:mem-aref ptr :long 0) (universal->unix atime))
+    (setf (ffi:mem-aref ptr :long 2) (universal->unix mtime))
     (unless (= 0 (cutimes path ptr))
       (error "Utimes failed."))))
 

@@ -8,5 +8,5 @@
 (in-package #:epsilon.lib.uri.tests)
 
 (deftest file-uri ()
-  (is (string-equal (uri:render-uri (uri:extend (uri:uri "file:///home") "two"))
+  (is (string-equal (uri:to-string (uri:merge (uri:uri "file:///home") "two"))
                     "file:///home/two")))

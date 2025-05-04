@@ -1,5 +1,9 @@
 (defpackage #:epsilon.lib.string
-  (:use :cl)
+  (:use
+   #:cl
+   #:epsilon.lib.binding)
+  (:local-nicknames
+   (#:seq #:epsilon.lib.sequence))
   (:export
    #:concat
    #:empty-p
@@ -10,38 +14,38 @@
    #:random-string
    #:ends-with-p
    #:starts-with-p
-   #:string-designator
    #:strip
    #:strip-left
    #:strip-right))
 
 (in-package #:epsilon.lib.string)
 
-(defun join (sep components)
-  (let ((s (make-string (+ (apply #'+ (mapcar #'length components))
-                           (1- (length components)))
-                        :initial-element sep))
+(defun split (delimiter string)
+  "Returns a lazy sequence of substrings of string, split by delimiter."
+  (cond
+    ((zerop (length string))
+     (seq:cons "" seq:*empty*))
+    ((and (>= (length string) 1) 
+          (char= (char string 0) delimiter))
+     (seq:cons "" (split delimiter (subseq string 1))))
+    (t
+     (let ((pos (position delimiter string)))
+       (if pos
+           (seq:cons (subseq string 0 pos)
+                     (split delimiter (subseq string (1+ pos))))
+           (seq:cons string seq:*empty*))))))
+
+(defun join (delimiter strings)
+  (let ((s (make-string (+ (apply #'+ (mapcar #'length strings))
+                           (1- (length strings)))
+                        :initial-element delimiter))
         (offset 0))
-    (dolist (c components)
+    (dolist (c strings)
       (dotimes (i (length c))
         (setf (aref s (+ i offset))
               (aref c i)))
       (incf offset (1+ (length c))))
     s))
-
-(defun split (sep string)
-  (loop :with p := 0
-        :for i :from 0 :to (length string)
-        :when (or (= i (length string))
-                  (char= (aref string i) sep))
-          :collect (let ((s (subseq string p i)))
-                     (setf p (1+ i))
-                     s)))
-
-(deftype string-designator ()
-  "A string designator type. A string designator is either a string, a symbol,
-or a character."
-  `(or symbol string character))
 
 (defun concat (&rest strings)
   (let ((output (make-string (apply #'+ (mapcar #'length strings))))
