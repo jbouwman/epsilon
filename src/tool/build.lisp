@@ -1,9 +1,11 @@
 (defpackage :epsilon.tool.build
   (:use :cl)
   (:local-nicknames
+   (#:pkg #:epsilon.sys.pkg)
    (#:fs #:epsilon.sys.fs)
    (#:map #:epsilon.lib.map)
-   (#:string #:epsilon.lib.string)
+   (#:seq #:epsilon.lib.sequence)
+   (#:str #:epsilon.lib.string)
    (#:uri #:epsilon.lib.uri)
    (#:yaml #:epsilon.lib.yaml))
   (:export #:build
@@ -74,10 +76,10 @@
 
 (defun load-project (uri)
   "Parse project definition in directory URI"
-  (let* ((path (uri:path (uri:extend uri "package.yaml")))
+  (let* ((path (uri:path (uri:merge uri "package.yaml")))
          (defs (map:from-pairs (yaml:node-value (yaml:parse-file path))))
          (sources (sort-sources (mapcan (lambda (path)
-                                          (find-source-info (uri:extend uri path)))
+                                          (find-source-info (uri:merge uri path)))
                                         (map:get defs "sources")))))
     (make-instance 'project
                    :uri uri
@@ -95,8 +97,8 @@
   "Create target information for a source file"
   (let* ((project-path (path project))
          (source-ext (subseq (path source-info) (1+ (length project-path))))
-         (target-uri (uri:extend
-                      (uri:extend (uri project) "target/lisp")
+         (target-uri (uri:merge
+                      (uri:merge (uri project) "target/lisp")
                       (fs:replace-extension source-ext "fasl"))))
     (make-instance 'build-step
                    :source-info source-info
@@ -117,9 +119,9 @@
 
 (defun normalize-package (sym)
   (when sym
-    (string:join #\.
-                 (mapcar #'normalize-package-component
-                         (string:split #\. (symbol-name sym))))))
+    (str:join #\.
+              (seq:map #'normalize-package-component
+                       (pkg:parse (symbol-name sym))))))
 
 (defun interpret-package (form)
   (cond ((string-equal 'defpackage (first form))
@@ -195,7 +197,7 @@
   (let ((source-uri (source-uri step))
         (target-uri (target-uri step)))
     (unless (fs:exists-p target-uri)
-      (fs:make-dirs (uri:parent-dir target-uri)))
+      (fs:make-dirs (uri:parent target-uri)))
     (handler-case
         (load
          (compile-file (uri:path source-uri)

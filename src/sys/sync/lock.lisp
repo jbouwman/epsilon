@@ -9,7 +9,7 @@
    #:make-lock
    #:make-recursive-lock
    #:release-lock
-   #:with-lock-held
+   #:with-lock
    #:with-recursive-lock-held))
 
 (in-package #:epsilon.sys.sync.lock)
@@ -57,7 +57,7 @@
   (sb-thread:release-mutex lock)
   lock)
 
-(defmacro with-lock-held ((place) &body body)
+(defmacro with-lock ((place) &body body)
   "Evaluates BODY with the lock named by PLACE, the value of which
   is a lock created by MAKE-LOCK. Before the forms in BODY are
   evaluated, the lock is acquired as if by using ACQUIRE-LOCK. After the

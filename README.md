@@ -1,7 +1,15 @@
-# Epsilon - A library for building software packages with SBCL
+# Epsilon
 
-This library provides SBCL with monolithic library support necessary
-to securely build, load and distibute binary packages.
+Epsilon is a library for SBCL that provides commonplace application
+libraries, like functional types, compression, cryptography, data
+encoding formats, and network protocols.
 
-To that extent, it includes modified versions of number of open source
-packages, such as dexador, cl+ssl, cffi, ironclad, zippy and so on.
+To that extent, it was originally based on parts of number of open
+source packages, such as dexador, cl+ssl, cffi, ironclad, zippy and so
+on.
+
+Install nushell, and run tests with:
+
+```
+./make test
+```

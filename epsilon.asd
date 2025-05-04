@@ -18,9 +18,10 @@
                    (:file "map")
                    (:file "array")
                    (:file "condition")
+                   (:file "function")
+                   (:file "sequence")
                    (:file "string")
                    (:file "format")
-                   (:file "function")
                    (:file "list")
                    (:file "json")
                    (:file "collect")
@@ -32,8 +33,6 @@
                                  (:file "streams")))
                    (:file "vector")
                    (:file "uuid")
-                   (:file "xsubseq")
-                   (:file "sequence")
                    (:module "char"
                     :components ((:file "package")
                                  (:module "encoding"
@@ -47,6 +46,7 @@
                    (:file "uri")
                    (:file "stream")
                    (:file "yaml")
+                   (:file "xsubseq")
                    (:file "buffer")
                    (:file "time")
                    (:module "digest"
@@ -82,6 +82,7 @@
      (:file "io")
      (:module "sys"
       :components ((:file "env")
+                   (:file "pkg")
                    (:module "ffi"
                     :components ((:file "package")
                                  (:file "sys-utils")
@@ -137,9 +138,10 @@
                    (:file "decode")
                    (:file "encode")))
      (:module "net"
-      :components ((:file "socket")
+      :components ((:file "core")
                    (:file "tls")
-                   (:file "http")))
+                   (:file "http")
+                   (:file "http-server")))
      (:module "tool"
       :components ((:file "build")
                    (:file "test")))
@@ -163,9 +165,11 @@
                            (:file "regex-tests")
                            (:file "uri-tests")
                            (:file "yaml-tests")
-                           (:file "stream-tests")))
+                           (:file "stream-tests")
+                           (:file "sequence-tests")))
      (:module "net"
-              :components ((:file "http-tests"))))))
+              :components ((:file "http-tests")
+                           (:file "http-server-tests"))))))
   :perform (test-op (o c)
                    (symbol-call :epsilon.tool.test ':run-tests)))
 

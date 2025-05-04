@@ -15,7 +15,9 @@
            #:+ssl-verify-peer+
            #:with-global-context
            #:use-certificate-chain-file
-           #:make-ssl-client-stream))
+           #:use-private-key-file
+           #:make-ssl-client-stream
+           #:make-ssl-server-stream))
 
 (in-package :epsilon.net.tls)
 
@@ -2760,6 +2762,16 @@ the loaded certificate chain."
   (ensure-initialized)
   (ssl-ctx-use-certificate-chain-file *ssl-global-context* certificate-chain-file))
 
+(defun use-private-key-file (private-key-file)
+  "Applies OpenSSL function SSL_CTX_use_PrivateKey_file
+to the epsilon.net.tls's global SSL_CTX object and the specified
+PRIVATE-KEY-FILE.
+
+Note: the RELOAD function clears the global context and in particular
+the loaded private key."
+  (ensure-initialized)
+  (ssl-ctx-use-privatekey-file *ssl-global-context* private-key-file :ssl-filetype-pem))
+
 (defun reload ()
   "If you save your application as a Lisp image,
 call this function when that image is loaded,
@@ -3094,7 +3106,7 @@ we are going to pass them to FFI:WITH-POINTER-TO-VECTOR-DATA)"))
                       (case type
                         (#. +GEN-IPADD+
                          (let ((address (asn1-string-bytes-vector data)))
-                           (epsilon.net.socket:host-to-hostname address)))
+                           (epsilon.net:resolve address)))
                         (#. +GEN-DNS+
                          (or (try-get-asn1-string-data data '(#. +v-asn1-iastring+))
                              (error "Malformed certificate: possibly NULL in dns-alt-name")))))))
