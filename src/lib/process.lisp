@@ -1,5 +1,9 @@
 (defpackage #:epsilon.lib.process
-  (:use #:cl))
+  (:use #:cl)
+  (:export
+   #:start
+   #:stop
+   #:running-p))
 
 (in-package #:epsilon.lib.process)
 

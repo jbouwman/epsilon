@@ -66,6 +66,8 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
     (count 0 :type fixnum)
     root))
 
+(deftype map () 'hamt)
+
 (defun size (hamt)
   (hamt-count hamt))
 

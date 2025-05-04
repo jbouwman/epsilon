@@ -9,7 +9,6 @@
    #:rassoc-value
    #:appendf
    #:circular-list
-   #:circular-list
    #:circular-list-error
    #:circular-list-p
    #:circular-tree-p
@@ -34,8 +33,6 @@
    #:proper-list-length
    #:proper-list-p
    #:racons
-   #:remove-from-plist
-   #:remove-from-plistf
    #:reversef
    #:safe-endp
    #:sans
@@ -317,45 +314,6 @@ expected-type designator of a TYPE-ERROR."
   (if (listp list)
       list
       (list list)))
-
-(defun remove-from-plist (plist &rest keys)
-  "Returns a property-list with same keys and values as PLIST, except that keys
-in the list designated by KEYS and values corresponding to them are removed.
-The returned property-list may share structure with the PLIST, but PLIST is
-not destructively modified. Keys are compared using EQ."
-  ;; FIXME: possible optimization: (remove-from-plist '(:x 0 :a 1 :b 2) :a)
-  ;; could return the tail without consing up a new list.
-  (loop for (key . rest) on plist by #'cddr
-        do (assert rest () "Expected a proper plist, got ~S" plist)
-        unless (member key keys :test #'eq)
-        collect key and collect (first rest)))
-
-(defun delete-from-plist (plist &rest keys)
-  "Just like REMOVE-FROM-PLIST, but this version may destructively modify the
-provided PLIST."
-  (loop with head = plist
-        with tail = nil   ; a nil tail means an empty result so far
-        for (key . rest) on plist by #'cddr
-        do (assert rest () "Expected a proper plist, got ~S" plist)
-           (if (member key keys :test #'eq)
-               ;; skip over this pair
-               (let ((next (cdr rest)))
-                 (if tail
-                     (setf (cdr tail) next)
-                     (setf head next)))
-               ;; keep this pair
-               (setf tail rest))
-        finally (return head)))
-
-(define-modify-macro remove-from-plistf (&rest keys) remove-from-plist
-                     "Modify macro for REMOVE-FROM-PLIST.")
-(define-modify-macro delete-from-plistf (&rest keys) delete-from-plist
-                     "Modify macro for DELETE-FROM-PLIST.")
-
-(declaim (inline sans))
-(defun sans (plist &rest keys)
-  "Alias of REMOVE-FROM-PLIST for backward compatibility."
-  (apply #'remove-from-plist plist keys))
 
 (defun mappend (function &rest lists)
   "Applies FUNCTION to respective element(s) of each LIST, appending all the
