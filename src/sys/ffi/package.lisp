@@ -5,7 +5,6 @@
    #:epsilon.lib.binding
    #:epsilon.lib.function
    #:epsilon.lib.list
-   #:epsilon.lib.stream
    #:epsilon.lib.symbol
    #:epsilon.lib.type
    #:sb-alien)
@@ -73,7 +72,6 @@
    #:epsilon.lib.condition
    #:epsilon.lib.function
    #:epsilon.lib.list
-   #:epsilon.lib.stream
    #:epsilon.lib.symbol
    #:epsilon.lib.vector
    #:epsilon.sys.env)

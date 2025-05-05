@@ -2,10 +2,10 @@
   (:use
    #:cl
    #:epsilon.lib.codec
-   #:epsilon.lib.stream
    #:epsilon.sys.fs
    #:epsilon.tool.test)
   (:local-nicknames
+   (#:stream #:epsilon.lib.stream)
    (#:uri #:epsilon.lib.uri)))
 
 (in-package #:epsilon.lib.codec.tests)
@@ -13,7 +13,7 @@
 (defun decompress (codec compressed original)
   (with-temp-file (decompressed)        ; FIME to URL
     (decode-file codec compressed decompressed)
-    (is (file= original decompressed))))
+    (is (stream:file= original decompressed))))
 
 (defun get-test-relative-path (name)
   (project-file :epsilon/tests

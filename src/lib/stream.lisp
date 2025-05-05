@@ -26,7 +26,7 @@
    #:read-line-from
    #:peek-line
    
-   #:file=
+   #:file=                              ; in use
    #:stream=
    #:stream-files
    #:copy-stream
@@ -803,7 +803,9 @@ all data has been flushed to the stream."
 (defmethod open-stream-p ((stream fast-io-stream))
   (slot-value stream 'openep))
 
- ;; fast-output-stream
+;; fast-output-stream
+
+;; binary writer
 
 (defclass fast-output-stream (fast-io-stream fundamental-output-stream)
   ((buffer :type output-buffer)))

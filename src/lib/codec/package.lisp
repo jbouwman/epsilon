@@ -7,8 +7,7 @@
    #:epsilon.lib.checksum.crc-32
    #:epsilon.lib.checksum.generic
    #:epsilon.lib.function
-   #:epsilon.lib.type
-   #:epsilon.lib.stream)
+   #:epsilon.lib.type)
   (:export
    #:encode
    #:encode-file
@@ -16,5 +15,4 @@
    #:decode
    #:decode-file
    #:decoding-error
-   #:make-decompressing-stream
-   ))
+   #:make-decompressing-stream))

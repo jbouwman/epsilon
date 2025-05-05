@@ -48,8 +48,6 @@
 
 (defpackage #:epsilon.lib.yaml
   (:use #:cl)
-  (:local-nicknames
-   (#:stream #:epsilon.lib.stream))
   (:export
    :node-value
    :parse

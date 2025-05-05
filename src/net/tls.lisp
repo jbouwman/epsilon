@@ -2,7 +2,6 @@
   (:use #:cl
         #:epsilon.lib.binding
         #:epsilon.lib.char
-        #:epsilon.lib.stream
         #:epsilon.lib.list
         #:epsilon.lib.symbol
         #:epsilon.lib.type
@@ -2039,7 +2038,7 @@ ERROR-CODE is return value of SSL_get_error - an explanation of the failure.
     :initarg :key
     :accessor ssl-stream-key)))
 
-(defmethod stream-element-type ((stream ssl-stream))
+(defmethod sb-gray::stream-element-type ((stream ssl-stream))
   'u8)
 
 (defmethod close ((stream ssl-stream) &key abort)
@@ -2252,9 +2251,6 @@ otherwise use a Lisp BIO wrapping the TCP Lisp stream.")
          (unless (ffi:null-pointer-p subject-name)
            (x509-name-oneline subject-name buf 1024)
            (ffi:foreign-string-to-lisp buf)))))))
-
-(defmethod ssl-stream-handle ((stream char-stream)) ; TODO is this right ?
-  (ssl-stream-handle (binary-stream stream)))
 
 (defun ssl-stream-x509-certificate (ssl-stream)
   (compat-ssl-get1-peer-certificate (ssl-stream-handle ssl-stream)))
