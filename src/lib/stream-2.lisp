@@ -1,7 +1,13 @@
 (defpackage #:epsilon.lib.stream-2
   (:use #:cl
         #:sb-gray)
-  (:export))
+  (:local-nicknames
+   (#:type #:epsilon.lib.type))
+  (:export
+   #:buffer
+   #:make-binary-stream))
+
+(in-package #:epsilon.lib.stream-2)
 
 ;; row/column position tracking
 
@@ -35,22 +41,26 @@
 
 ;; general purpose binary queue
 
-(defclass binary-stream ()
-  ((buffer :initform (->u8 16)
-           :accessor buffer)
+(defclass binary-stream (fundamental-binary-stream)
+  ((buffer :accessor buffer)
    (read-position :initform 0 
                   :accessor read-position)))
 
-(defmethod initialize-instance :after ((stream binary-stream) &key initial-size)
-  (when initial-size
-    (setf (buffer stream)
-          (->u8 initial-size))))
+(defun make-binary-stream (&key initial-size)
+  (make-instance 'binary-stream
+                 :initial-size initial-size))
 
-(defmethod write-byte-to-stream ((stream binary-stream) byte)
+(defmethod initialize-instance :after ((stream binary-stream) &key initial-size)
+  (setf (buffer stream)
+        (make-array (or initial-size 16)
+                    :fill-pointer 0
+                    :element-type 'u8)))
+
+(defmethod stream-write-byte ((stream binary-stream) byte)
   (vector-push-extend byte (buffer stream))
   byte)
 
-(defmethod write-sequence-to-stream ((stream binary-stream) sequence &optional (start 0) end)
+(defmethod stream-write-sequence ((stream binary-stream) sequence &optional (start 0) end)
   (let ((end (or end (length sequence))))
     (loop for i from start below end
           do (vector-push-extend (elt sequence i)
@@ -69,6 +79,8 @@
 (defmethod available-bytes ((stream binary-stream))
   (- (length (buffer stream)) (read-position stream)))
 
+
+;; vvv wrong TODO
 (defmethod read-sequence-from-stream ((stream binary-stream) sequence &key (start 0) end)
   (let* ((end (or end (length sequence)))
          (available (available-bytes stream))
