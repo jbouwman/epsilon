@@ -48,42 +48,7 @@
    #:finish-output-stream))
 
 (in-package #:epsilon.lib.stream)
-
-(defgeneric char-to-octets (format char writer))
-
-(defgeneric write-sequence* (format stream sequence start end))
-
-(defgeneric string-to-octets* (format string start end))
-
-(defgeneric write-byte* (byte stream))
-
-(defgeneric peek-byte (stream &optional peek-type eof-err-p eof-value))
-
-(defconstant +lf+ (char-code #\Linefeed))
-
-(defconstant +cr+ (char-code #\Return))
-
-(defvar *current-unreader* nil
-  "A unary function which might be called to `unread' a character
-\(i.e. the sequence of octets it represents).
-
-Used by the function OCTETS-TO-CHAR-CODE and must always be bound to a
-suitable functional object when this function is called.")
     
-(defvar *default-eol-style*
-  #+:win32 :crlf
-  #-:win32 :lf
-  "The end-of-line style used by external formats if none is
-explicitly given.  Depends on the OS the code is compiled on.")
-
-(defvar *default-little-endian*
-  #+:little-endian t
-  #-:little-endian nil
-  "Whether external formats are little-endian by default
-\(i.e. unless explicitly specified).  Depends on the platform
-the code is compiled on.")
-
-(declaim (type fixnum +buffer-size+))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
 (defconstant +buffer-size+ 8192

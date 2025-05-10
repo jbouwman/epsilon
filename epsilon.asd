@@ -21,6 +21,7 @@
                    (:file "function")
                    (:file "sequence")
                    (:file "string")
+                   (:file "stream-2")
                    (:file "format")
                    (:file "list")
                    (:file "json")

@@ -8,6 +8,8 @@
    #:epsilon.lib.checksum.generic
    #:epsilon.lib.function
    #:epsilon.lib.type)
+  (:local-nicknames
+   (#:stream #:epsilon.lib.stream))
   (:export
    #:encode
    #:encode-file

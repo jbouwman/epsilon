@@ -7,7 +7,9 @@
         #:epsilon.lib.type
         #:epsilon.sys.sync.lock
         #:epsilon.sys.sync.thread)
-  (:local-nicknames (#:ffi #:epsilon.sys.ffi))
+  (:local-nicknames
+   (#:ffi #:epsilon.sys.ffi)
+   (#:stream #:epsilon.lib.stream))
   (:export #:ensure-initialized
            #:make-context
            #:+ssl-verify-none+
@@ -1624,8 +1626,9 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
 (ffi:defcallback lisp-puts :int ((bio :pointer) (buf :string))
   (handler-case
       (progn
-        (write-line buf (make-char-output-stream *bio-socket*
-                                                 :encoding (make-encoding :ascii))) ; TODO preallocate
+        (write-line buf (stream:make-char-output-stream
+                         *bio-socket*
+                         :encoding (make-encoding :ascii))) ; TODO preallocate
         ;; puts is not specified to return length, but BIO expects it :(
         (1+ (length buf)))
     (serious-condition (c)
@@ -1709,12 +1712,12 @@ a Common Lisp string.  The string is returned."
      (unwind-protect
           (progn ,@body)
        (bio-free ,bio))
-     (u8-to-string (finish-output-stream *bio-socket*))))
+     (u8-to-string (stream:finish-output-stream *bio-socket*))))
 
 (defmacro with-bio-input-from-string ((bio string) &body body)
   "Evaluate BODY with BIO bound to a SSL BIO structure that reads from
 a Common Lisp STRING."
-  `(let ((*bio-socket* (make-vector-stream (string-to-u8 ,string)))
+  `(let ((*bio-socket* (stream:make-vector-stream (string-to-u8 ,string)))
 	 (,bio (bio-new-lisp)))
      (unwind-protect
           (progn ,@body)
