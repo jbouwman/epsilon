@@ -44,7 +44,6 @@
                                  (:file "external-format")
                                  (:file "string")))
                    (:file "uri")
-                   (:file "stream-2")
                    (:file "stream")
                    (:file "yaml")
                    (:file "xsubseq")
@@ -54,7 +53,6 @@
                     :components ((:file "reader")
                                  (:file "common")
                                  (:file "generic")
-                                 (:file "stream")
                                  (:file "sha-2")
                                  (:file "public")))
                    (:module "checksum"

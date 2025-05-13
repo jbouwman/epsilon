@@ -1626,7 +1626,7 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
 (ffi:defcallback lisp-puts :int ((bio :pointer) (buf :string))
   (handler-case
       (progn
-        (write-line buf (stream:make-char-output-stream
+        (write-line buf (stream:make-encoding-stream
                          *bio-socket*
                          :encoding (make-encoding :ascii))) ; TODO preallocate
         ;; puts is not specified to return length, but BIO expects it :(
@@ -1703,21 +1703,20 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
       (put-to-openssl-error-queue c)
       0)))
 
-;;; Convenience macros
 (defmacro with-bio-output-to-string ((bio) &body body)
   "Evaluate BODY with BIO bound to a SSL BIO structure that writes to
 a Common Lisp string.  The string is returned."
-  `(let ((*bio-socket* (make-instance 'fast-output-stream))
+  `(let ((*bio-socket* (stream:make-output-stream))
 	 (,bio (bio-new-lisp)))
      (unwind-protect
           (progn ,@body)
        (bio-free ,bio))
-     (u8-to-string (stream:finish-output-stream *bio-socket*))))
+     (u8-to-string (stream:buffer *bio-socket*))))
 
 (defmacro with-bio-input-from-string ((bio string) &body body)
   "Evaluate BODY with BIO bound to a SSL BIO structure that reads from
 a Common Lisp STRING."
-  `(let ((*bio-socket* (stream:make-vector-stream (string-to-u8 ,string)))
+  `(let ((*bio-socket* (stream:make-input-stream (string-to-u8 ,string)))
 	 (,bio (bio-new-lisp)))
      (unwind-protect
           (progn ,@body)
@@ -1734,7 +1733,6 @@ a Common Lisp STRING."
   (defconstant +ssl-error-syscall+ 5)
   (defconstant +ssl-error-zero-return+ 6)
   (defconstant +ssl-error-want-connect+ 7))
-
 
 (defun collect-verify-error (ssl-error-ssl-condition handle)
   (let ((code (ssl-get-verify-result handle)))
