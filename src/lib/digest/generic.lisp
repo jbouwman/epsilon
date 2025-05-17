@@ -279,9 +279,9 @@ An error will be signaled if there is insufficient room in DIGEST."))
 (defclass digesting-stream (fundamental-binary-output-stream)
   ((digest :initarg :digest :reader stream-digest)
    (buffer :initform (->u8 64)
-           :reader stream-buffer)
+           :reader buffer)
    (position :initform 0
-             :reader stream-buffer-position)))
+             :reader buffer-position)))
 
 (defmethod sb-gray::stream-element-type ((stream digesting-stream))
   'u8)
@@ -300,9 +300,9 @@ An error will be signaled if there is insufficient room in DIGEST."))
   (typecase seq
     (->u8
      (let ((end (or end (length seq))))
-       (unless (zerop (stream-buffer-position stream))
-         (update-digest (stream-digest stream) (stream-buffer stream) :end
-                        (stream-buffer-position stream))
+       (unless (zerop (buffer-position stream))
+         (update-digest (stream-digest stream) (buffer stream) :end
+                        (buffer-position stream))
          (setf (slot-value stream 'position) 0))
        (update-digest (stream-digest stream) seq :start start :end end)
        seq))

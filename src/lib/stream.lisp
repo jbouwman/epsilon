@@ -3,69 +3,15 @@
    #:cl
    #:sb-gray
    #:epsilon.lib.type)
-  (:local-nicknames
-   (#:char #:epsilon.lib.char))
   (:export
    #:buffer
-   #:make-binary-input-stream
-   #:make-binary-output-stream
-   #:make-character-input-stream
-   #:make-character-output-stream))
+   #:copy-stream
+   #:with-input-stream
+   #:with-output-stream
+   #:make-input-stream
+   #:make-output-stream))
 
 (in-package #:epsilon.lib.stream)
-
-;; row,col position tracking
-
-(defclass positioned-stream (fundamental-character-output-stream)
-  ((column :initform 0
-           :accessor output-column)
-   (stream :initarg :stream
-           :initform (error "missing stream"))))
-
-(defmethod stream-write-sequence ((s positioned-stream) seq &optional start end)
-  "Write SEQ to stream S."
-  (let ((newline-pos (position #\Newline seq :from-end t)))
-    (when newline-pos
-      (setf (output-column s) (- (length seq) newline-pos 1))))
-  (write-sequence seq (slot-value s 'stream) :start start :end end))
-
-(defmethod stream-line-column ((s positioned-stream))
-  "Tell column number that stream S is currently at."
-  (output-column s))
-
-(defmethod stream-start-line-p ((s positioned-stream))
-  "Tell if stream S is already at start of fresh new line."
-  (zerop (output-column s)))
-
-(defmethod stream-write-char ((s positioned-stream) char)
-  "Write CHAR to stream S."
-  (if (char= char #\Newline)
-      (setf (output-column s) 0)
-      (incf (output-column s)))
-  (write-char char (slot-value s 'stream)))
-
-;; character stream
-
-(defclass character-stream (fundamental-character-output-stream)
-  ((stream :initarg :stream)
-   (encoding :initarg :encoding)))
-
-(defmethod stream-write-char ((stream character-stream) char)
-  ;; TODO writeme
-  )
-
-(defmethod stream-write-string ((stream character-stream) string &optional (start 0) end)
-  ;; TODO writeme
-  )
-
-(defun make-character-stream (stream &key (encoding (char:make-encoding :utf-8)))
-  (unless (streamp stream)
-    (error "not a stream"))
-  (unless (open-stream-p stream)
-    (error 'stream-closed :stream stream))
-  (make-instance 'character-stream
-                 :stream stream
-                 :encoding encoding))
 
 (defclass binary-stream ()
   ((buffer :accessor buffer
@@ -75,7 +21,7 @@
 (defmethod sb-gray::stream-element-type ((stream binary-stream))
   'u8)
 
-;;; input streams
+;; input stream
 
 (defclass binary-input-stream (binary-stream fundamental-binary-input-stream)
   ((index :accessor index :initarg :index :type array-index)
@@ -108,7 +54,7 @@
            (+ start amount)))))
     (t (call-next-method))))
 
-(defun make-binary-input-stream (buffer &optional (start 0) end)
+(defun make-input-stream (buffer &optional (start 0) end)
   "As MAKE-STRING-INPUT-STREAM, only with bytes instead of characters."
   (declare (type ->u8 buffer)
            (type array-index start)
@@ -117,12 +63,11 @@
     (make-instance 'binary-input-stream
                    :buffer buffer :index start :end end)))
 
-(defmacro with-binary-input-stream ((var buffer &optional (start 0) end) &body body)
-  `(with-open-stream (,var (make-binary-input-stream ,buffer ,start ,end))
+(defmacro with-input-stream ((var buffer &optional (start 0) end) &body body)
+  `(with-open-stream (,var (make-input-stream ,buffer ,start ,end))
      ,@body))
 
-
-;;; output streams
+;;; output stream
 
 (defclass binary-output-stream (binary-stream fundamental-binary-output-stream)
   ((index :accessor index :initform 0 :type array-index)))
@@ -155,8 +100,8 @@
          (declare (type ->u8 buffer))
          (when (>= (+ index amount) length)
            (let ((new-buffer
-                  (make-array (* 2 (max amount length)) :element-type
-                              'u8)))
+                   (make-array (* 2 (max amount length)) :element-type
+                               'u8)))
              (declare (type ->u8 new-buffer))
              (replace new-buffer buffer)
              (setf buffer new-buffer
@@ -178,12 +123,52 @@ of a string output-stream."
     (setf (index stream) 0)
     (subseq buffer 0 index)))
 
-(defun make-binary-output-stream ()
+(defun make-output-stream ()
   "As MAKE-STRING-OUTPUT-STREAM, only with bytes instead of characters."
   (make-instance 'binary-output-stream
                  :buffer (make-array 128 :element-type 'u8)))
 
-(defmacro with-binary-output-stream ((var) &body body)
-  `(with-open-stream (,var (make-binary-output-stream))
+(defmacro with-output-stream ((var) &body body)
+  `(with-open-stream (,var (make-output-stream))
      ,@body
      (get-output-stream-bytes ,var)))
+
+(defun copy-stream (input output &key (element-type (stream-element-type input))
+                                   (buffer-size 4096)
+                                   (buffer (make-array buffer-size :element-type element-type))
+                                   (start 0) end
+                                   finish-output)
+  "Reads data from INPUT and writes it to OUTPUT. Both INPUT and OUTPUT must
+be streams, they will be passed to READ-SEQUENCE and WRITE-SEQUENCE and must have
+compatible element-types."
+  (when (and end
+             (< end start))
+    (error "END is smaller than START in ~S" 'copy-stream))
+  (let ((output-position 0)
+        (input-position 0))
+    (unless (zerop start)
+      (loop while (< input-position start)
+            do (let ((n (read-sequence buffer input
+                                       :end (min (length buffer)
+                                                 (- start input-position)))))
+                 (when (zerop n)
+                   (error "~@<Could not read enough bytes from the input to fulfill ~
+                           the :START ~S requirement in ~S.~:@>" 'copy-stream start))
+                 (incf input-position n))))
+    (assert (= input-position start))
+    (loop while (or (null end) (< input-position end))
+          do (let ((n (read-sequence buffer input
+                                     :end (when end
+                                            (min (length buffer)
+                                                 (- end input-position))))))
+               (when (zerop n)
+                 (if end
+                     (error "~@<Could not read enough bytes from the input to fulfill ~
+                          the :END ~S requirement in ~S.~:@>" 'copy-stream end)
+                     (return)))
+               (incf input-position n)
+               (write-sequence buffer output :end n)
+               (incf output-position n)))
+    (when finish-output
+      (finish-output output))
+    output-position))

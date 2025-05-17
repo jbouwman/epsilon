@@ -24,8 +24,13 @@ writes all compressed data to STREAM."
     (:zlib (make-instance 'zlib-codec))
     (:gzip (make-instance 'gzip-codec))))
 
-(defun encode-file (codec-name in out)
-  (stream:stream-files (curry #'encode (codec codec-name)) in out))
+;; Stream-based encode/decode functions
+(defmethod encode ((format symbol) in-stream out-stream)
+  "Encode data from IN-STREAM to OUT-STREAM using the specified FORMAT codec."
+  (let ((codec-instance (codec format)))
+    (encode codec-instance in-stream out-stream)))
 
-(defun decode-file (codec-name in out)
-  (stream:stream-files (curry #'decode (codec codec-name)) in out))
+(defmethod decode ((format symbol) in-stream out-stream)
+  "Decode data from IN-STREAM to OUT-STREAM using the specified FORMAT codec."
+  (let ((codec-instance (codec format)))
+    (decode codec-instance in-stream out-stream)))

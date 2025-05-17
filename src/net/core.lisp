@@ -136,7 +136,7 @@
     (error (e)
       (error 'network-error :message (format nil "Error creating listener: ~A" e)))))
 
-(defun socket-connect (host port &key (timeout 30) type)
+(defun socket-connect (host port &key type)
   "Connect to a remote host and port."
   (declare (ignore type)) ;; we only support TCP for now
   (handler-case
@@ -197,9 +197,9 @@
 ;;; Legacy API Implementation
 ;;; These functions provide backward compatibility with the old API
 
-(defun connect (address port &key timeout (type :tcp))
+(defun connect (address port &key (type :tcp))
   "Connect to remote address. Returns connection object."
-  (socket-connect address port :timeout timeout :type type))
+  (socket-connect address port :type type))
 
 (defun listen (address port &key backlog (reuse t) (type :tcp))
   "Create listening socket. Returns listener object."

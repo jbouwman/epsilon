@@ -1,4 +1,4 @@
-(defpackage #:epsilon.lib.msgpack.tests
+(defpackage #:epsilon.lib.msgpack-tests
   (:use
    #:cl
    #:epsilon.lib.type
@@ -8,7 +8,7 @@
    (:msgp #:epsilon.lib.msgpack)
    (:time #:epsilon.lib.time)))
 
-(in-package #:epsilon.lib.msgpack.tests)
+(in-package #:epsilon.lib.msgpack-tests)
 
 (deftest nil-bool-values ()
   (is (equalp (msgp:encode nil) #(192)))

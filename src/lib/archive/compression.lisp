@@ -26,14 +26,14 @@
   ((output-buffer :initarg :buffer)))
 
 (defmethod make-decompression-state ((format (eql :deflate)))
-  (make-instance 'deflate-state-2 :buffer (make-instance 'stream:fast-output-stream)))
+  (make-instance 'deflate-state-2 :buffer (stream:make-output-stream)))
 
 (defmethod call-with-decompressed-buffer (function input start end (state deflate-state-2))
   (with-slots (output-buffer) state
-    (epsilon.lib.codec::decompress output-buffer (epsilon.lib.codec::make-dstate :deflate) input
-                           :input-state start
-                           :input-end end)
-    (let ((result (stream:finish-output-stream output-buffer)))
+    (codec:decompress output-buffer (codec:make-dstate :deflate) input
+                      :input-state start
+                      :input-end end)
+    (let ((result (stream:buffer output-buffer)))
       (funcall function result 0 (length result)))
     (- end start)))
 
@@ -53,12 +53,12 @@
 
 (defmethod make-compression-state ((format (eql :deflate)) &key buffer)
   (declare (ignore buffer))
-  (make-instance 'epsilon.lib.codec::deflate-compressor))
+  (make-instance 'codec:deflate-compressor))
 
-(defmethod call-with-compressed-buffer (function vector start end (state epsilon.lib.codec::deflate-compressor))
-  (setf (epsilon.lib.codec::callback state) (lambda (buffer end) (funcall function buffer 0 end)))
-  (epsilon.lib.codec::compress-u8-vector vector state :start start :end end))
+(defmethod call-with-compressed-buffer (function vector start end (state codec:deflate-compressor))
+  (setf (codec:callback state) (lambda (buffer end) (funcall function buffer 0 end)))
+  (codec:compress-u8-vector vector state :start start :end end))
 
-(defmethod call-with-completed-compressed-buffer (function (state epsilon.lib.codec::deflate-compressor))
-  (setf (epsilon.lib.codec::callback state) (lambda (buffer end) (funcall function buffer 0 end)))
-  (epsilon.lib.codec::finish-compression state))
+(defmethod call-with-completed-compressed-buffer (function (state codec:deflate-compressor))
+  (setf (codec:callback state) (lambda (buffer end) (funcall function buffer 0 end)))
+  (codec:finish-compression state))

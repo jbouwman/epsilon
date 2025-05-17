@@ -11,10 +11,16 @@
   (:local-nicknames
    (#:stream #:epsilon.lib.stream))
   (:export
+   #:compress-u8-vector
    #:encode
    #:encode-file
    #:encoding-error
    #:decode
    #:decode-file
    #:decoding-error
+   #:deflate-compressor
+   #:finish-compression
+   #:callback
+   #:decompress
+   #:make-dstate
    #:make-decompressing-stream))

@@ -1,4 +1,4 @@
-(defpackage #:epsilon.lib.checksum.tests
+(defpackage #:epsilon.lib.checksum-tests
   (:use
    #:cl
    #:epsilon.tool.test
@@ -7,7 +7,7 @@
    #:epsilon.lib.codec
    #:epsilon.lib.type))
 
-(in-package #:epsilon.lib.checksum.tests)
+(in-package #:epsilon.lib.checksum-tests)
 
 (deftest adler-32 ()
   (let ((adler (make-instance 'adler-32))
