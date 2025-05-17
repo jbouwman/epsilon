@@ -45,7 +45,7 @@
          (compressed-data (read-file-into-byte-vector compressed))
          (compressed-stream (stream:make-input-stream compressed-data))
          (decompressed-stream (stream:make-output-stream)))
-    (decode codec compressed-stream decompressed-stream)
+    (codec:decode codec compressed-stream decompressed-stream)
     (let ((decompressed-input (stream:make-input-stream (stream:buffer decompressed-stream))))
       (is (compare-streams decompressed-input original-stream)))))
 
@@ -63,7 +63,7 @@
          (original-stream (stream:make-input-stream original-data))
          (compressed-stream (stream:make-output-stream))
          (decompressed-stream (stream:make-output-stream)))
-    (encode codec original-stream compressed-stream)
+    (codec:2encode codec original-stream compressed-stream)
     (let ((compressed-input (stream:make-input-stream (stream:buffer compressed-stream))))
       (decode codec compressed-input decompressed-stream)
       (let ((decompressed-input (stream:make-input-stream (stream:buffer decompressed-stream))))

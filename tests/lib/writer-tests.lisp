@@ -26,7 +26,7 @@
            (input-stream (stream:make-input-stream bytes))
            (reader (reader:make-reader input-stream :encoding enc))
            (result (reader:read-string reader)))
-      
+
       ;; Compare the original string with the result
       (is (string= original-text result)))))
 

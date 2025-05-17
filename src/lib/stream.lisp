@@ -1,25 +1,24 @@
 (defpackage #:epsilon.lib.stream
   (:use
    #:cl
-   #:sb-gray
-   #:epsilon.lib.type)
+   #:sb-gray)
   (:export
    #:buffer
    #:copy-stream
-   #:with-input-stream
-   #:with-output-stream
    #:make-input-stream
-   #:make-output-stream))
+   #:make-output-stream
+   #:with-input-stream
+   #:with-output-stream))
 
 (in-package #:epsilon.lib.stream)
 
 (defclass binary-stream ()
   ((buffer :accessor buffer
            :initarg :buffer
-           :type ->u8)))
+           :type (simple-array (unsigned-byte 8) (*)))))
 
 (defmethod sb-gray::stream-element-type ((stream binary-stream))
-  'u8)
+  '(unsigned-byte 8))
 
 ;; input stream
 

@@ -45,9 +45,10 @@
                                  (:file "string")))
                    (:file "uri")
                    (:file "stream")
+                   (:file "writer")
+                   (:file "reader")
                    (:file "yaml")
                    (:file "xsubseq")
-                   (:file "buffer")
                    (:file "time")
                    (:module "digest"
                     :components ((:file "reader")
@@ -165,6 +166,8 @@
                            (:file "uri-tests")
                            (:file "yaml-tests")
                            (:file "stream-tests")
+                           (:file "reader-tests")
+                           (:file "writer-tests")
                            (:file "sequence-tests")))
      (:module "net"
               :components ((:file "http-tests")
