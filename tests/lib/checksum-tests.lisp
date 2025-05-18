@@ -5,7 +5,6 @@
    #:epsilon.lib.checksum.adler-32
    #:epsilon.lib.checksum.generic
    #:epsilon.lib.codec
-   #:epsilon.lib.stream
    #:epsilon.lib.type))
 
 (in-package #:epsilon.lib.checksum.tests)

@@ -47,7 +47,6 @@
                    (:file "stream")
                    (:file "yaml")
                    (:file "xsubseq")
-                   (:file "buffer")
                    (:file "time")
                    (:module "digest"
                     :components ((:file "reader")

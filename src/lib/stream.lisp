@@ -1,68 +1,207 @@
-(defpackage #:epsilon.lib.stream
+(defpackage :epsilon.lib.stream
   (:use
-   #:cl
-   #:sb-gray
-   #:epsilon.lib.binding
-   #:epsilon.lib.char
-   #:epsilon.lib.list
-   #:epsilon.lib.symbol
-   #:epsilon.lib.type)
+   :cl
+   :sb-gray
+   :epsilon.lib.binding
+   :epsilon.lib.char
+   :epsilon.lib.list
+   :epsilon.lib.symbol
+   :epsilon.lib.type)
   (:export
-   #:binary-stream
-   #:char-stream
-   #:char-stream-column
-   #:output-stream-vector
-   #:make-encoding-stream
-   #:make-char-output-stream
-   #:make-vector-stream
-   #:peek-byte
-   #:stream-closed
-   #:stream-encoding
-   #:stream-exhausted
-   #:stream-position
-   #:unread-byte
-   #:vector-stream
 
-   #:read-line-from
-   #:peek-line
+   ;; NEW
    
-   #:file=
-   #:stream=
-   #:stream-files
-   #:copy-stream
+   :buffer
+   :make-output-stream
+   :make-input-stream
+   :copy-stream
+
+   ;; OLD
    
-   #:*default-output-buffer-size*
+   :binary-stream
+   :buffer-position
+   :char-stream
+   :char-stream-column
+   :make-char-output-stream
+   :make-decoding-stream
+   :make-encoding-stream
+   :octets-from
+   :peek-byte
+   :peek-line
+   :read-line-from
+   :stream-closed
+   :stream-encoding
+   :stream-exhausted
+   :stream-position
+   ))
 
-   #:octets-from
+(in-package :epsilon.lib.stream)
 
-   #:make-output-buffer #:finish-output-buffer
-   #:buffer-position
+;; NEW
 
-   #:make-input-buffer #:input-buffer-vector #:input-buffer-stream
-   #:make-decoding-stream
-   #:fast-read-byte #:fast-write-byte
-   #:fast-read-sequence #:fast-write-sequence
-   #:with-fast-input #:with-fast-output
+(defclass binary-stream ()
+  ((open :initform t)))
 
-   #:write8 #:writeu8
-   #:write8-le #:writeu8-le #:write8-be #:writeu8-be
-   #:write16-le #:writeu16-le #:write16-be #:writeu16-be
-   #:write24-le #:writeu24-le #:write24-be #:writeu24-be
-   #:write32-le #:writeu32-le #:write32-be #:writeu32-be
-   #:write64-le #:writeu64-le #:write64-be #:writeu64-be
-   #:write128-le #:writeu128-le #:write128-be #:writeu128-be
+(defmethod stream-element-type ((stream binary-stream))
+  'u8)
+ 
+(defmacro with-open-binary-stream (stream &body body)
+  `(progn
+     (unless (slot-value ,stream 'open)
+       (error 'closed-stream :stream ,stream))
+     ,@body))
 
-   #:read8 #:readu8
-   #:read8-le #:readu8-le #:read8-be #:readu8-be
-   #:read16-le #:readu16-le #:read16-be #:readu16-be
-   #:read32-le #:readu32-le #:read32-be #:readu32-be
-   #:read64-le #:readu64-le #:read64-be #:readu64-be
-   #:read128-le #:readu128-le #:read128-be #:readu128-be
+(defclass binary-input-stream (binary-stream fundamental-binary-input-stream)
+  ((input-vector :initarg :input)
+   (index :initarg :index
+          :initform 0
+          :reader stream-position
+          :type array-index)
+   (end :initarg :end
+        :reader stream-end
+        :type array-index
+        :documentation "end of available data")))
 
-   #:fast-output-stream #:fast-input-stream
-   #:finish-output-stream))
+(defun make-input-stream (input)
+  (make-instance 'binary-input-stream :input input :end (length input)))
 
-(in-package #:epsilon.lib.stream)
+(defmethod peek-byte ((stream binary-input-stream) &optional peek-type (eof-error-p t) eof-value)
+  (with-open-binary-stream stream
+    (with-slots (index) stream
+      (loop :for byte := (read-byte stream eof-error-p :eof)
+            :for new-index :from index
+            :until (cond ((eq byte :eof)
+                          (return eof-value))
+                         ((null peek-type))
+                         ((eq peek-type 't)
+                          (plusp byte))
+                         ((= byte peek-type)))
+            :finally (setf index new-index)
+                     (return byte)))))
+
+(defmethod stream-read-byte ((stream binary-input-stream))
+  (with-open-binary-stream stream
+    (with-slots (open index end input-vector) stream
+      (cond ((< index end)
+             (incf index)
+             (aref input-vector (1- index)))
+            (t :eof)))))
+
+(defmethod stream-listen ((stream binary-input-stream))
+  (with-open-binary-stream stream
+    (with-slots (index end) stream
+      (< index end))))
+  
+(defmethod stream-read-sequence ((stream binary-input-stream) sequence &optional (start 0) end)
+  (with-open-binary-stream stream
+    (with-slots ((vector-index index) (vector-end end) input-vector) stream
+      (loop :for index :from start :below (or end (length sequence))
+            :while (< vector-index vector-end)
+            :do (setf (elt sequence index) (aref input-vector vector-index))
+                (incf vector-index)
+            :finally (return index)))))
+
+(defmethod stream-file-position ((stream binary-input-stream) &optional position)
+  (with-slots (index end) stream
+    (unless position
+      (return-from stream-file-position index))
+    (setq index
+          (case position
+            (:start 0)
+            (:end end)
+            (otherwise
+             (unless (integerp position)
+               (error 'stream-error
+                      :format-control "Unknown file position designator: ~S."
+                      :format-arguments (list position)
+                      :stream stream))
+             (unless (<= 0 position end)
+               (error 'stream-error
+                      :format-control "File position designator ~S is out of bounds."
+                      :format-arguments (list position)
+                      :stream stream))
+             position)))
+    position))
+
+;; output
+
+(defun make-buffer (&key (initial-length 32))
+  (make-array initial-length :element-type 'u8 
+                             :fill-pointer 0 :adjustable t))
+
+(defclass binary-output-stream (fundamental-binary-output-stream)
+  ((buffer :initform (make-buffer)
+           :accessor buffer)
+   (position :initform 0
+             :accessor stream-position)))
+
+(defun make-output-stream ()
+  (make-instance 'binary-output-stream))
+
+(defmethod stream-write-byte ((stream binary-output-stream) byte)
+  (vector-push-extend byte (buffer stream))
+  (incf (stream-position stream))
+  byte)
+
+(defmethod stream-write-sequence ((stream binary-output-stream) seq
+                                  &optional (start 0) end)
+  (let* ((buffer (buffer stream))
+         (end (or end (length seq)))
+         (count (- end start))
+         (current-size (length buffer))
+         (new-size (+ current-size count)))
+    (adjust-array buffer new-size :fill-pointer new-size)
+    (replace buffer seq :start1 current-size :start2 start :end2 end)
+    (incf (stream-position stream) count))
+  seq)
+
+;;; Operations
+
+
+(defun copy-stream (input output &key (element-type (stream-element-type input))
+                    (buffer-size 4096)
+                    (buffer (make-array buffer-size :element-type element-type))
+                    (start 0) end
+                    finish-output)
+  "Reads data from INPUT and writes it to OUTPUT. Both INPUT and OUTPUT must
+be streams, they will be passed to READ-SEQUENCE and WRITE-SEQUENCE and must have
+compatible element-types."
+  (when (and end
+             (< end start))
+    (error "END is smaller than START in ~S" 'copy-stream))
+  (let ((output-position 0)
+        (input-position 0))
+    (unless (zerop start)
+      ;; FIXME add platform specific optimization to skip seekable streams
+      (loop while (< input-position start)
+            do (let ((n (read-sequence buffer input
+                                       :end (min (length buffer)
+                                                 (- start input-position)))))
+                 (when (zerop n)
+                   (error "~@<Could not read enough bytes from the input to fulfill ~
+                           the :START ~S requirement in ~S.~:@>" 'copy-stream start))
+                 (incf input-position n))))
+    (assert (= input-position start))
+    (loop while (or (null end) (< input-position end))
+          do (let ((n (read-sequence buffer input
+                                     :end (when end
+                                            (min (length buffer)
+                                                 (- end input-position))))))
+               (when (zerop n)
+                 (if end
+                     (error "~@<Could not read enough bytes from the input to fulfill ~
+                          the :END ~S requirement in ~S.~:@>" 'copy-stream end)
+                     (return)))
+               (incf input-position n)
+               (write-sequence buffer output :end n)
+               (incf output-position n)))
+    (when finish-output
+      (finish-output output))
+    output-position))
+
+
+
+
 
 (defgeneric char-to-octets (format char writer))
 
@@ -119,86 +258,6 @@ the code is compiled on.")
    (lambda (condition stream)
      (format stream "Stream ~S exhausted."
              (stream-error-stream condition)))))
-
-(defclass vector-stream ()              ; FIXE merge with lib.buffer
-  ((open :initform t)))
-
-(defmethod stream-element-type ((stream vector-stream))
-  'u8)
- 
-(defmacro with-open-vector-stream (stream &body body)
-  `(progn
-     (unless (slot-value ,stream 'open)
-       (error 'closed-stream :stream ,stream))
-     ,@body))
-
-(defclass vector-input-stream (vector-stream fundamental-binary-input-stream)
-  ((input-vector :initarg :input)
-   (index :initarg :index
-          :reader stream-position
-          :type array-index)
-   (end :initarg :end
-        :reader stream-end
-        :type array-index
-        :documentation "end of available data")))
-
-(defmethod peek-byte ((stream vector-input-stream) &optional peek-type (eof-error-p t) eof-value)
-  (with-open-vector-stream stream
-    (with-slots (index) stream
-      (loop :for byte := (read-byte stream eof-error-p :eof)
-            :for new-index :from index
-            :until (cond ((eq byte :eof)
-                          (return eof-value))
-                         ((null peek-type))
-                         ((eq peek-type 't)
-                          (plusp byte))
-                         ((= byte peek-type)))
-            :finally (setf index new-index)
-                     (return byte)))))
-
-(defmethod stream-read-byte ((stream vector-input-stream))
-  (with-open-vector-stream stream
-    (with-slots (open index end input-vector) stream
-      (cond ((< index end)
-             (incf index)
-             (aref input-vector (1- index)))
-            (t :eof)))))
-
-(defmethod stream-listen ((stream vector-input-stream))
-  (with-open-vector-stream stream
-    (with-slots (index end) stream
-      (< index end))))
-  
-(defmethod stream-read-sequence ((stream vector-input-stream) sequence &optional (start 0) end)
-  (with-open-vector-stream stream
-    (with-slots ((vector-index index) (vector-end end) input-vector) stream
-      (loop :for index :from start :below end
-            :while (< vector-index vector-end)
-            :do (setf (elt sequence index) (aref input-vector vector-index))
-                (incf vector-index)
-            :finally (return index)))))
-
-(defmethod stream-file-position ((stream vector-input-stream) &optional position)
-  (with-slots (index end) stream
-    (unless position
-      (return-from stream-file-position index))
-    (setq index
-          (case position
-            (:start 0)
-            (:end end)
-            (otherwise
-             (unless (integerp position)
-               (error 'stream-error
-                      :format-control "Unknown file position designator: ~S."
-                      :format-arguments (list position)
-                      :stream stream))
-             (unless (<= 0 position end)
-               (error 'stream-error
-                      :format-control "File position designator ~S is out of bounds."
-                      :format-arguments (list position)
-                      :stream stream))
-             position)))
-    position))
 
 (defclass char-stream ()
   ((stream :initarg :stream
@@ -407,37 +466,6 @@ the code is compiled on.")
                  :stream stream
                  :encoding encoding))
 
-(defun make-vector-stream (input)
-  (make-instance 'vector-input-stream :input input))
-
-
-(defmacro with-u8-in ((f in) &body body)
-  `(with-open-file (,f ,in :element-type 'u8)
-     ,@body))
-
-(defmacro with-u8-out ((f in) &body body)
-  `(with-open-file (,f ,in :element-type 'u8
-                           :direction :output
-                           :if-exists :supersede)
-     ,@body))
-
-(defun stream-files (f in out)
-  (with-u8-in (in in)
-    (with-u8-out (out out)
-      (funcall f in out))))
-
-(defun stream= (a b)
-  (loop :for ab := (read-byte a nil nil)
-        :for bb := (read-byte b nil nil)
-        :unless (eql ab bb)
-          :return nil
-        :unless (and ab bb)
-          :return t))
-
-(defun file= (a b)
-  (with-u8-in (a a)
-    (with-u8-in (b b)
-      (stream= a b))))
 
 ;; Vector buffer
 
@@ -648,281 +676,3 @@ all data has been flushed to the stream."
   (if (streamp (output-buffer-output output-buffer))
       (flush output-buffer)
       (concat-buffer output-buffer)))
-
-(defmacro with-fast-output ((buffer &optional output) &body body)
-  "Create `BUFFER`, optionally outputting to `OUTPUT`."
-  `(let ((,buffer (make-output-buffer :output ,output)))
-     ,@body
-     (if (streamp (output-buffer-output ,buffer))
-         (flush ,buffer)
-         (finish-output-buffer ,buffer))))
-
-(defmacro with-fast-input ((buffer vector &optional stream (offset 0)) &body body)
-  `(let ((,buffer (make-input-buffer :vector ,vector :stream ,stream :pos ,offset)))
-     ,@body))
-
- ;; READx and WRITEx
-;;; WRITE-UNSIGNED-BE, READ-UNSIGNED-BE, etc taken from PACK, which is
-;;; in the public domain.
-
-(defmacro write-unsigned-be (value size buffer)
-  (once-only (value buffer)
-    `(progn
-       ,@(loop for i from (* (1- size) 8) downto 0 by 8
-               collect `(fast-write-byte (ldb (byte 8 ,i) ,value) ,buffer)))))
-
-(defmacro read-unsigned-be (size buffer)
-  (with-gensyms (value)
-    (once-only (buffer)
-      `(let ((,value 0))
-         ,@(loop for i from (* (1- size) 8) downto 0 by 8
-                 collect `(setf (ldb (byte 8 ,i) ,value) (fast-read-byte ,buffer)))
-         ,value))))
-
-(defmacro write-unsigned-le (value size buffer)
-  (once-only (value buffer)
-    `(progn
-       ,@(loop for i from 0 below (* 8 size) by 8
-               collect `(fast-write-byte (ldb (byte 8 ,i) ,value) ,buffer)))))
-
-(defmacro read-unsigned-le (size buffer)
-  (with-gensyms (value)
-    (once-only (buffer)
-      `(let ((,value 0))
-         ,@(loop for i from 0 below (* 8 size) by 8
-                 collect `(setf (ldb (byte 8 ,i) ,value) (fast-read-byte ,buffer)))
-         ,value))))
-
-(declaim (inline unsigned-to-signed))
-(defun unsigned-to-signed (value size)
-  (let ((max-signed (expt 2 (1- (* 8 size))))
-        (to-subtract (expt 2 (* 8 size))))
-    (if (>= value max-signed)
-        (- value to-subtract)
-        value)))
-
-(declaim (inline signed-to-unsigned))
-(defun signed-to-unsigned (value size)
-  (if (minusp value)
-      (+ value (expt 2 (* 8 size)))
-      value))
-
-(defmacro make-readers (&rest bitlens)
-  (let ((names (mapcar (lambda (n)
-                         (mapcar (lambda (m) (symbolicate (format nil m n)))
-                                 '("READ~A-BE" "READU~A-BE"
-                                   "READ~A-LE" "READU~A-LE")))
-                       bitlens)))
-    `(eval-when (:compile-toplevel :load-toplevel :execute)
-       (declaim (inline ,@(flatten names)))
-       ,@(loop for fun in names
-               for bits in bitlens
-               as bytes = (truncate bits 8)
-               collect
-               `(progn
-                  (defun ,(first fun) (buffer)
-                    (unsigned-to-signed (read-unsigned-be ,bytes buffer) ,bytes))
-                  (defun ,(second fun) (buffer)
-                    (read-unsigned-be ,bytes buffer))
-                  (defun ,(third fun) (buffer)
-                    (unsigned-to-signed (read-unsigned-le ,bytes buffer) ,bytes))
-                  (defun ,(fourth fun) (buffer)
-                    (read-unsigned-le ,bytes buffer)))))))
-
-(defmacro make-writers (&rest bitlens)
-  (let ((names (mapcar (lambda (n)
-                         (mapcar (lambda (m) (symbolicate (format nil m n)))
-                                 '("WRITE~A-BE" "WRITEU~A-BE"
-                                   "WRITE~A-LE" "WRITEU~A-LE")))
-                       bitlens)))
-    `(eval-when (:compile-toplevel :load-toplevel :execute)
-       (declaim (notinline ,@(flatten names)))
-       ,@(loop for fun in names
-               for bits in bitlens
-               as bytes = (truncate bits 8)
-               collect
-               `(progn
-                  (defun ,(first fun) (value buffer)
-                    (declare (type (signed-byte ,bits) value))
-                    (write-unsigned-be (the (unsigned-byte ,bits)
-                                            (signed-to-unsigned value ,bytes)) ,bytes buffer))
-                  (defun ,(second fun) (value buffer)
-                    (declare (type (unsigned-byte ,bits) value))
-                    (write-unsigned-be (the (unsigned-byte ,bits) value)
-                                       ,bytes buffer))
-                  (defun ,(third fun) (value buffer)
-                    (declare (type (signed-byte ,bits) value))
-                    (write-unsigned-le (the (unsigned-byte ,bits)
-                                            (signed-to-unsigned value ,bytes)) ,bytes buffer))
-                  (defun ,(fourth fun) (value buffer)
-                    (declare (type (unsigned-byte ,bits) value))
-                    (write-unsigned-le (the (unsigned-byte ,bits) value)
-                                       ,bytes buffer)))))))
-
-(make-writers 16 24 32 64 128)
-(make-readers 16 24 32 64 128)
-
-(declaim (inline write8 writeu8 read8 readu8))
-(defun write8 (value buffer)
-  (declare (type (signed-byte 8) value))
-  (fast-write-byte (signed-to-unsigned value 1) buffer))
-
-(defun writeu8 (value buffer)
-  (declare (type u8 value))
-  (fast-write-byte value buffer))
-
-
-(defun read8 (buffer)
-  (unsigned-to-signed (fast-read-byte buffer) 1))
-
-(defun readu8 (buffer)
-  (fast-read-byte buffer))
-
-(setf (symbol-function 'write8-le) #'write8)
-(setf (symbol-function 'write8-be) #'write8)
-(setf (symbol-function 'writeu8-le) #'writeu8)
-(setf (symbol-function 'writeu8-be) #'writeu8)
-
-(setf (symbol-function 'read8-le) #'read8)
-(setf (symbol-function 'read8-be) #'read8)
-(setf (symbol-function 'readu8-le) #'readu8)
-(setf (symbol-function 'readu8-be) #'readu8)
-
-;; fast-stream
-
-(defclass fast-io-stream (fundamental-stream)
-  ((openp :type boolean :initform t)))
-
-(defmethod stream-file-position ((stream fast-io-stream) &optional position-spec)
-  (with-slots (buffer) stream
-    (cond (position-spec
-           (setf (buffer-position buffer) position-spec))
-          (t
-           (buffer-position buffer)))))
-
-(defmethod open-stream-p ((stream fast-io-stream))
-  (slot-value stream 'openep))
-
- ;; fast-output-stream
-
-(defclass fast-output-stream (fast-io-stream fundamental-output-stream)
-  ((buffer :type output-buffer)))
-
-(defmethod initialize-instance ((self fast-output-stream) &key stream
-                                buffer-size &allow-other-keys)
-  (call-next-method)
-  (let ((*default-output-buffer-size* (or buffer-size *default-output-buffer-size*)))
-    (with-slots (buffer) self
-      (setf buffer (make-output-buffer :output stream)))))
-
-(defmethod output-stream-p ((stream fast-output-stream))
-  (with-slots (buffer) stream
-    (and (typep buffer 'output-buffer))))
-
-(defmethod stream-element-type ((stream fast-output-stream))
-  "Return the underlying array element-type.
-   Should always return 'u8."
-  (with-slots (buffer) stream
-    (array-element-type (output-buffer-vector buffer))))
-
-(defmethod stream-write-byte ((stream fast-output-stream) byte)
-  (with-slots (buffer) stream
-    (fast-write-byte byte buffer)))
-
-(defmethod stream-write-sequence ((stream fast-output-stream) sequence &optional start end)
-  (with-slots (buffer) stream
-    (fast-write-sequence sequence buffer start end))
-  sequence)
-
-(defun finish-output-stream (stream)
-  (with-slots (buffer) stream
-    (if (streamp (output-buffer-output buffer))
-        (flush buffer)
-        (finish-output-buffer buffer))))
-
-(defmethod close ((stream fast-output-stream) &key abort)
-  (declare (ignore abort))
-  (finish-output-stream stream)
-  (setf (slot-value stream 'openp) nil))
-
-;; fast-input-stream ;; FIXME identical to vector stream
-
-(defclass fast-input-stream (fast-io-stream fundamental-input-stream)
-  ((buffer :type input-buffer)))
-
-(defmethod initialize-instance ((self fast-input-stream) &key stream
-                                vector &allow-other-keys)
-  (call-next-method)
-  (with-slots (buffer) self
-    (setf buffer (make-input-buffer :vector vector :stream stream))))
-
-(defmethod input-stream-p ((stream fast-input-stream))
-  (with-slots (buffer) stream
-    (and (typep buffer 'input-buffer))))
-
-(defmethod stream-element-type ((stream fast-input-stream))
-  "Return element-type of the underlying vector or stream.
-   Return NIL if none are present."
-  (with-slots (buffer) stream
-    (if-let ((vec (input-buffer-vector buffer)))
-      (array-element-type vec)
-      (if-let ((stream (input-buffer-stream buffer)))
-        (stream-element-type stream)))))
-
-(defmethod peek-byte ((stream fast-input-stream) &optional peek-type (eof-error-p t) eof-value)
-  (with-slots (buffer) stream
-    (fast-peek-byte buffer peek-type eof-error-p eof-value)))
-
-(defmethod stream-read-byte ((stream fast-input-stream))
-  (with-slots (buffer) stream
-    (fast-read-byte buffer)))
-
-(defmethod stream-read-sequence ((stream fast-input-stream) sequence &optional start end)
-  (with-slots (buffer) stream
-    (fast-read-sequence sequence buffer start end)))
-
-(defmethod close ((stream fast-input-stream) &key abort)
-  (declare (ignore abort))
-  (setf (slot-value stream 'openp) nil))
-
-(defun copy-stream (input output &key (element-type (stream-element-type input))
-                    (buffer-size 4096)
-                    (buffer (make-array buffer-size :element-type element-type))
-                    (start 0) end
-                    finish-output)
-  "Reads data from INPUT and writes it to OUTPUT. Both INPUT and OUTPUT must
-be streams, they will be passed to READ-SEQUENCE and WRITE-SEQUENCE and must have
-compatible element-types."
-  (when (and end
-             (< end start))
-    (error "END is smaller than START in ~S" 'copy-stream))
-  (let ((output-position 0)
-        (input-position 0))
-    (unless (zerop start)
-      ;; FIXME add platform specific optimization to skip seekable streams
-      (loop while (< input-position start)
-            do (let ((n (read-sequence buffer input
-                                       :end (min (length buffer)
-                                                 (- start input-position)))))
-                 (when (zerop n)
-                   (error "~@<Could not read enough bytes from the input to fulfill ~
-                           the :START ~S requirement in ~S.~:@>" 'copy-stream start))
-                 (incf input-position n))))
-    (assert (= input-position start))
-    (loop while (or (null end) (< input-position end))
-          do (let ((n (read-sequence buffer input
-                                     :end (when end
-                                            (min (length buffer)
-                                                 (- end input-position))))))
-               (when (zerop n)
-                 (if end
-                     (error "~@<Could not read enough bytes from the input to fulfill ~
-                          the :END ~S requirement in ~S.~:@>" 'copy-stream end)
-                     (return)))
-               (incf input-position n)
-               (write-sequence buffer output :end n)
-               (incf output-position n)))
-    (when finish-output
-      (finish-output output))
-    output-position))
-

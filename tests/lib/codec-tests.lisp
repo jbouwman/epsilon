@@ -1,19 +1,26 @@
-(defpackage #:epsilon.lib.codec.tests
+(defpackage :epsilon.lib.codec-tests
   (:use
-   #:cl
-   #:epsilon.lib.codec
-   #:epsilon.lib.stream
-   #:epsilon.sys.fs
-   #:epsilon.tool.test)
+   :cl
+   :epsilon.lib.codec
+   :epsilon.lib.function
+   :epsilon.tool.test)
   (:local-nicknames
-   (#:uri #:epsilon.lib.uri)))
+   (:fs :epsilon.sys.fs)
+   (:codec :epsilon.lib.codec)
+   (:uri :epsilon.lib.uri)))
 
-(in-package #:epsilon.lib.codec.tests)
+(in-package :epsilon.lib.codec-tests)
+
+(defun encode-file (codec-name in out)
+  (fs:stream-files (curry #'encode (codec::codec codec-name)) in out))
+
+(defun decode-file (codec-name in out)
+  (fs:stream-files (curry #'decode (codec::codec codec-name)) in out))
 
 (defun decompress (codec compressed original)
-  (with-temp-file (decompressed)        ; FIME to URL
+  (fs:with-temp-file (decompressed)        ; FIME to URL
     (decode-file codec compressed decompressed)
-    (is (file= original decompressed))))
+    (is (fs:file= original decompressed))))
 
 (defun get-test-relative-path (name)
   (project-file :epsilon/tests
@@ -25,7 +32,7 @@
               (get-test-relative-path original)))
 
 (defun roundtrip (codec original)
-  (with-temp-file (compressed)
+  (fs:with-temp-file (compressed)
     (encode-file codec original compressed)
     (decompress codec compressed original)))
 

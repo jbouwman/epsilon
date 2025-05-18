@@ -23,9 +23,3 @@ writes all compressed data to STREAM."
     (:deflate (make-instance 'deflate-codec))
     (:zlib (make-instance 'zlib-codec))
     (:gzip (make-instance 'gzip-codec))))
-
-(defun encode-file (codec-name in out)
-  (stream-files (curry #'encode (codec codec-name)) in out))
-
-(defun decode-file (codec-name in out)
-  (stream-files (curry #'decode (codec codec-name)) in out))

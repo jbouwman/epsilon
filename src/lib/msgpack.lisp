@@ -1,12 +1,12 @@
 (defpackage :epsilon.lib.msgpack
   (:use
-   #:epsilon.lib.type
+   :epsilon.lib.type
    :cl)
   (:local-nicknames
-   (#:buffer #:epsilon.lib.buffer)
-   (#:char #:epsilon.lib.char)
-   (#:map #:epsilon.lib.map)
-   (#:time #:epsilon.lib.time))
+   (:char :epsilon.lib.char)
+   (:map :epsilon.lib.map)
+   (:stream :epsilon.lib.stream)
+   (:time :epsilon.lib.time))
   (:export
    :encode
    :decode
@@ -61,9 +61,9 @@
 
 (defun encode (object)
   "Encode a Lisp object to MessagePack byte array"
-  (let ((stream (buffer:make-output-stream)))
+  (let ((stream (stream:make-output-stream)))
     (encode-object stream object)
-    (buffer:stream-buffer stream)))
+    (stream:buffer stream)))
 
 (defun encode-object (stream object)
   "Encode a single object to a MessagePack stream"
@@ -245,7 +245,7 @@
 
 (defun decode (bytes)
   "Decode a MessagePack byte array to a Lisp object"
-  (let ((stream (buffer:make-input-stream bytes)))
+  (let ((stream (stream:make-input-stream bytes)))
     (decode-object stream)))
 
 (defun decode-object (stream)
