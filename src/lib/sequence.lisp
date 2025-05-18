@@ -1,31 +1,31 @@
-(defpackage #:epsilon.lib.sequence
+(defpackage :epsilon.lib.sequence
   (:use
-   #:cl
-   #:epsilon.lib.binding)
+   :cl
+   :epsilon.lib.syntax)
   (:shadow
-   #:cons
-   #:first
-   #:rest
-   #:reduce
-   #:seq
-   #:map
-   #:filter)
+   :cons
+   :first
+   :rest
+   :reduce
+   :seq
+   :map
+   :filter)
   (:export
-   #:*empty*
-   #:empty-p
-   #:sequence-p
-   #:filter
-   #:map
-   #:cons
-   #:first
-   #:reduce
-   #:rest
-   #:realize
-   #:seq
-   #:drop
-   #:take))
+   :*empty*
+   :empty-p
+   :sequence-p
+   :filter
+   :map
+   :cons
+   :first
+   :reduce
+   :rest
+   :realize
+   :seq
+   :drop
+   :take))
 
-(in-package #:epsilon.lib.sequence)
+(in-package :epsilon.lib.sequence)
 
 ;; A represention of a delayed computation
 

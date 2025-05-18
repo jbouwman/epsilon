@@ -1,39 +1,42 @@
-(defpackage #:epsilon.lib.map
-  (:use #:cl
-        #:epsilon.lib.binding)
-  (:shadow #:assoc
-           #:dissoc
-           #:filter
-           #:get
-           #:map
-           #:merge
-           #:reduce
-           #:seq)
-  (:export #:+empty+
-           #:assoc
-           #:assoc-in
-           #:contains-p
-           #:difference
-           #:dissoc
-           #:enable-syntax
-           #:filter
-           #:from-pairs
-           #:get
-           #:get-in
-           #:invert
-           #:keys
-           #:make-map
-           #:map
-           #:map=
-           #:merge
-           #:reduce
-           #:select-keys
-           #:seq
-           #:size
-           #:subset-p
-           #:update
-           #:update-in
-           #:vals))
+(defpackage :epsilon.lib.map
+  (:use
+   :cl
+   :epsilon.lib.syntax)
+  (:shadow
+   :assoc
+   :dissoc
+   :filter
+   :get
+   :map
+   :merge
+   :reduce
+   :seq)
+  (:export
+   :+empty+
+   :assoc
+   :assoc-in
+   :contains-p
+   :difference
+   :dissoc
+   :enable-syntax
+   :filter
+   :from-pairs
+   :get
+   :get-in
+   :invert
+   :keys
+   :make-map
+   :map
+   :map=
+   :merge
+   :reduce
+   :select-keys
+   :seq
+   :size
+   :subset-p
+   :update
+   :update-in
+   :vals))
 
 (in-package :epsilon.lib.map)
 
@@ -175,18 +178,18 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
        (make-collision-node 
         h1
         (append (if (typep node1 'collision-node)
-                   (collision-node-entries node1)
-                   (list (cons (leaf-node-key node1)
-                             (leaf-node-value node1))))
+                    (collision-node-entries node1)
+                    (list (cons (leaf-node-key node1)
+                                (leaf-node-value node1))))
                 (if (typep node2 'collision-node)
                     (collision-node-entries node2)
                     (list (cons (leaf-node-key node2)
-                              (leaf-node-value node2)))))))
+                                (leaf-node-value node2)))))))
 
       ;; Same index: recurse deeper
       ((= index1 index2)
        (let ((new-child (merge-nodes (make-bitmap-node :bitmap 0 :array #())
-                                    node1 node2 (+ shift +bit-partition+))))
+                                     node1 node2 (+ shift +bit-partition+))))
          (insert-node parent (ash 1 index1) 0 new-child)))
 
       ;; Different indices: store both

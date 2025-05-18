@@ -2,7 +2,7 @@
   (:use
    :cl
    :sb-gray
-   :epsilon.lib.binding
+   :epsilon.lib.syntax
    :epsilon.lib.char
    :epsilon.lib.list
    :epsilon.lib.symbol
