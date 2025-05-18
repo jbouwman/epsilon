@@ -10,6 +10,7 @@
    :epsilon.sys.sync.thread)
   (:local-nicknames
    (:stream :epsilon.lib.stream)
+   (:writer :epsilon.lib.writer)
    (:ffi :epsilon.sys.ffi))
   (:export
    :ensure-initialized
@@ -1628,8 +1629,9 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
 (ffi:defcallback lisp-puts :int ((bio :pointer) (buf :string))
   (handler-case
       (progn
-        (write-line buf (make-char-output-stream *bio-socket*
-                                                 :encoding (make-encoding :ascii))) ; TODO preallocate
+        (writer:write-string (writer:make-writer *bio-socket*
+                                                 :encoding :ascii)
+                             buf)
         ;; puts is not specified to return length, but BIO expects it :(
         (1+ (length buf)))
     (serious-condition (c)

@@ -2,12 +2,12 @@
   (:use :cl)
   (:local-nicknames
    (:map :epsilon.lib.map)
-   (:stream :epsilon.lib.stream)
+   (:reader :epsilon.lib.reader)
    (:uri :epsilon.lib.uri))
   (:export #:read-string
            #:read-bytes
            #:open-stream
-           #:open-text-stream))
+           #:open-reader))
 
 (in-package #:epsilon.io)
 
@@ -44,11 +44,9 @@
 (defun read-bytes (url)
   (error "fixme"))                      ; FIXME
 
-(defun open-text-stream (url)
-  (stream:make-decoding-stream (open-stream url)))
+(defun open-reader (url)
+  (reader:make-reader (open-stream url)))
 
 (defun read-string (url)
   (with-open-stream (stream (open-stream url))
-    (let ((input (stream:make-decoding-stream stream)))
-      (with-output-to-string (output)
-        (stream:copy-stream input output)))))
+    (reader:read-string (reader:make-reader stream))))
