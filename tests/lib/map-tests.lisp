@@ -1,10 +1,12 @@
-(defpackage #:epsilon.lib.map.tests
-  (:use :cl
-        :epsilon.tool.test)
-  (:local-nicknames (#:map #:epsilon.lib.map)
-                    (#:bind #:epsilon.lib.binding)))
+(defpackage :epsilon.lib.map.tests
+  (:use
+   :cl
+   :epsilon.lib.syntax
+   :epsilon.tool.test)
+  (:local-nicknames
+   (:map :epsilon.lib.map)))
 
-(in-package #:epsilon.lib.map.tests)
+(in-package :epsilon.lib.map.tests)
 
 (deftest empty-map-has-zero-count ()
   (let ((m map:+empty+))
@@ -67,7 +69,7 @@
     (is (map:contains-p m nil))))
 
 (deftest map-invert ()
-  (let* ((m (bind:-> map:+empty+
+  (let* ((m (-> map:+empty+
                      (map:assoc :a 1)
                      (map:assoc :b 2)
                      (map:assoc :c 3)))
@@ -103,7 +105,7 @@
     (is (null (map:get m :a)))))
 
 (deftest multiple-assocs ()
-  (let ((m (bind:-> map:+empty+
+  (let ((m (-> map:+empty+
                     (map:assoc :a 1)
                     (map:assoc :b 2)
                     (map:assoc :c 3))))
@@ -119,7 +121,7 @@
     (is (= 1 (map:get m1 :a)))))
 
 (deftest dissoc-existing ()
-  (let* ((m1 (bind:-> map:+empty+
+  (let* ((m1 (-> map:+empty+
                       (map:assoc :a 1)
                       (map:assoc :b 2)))
          (m2 (map:dissoc m1 :a)))
@@ -138,10 +140,10 @@
     (is (not (map:contains-p m :b)))))
 
 (deftest map-merge ()
-  (let* ((m1 (bind:-> map:+empty+
+  (let* ((m1 (-> map:+empty+
                       (map:assoc :a 1)
                       (map:assoc :b 2)))
-         (m2 (bind:-> map:+empty+
+         (m2 (-> map:+empty+
                       (map:assoc :b 3)
                       (map:assoc :c 4)))
          (merged (map::merge m1 m2)))

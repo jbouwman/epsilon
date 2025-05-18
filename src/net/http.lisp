@@ -1,10 +1,10 @@
-(defpackage #:epsilon.net.http
+(defpackage :epsilon.net.http
   (:use
-   #:cl
-   #:epsilon.lib.binding)
+   :cl
+   :epsilon.lib.syntax)
   (:local-nicknames
-   (#:str #:epsilon.lib.string)
-   (#:uri #:epsilon.lib.uri))
+   (:str :epsilon.lib.string)
+   (:uri :epsilon.lib.uri))
   (:shadow
    :get
    :delete)

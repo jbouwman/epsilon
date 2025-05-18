@@ -1,39 +1,39 @@
-(defpackage #:epsilon.lib.digest.common
+(defpackage :epsilon.lib.digest.common
   (:use
-   #:cl
-   #:sb-rotate-byte
-   #:epsilon.lib.binding
-   #:epsilon.lib.type
-   #:epsilon.lib.symbol)
+   :cl
+   :sb-rotate-byte
+   :epsilon.lib.syntax
+   :epsilon.lib.type
+   :epsilon.lib.symbol)
   (:export
-   #:%add-with-carry
-   #:%subtract-with-borrow
-   #:copy-block
-   #:copy-to-buffer
-   #:fill-block-u8-be
-   #:fill-block-u8-be/64
-   #:fill-block-u8-le
-   #:fill-block-u8-le/64
-   #:mod32*
-   #:mod32+
-   #:mod32-
-   #:mod32ash
-   #:mod32lognot
-   #:mod64*
-   #:mod64+
-   #:mod64-
-   #:mod64ash
-   #:mod64lognot
-   #:rol32
-   #:rol64
-   #:ror32
-   #:ror64
-   #:ubref-fun-name
-   #:xor-block))
+   :%add-with-carry
+   :%subtract-with-borrow
+   :copy-block
+   :copy-to-buffer
+   :fill-block-u8-be
+   :fill-block-u8-be/64
+   :fill-block-u8-le
+   :fill-block-u8-le/64
+   :mod32*
+   :mod32+
+   :mod32-
+   :mod32ash
+   :mod32lognot
+   :mod64*
+   :mod64+
+   :mod64-
+   :mod64ash
+   :mod64lognot
+   :rol32
+   :rol64
+   :ror32
+   :ror64
+   :ubref-fun-name
+   :xor-block))
 
 ;;;; common.lisp -- efficient implementations of mod32 arithmetic and macros
 
-(in-package #:epsilon.lib.digest.common)
+(in-package :epsilon.lib.digest.common)
 
 ;;; extracting individual bytes from integers
 

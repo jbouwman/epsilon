@@ -13,7 +13,7 @@
     :components
     ((:module "lib"
       :components ((:file "symbol")
-                   (:file "binding")
+                   (:file "syntax")
                    (:file "process")
                    (:file "map")
                    (:file "array")

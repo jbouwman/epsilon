@@ -2,7 +2,7 @@
   (:use
    :cl
    :sb-gray
-   :epsilon.lib.binding
+   :epsilon.lib.syntax
    :epsilon.lib.checksum.adler-32
    :epsilon.lib.checksum.crc-32
    :epsilon.lib.checksum.generic

@@ -1,15 +1,15 @@
-(defpackage #:epsilon.lib.binding
+(defpackage :epsilon.lib.syntax
   (:use
-   #:cl)
+   :cl)
   (:export
-   #:define-constant
-   #:->
-   #:if-let
-   #:when-let
-   #:when-let*
-   #:while))
+   :define-constant
+   :->
+   :if-let
+   :when-let
+   :when-let*
+   :while))
 
-(in-package #:epsilon.lib.binding)
+(in-package :epsilon.lib.syntax)
 
 (defmacro define-constant (name value &optional doc)
   "Define a constant that can be redefined if the new value is equalp to the old."

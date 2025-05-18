@@ -1,6 +1,6 @@
 (defpackage #:epsilon.lib.regex
   (:use #:cl
-        #:epsilon.lib.binding
+        #:epsilon.lib.syntax
         #:epsilon.lib.symbol
         #:epsilon.lib.type)
   (:shadow #:digit-char-p)

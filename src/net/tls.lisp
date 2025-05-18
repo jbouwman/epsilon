@@ -1,24 +1,26 @@
 (defpackage :epsilon.net.tls
-  (:use :cl
-        :epsilon.lib.binding
-        :epsilon.lib.char
-        :epsilon.lib.list
-        :epsilon.lib.symbol
-        :epsilon.lib.type
-        :epsilon.sys.sync.lock
-        :epsilon.sys.sync.thread)
+  (:use
+   :cl
+   :epsilon.lib.syntax
+   :epsilon.lib.char
+   :epsilon.lib.list
+   :epsilon.lib.symbol
+   :epsilon.lib.type
+   :epsilon.sys.sync.lock
+   :epsilon.sys.sync.thread)
   (:local-nicknames
    (:stream :epsilon.lib.stream)
    (:ffi :epsilon.sys.ffi))
-  (:export :ensure-initialized
-           :make-context
-           :+ssl-verify-none+
-           :+ssl-verify-peer+
-           :with-global-context
-           :use-certificate-chain-file
-           :use-private-key-file
-           :make-ssl-client-stream
-           :make-ssl-server-stream))
+  (:export
+   :ensure-initialized
+   :make-context
+   :+ssl-verify-none+
+   :+ssl-verify-peer+
+   :with-global-context
+   :use-certificate-chain-file
+   :use-private-key-file
+   :make-ssl-client-stream
+   :make-ssl-server-stream))
 
 (in-package :epsilon.net.tls)
 
@@ -41,94 +43,94 @@ MAKE-CONTEXT also allows to enab/disable verification.")
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
 
-(defun detect-macos-custom-openssl-installations ()
-  (dolist (dir-feature '(("/opt/local/lib/" :tls-macports-found)
-                         ("/usr/local/opt/openssl/lib/" :tls-homebrew-found)
-                         ("/opt/homebrew/opt/openssl/lib/" :tls-homebrew-arm64-found)
-                         ("/usr/local/lib/" :tls-personalized-install-found)))
-    (destructuring-bind (dir feature) dir-feature
-      (if (and (epsilon.sys.fs:file-p (concatenate 'string dir "libssl.dylib"))
-               (epsilon.sys.fs:file-p (concatenate 'string dir "libcrypto.dylib")))
-          (pushnew feature *features*)
-          (setf *features* (remove feature *features*))))))
+  (defun detect-macos-custom-openssl-installations ()
+    (dolist (dir-feature '(("/opt/local/lib/" :tls-macports-found)
+                           ("/usr/local/opt/openssl/lib/" :tls-homebrew-found)
+                           ("/opt/homebrew/opt/openssl/lib/" :tls-homebrew-arm64-found)
+                           ("/usr/local/lib/" :tls-personalized-install-found)))
+      (destructuring-bind (dir feature) dir-feature
+        (if (and (epsilon.sys.fs:file-p (concatenate 'string dir "libssl.dylib"))
+                 (epsilon.sys.fs:file-p (concatenate 'string dir "libcrypto.dylib")))
+            (pushnew feature *features*)
+            (setf *features* (remove feature *features*))))))
 
-(defun detect-custom-openssl-installations-if-macos ()
-  (when (member :darwin *features*)
-    (detect-macos-custom-openssl-installations)))
+  (defun detect-custom-openssl-installations-if-macos ()
+    (when (member :darwin *features*)
+      (detect-macos-custom-openssl-installations)))
 
-(detect-custom-openssl-installations-if-macos)
+  (detect-custom-openssl-installations-if-macos)
 
-(ffi:define-foreign-library libcrypto
-  (:windows (:or #+(and windows x86-64) "libcrypto-3-x64.dll"
-                 #+(and windows x86) "libcrypto-3.dll"
-                 #+(and windows x86-64) "libcrypto-1_1-x64.dll"
-                 #+(and windows x86) "libcrypto-1_1.dll"
-                 "libeay32.dll"))
-  (:openbsd "libcrypto.so")
-  
-  ((:and :darwin :tls-macports-found) "/opt/local/lib/libcrypto.dylib")
-  ((:and :darwin :arm64 :tls-homebrew-arm64-found) "/opt/homebrew/opt/openssl/lib/libcrypto.dylib")
-  ((:and :darwin
-         (:not :arm64)
-         :tls-homebrew-found) "/usr/local/opt/openssl/lib/libcrypto.dylib")
-  ((:and :darwin :tls-personalized-install-found) "/usr/local/lib/libcrypto.dylib")
-  (:darwin (:or
-            "/usr/lib/libcrypto.46.dylib"
-            "/usr/lib/libcrypto.44.dylib"
-            "/usr/lib/libcrypto.42.dylib"
-            "/usr/lib/libcrypto.41.dylib"
-            "/usr/lib/libcrypto.35.dylib"
-            "libcrypto.dylib"
-            "/usr/lib/libcrypto.dylib"))
-  (:unix (:or "libcrypto.so.1.1"
-              "libcrypto.so.1.0.0"
-              "libcrypto.so.3"
-              "libcrypto.so")))
+  (ffi:define-foreign-library libcrypto
+    (:windows (:or #+(and windows x86-64) "libcrypto-3-x64.dll"
+                   #+(and windows x86) "libcrypto-3.dll"
+                   #+(and windows x86-64) "libcrypto-1_1-x64.dll"
+                   #+(and windows x86) "libcrypto-1_1.dll"
+                   "libeay32.dll"))
+    (:openbsd "libcrypto.so")
+    
+    ((:and :darwin :tls-macports-found) "/opt/local/lib/libcrypto.dylib")
+    ((:and :darwin :arm64 :tls-homebrew-arm64-found) "/opt/homebrew/opt/openssl/lib/libcrypto.dylib")
+    ((:and :darwin
+           (:not :arm64)
+           :tls-homebrew-found) "/usr/local/opt/openssl/lib/libcrypto.dylib")
+    ((:and :darwin :tls-personalized-install-found) "/usr/local/lib/libcrypto.dylib")
+    (:darwin (:or
+              "/usr/lib/libcrypto.46.dylib"
+              "/usr/lib/libcrypto.44.dylib"
+              "/usr/lib/libcrypto.42.dylib"
+              "/usr/lib/libcrypto.41.dylib"
+              "/usr/lib/libcrypto.35.dylib"
+              "libcrypto.dylib"
+              "/usr/lib/libcrypto.dylib"))
+    (:unix (:or "libcrypto.so.1.1"
+                "libcrypto.so.1.0.0"
+                "libcrypto.so.3"
+                "libcrypto.so")))
 
-(ffi:define-foreign-library libssl
-  (:windows (:or #+(and windows x86-64) "libssl-3-x64.dll"
-                 #+(and windows x86) "libssl-3.dll"
-                 #+(and windows x86-64) "libssl-1_1-x64.dll"
-                 #+(and windows x86) "libssl-1_1.dll"
-                 "libssl32.dll"
-                 "ssleay32.dll"))
+  (ffi:define-foreign-library libssl
+    (:windows (:or #+(and windows x86-64) "libssl-3-x64.dll"
+                   #+(and windows x86) "libssl-3.dll"
+                   #+(and windows x86-64) "libssl-1_1-x64.dll"
+                   #+(and windows x86) "libssl-1_1.dll"
+                   "libssl32.dll"
+                   "ssleay32.dll"))
 
-  ((:and :darwin :tls-macports-found) "/opt/local/lib/libssl.dylib")
-  ((:and :darwin :x86-64 :tls-homebrew-found) "/usr/local/opt/openssl/lib/libssl.dylib")
-  ((:and :darwin :arm64 :tls-homebrew-arm64-found) "/opt/homebrew/opt/openssl/lib/libssl.dylib")
-  ((:and :darwin :tls-personalized-install-found) "/usr/local/lib/libssl.dylib")
-  (:darwin (:or ;; System-provided libraries, with version in the file name.
-            "/usr/lib/libssl.48.dylib"
-            "/usr/lib/libssl.46.dylib"
-            "/usr/lib/libssl.44.dylib"
-            "/usr/lib/libssl.43.dylib"
-            "/usr/lib/libssl.35.dylib"
-            "libssl.dylib"
-            "/usr/lib/libssl.dylib"))
-  (:openbsd "libssl.so")
-  (:unix (:or "libssl.so.1.1"
-              "libssl.so.1.0.2m"
-              "libssl.so.1.0.2k"
-              "libssl.so.1.0.2"
-              "libssl.so.1.0.1l"
-              "libssl.so.1.0.1j"
-              "libssl.so.1.0.1f"
-              "libssl.so.1.0.1e"
-              "libssl.so.1.0.1"
-              "libssl.so.1.0.0q"
-              "libssl.so.1.0.0"
-              "libssl.so.0.9.8ze"
-              "libssl.so.0.9.8"
-              "libssl.so.10"
-              "libssl.so.4"
-              "libssl.so.3"
-              "libssl.so"))
-  (t (:default "libssl3")))
+    ((:and :darwin :tls-macports-found) "/opt/local/lib/libssl.dylib")
+    ((:and :darwin :x86-64 :tls-homebrew-found) "/usr/local/opt/openssl/lib/libssl.dylib")
+    ((:and :darwin :arm64 :tls-homebrew-arm64-found) "/opt/homebrew/opt/openssl/lib/libssl.dylib")
+    ((:and :darwin :tls-personalized-install-found) "/usr/local/lib/libssl.dylib")
+    (:darwin (:or ;; System-provided libraries, with version in the file name.
+              "/usr/lib/libssl.48.dylib"
+              "/usr/lib/libssl.46.dylib"
+              "/usr/lib/libssl.44.dylib"
+              "/usr/lib/libssl.43.dylib"
+              "/usr/lib/libssl.35.dylib"
+              "libssl.dylib"
+              "/usr/lib/libssl.dylib"))
+    (:openbsd "libssl.so")
+    (:unix (:or "libssl.so.1.1"
+                "libssl.so.1.0.2m"
+                "libssl.so.1.0.2k"
+                "libssl.so.1.0.2"
+                "libssl.so.1.0.1l"
+                "libssl.so.1.0.1j"
+                "libssl.so.1.0.1f"
+                "libssl.so.1.0.1e"
+                "libssl.so.1.0.1"
+                "libssl.so.1.0.0q"
+                "libssl.so.1.0.0"
+                "libssl.so.0.9.8ze"
+                "libssl.so.0.9.8"
+                "libssl.so.10"
+                "libssl.so.4"
+                "libssl.so.3"
+                "libssl.so"))
+    (t (:default "libssl3")))
 
-(ffi:use-foreign-library libcrypto)
-(ffi:use-foreign-library libssl)
+  (ffi:use-foreign-library libcrypto)
+  (ffi:use-foreign-library libssl)
 
-)
+  )
 
 ;;; Condition hierarchy
 ;;;
@@ -160,9 +162,9 @@ MAKE-CONTEXT also allows to enab/disable verification.")
 
 (defun read-ssl-error-queue ()
   (loop
-     :for error-code = (err-get-error)
-     :until (zerop error-code)
-     :collect error-code))
+    :for error-code = (err-get-error)
+    :until (zerop error-code)
+    :collect error-code))
 
 (defun format-ssl-error-queue (stream-designator queue-designator)
   "STREAM-DESIGNATOR is the same as CL:FORMAT accepts: T, NIL, or a stream.
@@ -185,8 +187,8 @@ by READ-SSL-ERROR-QUEUE) or an SSL-ERROR condition."
                  (progn
                    (format stream ":~%")
                    (loop
-                      :for error-code :in queue
-                      :do (format stream "~a~%" (err-error-string error-code (epsilon.sys.ffi:null-pointer)))))
+                     :for error-code :in queue
+                     :do (format stream "~a~%" (err-error-string error-code (epsilon.sys.ffi:null-pointer)))))
                  (format stream " is empty.")))))
     (case stream-designator
       ((t) (body *standard-output*))
@@ -398,8 +400,8 @@ by READ-SSL-ERROR-QUEUE) or an SSL-ERROR condition."
     ;; error if it happens not on the initial handshake,
     ;; but during session renegotiation.
     verify-error :type (or null string)
-                 :initform nil
-                 :accessor ssl-error-ssl-verify-error))
+    :initform nil
+    :accessor ssl-error-ssl-verify-error))
   (:documentation
    "A failure in the SSL library occurred, usually a protocol error. The
     OpenSSL error queue contains more information on the error.")
@@ -447,7 +449,7 @@ variants if you have use cases for them.)"
     `(progn
        (setf (gethash ,foreign-name-str *late-bound-foreign-function-pointers*)
              (or (ffi:foreign-symbol-pointer ,foreign-name-str
-                                              ,@(when library `(:library ',library)))
+                                             ,@(when library `(:library ',library)))
                  'foreign-symbol-not-found))
        (defun ,lisp-name (,@arg-names)
          ,@(when docstring (list docstring))
@@ -459,9 +461,9 @@ variants if you have use cases for them.)"
              (error "The current version of OpenSSL libcrypto doesn't provide ~A"
                     ,foreign-name-str))
            (ffi:foreign-funcall-pointer ,ptr-var
-                                         ,(when convention (list convention))
-                                         ,@(mapcan #'list arg-types arg-names)
-                                         ,return-type))))))
+                                        ,(when convention (list convention))
+                                        ,@(mapcan #'list arg-types arg-names)
+                                        ,return-type))))))
 
 (defmacro defcfun-versioned ((&key since vanished) name-and-options &body body)
   (if (and (or since vanished)
@@ -483,7 +485,7 @@ variants if you have use cases for them.)"
                     *tls-ssl-foreign-function-names*
                     :test 'equal)))
      (defcfun-versioned (:since ,since :vanished ,vanished)
-         ,(append name-and-options '(:library libssl))
+                        ,(append name-and-options '(:library libssl))
        ,@body)))
 
 (defmacro define-ssl-function (name-and-options &body body)
@@ -494,11 +496,11 @@ variants if you have use cases for them.)"
      ;; debugging
      ,@(unless (or since vanished)
          `(( pushnew ,(car name-and-options)
-                     *tls-crypto-foreign-function-names*
-                     :test 'equal)))
+             *tls-crypto-foreign-function-names*
+             :test 'equal)))
      (defcfun-versioned (:since ,since :vanished ,vanished)
-         ,(append name-and-options
-                  #-tls-foreign-libs-already-loaded '(:library libcrypto))
+                        ,(append name-and-options
+                                 #-tls-foreign-libs-already-loaded '(:library libcrypto))
        ,@body)))
 
 (defmacro define-crypto-function (name-and-options &body body)
@@ -601,10 +603,10 @@ session-resume requests) would normally be copied into the local cache before pr
 
 
 (define-crypto-function-ex (:vanished "1.1.0") ("SSLeay" ssl-eay)
-        :long)
+  :long)
 
 (define-crypto-function-ex (:since "1.1.0") ("OpenSSL_version_num" openssl-version-num)
-        :long)
+  :long)
 
 (defun compat-openssl-version ()
   (or (ignore-errors (openssl-version-num))
@@ -709,15 +711,15 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
   (= #x20000000 (compat-openssl-version)))
 
 (define-ssl-function ("SSL_get_version" ssl-get-version)
-    :string
+  :string
   (ssl ssl-pointer))
 (define-ssl-function-ex (:vanished "1.1.0") ("SSL_load_error_strings" ssl-load-error-strings)
-    :void)
+  :void)
 (define-ssl-function-ex (:vanished "1.1.0") ("SSL_library_init" ssl-library-init)
-    :int)
+  :int)
 
 (define-ssl-function-ex (:vanished "1.1.0")
-    ("OpenSSL_add_all_digests" openssl-add-all-digests)
+                        ("OpenSSL_add_all_digests" openssl-add-all-digests)
   :void)
 
 ;;
@@ -729,122 +731,122 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
 ;; (define-ssl-function ("SSLv2_client_method" ssl-v2-client-method)
 ;;     ssl-method)
 (define-ssl-function-ex (:vanished "1.1.0") ("SSLv23_client_method" ssl-v23-client-method)
-    ssl-method)
+  ssl-method)
 (define-ssl-function-ex (:vanished "1.1.0") ("SSLv23_server_method" ssl-v23-server-method)
-    ssl-method)
+  ssl-method)
 (define-ssl-function-ex (:vanished "1.1.0") ("SSLv23_method" ssl-v23-method)
-    ssl-method)
+  ssl-method)
 (define-ssl-function-ex (:vanished "1.1.0") ("SSLv3_client_method" ssl-v3-client-method)
-    ssl-method)
+  ssl-method)
 (define-ssl-function-ex (:vanished "1.1.0") ("SSLv3_server_method" ssl-v3-server-method)
-    ssl-method)
+  ssl-method)
 (define-ssl-function-ex (:vanished "1.1.0") ("SSLv3_method" ssl-v3-method)
-    ssl-method)
+  ssl-method)
 (define-ssl-function ("TLSv1_client_method" ssl-TLSv1-client-method)
-    ssl-method)
+  ssl-method)
 (define-ssl-function ("TLSv1_server_method" ssl-TLSv1-server-method)
-    ssl-method)
+  ssl-method)
 (define-ssl-function ("TLSv1_method" ssl-TLSv1-method)
-    ssl-method)
+  ssl-method)
 (define-ssl-function-ex (:since "1.0.2") ("TLSv1_1_client_method" ssl-TLSv1-1-client-method)
-    ssl-method)
+  ssl-method)
 (define-ssl-function-ex (:since "1.0.2") ("TLSv1_1_server_method" ssl-TLSv1-1-server-method)
-    ssl-method)
+  ssl-method)
 (define-ssl-function-ex (:since "1.0.2") ("TLSv1_1_method" ssl-TLSv1-1-method)
-    ssl-method)
+  ssl-method)
 (define-ssl-function-ex (:since "1.0.2") ("TLSv1_2_client_method" ssl-TLSv1-2-client-method)
-    ssl-method)
+  ssl-method)
 (define-ssl-function-ex (:since "1.0.2") ("TLSv1_2_server_method" ssl-TLSv1-2-server-method)
-    ssl-method)
+  ssl-method)
 (define-ssl-function-ex (:since "1.0.2") ("TLSv1_2_method" ssl-TLSv1-2-method)
-    ssl-method)
+  ssl-method)
 (define-ssl-function-ex (:since "1.1.0") ("TLS_method" tls-method)
-    ssl-method)
+  ssl-method)
 
 (define-ssl-function ("SSL_CTX_new" ssl-ctx-new)
-    ssl-ctx
+  ssl-ctx
   (method ssl-method))
 (define-ssl-function ("SSL_new" ssl-new)
-    ssl-pointer
+  ssl-pointer
   (ctx ssl-ctx))
 (define-ssl-function ("SSL_get_fd" ssl-get-fd)
-    :int
+  :int
   (ssl ssl-pointer))
 (define-ssl-function ("SSL_set_fd" ssl-set-fd)
-    :int
+  :int
   (ssl ssl-pointer)
   (fd :int))
 (define-ssl-function ("SSL_set_bio" ssl-set-bio)
-    :void
+  :void
   (ssl ssl-pointer)
   (rbio :pointer)
   (wbio :pointer))
 (define-ssl-function ("SSL_get_error" ssl-get-error)
-    :int
+  :int
   (ssl ssl-pointer)
   (ret :int))
 (define-ssl-function ("SSL_set_connect_state" ssl-set-connect-state)
-    :void
+  :void
   (ssl ssl-pointer))
 (define-ssl-function ("SSL_set_accept_state" ssl-set-accept-state)
-    :void
+  :void
   (ssl ssl-pointer))
 (define-ssl-function ("SSL_connect" ssl-connect)
-    :int
+  :int
   (ssl ssl-pointer))
 (define-ssl-function ("SSL_accept" ssl-accept)
-    :int
+  :int
   (ssl ssl-pointer))
 (define-ssl-function ("SSL_write" ssl-write)
-    :int
+  :int
   (ssl ssl-pointer)
   (buf :pointer)
   (num :int))
 (define-ssl-function ("SSL_read" ssl-read)
-    :int
+  :int
   (ssl ssl-pointer)
   (buf :pointer)
   (num :int))
 (define-ssl-function ("SSL_shutdown" ssl-shutdown)
-    :int
+  :int
   (ssl ssl-pointer))
 (define-ssl-function ("SSL_free" ssl-free)
-    :void
+  :void
   (ssl ssl-pointer))
 (define-ssl-function ("SSL_CTX_free" ssl-ctx-free)
-    :void
+  :void
   (ctx ssl-ctx))
 (define-ssl-function-ex (:since "1.0")  ("SSL_set_alpn_protos" ssl-set-alpn-protos)
-    :int
+  :int
   (SSL :pointer)
   (text :string)
   (len :int))
 (define-ssl-function-ex (:since "1.0") ("SSL_get0_alpn_selected" ssl-get0-alpn-selected)
-    :void
+  :void
   (SSL :pointer)
   (text (:pointer :string))
   (len (:pointer :int)))
 (define-crypto-function ("BIO_ctrl" bio-set-fd)
-    :long
+  :long
   (bio :pointer)
   (cmd :int)
   (larg :long)
   (parg :pointer))
 (define-crypto-function ("BIO_new_socket" bio-new-socket)
-    :pointer
+  :pointer
   (fd :int)
   (close-flag :int))
 (define-crypto-function ("BIO_new" bio-new)
-    :pointer
+  :pointer
   (method :pointer))
 (define-crypto-function ("BIO_free" bio-free)
-    :pointer
+  :pointer
   (method :pointer))
 (define-crypto-function-ex (:since "1.1.0") ("BIO_get_new_index" bio-new-index)
   :int)
 
 (define-crypto-function-ex (:since "1.1.0") ("BIO_meth_new" bio-meth-new)
-    :pointer
+  :pointer
   (type :int)
   (name :string))
 (define-crypto-function-ex (:since "1.1.0") ("BIO_meth_set_puts" bio-set-puts)
@@ -893,9 +895,9 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
   (value :int))
 
 (define-crypto-function ("ERR_get_error" err-get-error)
-    :unsigned-long)
+  :unsigned-long)
 (define-crypto-function ("ERR_error_string" err-error-string)
-    :string
+  :string
   (e :unsigned-long)
   (buf :pointer))
 (define-crypto-function-ex (:vanished "3.0.0") ("ERR_put_error" err-put-error)
@@ -931,7 +933,7 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
 
 ;; Is that a new function in 1.0.2 or existed forever?
 (define-crypto-function-ex (:since "1.0.2")
-    ("ERR_get_next_error_library" err-get-next-error-library)
+                           ("ERR_get_next_error_library" err-get-next-error-library)
   :int)
 
 (define-crypto-function ("ERR_add_error_data" err-add-error-data)
@@ -950,23 +952,23 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
   (bio :pointer))
 
 (define-ssl-function ("SSL_set_cipher_list" ssl-set-cipher-list)
-    :int
+  :int
   (ssl ssl-pointer)
   (str :string))
 (define-ssl-function-ex (:since "1.1.1") ("SSL_set_ciphersuites" ssl-set-ciphersuites)
-    :int
+  :int
   (ssl ssl-pointer)
   (str :string))
 
 (define-ssl-function ("SSL_use_RSAPrivateKey_file" ssl-use-rsa-privatekey-file)
-    :int
+  :int
   (ssl ssl-pointer)
   (str :string)
   ;; either +ssl-filetype-pem+ or +ssl-filetype-asn1+
   (type :int))
 (define-ssl-function
     ("SSL_CTX_use_RSAPrivateKey_file" ssl-ctx-use-rsa-privatekey-file)
-    :int
+  :int
   (ctx ssl-ctx)
   (type :int))
 (define-ssl-function ("SSL_use_PrivateKey_file" ssl-use-privatekey-file)
@@ -982,13 +984,13 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
   (file :string)
   (type :int))
 (define-ssl-function ("SSL_use_certificate_file" ssl-use-certificate-file)
-    :int
+  :int
   (ssl ssl-pointer)
   (str :string)
   (type :int))
 
 (define-ssl-function ("SSL_CTX_ctrl" ssl-ctx-ctrl)
-    :long
+  :long
   (ctx ssl-ctx)
   (cmd :int)
   ;; Despite declared as long in the original OpenSSL headers,
@@ -1007,7 +1009,7 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
   (parg :pointer))
 
 (define-ssl-function ("SSL_ctrl" ssl-ctrl)
-    :long
+  :long
   (ssl :pointer)
   (cmd :int)
   (larg :long)
@@ -1015,9 +1017,9 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
 
 #+new-openssl
 (define-ssl-function ("SSL_CTX_set_options" ssl-ctx-set-options)
-                 :long
-               (ctx :pointer)
-               (options :long))
+  :long
+  (ctx :pointer)
+  (options :long))
 #-new-openssl
 (defun ssl-ctx-set-options (ctx options)
   (ssl-ctx-ctrl ctx +SSL-CTRL-OPTIONS+ options (ffi:null-pointer)))
@@ -1026,73 +1028,73 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
 (defun ssl-ctx-set-max-proto-version (ctx version)
   (ssl-ctx-ctrl ctx +SSL-CTRL-SET-MAX-PROTO-VERSION+ version (ffi:null-pointer)))
 (define-ssl-function ("SSL_CTX_set_cipher_list" ssl-ctx-set-cipher-list)
-    :int
+  :int
   (ctx :pointer)
   (ciphers :string))
 (define-ssl-function-ex (:since "1.1.1") ("SSL_CTX_set_ciphersuites" ssl-ctx-set-ciphersuites)
-    :int
+  :int
   (ctx :pointer)
   (ciphersuites :string))
 (define-ssl-function ("SSL_CTX_use_certificate_chain_file" ssl-ctx-use-certificate-chain-file)
-    :int
+  :int
   (ctx ssl-ctx)
   (str :string))
 (define-ssl-function ("SSL_CTX_load_verify_locations" ssl-ctx-load-verify-locations)
-    :int
+  :int
   (ctx ssl-ctx)
   (CAfile :string)
   (CApath :string))
 (define-ssl-function ("SSL_CTX_set_client_CA_list" ssl-ctx-set-client-ca-list)
-    :void
+  :void
   (ctx ssl-ctx)
   (list ssl-pointer))
 (define-ssl-function ("SSL_load_client_CA_file" ssl-load-client-ca-file)
-    ssl-pointer
+  ssl-pointer
   (file :string))
 
 (define-ssl-function ("SSL_CTX_set_default_passwd_cb" ssl-ctx-set-default-passwd-cb)
-    :void
+  :void
   (ctx ssl-ctx)
   (pem_passwd_cb :pointer))
 
 (define-crypto-function-ex (:vanished "1.1.0") ("CRYPTO_num_locks" crypto-num-locks) :int)
 (define-crypto-function-ex (:vanished "1.1.0") ("CRYPTO_set_locking_callback" crypto-set-locking-callback)
-    :void
+  :void
   (fun :pointer))
 (define-crypto-function-ex (:vanished "1.1.0") ("CRYPTO_set_id_callback" crypto-set-id-callback)
-    :void
+  :void
   (fun :pointer))
 
 (define-crypto-function ("RAND_seed" rand-seed)
-    :void
+  :void
   (buf :pointer)
   (num :int))
 (define-crypto-function ("RAND_bytes" rand-bytes)
-    :int
+  :int
   (buf :pointer)
   (num :int))
 
 (define-ssl-function ("SSL_CTX_set_verify_depth" ssl-ctx-set-verify-depth)
-    :void
+  :void
   (ctx :pointer)
   (depth :int))
 
 (define-ssl-function ("SSL_CTX_set_verify" ssl-ctx-set-verify)
-    :void
+  :void
   (ctx :pointer)
   (mode :int)
   (verify-callback :pointer))
 
 (define-ssl-function ("SSL_get_verify_result" ssl-get-verify-result)
-    :long
+  :long
   (ssl ssl-pointer))
 
 (define-ssl-function-ex (:vanished "3.0.0") ("SSL_get_peer_certificate" ssl-get-peer-certificate)
-    :pointer
+  :pointer
   (ssl ssl-pointer))
 
 (define-ssl-function-ex (:since "3.0.0") ("SSL_get1_peer_certificate" ssl-get1-peer-certificate)
-    :pointer
+  :pointer
   (ssl ssl-pointer))
 
 (defun compat-ssl-get1-peer-certificate (handle)
@@ -1103,65 +1105,65 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
 
 ;;; X509 & ASN1
 (define-crypto-function ("X509_free" x509-free)
-    :void
+  :void
   (x509 :pointer))
 
 (define-crypto-function ("X509_NAME_oneline" x509-name-oneline)
-    :pointer
+  :pointer
   (x509-name :pointer)
   (buf :pointer)
   (size :int))
 
 (define-crypto-function ("X509_NAME_get_index_by_NID" x509-name-get-index-by-nid)
-    :int
+  :int
   (name :pointer)
   (nid :int)
   (lastpos :int))
 
 (define-crypto-function ("X509_NAME_get_entry" x509-name-get-entry)
-    :pointer
+  :pointer
   (name :pointer)
   (log :int))
 
 (define-crypto-function ("X509_NAME_ENTRY_get_data" x509-name-entry-get-data)
-    :pointer
+  :pointer
   (name-entry :pointer))
 
 (define-crypto-function ("X509_get_issuer_name" x509-get-issuer-name)
-    :pointer                            ; *X509_NAME
+  :pointer                            ; *X509_NAME
   (x509 :pointer))
 
 (define-crypto-function ("X509_get_subject_name" x509-get-subject-name)
-    :pointer                            ; *X509_NAME
+  :pointer                            ; *X509_NAME
   (x509 :pointer))
 
 (define-crypto-function-ex (:since "1.1.0") ("X509_get0_notBefore" x509-get0-not-before)
-    :pointer                            ; *ASN1_TIME
+  :pointer                            ; *ASN1_TIME
   (x509 :pointer))
 
 (define-crypto-function-ex (:since "1.1.0") ("X509_get0_notAfter" x509-get0-not-after)
-    :pointer                            ; *ASN1_TIME
+  :pointer                            ; *ASN1_TIME
   (x509 :pointer))
 
 (define-crypto-function ("X509_get_ext_d2i" x509-get-ext-d2i)
-    :pointer
+  :pointer
   (cert :pointer)
   (nid :int)
   (crit :pointer)
   (idx :pointer))
 
 (define-crypto-function ("X509_STORE_CTX_get_error" x509-store-ctx-get-error)
-    :int
+  :int
   (ctx :pointer))
 
 (define-crypto-function ("d2i_X509" d2i-x509)
-    :pointer
+  :pointer
   (*px :pointer)
   (in :pointer)
   (len :int))
 
 (define-crypto-function ("X509_digest" x509-digest)
-    :int
+  :int
   (cert :pointer)
   (type :pointer)
   (buf :pointer)
@@ -1183,15 +1185,15 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
 ;;; EVP
 
 (define-crypto-function ("EVP_get_digestbyname" evp-get-digest-by-name)
-    :pointer
+  :pointer
   (name :string))
 
 (define-crypto-function-ex (:vanished "3.0.0") ("EVP_MD_size" evp-md-size)
-    :int
+  :int
   (evp :pointer))
 
 (define-crypto-function-ex (:since "3.0.0") ("EVP_MD_get_size" evp-md-get-size)
-    :int
+  :int
   (evp :pointer))
 
 
@@ -1223,21 +1225,21 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
   (data :pointer))
 
 (define-crypto-function-ex (:vanished "1.1.0") ("sk_value" sk-value)
-    :pointer
+  :pointer
   (stack :pointer)
   (index :int))
 
 (define-crypto-function-ex (:vanished "1.1.0") ("sk_num" sk-num)
-    :int
+  :int
   (stack :pointer))
 
 (define-crypto-function-ex (:since "1.1.0") ("OPENSSL_sk_value" openssl-sk-value)
-    :pointer
+  :pointer
   (stack :pointer)
   (index :int))
 
 (define-crypto-function-ex (:since "1.1.0") ("OPENSSL_sk_num" openssl-sk-num)
-    :int
+  :int
   (stack :pointer))
 
 (declaim (ftype (function (ffi:foreign-pointer fixnum) ffi:foreign-pointer) sk-general-name-value))
@@ -1255,19 +1257,19 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
       (sk-num names)))
 
 (define-crypto-function ("GENERAL_NAMES_free" general-names-free)
-    :void
+  :void
   (general-names :pointer))
 
 (define-crypto-function ("ASN1_STRING_data" asn1-string-data)
-    :pointer
+  :pointer
   (asn1-string :pointer))
 
 (define-crypto-function ("ASN1_STRING_length" asn1-string-length)
-    :int
+  :int
   (asn1-string :pointer))
 
 (define-crypto-function ("ASN1_STRING_type" asn1-string-type)
-    :int
+  :int
   (asn1-string :pointer))
 
 (ffi:defcstruct asn1_string_st
@@ -1277,40 +1279,40 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
   (flags :long))
 
 (define-crypto-function ("ASN1_TIME_check" asn1-time-check)
-    :int
+  :int
   (asn1-string :pointer))
 
 (define-crypto-function ("ASN1_UTCTIME_check" asn1-utctime-check)
-    :int
+  :int
   (asn1-string :pointer))
 
 ;; X509 & ASN1 - end
 
 (define-ssl-function ("SSL_CTX_set_default_verify_paths" ssl-ctx-set-default-verify-paths)
-    :int
+  :int
   (ctx :pointer))
 
 (define-ssl-function-ex (:since "1.1.0") ("SSL_CTX_set_default_verify_dir" ssl-ctx-set-default-verify-dir)
-    :int
+  :int
   (ctx :pointer))
 
 (define-ssl-function-ex (:since "1.1.0") ("SSL_CTX_set_default_verify_file" ssl-ctx-set-default-verify-file)
-    :int
+  :int
   (ctx :pointer))
 
 (define-crypto-function ("RSA_generate_key" rsa-generate-key)
-    :pointer
+  :pointer
   (num :int)
   (e :unsigned-long)
   (callback :pointer)
   (opt :pointer))
 
 (define-crypto-function ("RSA_free" rsa-free)
-    :void
+  :void
   (rsa :pointer))
 
 (define-ssl-function-ex (:vanished "1.1.0") ("SSL_CTX_set_tmp_rsa_callback" ssl-ctx-set-tmp-rsa-callback)
-    :pointer
+  :pointer
   (ctx :pointer)
   (callback :pointer))
 
@@ -1388,7 +1390,7 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
 
 (defun lisp-bio-type ()
   (or (ignore-errors
-        (logior (bio-new-index) +BIO_TYPE_SOURCE_SINK+))
+       (logior (bio-new-index) +BIO_TYPE_SOURCE_SINK+))
       ;; Old OpenSSL and LibreSSL do not nave BIO_get_new_index,
       ;; in this case fallback to BIO_TYPE_SOCKET.
       ;; fixmy: Maybe that's wrong, but presumably still better than some
@@ -1433,7 +1435,7 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
         ;; (openssl-is-at-least 1 1) - this is not precise in case of LibreSSL,
         ;; therefore use the following:
         (not (null (ffi:foreign-symbol-pointer "BIO_get_new_index"
-                                                :library 'libcrypto)))
+                                               :library 'libcrypto)))
         *lisp-bio-type* (lisp-bio-type)
         *bio-lisp-method* (make-bio-lisp-method)))
 
@@ -1451,9 +1453,9 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
                 (apply #'logior flags))))
 
 (defun compat-bio-set-flags (bio &rest flags)
-    (if *bio-is-opaque*
-        (bio-set-flags bio (apply #'logior flags)) ;; FFI function since OpenSSL 1.1.0
-        (apply #'bio-set-flags-slots bio flags)))
+  (if *bio-is-opaque*
+      (bio-set-flags bio (apply #'logior flags)) ;; FFI function since OpenSSL 1.1.0
+      (apply #'bio-set-flags-slots bio flags)))
 
 (defun bio-clear-flags-slots (bio &rest flags)
   (setf (ffi:foreign-slot-value bio '(:struct bio) 'flags)
@@ -1917,10 +1919,10 @@ ERROR-CODE is return value of SSL_get_error - an explanation of the failure.
 (defun output-wait (stream fd deadline)
   (declare (ignore stream))
   (let ((timeout
-         ;; *deadline* is handled by wait-until-fd-usable automatically,
-         ;; but we need to turn a user-specified deadline into a timeout
-         (when deadline
-           (seconds-until-deadline deadline))))
+          ;; *deadline* is handled by wait-until-fd-usable automatically,
+          ;; but we need to turn a user-specified deadline into a timeout
+          (when deadline
+            (seconds-until-deadline deadline))))
     (sb-sys:wait-until-fd-usable fd :output timeout)))
 
 ;;; Waiting for input to be possible
@@ -1928,10 +1930,10 @@ ERROR-CODE is return value of SSL_get_error - an explanation of the failure.
 (defun input-wait (stream fd deadline)
   (declare (ignore stream))
   (let ((timeout
-         ;; *deadline* is handled by wait-until-fd-usable automatically,
-         ;; but we need to turn a user-specified deadline into a timeout
-         (when deadline
-           (seconds-until-deadline deadline))))
+          ;; *deadline* is handled by wait-until-fd-usable automatically,
+          ;; but we need to turn a user-specified deadline into a timeout
+          (when deadline
+            (seconds-until-deadline deadline))))
     (sb-sys:wait-until-fd-usable fd :input timeout)))
 
 ;;; Funcall wrapper
@@ -1939,38 +1941,38 @@ ERROR-CODE is return value of SSL_get_error - an explanation of the failure.
 (declaim (inline ensure-ssl-funcall))
 (defun ensure-ssl-funcall (stream success-test func handle &rest other-args)
   (loop
-     (let ((ret
+    (let ((ret
             (let ((*bio-socket* (ssl-stream-socket stream))) ;for Lisp-BIO callbacks
               (apply func handle other-args))))
-       (when (funcall success-test ret)
-         (return ret))
-       (let ((error (ssl-get-error handle ret)))
-         (case error
-           (#.+ssl-error-want-read+
-            (input-wait stream
+      (when (funcall success-test ret)
+        (return ret))
+      (let ((error (ssl-get-error handle ret)))
+        (case error
+          (#.+ssl-error-want-read+
+           (input-wait stream
+                       (ssl-get-fd handle)
+                       (ssl-stream-deadline stream)))
+          (#.+ssl-error-want-write+
+           (output-wait stream
                         (ssl-get-fd handle)
                         (ssl-stream-deadline stream)))
-           (#.+ssl-error-want-write+
-            (output-wait stream
-                         (ssl-get-fd handle)
-                         (ssl-stream-deadline stream)))
-           (t
-            (ssl-signal-error handle func error ret)))))))
+          (t
+           (ssl-signal-error handle func error ret)))))))
 
 (declaim (inline nonblocking-ssl-funcall))
 (defun nonblocking-ssl-funcall (stream success-test func handle &rest other-args)
   (loop
-     (let ((ret
+    (let ((ret
             (let ((*bio-socket* (ssl-stream-socket stream))) ;for Lisp-BIO callbacks
               (apply func handle other-args))))
-       (when (funcall success-test ret)
-         (return ret))
-       (let ((error (ssl-get-error handle ret)))
-         (case error
-           ((#.+ssl-error-want-read+ #.+ssl-error-want-write+)
-            (return ret))
-           (t
-            (ssl-signal-error handle func error ret)))))))
+      (when (funcall success-test ret)
+        (return ret))
+      (let ((error (ssl-get-error handle ret)))
+        (case error
+          ((#.+ssl-error-want-read+ #.+ssl-error-want-write+)
+           (return ret))
+          (t
+           (ssl-signal-error handle func error ret)))))))
 
 
 
@@ -2019,9 +2021,9 @@ ERROR-CODE is return value of SSL_get_error - an explanation of the failure.
 
 (defmethod initialize-instance :after ((stream ssl-stream)
                                        &key
-                                       (buffer-size *default-buffer-size*)
-                                       (input-buffer-size buffer-size)
-                                       (output-buffer-size buffer-size)
+                                         (buffer-size *default-buffer-size*)
+                                         (input-buffer-size buffer-size)
+                                         (output-buffer-size buffer-size)
                                        &allow-other-keys)
   (setf (ssl-stream-output-buffer stream)
         (make-buffer output-buffer-size))
@@ -2292,8 +2294,8 @@ If CHECK-VERIFY-P is true, signal connection errors if the server certificate do
   (setf *ssl-check-verify-p* (not (null check-verify-p))))
 
 (defun ssl-verify-init (&key
-                        (verify-depth nil)
-                        (verify-locations nil))
+                          (verify-depth nil)
+                          (verify-locations nil))
   "DEPRECATED.
 Use the (MAKE-SSL-CLIENT-STREAM .. :VERIFY ?) to enable/disable verification.
 Use (MAKE-CONTEXT ... :VERIFY-LOCATION ? :VERIFY-DEPTH ?) to control the verification depth and locations.
@@ -2559,7 +2561,7 @@ for MAKE-SSL-CLIENT-STREAM.
         (install-key-and-cert handle key certificate))
       (collecting-verify-error (handle)
         (ensure-ssl-funcall stream #'plusp #'ssl-accept handle))
-       stream)))
+      stream)))
 
 (defun get-selected-alpn-protocol (ssl-stream)
   "A wrapper around SSL_get0_alpn_selected.
@@ -2569,7 +2571,7 @@ SSL-STREAM is the client ssl stream returned by make-ssl-client-stream. "
   (ffi:with-foreign-objects ((ptr :pointer) (len :pointer))
     (ssl-get0-alpn-selected (ssl-stream-handle ssl-stream) ptr len)
     (ffi:foreign-string-to-lisp (ffi:mem-ref ptr :pointer)
-                                 :count (ffi:mem-ref len :int))))
+                                :count (ffi:mem-ref len :int))))
 
 (defgeneric stream-fd (stream)
   (:documentation "The STREAM's file descriptor as an integer,
@@ -2614,9 +2616,9 @@ passed to MAKE-SSL-CLIENT-STREAM and MAKE-SSL-SERVER-STREAM."))
   (let* ((password-str (coerce *pem-password* 'base-string))
          (tmp (ffi:foreign-string-alloc password-str)))
     (ffi:foreign-funcall "strncpy"
-                          :pointer buf
-                          :pointer tmp
-                          :int size)
+                         :pointer buf
+                         :pointer tmp
+                         :int size)
     (ffi:foreign-string-free tmp)
     (setf (ffi:mem-ref buf :char (1- size)) 0)
     (ffi:foreign-funcall "strlen" :pointer buf :int)))
@@ -2685,8 +2687,8 @@ passed to MAKE-SSL-CLIENT-STREAM and MAKE-SSL-SERVER-STREAM."))
             ;; compatible so we can call it too.
             (libresslp))
     (setf *locks* (loop
-                     repeat (crypto-num-locks)
-                     collect (make-lock)))
+                    repeat (crypto-num-locks)
+                    collect (make-lock)))
     (crypto-set-locking-callback (ffi:callback locking-callback))
     (crypto-set-id-callback (ffi:callback threadid-callback))
     (ssl-load-error-strings)
@@ -2853,9 +2855,9 @@ https://github.com/cl-plus-ssl/cl-plus-ssl/issues/167
   ;; but this is prohibited anyway thanks to check-vildcard-in-leftmost-label
   (if single-char-wildcard
       (let ((pattern-except-left-most-label
-             (if-let ((first-hostname-dot-post (position #\. pattern)))
-               (subseq pattern first-hostname-dot-post)
-               pattern)))
+              (if-let ((first-hostname-dot-post (position #\. pattern)))
+                (subseq pattern first-hostname-dot-post)
+                pattern)))
         (case-insensitive-match after-wildcard pattern-except-left-most-label))
       (when (wildcard-not-in-a-label before-wildcard after-wildcard)
         ;; baz*.example.net and *baz.example.net and b*z.example.net would
@@ -2882,7 +2884,7 @@ https://github.com/cl-plus-ssl/cl-plus-ssl/issues/167
 (defun try-match-hostnames (names hostname)
   (loop for name in names
         when (try-match-hostname name hostname) do
-           (return t)))
+          (return t)))
 
 (defun verify-hostname (cert hostname)
   "Verifies the HOSTNAME against the specified
@@ -3258,18 +3260,18 @@ unpredictable byte sequence."
        (error 'ssl-error-call
               :queue (read-ssl-error-queue)
               :message (format nil "Unable to load default verify paths"))))
-     ((eq :default-file location)
-      ;; supported since openssl 1.1.0
-      (unless (= 1 (ssl-ctx-set-default-verify-file ssl-ctx))
-        (error 'ssl-error-call
-               :queue (read-ssl-error-queue)
-               :message (format nil "Unable to load default verify file"))))
-     ((eq :default-dir location)
-      ;; supported since openssl 1.1.0
-      (unless (= 1 (ssl-ctx-set-default-verify-dir ssl-ctx))
-        (error 'ssl-error-call
-               :queue (read-ssl-error-queue)
-               :message (format nil "Unable to load default verify dir"))))
+    ((eq :default-file location)
+     ;; supported since openssl 1.1.0
+     (unless (= 1 (ssl-ctx-set-default-verify-file ssl-ctx))
+       (error 'ssl-error-call
+              :queue (read-ssl-error-queue)
+              :message (format nil "Unable to load default verify file"))))
+    ((eq :default-dir location)
+     ;; supported since openssl 1.1.0
+     (unless (= 1 (ssl-ctx-set-default-verify-dir ssl-ctx))
+       (error 'ssl-error-call
+              :queue (read-ssl-error-queue)
+              :message (format nil "Unable to load default verify dir"))))
     ((stringp location)
      (add-verify-locations ssl-ctx (list location)))
     ((pathnamep location)
@@ -3281,20 +3283,20 @@ unpredictable byte sequence."
      (error "Invalid location ~a" location))))
 
 (defun make-context (&key (method nil method-supplied-p)
-                          disabled-protocols
-                          (options (list +SSL-OP-ALL+))
-                          min-proto-version
-                          (session-cache-mode +ssl-sess-cache-server+)
-                          (verify-location :default)
-                          (verify-depth 100)
-                          (verify-mode +ssl-verify-peer+)
-                          verify-callback
-                          cipher-list
-                          (pem-password-callback 'pem-password-callback)
-                          certificate-chain-file
-                          private-key-file
-                          private-key-password
-                          (private-key-file-type +ssl-filetype-pem+))
+                       disabled-protocols
+                       (options (list +SSL-OP-ALL+))
+                       min-proto-version
+                       (session-cache-mode +ssl-sess-cache-server+)
+                       (verify-location :default)
+                       (verify-depth 100)
+                       (verify-mode +ssl-verify-peer+)
+                       verify-callback
+                       cipher-list
+                       (pem-password-callback 'pem-password-callback)
+                       certificate-chain-file
+                       private-key-file
+                       private-key-password
+                       (private-key-file-type +ssl-filetype-pem+))
   "Creates a new SSL_CTX using SSL_CTX_new and initializes it according to
 the specified parameters.
 
@@ -3379,8 +3381,8 @@ Keyword arguments:
       ;;   7409d7ad517    2011-04-29 22:56:51 +0000
       ;; so requiring a "new"er OpenSSL to match epsilon.net.tls's defauls shouldn't be a problem.
       (if min-proto-version
-        (if (zerop (ssl-ctx-set-min-proto-version ssl-ctx min-proto-version))
-          (error "Couldn't set minimum SSL protocol version!")))
+          (if (zerop (ssl-ctx-set-min-proto-version ssl-ctx min-proto-version))
+              (error "Couldn't set minimum SSL protocol version!")))
       (ssl-ctx-set-session-cache-mode ssl-ctx session-cache-mode)
       (ssl-ctx-set-verify-location ssl-ctx verify-location)
       (ssl-ctx-set-verify-depth ssl-ctx verify-depth)

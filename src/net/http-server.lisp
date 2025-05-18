@@ -1,75 +1,75 @@
-(defpackage #:epsilon.net.http.server
+(defpackage :epsilon.net.http.server
   (:use
-   #:cl
-   #:epsilon.lib.binding)
+   :cl
+   :epsilon.lib.syntax)
   (:local-nicknames
-   (#:seq #:epsilon.lib.sequence)
-   (#:str #:epsilon.lib.string)
-   (#:time #:epsilon.lib.time)
-   (#:uuid #:epsilon.lib.uuid)
-   (#:uri #:epsilon.lib.uri))
+   (:seq :epsilon.lib.sequence)
+   (:str :epsilon.lib.string)
+   (:time :epsilon.lib.time)
+   (:uuid :epsilon.lib.uuid)
+   (:uri :epsilon.lib.uri))
   (:export
    ;; Server interface
-   #:server
-   #:make-server
-   #:start
-   #:stop
-   #:server-running-p
-   #:server-address
-   #:server-port
-   #:server-handler
+   :server
+   :make-server
+   :start
+   :stop
+   :server-running-p
+   :server-address
+   :server-port
+   :server-handler
    
    ;; Request and response interface
-   #:request
-   #:request-method
-   #:request-url
-   #:request-path
-   #:request-query
-   #:request-headers
-   #:request-body
-   #:request-remote-addr
-   #:request-protocol
+   :request
+   :request-method
+   :request-url
+   :request-path
+   :request-query
+   :request-headers
+   :request-body
+   :request-remote-addr
+   :request-protocol
    
-   #:response
-   #:response-status
-   #:response-headers
-   #:response-body
-   #:with-response
-   #:make-response
-   #:set-header
-   #:set-status
-   #:write-body
+   :response
+   :response-status
+   :response-headers
+   :response-body
+   :with-response
+   :make-response
+   :set-header
+   :set-status
+   :write-body
    
    ;; Handler interface
-   #:handler
-   #:handler-func
-   #:defhandler
-   #:serve-file
-   #:serve-directory
+   :handler
+   :handler-func
+   :defhandler
+   :serve-file
+   :serve-directory
    
    ;; Routing
-   #:router
-   #:make-router
-   #:connect-route
-   #:route
+   :router
+   :make-router
+   :connect-route
+   :route
    
    ;; Middleware
-   #:middleware
-   #:apply-middleware
-   #:with-middleware
-   #:logging-middleware
-   #:cors-middleware
-   #:static-files-middleware
-   #:session-middleware
+   :middleware
+   :apply-middleware
+   :with-middleware
+   :logging-middleware
+   :cors-middleware
+   :static-files-middleware
+   :session-middleware
    
    ;; Configuration
-   #:*default-server-port*
-   #:*default-read-timeout*
-   #:*default-write-timeout*
-   #:*default-idle-timeout*
-   #:*default-max-header-bytes*))
+   :*default-server-port*
+   :*default-read-timeout*
+   :*default-write-timeout*
+   :*default-idle-timeout*
+   :*default-max-header-bytes*))
 
-(in-package #:epsilon.net.http.server)
+(in-package :epsilon.net.http.server)
 
 ;;; Constants and global variables
 

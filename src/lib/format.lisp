@@ -1,9 +1,12 @@
-(defpackage #:epsilon.lib.format
-  (:use #:cl #:sb-gray)
-  (:export #:format-output-stream
-           #:output-column))
+(defpackage :epsilon.lib.format
+  (:use
+   :cl
+   :sb-gray)
+  (:export
+   :format-output-stream
+   :output-column))
 
-(in-package #:epsilon.lib.format)
+(in-package :epsilon.lib.format)
 
 (defclass format-output-stream (fundamental-character-output-stream)
   ((column :initform 0 :accessor output-column)

@@ -2,7 +2,7 @@
   (:use
    :cl
    :epsilon.tool.test
-   :epsilon.lib.binding)
+   :epsilon.lib.syntax)
   (:local-nicknames
    (:stream :epsilon.lib.stream)))
 

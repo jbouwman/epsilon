@@ -1,24 +1,24 @@
-(defpackage #:epsilon.lib.string
+(defpackage :epsilon.lib.string
   (:use
-   #:cl
-   #:epsilon.lib.binding)
+   :cl
+   :epsilon.lib.syntax)
   (:local-nicknames
-   (#:seq #:epsilon.lib.sequence))
+   (:seq :epsilon.lib.sequence))
   (:export
-   #:concat
-   #:empty-p
-   #:first-char
-   #:last-char
-   #:join
-   #:split
-   #:random-string
-   #:ends-with-p
-   #:starts-with-p
-   #:strip
-   #:strip-left
-   #:strip-right))
+   :concat
+   :empty-p
+   :first-char
+   :last-char
+   :join
+   :split
+   :random-string
+   :ends-with-p
+   :starts-with-p
+   :strip
+   :strip-left
+   :strip-right))
 
-(in-package #:epsilon.lib.string)
+(in-package :epsilon.lib.string)
 
 (defun split (delimiter string)
   "Returns a lazy sequence of substrings of string, split by delimiter."
