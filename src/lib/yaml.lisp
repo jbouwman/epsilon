@@ -46,17 +46,17 @@
 ;;;;   * The parser is designed for clarity and correctness over performance
 ;;;;   * Input is assumed to be in UTF-8 encoding
 
-(defpackage #:epsilon.lib.yaml
-  (:use #:cl)
+(defpackage :epsilon.lib.yaml
+  (:use :cl)
   (:local-nicknames
-   (#:stream #:epsilon.lib.stream))
+   (:stream :epsilon.lib.stream))
   (:export
    :node-value
    :parse
    :parse-file
    :parse-string))
 
-(in-package #:epsilon.lib.yaml)
+(in-package :epsilon.lib.yaml)
 
 ;; Input
 

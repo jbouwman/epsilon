@@ -1,23 +1,24 @@
-(defpackage #:epsilon.net.tls
-  (:use #:cl
-        #:epsilon.lib.binding
-        #:epsilon.lib.char
-        #:epsilon.lib.stream
-        #:epsilon.lib.list
-        #:epsilon.lib.symbol
-        #:epsilon.lib.type
-        #:epsilon.sys.sync.lock
-        #:epsilon.sys.sync.thread)
-  (:local-nicknames (#:ffi #:epsilon.sys.ffi))
-  (:export #:ensure-initialized
-           #:make-context
-           #:+ssl-verify-none+
-           #:+ssl-verify-peer+
-           #:with-global-context
-           #:use-certificate-chain-file
-           #:use-private-key-file
-           #:make-ssl-client-stream
-           #:make-ssl-server-stream))
+(defpackage :epsilon.net.tls
+  (:use :cl
+        :epsilon.lib.binding
+        :epsilon.lib.char
+        :epsilon.lib.list
+        :epsilon.lib.symbol
+        :epsilon.lib.type
+        :epsilon.sys.sync.lock
+        :epsilon.sys.sync.thread)
+  (:local-nicknames
+   (:stream :epsilon.lib.stream)
+   (:ffi :epsilon.sys.ffi))
+  (:export :ensure-initialized
+           :make-context
+           :+ssl-verify-none+
+           :+ssl-verify-peer+
+           :with-global-context
+           :use-certificate-chain-file
+           :use-private-key-file
+           :make-ssl-client-stream
+           :make-ssl-server-stream))
 
 (in-package :epsilon.net.tls)
 
@@ -1705,17 +1706,17 @@ Note: the _really_ old formats (<= 0.9.4) are not supported."
 (defmacro with-bio-output-to-string ((bio) &body body)
   "Evaluate BODY with BIO bound to a SSL BIO structure that writes to
 a Common Lisp string.  The string is returned."
-  `(let ((*bio-socket* (make-instance 'fast-output-stream))
+  `(let ((*bio-socket* (stream:make-output-stream))
 	 (,bio (bio-new-lisp)))
      (unwind-protect
           (progn ,@body)
        (bio-free ,bio))
-     (u8-to-string (finish-output-stream *bio-socket*))))
+     (u8-to-string (stream:buffer *bio-socket*))))
 
 (defmacro with-bio-input-from-string ((bio string) &body body)
   "Evaluate BODY with BIO bound to a SSL BIO structure that reads from
 a Common Lisp STRING."
-  `(let ((*bio-socket* (make-vector-stream (string-to-u8 ,string)))
+  `(let ((*bio-socket* (stream:make-input-stream (string-to-u8 ,string)))
 	 (,bio (bio-new-lisp)))
      (unwind-protect
           (progn ,@body)
@@ -2252,9 +2253,6 @@ otherwise use a Lisp BIO wrapping the TCP Lisp stream.")
          (unless (ffi:null-pointer-p subject-name)
            (x509-name-oneline subject-name buf 1024)
            (ffi:foreign-string-to-lisp buf)))))))
-
-(defmethod ssl-stream-handle ((stream char-stream)) ; TODO is this right ?
-  (ssl-stream-handle (binary-stream stream)))
 
 (defun ssl-stream-x509-certificate (ssl-stream)
   (compat-ssl-get1-peer-certificate (ssl-stream-handle ssl-stream)))

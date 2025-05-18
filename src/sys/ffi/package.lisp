@@ -5,11 +5,11 @@
    #:epsilon.lib.binding
    #:epsilon.lib.function
    #:epsilon.lib.list
-   #:epsilon.lib.stream
    #:epsilon.lib.symbol
    #:epsilon.lib.type
    #:sb-alien)
-  (:local-nicknames (#:map #:epsilon.lib.map))
+  (:local-nicknames
+   (#:map #:epsilon.lib.map))
   (:export
    ;; C ABI utils
    #:canonicalize-symbol-name-case
@@ -73,7 +73,6 @@
    #:epsilon.lib.condition
    #:epsilon.lib.function
    #:epsilon.lib.list
-   #:epsilon.lib.stream
    #:epsilon.lib.symbol
    #:epsilon.lib.vector
    #:epsilon.sys.env)

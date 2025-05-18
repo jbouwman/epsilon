@@ -26,14 +26,14 @@
   ((output-buffer :initarg :buffer)))
 
 (defmethod make-decompression-state ((format (eql :deflate)))
-  (make-instance 'deflate-state-2 :buffer (make-instance 'fast-output-stream)))
+  (make-instance 'deflate-state-2 :buffer (stream:make-output-stream)))
 
 (defmethod call-with-decompressed-buffer (function input start end (state deflate-state-2))
   (with-slots (output-buffer) state
     (epsilon.lib.codec::decompress output-buffer (epsilon.lib.codec::make-dstate :deflate) input
                            :input-state start
                            :input-end end)
-    (let ((result (finish-output-stream output-buffer)))
+    (let ((result (stream:buffer output-buffer)))
       (funcall function result 0 (length result)))
     (- end start)))
 
