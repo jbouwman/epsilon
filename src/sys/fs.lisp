@@ -9,7 +9,6 @@
   (:shadow
    #:byte)
   (:export
-   #:current-dir
    #:dir-p
    #:file-p
    #:home-dir
@@ -19,7 +18,6 @@
    #:exists-p
    #:runtime-dir
    #:temp-dir
-   #:with-current-dir
    #:with-temp-file
    #:replace-extension
    
@@ -69,16 +67,6 @@
             ,@body)
        (when (file-p ,name)
          (delete-file* ,name)))))
-
-;; TODO replace other usages of LPs with URLs
-
-(defun current-dir ()
-  (uri:make-uri :scheme "file"
-                :path (sb-unix:posix-getcwd/)))
-
-(defun (setf current-dir) (dir)
-  (sb-posix:chdir dir)
-  dir)
 
 (defun file-info (path)
   (sb-posix:stat path))
@@ -167,12 +155,6 @@
             (unless (probe-file path)
               (sb-unix:unix-mkdir path #o775))))
 
-#++
-(make-dirs (uri:uri "file:///tmp/hello/goodbye"))
-
-
-
-
 (defun list-files (uri extension)
   (let (files)
     (walk-uri uri
@@ -182,18 +164,6 @@
                       (and (file-p (uri:path entry))
                            (str:ends-with-p (uri:path entry) extension))))
     (sort files #'string<= :key #'uri:path)))
-
-(defun call-with-current-dir (function dir)
-  (let ((current (current-dir)))
-    (if (string= current dir)
-        (funcall function)
-        (progn
-          (setf (current-dir) dir)
-          (unwind-protect (funcall function)
-            (setf (current-dir) current))))))
-
-(defmacro with-current-dir ((dir) &body body)
-  `(call-with-current-dir (lambda () ,@body) ,dir))
 
 (defun ensure-deleted (pathname)
   (when (file-p pathname)
