@@ -1,5 +1,7 @@
 (in-package #:epsilon.lib.archive)
 
+;; TODO review and remove
+
 (deftype io ()
   `(or stream vector-input directory-input))
 
@@ -31,7 +33,7 @@
   (etypecase io
     (vector-input
      (vector-input-index io))
-    (stream ; works for e.g. flexi-stream:in-memory-*-stream
+    (stream
      (file-position io))))
 
 (defun start (io)
