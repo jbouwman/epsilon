@@ -167,7 +167,8 @@
                            (:file "sequence-tests")))
      (:module "net"
               :components ((:file "http-tests")
-                           (:file "http-server-tests"))))))
+                           (:file "http-server-tests")
+                           (:file "msgpack-http-tests"))))))
   :perform (test-op (o c)
                    (symbol-call :epsilon.tool.test ':run-tests)))
 
