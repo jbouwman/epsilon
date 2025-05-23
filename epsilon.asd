@@ -137,6 +137,8 @@
                    (:file "encode")))
      (:module "net"
       :components ((:file "core")
+                   (:file "dns")
+                   (:file "tcp")
                    (:file "tls")
                    (:file "http")
                    (:file "http-server")))
