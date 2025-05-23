@@ -92,7 +92,7 @@ The usual value of FORMAT will be one of :GZIP or :ZLIB."
 
 (defun finish-inflate-state (state)
   (unless (inflate-state-done state)
-    (error 'stream-exhausted))
+    (error "incomplete inflate"))
   t)
 
 (defmethod print-object ((object inflate-state) stream)

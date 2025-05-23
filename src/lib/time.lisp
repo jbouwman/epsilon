@@ -13,6 +13,7 @@
    #:timestamp=
    #:timestamp<
    #:timestamp>
+   #:timestamp+
    
    ;; Durations
    #:+nanosecond+
@@ -178,6 +179,26 @@
     (if (< nanoseconds 0)
         (make-timestamp (1- seconds) (+ 1000000000 nanoseconds))
         (make-timestamp seconds nanoseconds))))
+
+(defun timestamp+ (timestamp interval &key (unit :sec))
+  "Add an interval to a timestamp, returning a new timestamp.
+   TIMESTAMP is the base timestamp.
+   INTERVAL is the amount to add.
+   UNIT is the unit of the interval (:nsec, :usec, :msec, :sec, :min, :hour, :day)."
+  (let* ((nanos (case unit
+                 (:nsec interval)
+                 (:usec (* interval +microsecond+))
+                 (:msec (* interval +millisecond+))
+                 (:sec  (* interval +second+))
+                 (:min  (* interval +minute+))
+                 (:hour (* interval +hour+))
+                 (:day  (* interval +day+))
+                 (t (error "Unknown unit: ~A" unit))))
+         (seconds (floor nanos 1000000000))
+         (remaining-nanos (mod nanos 1000000000)))
+    (make-timestamp 
+     (+ (timestamp-seconds timestamp) seconds)
+     (+ (timestamp-nanoseconds timestamp) remaining-nanos))))
 
 ;;; Format/parse functions
 

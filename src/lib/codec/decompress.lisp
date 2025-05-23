@@ -45,7 +45,7 @@ The usual value of DATA-FORMAT will be one of :BZIP2 or :GZIP."
 
 (defun finish-dstate (state)            ; FIXME dstate is jargony -- rename all -- is this generic?
   (unless (dstate-done state)
-    (error 'stream-exhausted))
+    (error "incomplete decompression state"))
   t)
 
 (defgeneric decompress (output state input &key &allow-other-keys)
