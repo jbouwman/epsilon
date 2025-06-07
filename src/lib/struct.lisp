@@ -1,4 +1,15 @@
-(in-package #:epsilon.lib.archive)
+(defpackage :epsilon.lib.struct
+  (:use
+   :cl
+   :epsilon.lib.type)
+  (:export
+   :*structures*
+   :define-byte-structure
+   :read-structure))
+
+(in-package :epsilon.lib.struct)
+
+;; Zipfile structure support for lib.archive
 
 (defvar *structures* (make-hash-table :test 'eql))
 
@@ -77,29 +88,6 @@
     (u32 'write-u32/le)
     (u64 'write-u64/le)))
 
-(defun generate-record-decoder (record vector index)
-  (destructuring-bind (name type &optional count) record
-    (cond ((typep type 'integer)
-           (let ((btype (integer-binary-type type)))
-             `(progn
-                (decf size ,(binary-type-size btype))
-                (setf ,name (,(binary-type-decoder btype) ,vector ,index))
-                (incf ,index ,(binary-type-size btype))
-                (unless (= ,type ,name)
-                  (error 'mismatched-type-signature :signature ,name)))))
-          (count
-           `(progn
-              (setf ,name (make-array ,count :element-type ',(binary-type-type type)))
-              (decf size (* (length ,name) ,(binary-type-size type)))
-              (loop for i from 0 below (length ,name)
-                    do (setf (aref ,name i) (,(binary-type-decoder type) ,vector ,index))
-                       (incf ,index ,(binary-type-size type)))))
-          (T
-           `(progn
-              (decf size ,(binary-type-size type))
-              (setf ,name (,(binary-type-decoder type) ,vector ,index))
-              (incf ,index ,(binary-type-size type)))))))
-
 (defun generate-record-reader (record stream)
   (destructuring-bind (name type &optional count) record
     (cond ((typep type 'integer)
@@ -152,6 +140,29 @@
           (T
            `(,(binary-type-writer type) ,name ,stream)))))
 
+(defun generate-record-decoder (record vector index)
+  (destructuring-bind (name type &optional count) record
+    (cond ((typep type 'integer)
+           (let ((btype (integer-binary-type type)))
+             `(progn
+                (decf size ,(binary-type-size btype))
+                (setf ,name (,(binary-type-decoder btype) ,vector ,index))
+                (incf ,index ,(binary-type-size btype))
+                (unless (= ,type ,name)
+                  (error 'mismatched-type-signature :signature ,name)))))
+          (count
+           `(progn
+              (setf ,name (make-array ,count :element-type ',(binary-type-type type)))
+              (decf size (* (length ,name) ,(binary-type-size type)))
+              (loop for i from 0 below (length ,name)
+                    do (setf (aref ,name i) (,(binary-type-decoder type) ,vector ,index))
+                       (incf ,index ,(binary-type-size type)))))
+          (T
+           `(progn
+              (decf size ,(binary-type-size type))
+              (setf ,name (,(binary-type-decoder type) ,vector ,index))
+              (incf ,index ,(binary-type-size type)))))))
+
 (defmacro define-byte-structure (name &body records)
   (destructuring-bind (name signature) (if (listp name) name (list name NIL))
     (let ((fields (mapcar #'first records))
@@ -199,62 +210,3 @@
              `((setf (gethash ',name *structures*)
                      (setf (gethash ,signature *structures*)
                            (list #',decode-name #',read-name #',encode-name #',write-name)))))))))
-
-(defun decode-string (octets flags)
-  (epsilon.lib.char:u8-to-string octets :encoding (if (logbitp 11 flags) :utf-8 :cp437)))
-
-(defun encode-string (string)
-  (if string
-      (epsilon.lib.char:string-to-u8 string :encoding :utf-8)
-      #()))
-
-(defun decode-msdos-timestamp (date time)
-  (let ((yy (ldb (byte 7 9) date))
-        (mm (ldb (byte 4 5) date))
-        (dd (ldb (byte 5 0) date))
-        (h (ldb (byte 5 11) time))
-        (m (ldb (byte 6 5) time))
-        (s (ldb (byte 5 0) time)))
-    (flet ((clamp (l x h)
-             (min h (max l x))))
-      (encode-universal-time (clamp 0 (1+ (* 2 s)) 59) (clamp 0 (1- m) 59) (clamp 0 (1- h) 23) (clamp 1 dd 31) (clamp 1 mm 12) (+ 1980 yy) NIL))))
-
-(defun encode-msdos-timestamp (timestamp)
-  (multiple-value-bind (s m h dd mm yy) (decode-universal-time timestamp NIL)
-    (let ((date 0)
-          (time 0))
-      (setf (ldb (byte 7 9) date) (- yy 1980))
-      (setf (ldb (byte 4 5) date) mm)
-      (setf (ldb (byte 5 0) date) dd)
-      (setf (ldb (byte 5 11) time) (1+ h))
-      (setf (ldb (byte 6 5) time) (1+ m))
-      (setf (ldb (byte 5 0) time) (floor s 2))
-      (values date time))))
-
-(defun decode-version (version)
-  (multiple-value-bind (major minor) (floor (ldb (byte 8 0) version) 10)
-    (list major minor)))
-
-(defun encode-version (version &optional compatibility)
-  (check-type version (cons (integer 0 9) (cons (integer 0 9) null)))
-  (let ((idx (etypecase compatibility
-               (null 0)
-               (integer compatibility)
-               (keyword (file-attribute-id compatibility))))
-        (int (+ (* 10 (first version)) (second version))))
-    (setf (ldb (byte 8 8) int) idx)
-    int))
-
-(defun decode-file-attribute (compat attr)
-  (let ((compat (file-attribute-name compat))
-        (msdos (ldb (byte 8 0) attr))
-        (os-specific (ldb (byte 16 16) attr)))
-    (list (epsilon.sys.fs:decode-attributes msdos :windows) compat os-specific)))
-
-(defun encode-file-attribute (thing)
-  (destructuring-bind (msdos compat os-specific) thing
-    (declare (ignore compat))
-    (let ((i 0))
-      (setf (ldb (byte 8 0) i) (logand #xFF (epsilon.sys.fs:encode-attributes msdos :windows)))
-      (setf (ldb (byte 16 16) i) (logand #xFFFF os-specific))
-      i)))

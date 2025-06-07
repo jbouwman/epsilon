@@ -65,15 +65,6 @@
                (if big-endian-p '#:ref/be '#:ref/le)))
 ) ; EVAL-WHEN
 
-
-;; TODO compare this to lib.type version
-
-#++
-(defun u16ref/le (vector offset)       ; FIXME same as nibbles
-  (declare (type ->u8 vector)
-           (type array-index offset))
-  (sb-sys:sap-ref-16 (sb-sys:vector-sap vector) offset))
-
 ;;; efficient 32-bit arithmetic, which a lot of algorithms require
 
 (declaim #+ironclad-fast-mod32-arithmetic (inline mod32+)
