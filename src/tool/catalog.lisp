@@ -3,6 +3,7 @@
    #:cl)
   (:local-nicknames
    (#:hex #:epsilon.lib.hex)
+   (#:re #:epsilon.lib.regex)
    (#:digest #:epsilon.lib.digest)
    (#:type #:epsilon.lib.type)))
 
@@ -72,7 +73,7 @@
         (values string nil))))
 
 (defun parse-reference (ref)
-  (let ((segments (lib.regex:split ", *" ref)))
+  (let ((segments (re:split ", *" ref)))
     (if (< 1 (length segments))
         (list :type (mapcar #'parse-reference segments)) ; todo structured references later
         (multiple-value-bind (name code)

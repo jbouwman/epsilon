@@ -3,36 +3,26 @@
         #:epsilon.lib.syntax
         #:epsilon.lib.symbol
         #:epsilon.lib.type)
-  (:shadow #:digit-char-p)
-  (:export #:*allow-quoting*
-           #:*look-ahead-for-suffix*
-           #:*optimize-char-classes*
-           #:*property-resolver*
-           #:*regex-char-code-limit*
-           #:*use-bmh-matchers*
-           #:all-matches
-           #:all-matches-as-strings
-           #:count-matches
-           #:create-optimized-test-function
-           #:create-scanner
-           #:define-parse-tree-synonym
-           #:do-matches
-           #:do-matches-as-strings
-           #:do-scans
-           #:match
-           #:parse-string
-           #:parse-tree-synonym
-           #:regex-error
-           #:regex-invocation-error
-           #:regex-syntax-error
-           #:regex-syntax-error-pos
-           #:regex-syntax-error-string
-           #:quote-meta-chars
-           #:regex-replace
-           #:regex-replace-all
-           #:scan
-           #:scan-to-strings
-           #:split))
+  (:local-nicknames
+   (:str :epsilon.lib.string))
+  (:import-from :epsilon.lib.string
+   #:word-char-p
+   #:whitespacep
+   #:nsubseq
+   #:string-list-to-simple-string)
+  (:shadow
+   #:compile
+   #:search)
+  (:export
+   #:scan
+   #:scan-to-strings
+   #:search
+   #:match
+   #:findall
+   #:finditer
+   #:sub
+   #:subn
+   #:compile))
 
 (in-package #:epsilon.lib.regex)
 
@@ -109,7 +99,7 @@ Only used for patterns which might have zero length.")
 (declaim (simple-vector *last-pos-stores*))
 
 (defvar *use-bmh-matchers* nil
-  "Whether the scanners created by CREATE-SCANNER should use the \(fast
+  "Whether the scanners created by COMPILE should use the \(fast
 but large) Boyer-Moore-Horspool matchers.")
 
 (defvar *optimize-char-classes* nil
@@ -130,30 +120,6 @@ intended to handle `character properties' like \\p{IsAlpha}.  If
 (defvar *allow-quoting* nil
   "Whether the parser should support Perl's \\Q and \\E.")
 
-(declaim (inline digit-char-p))  
-(defun digit-char-p (chr)
-  "Tests whether a character is a decimal digit, i.e. the same as
-Perl's [\\d].  Note that this function shadows the standard Common
-Lisp function CL:DIGIT-CHAR-P."
-  (char<= #\0 chr #\9))
-
-(declaim (inline word-char-p))  
-(defun word-char-p (chr)
-  "Tests whether a character is a \"word\" character.  In the ASCII
-charset this is equivalent to a-z, A-Z, 0-9, or _, i.e. the same as
-Perl's [\\w]."
-  (or (alphanumericp chr)
-      (char= chr #\_)))
-
-(define-constant +whitespace-char-string+
-  (coerce '(#\Space #\Tab #\Linefeed #\Return #\Page) 'string)
-  "A string of all characters which are considered to be whitespace.
-Same as Perl's [\\s].")
-
-(defun whitespacep (chr)
-  "Tests whether a character is whitespace, i.e. whether it would
-match [\\s] in Perl."
-  (find chr +whitespace-char-string+ :test #'char=))
 
 (defmacro maybe-coerce-to-simple-string (string)
   "Coerces STRING to a simple STRING unless it already is one."
@@ -165,32 +131,6 @@ match [\\s] in Perl."
              (coerce ,=string=
                      'simple-string))))))
 
-(declaim (inline nsubseq))
-(defun nsubseq (sequence start &optional (end (length sequence)))
-  "Returns a subsequence by pointing to location in original sequence."
-  (make-array (- end start)
-              :element-type (array-element-type sequence)
-              :displaced-to sequence
-              :displaced-index-offset start))
-
-(defun string-list-to-simple-string (string-list)
-  "Concatenates a list of strings to one simple-string."
-  ;; this function provided by JP Massar; note that we can't use APPLY
-  ;; with CONCATENATE here because of CALL-ARGUMENTS-LIMIT
-  (let ((total-size 0))
-    (declare (fixnum total-size))
-    (dolist (string string-list)
-      #-:genera (declare (string string))
-      (incf total-size (length string)))
-    (let ((result-string (make-sequence 'simple-string
-                                        total-size))
-          (curr-pos 0))
-      (declare (fixnum curr-pos))
-      (dolist (string string-list)
-        #-:genera (declare (string string))
-        (replace result-string string :start1 curr-pos)
-        (incf curr-pos (length string)))
-      result-string)))
 
 (defun complement* (test-function)
   "Like COMPLEMENT but optimized for unary functions."
@@ -656,7 +596,7 @@ currently lexed and to keep track of the lexer's state."
   (last-pos nil :type list))
 
 (defun make-lexer (string)
-  (declare #-:genera (string string))
+  (declare (string string))
   (make-lexer-internal :str (maybe-coerce-to-simple-string string)
                        :len (length string)))
 
@@ -2288,8 +2228,8 @@ FLAGS."
                                   (char= char this-char))))
                              ((symbolp item)
                               (case item
-                                ((:digit-class) #'digit-char-p)
-                                ((:non-digit-class) (complement* #'digit-char-p))
+                                ((:digit-class) #'str:digit-char-p)
+                                ((:non-digit-class) (complement* #'str:digit-char-p))
                                 ((:whitespace-char-class) #'whitespacep)
                                 ((:non-whitespace-char-class) (complement* #'whitespacep))
                                 ((:word-char-class) #'word-char-p)
@@ -2904,7 +2844,7 @@ parse trees which are atoms.")
   (:method ((parse-tree (eql :digit-class)))
     (declare (special accumulate-start-p))
    (setq accumulate-start-p nil)
-   (make-instance 'char-class :test-function #'digit-char-p))
+   (make-instance 'char-class :test-function #'str:digit-char-p))
   (:method ((parse-tree (eql :word-char-class)))
     (declare (special accumulate-start-p))
    (setq accumulate-start-p nil)
@@ -2916,7 +2856,7 @@ parse trees which are atoms.")
   (:method ((parse-tree (eql :non-digit-class)))
     (declare (special accumulate-start-p))
    (setq accumulate-start-p nil)
-   (make-instance 'char-class :test-function (complement* #'digit-char-p)))
+   (make-instance 'char-class :test-function (complement* #'str:digit-char-p)))
   (:method ((parse-tree (eql :non-word-char-class)))
     (declare (special accumulate-start-p))
    (setq accumulate-start-p nil)
@@ -3671,7 +3611,7 @@ against CHR-EXPR."
 (defmethod create-matcher-aux ((str str) next-fn)
   (declare (fixnum *end-string-pos*)
            (function next-fn)
-           ;; this special value is set by CREATE-SCANNER when the
+           ;; this special value is set by COMPILE when the
            ;; closures are built
            (special end-string))
   (let* ((len (len str))
@@ -4754,11 +4694,11 @@ instead.  \(BMH matchers are faster but need much more space.)"
         (lambda (start-pos)
           (declare (fixnum start-pos))
           (and (not (minusp start-pos))
-               (search pattern
-                       *string*
-                       :start2 start-pos
-                       :end2 *end-pos*
-                       :test test))))))
+               (cl:search pattern
+                          *string*
+                          :start2 start-pos
+                          :end2 *end-pos*
+                          :test test))))))
   (let* ((m (length pattern))
 	 (skip (make-array *regex-char-code-limit*
                            :element-type 'fixnum
@@ -4807,9 +4747,9 @@ a #\Newline."
                      (1+ i))))
 
 (defmacro insert-advance-fn (advance-fn)
-  "Creates the actual closure returned by CREATE-SCANNER-AUX by
+  "Creates the actual closure returned by COMPILE-AUX by
 replacing '(ADVANCE-FN-DEFINITION) with a suitable definition for
-ADVANCE-FN.  This is a utility macro used by CREATE-SCANNER-AUX."
+ADVANCE-FN.  This is a utility macro used by COMPILE-AUX."
   (subst
    advance-fn '(advance-fn-definition)
    '(lambda (string start end)
@@ -4990,7 +4930,7 @@ ADVANCE-FN.  This is a utility macro used by CREATE-SCANNER-AUX."
                             (incf (the fixnum pos))))))))))
     :test #'equalp))
 
-(defun create-scanner-aux (match-fn
+(defun compile-aux (match-fn
                            min-len
                            start-anchored-p
                            starts-with
@@ -5003,7 +4943,7 @@ ADVANCE-FN.  This is a utility macro used by CREATE-SCANNER-AUX."
                            zero-length-num
                            reg-num)
   "Auxiliary function to create and return a scanner \(which is
-actually a closure).  Used by CREATE-SCANNER."
+actually a closure).  Used by COMPILE."
   (declare (fixnum min-len zero-length-num rep-num reg-num))
   (let ((starts-with-len (if (typep starts-with 'str)
                            (len starts-with)))
@@ -5069,7 +5009,7 @@ actually a closure).  Used by CREATE-SCANNER."
                               (setq try-pos (1+ *end-string-pos*))))))))))))
       ((and starts-with-everything end-string-test end-string-offset)
         ;; we know that the regular expression starts with ".*" (which
-        ;; is not in single-line-mode, see CREATE-SCANNER-AUX) and ends
+        ;; is not in single-line-mode, see COMPILE-AUX) and ends
         ;; with a constant end string and we know the end string's
         ;; offset (from the left)
         (insert-advance-fn
@@ -5137,7 +5077,7 @@ actually a closure).  Used by CREATE-SCANNER."
             pos)))
       ((and starts-with-everything end-string-test)
         ;; we know that the regular expression starts with ".*" (which
-        ;; is not in single-line-mode, see CREATE-SCANNER-AUX) and ends
+        ;; is not in single-line-mode, see COMPILE-AUX) and ends
         ;; with a constant end string; similar to the second case but we
         ;; only need to check for the end string, it doesn't provide
         ;; enough information to advance POS
@@ -5187,17 +5127,17 @@ actually a closure).  Used by CREATE-SCANNER."
             pos))))))
 
 ;; TODO merge all behavior dynamics into a single flag set
-;; TODO Make create-scanner operate on parse tree, configuration block
+;; TODO Make compile operate on parse tree, configuration block
 
 (defvar *look-ahead-for-suffix* t
   "Controls whether scanners will optimistically look ahead for a
   constant suffix of a regular expression, if there is one.")
 
-(defgeneric create-scanner (regex &key case-insensitive-mode
-                                       multi-line-mode
-                                       single-line-mode
-                                       extended-mode
-                                       destructive)
+(defgeneric compile (regex &key case-insensitive-mode
+                             multi-line-mode
+                             single-line-mode
+                             extended-mode
+                             destructive)
   (:documentation "Accepts a regular expression - either as a
 parse-tree or as a string - and returns a scan closure which will scan
 strings for this regular expression and a list mapping registers to
@@ -5206,13 +5146,13 @@ arguments are equivalent to the imsx modifiers in Perl.  If
 DESTRUCTIVE is not NIL, the function is allowed to destructively
 modify its first argument \(but only if it's a parse tree)."))
 
-(defmethod create-scanner ((regex-string string) &key case-insensitive-mode
+(defmethod compile ((regex-string string) &key case-insensitive-mode
                                                       multi-line-mode
                                                       single-line-mode
                                                       extended-mode
                                                       destructive)
   (declare (ignore destructive))
-  ;; parse the string into a parse-tree and then call CREATE-SCANNER
+  ;; parse the string into a parse-tree and then call COMPILE
   ;; again
   (let* ((*extended-mode-p* extended-mode)
          (quoted-regex-string (if *allow-quoting*
@@ -5221,13 +5161,13 @@ modify its first argument \(but only if it's a parse tree)."))
          (*syntax-error-string* (copy-seq quoted-regex-string)))
     ;; wrap the result with :GROUP to avoid infinite loops for
     ;; constant strings
-    (create-scanner (cons :group (list (parse-string quoted-regex-string)))
+    (compile (cons :group (list (parse-string quoted-regex-string)))
                     :case-insensitive-mode case-insensitive-mode
                     :multi-line-mode multi-line-mode
                     :single-line-mode single-line-mode
                     :destructive t)))
 
-(defmethod create-scanner ((scanner function) &key case-insensitive-mode
+(defmethod compile ((scanner function) &key case-insensitive-mode
                                                    multi-line-mode
                                                    single-line-mode
                                                    extended-mode
@@ -5237,7 +5177,7 @@ modify its first argument \(but only if it's a parse tree)."))
     (signal-invocation-error "You can't use the keyword arguments to modify an existing scanner."))
   scanner)
 
-(defmethod create-scanner ((parse-tree t) &key case-insensitive-mode
+(defmethod compile ((parse-tree t) &key case-insensitive-mode
                                                multi-line-mode
                                                single-line-mode
                                                extended-mode
@@ -5307,7 +5247,7 @@ modify its first argument \(but only if it's a parse tree)."))
                                           (case-insensitive-p starts-with))))))
           (declare (special end-string-offset end-anchored-p end-string))
           ;; now create the scanner and return it
-          (values (create-scanner-aux match-fn
+          (values (compile-aux match-fn
                                       (regex-min-length regex)
                                       (or (start-anchored-p regex)
                                           ;; a dot in single-line-mode also
@@ -5339,7 +5279,7 @@ to match REGEX.  On success returns four values - the start of the
 match, the end of the match, and two arrays denoting the beginnings
 and ends of register matches.  On failure returns NIL.  REGEX can be a
 string which will be parsed according to Perl syntax, a parse tree, or
-a pre-compiled scanner created by CREATE-SCANNER.  TARGET-STRING will
+a pre-compiled scanner created by COMPILE.  TARGET-STRING will
 be coerced to a simple string if it isn't one already.  The
 REAL-START-POS parameter should be ignored - it exists only for
 internal purposes."))
@@ -5350,7 +5290,7 @@ internal purposes."))
                                             ((:real-start-pos *real-start-pos*) nil))
   ;; note that the scanners are optimized for simple strings so we
   ;; have to coerce TARGET-STRING into one if it isn't already
-  (funcall (create-scanner regex-string)
+  (funcall (compile regex-string)
            (maybe-coerce-to-simple-string target-string)
            start end))
 
@@ -5366,7 +5306,7 @@ internal purposes."))
                                 &key (start 0)
                                      (end (length target-string))
                                      ((:real-start-pos *real-start-pos*) nil))
-  (funcall (create-scanner parse-tree)
+  (funcall (compile parse-tree)
            (maybe-coerce-to-simple-string target-string)
            start end))
 
@@ -5375,7 +5315,7 @@ internal purposes."))
   ;; Don't pass &environment to CONSTANTP, it may not be digestable by
   ;; LOAD-TIME-VALUE, e.g., MACROLETs.
   (cond ((constantp regex)
-         `(scan (load-time-value (create-scanner ,regex))
+         `(scan (load-time-value (compile ,regex))
                 ,target-string ,@rest))
         (t form)))
 
@@ -5407,7 +5347,7 @@ share structure with TARGET-STRING."
     (&whole form regex target-string &rest rest)
   "Make sure that constant forms are compiled into scanners at compile time."
   (cond ((constantp regex)
-         `(scan-to-strings (load-time-value (create-scanner ,regex))
+         `(scan-to-strings (load-time-value (compile ,regex))
                            ,target-string ,@rest))
         (t form)))
 
@@ -5441,7 +5381,7 @@ declarations."
                     `((,%regex ,regex)
                       (,scanner (typecase ,%regex
                                   (function ,%regex)
-                                  (t (create-scanner ,%regex)))))))
+                                  (t (compile ,%regex)))))))
            ;; coerce TARGET-STRING to a simple string unless it is one
            ;; already (otherwise SCAN will do this on each iteration)
            (setq ,target-string
@@ -5530,7 +5470,7 @@ with declarations."
   "Make sure that constant forms are compiled into scanners at
 compile time."
   (cond ((constantp regex)
-         `(count-matches (load-time-value (create-scanner ,regex))
+         `(count-matches (load-time-value (compile ,regex))
                          ,@rest))
         (t form)))
 
@@ -5553,7 +5493,7 @@ the scan is continued one position behind this match."
    "Make sure that constant forms are compiled into scanners at
 compile time."
    (cond ((constantp regex)
-          `(all-matches (load-time-value (create-scanner ,regex))
+          `(all-matches (load-time-value (compile ,regex))
                         ,@rest))
          (t form)))
 
@@ -5575,7 +5515,7 @@ share structure with TARGET-STRING."
 compile time."
    (cond ((constantp regex)
           `(all-matches-as-strings
-            (load-time-value (create-scanner ,regex))
+            (load-time-value (compile ,regex))
             ,@rest))
          (t form)))
 
@@ -5657,7 +5597,7 @@ structure with TARGET-STRING."
 (define-compiler-macro split (&whole form regex target-string &rest rest)
   "Make sure that constant forms are compiled into scanners at compile time."
   (cond ((constantp regex)
-         `(split (load-time-value (create-scanner ,regex))
+         `(split (load-time-value (compile ,regex))
                  ,target-string ,@rest))
         (t form)))
 
@@ -5731,7 +5671,7 @@ REGEX-REPLACE-ALL into a replacement template which is an
 S-expression."))
 
 (let* ((*use-bmh-matchers* nil)
-       (reg-scanner (create-scanner "\\\\(?:\\\\|\\{\\d+\\}|\\d+|&|`|')")))
+       (reg-scanner (compile "\\\\(?:\\\\|\\{\\d+\\}|\\d+|&|`|')")))
   (defmethod build-replacement-template ((replacement-string string))
     (let ((from 0)
           ;; COLLECTOR will hold the (reversed) template
@@ -5743,7 +5683,7 @@ S-expression."))
           (push (subseq replacement-string from match-start) collector))
         ;; PARSE-START is true if the pattern matched a number which
         ;; refers to a register
-        (let* ((parse-start (position-if #'digit-char-p
+        (let* ((parse-start (position-if #'str:digit-char-p
                                          replacement-string
                                          :start match-start
                                          :end match-end))
@@ -5960,7 +5900,7 @@ match.
     (&whole form regex target-string replacement &rest rest)
   "Make sure that constant forms are compiled into scanners at compile time."
   (cond ((constantp regex)
-         `(regex-replace (load-time-value (create-scanner ,regex))
+         `(regex-replace (load-time-value (compile ,regex))
                          ,target-string ,replacement ,@rest))
         (t form)))
 
@@ -6022,12 +5962,12 @@ match.
     (&whole form regex target-string replacement &rest rest)
   "Make sure that constant forms are compiled into scanners at compile time."
   (cond ((constantp regex)
-         `(regex-replace-all (load-time-value (create-scanner ,regex))
+         `(regex-replace-all (load-time-value (compile ,regex))
                              ,target-string ,replacement ,@rest))
         (t form)))
 
 (let* ((*use-bmh-matchers* nil)
-       (non-word-char-scanner (create-scanner "[^a-zA-Z_0-9]")))
+       (non-word-char-scanner (compile "[^a-zA-Z_0-9]")))
   (defun quote-meta-chars (string &key (start 0) (end (length string)))
     "Quote, i.e. prefix with #\\\\, all non-word characters in STRING."
     (regex-replace-all non-word-char-scanner string "\\\\\\&"
@@ -6035,8 +5975,8 @@ match.
 
 (let* ((*use-bmh-matchers* nil)
        (*allow-quoting* nil)
-       (quote-char-scanner (create-scanner "\\\\Q"))
-       (section-scanner (create-scanner "\\\\Q((?:[^\\\\]|\\\\(?!Q))*?)(?:\\\\E|$)")))
+       (quote-char-scanner (compile "\\\\Q"))
+       (section-scanner (compile "\\\\Q((?:[^\\\\]|\\\\(?!Q))*?)(?:\\\\E|$)")))
   (defun quote-sections (string)
     "Replace sections inside of STRING which are enclosed by \\Q and
 \\E with the quoted equivalent of these sections \(see
@@ -6055,10 +5995,10 @@ sections. These sections may nest."
             finally (return result)))))
 
 (let* ((*use-bmh-matchers* nil)
-       (comment-scanner (create-scanner "(?s)\\(\\?#.*?\\)"))
-       (extended-comment-scanner (create-scanner "(?m:#.*?$)|(?s:\\(\\?#.*?\\))"))
-       (quote-token-scanner (create-scanner "\\\\[QE]"))
-       (quote-token-replace-scanner (create-scanner "\\\\([QE])")))
+       (comment-scanner (compile "(?s)\\(\\?#.*?\\)"))
+       (extended-comment-scanner (compile "(?m:#.*?$)|(?s:\\(\\?#.*?\\))"))
+       (quote-token-scanner (compile "\\\\[QE]"))
+       (quote-token-replace-scanner (compile "\\\\([QE])")))
   (defun clean-comments (string &optional extended-mode)
     "Clean \(?#...) comments within STRING for quoting, i.e. convert
 \\Q to Q and \\E to E.  If EXTENDED-MODE is true, also clean
@@ -6094,6 +6034,78 @@ PARSE-TREE.  Both arguments are quoted."
   `(eval-when (:compile-toplevel :load-toplevel :execute)
      (setf (parse-tree-synonym ',name) ',parse-tree)))
 
-(defun match (&rest args)
-  ;; oof
-  )
+(defun search (pattern string &key (start 0) (end (length string)))
+  "Search for the first occurrence of PATTERN in STRING.
+Returns the first match as a string and an array of captured groups,
+or NIL if no match is found."
+  (scan-to-strings pattern string :start start :end end))
+
+(defun match (pattern string &key (start 0) (end (length string)))
+  "Match PATTERN at the beginning of STRING.
+Returns the match as a string and an array of captured groups,
+or NIL if no match is found at the start."
+  (multiple-value-bind (match-start match-end reg-starts reg-ends)
+      (scan pattern string :start start :end end)
+    (when (and match-start (= match-start start))
+      (let ((match-string (subseq string match-start match-end))
+            (groups (when reg-starts
+                      (map 'vector
+                           (lambda (reg-start reg-end)
+                             (when (and reg-start reg-end)
+                               (subseq string reg-start reg-end)))
+                           reg-starts reg-ends))))
+        (values match-string groups)))))
+
+(defun findall (pattern string &key (start 0) (end (length string)))
+  "Find all non-overlapping matches of PATTERN in STRING.
+Returns a list of matched strings."
+  (all-matches-as-strings pattern string :start start :end end))
+
+(defun finditer (pattern string &key (start 0) (end (length string)))
+  "Find all non-overlapping matches of PATTERN in STRING.
+Returns a list of (start . end) position pairs."
+  (let ((positions (all-matches pattern string :start start :end end)))
+    (loop for i from 0 below (length positions) by 2
+          collect (cons (elt positions i) (elt positions (1+ i))))))
+
+(defun sub (pattern replacement string &key (count 0) (start 0) (end (length string)))
+  "Replace occurrences of PATTERN in STRING with REPLACEMENT.
+If COUNT is 0 (default), replace all occurrences.
+If COUNT is positive, replace at most COUNT occurrences.
+Returns the modified string."
+  (let* ((substring (subseq string start end))
+         (prefix (subseq string 0 start))
+         (suffix (subseq string end))
+         (result (if (zerop count)
+                     (regex-replace-all pattern substring replacement)
+                     (let ((temp substring)
+                           (replacements 0))
+                       (loop while (and (< replacements count)
+                                        (scan pattern temp))
+                             do (setf temp (regex-replace pattern temp replacement))
+                                (incf replacements))
+                       temp))))
+    (concatenate 'string prefix result suffix)))
+
+(defun subn (pattern replacement string &key (count 0) (start 0) (end (length string)))
+  "Replace occurrences of PATTERN in STRING with REPLACEMENT.
+Returns two values: the modified string and the number of replacements made.
+If COUNT is 0 (default), replace all occurrences.
+If COUNT is positive, replace at most COUNT occurrences."
+  (let* ((substring (subseq string start end))
+         (prefix (subseq string 0 start))
+         (suffix (subseq string end)))
+    (if (zerop count)
+        (multiple-value-bind (result matched-p)
+            (regex-replace-all pattern substring replacement)
+          (let ((replacement-count (if matched-p
+                                       (count-matches pattern substring)
+                                       0)))
+            (values (concatenate 'string prefix result suffix) replacement-count)))
+        (let ((result substring)
+              (replacements 0))
+          (loop while (and (< replacements count)
+                           (scan pattern result))
+                do (setf result (regex-replace pattern result replacement))
+                   (incf replacements))
+          (values (concatenate 'string prefix result suffix) replacements)))))

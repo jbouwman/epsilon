@@ -6,7 +6,7 @@
    (#:seq #:epsilon.lib.sequence)
    (#:str #:epsilon.lib.string)
    (#:pkg #:epsilon.sys.pkg)
-   (#:regex #:epsilon.lib.regex))
+   (#:re #:epsilon.lib.regex))
   (:export #:deftest
            #:is
            #:is-p
@@ -473,7 +473,7 @@ If REGEX is provided, the condition's printed representation must match it."
            (setf ,caught-var t)
            ,(if regex
                 `(let ((condition-string (format nil "~A" ,condition-var)))
-                   (if (regex:match ,regex condition-string)
+                   (if (re:match ,regex condition-string)
                        (when *test-result*
                          (push (list t (lambda (r) r)) 
                                (test-assertions *test-result*)))
