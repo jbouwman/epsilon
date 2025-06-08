@@ -65,8 +65,6 @@
                    (:file "pkg")
                    (:module "ffi"
                     :components ((:file "package")
-                                 (:file "sys-utils")
-                                 (:file "sbcl")
                                  (:file "utils")
                                  (:file "early-types")
                                  (:file "foreign-vars")

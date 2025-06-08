@@ -1,4 +1,4 @@
-(in-package #:epsilon.sys.ffi.sys)
+(in-package #:epsilon.sys.ffi)
 
 (defun quoted-form-p (form)
   (and (proper-list-p form)
@@ -18,9 +18,4 @@
     ((quoted-form-p form)
      (second form))
     (t
-     #+clozure
-     (ccl::eval-constant form)
-     #+sbcl
-     (sb-int:constant-form-value form env)
-     #-(or clozure sbcl)
-     (eval form))))
+     (sb-int:constant-form-value form env))))

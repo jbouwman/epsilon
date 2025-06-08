@@ -176,7 +176,7 @@ Signals an error if FOREIGN-TYPE is undefined."))
 
 (defclass foreign-built-in-type (foreign-type)
   ((type-keyword
-    ;; Keyword in SYS.FFI.SYS representing this type.
+    ;; Keyword in SYS.FFI representing this type.
     :initform (error "A type keyword is required.")
     :initarg :type-keyword
     :accessor type-keyword))

@@ -2158,27 +2158,12 @@ ERROR-CODE is return value of SSL_get_error - an explanation of the failure.
         (ensure-ssl-funcall stream #'plusp #'ssl-write handle ptr fill-ptr))
       (setf (ssl-stream-output-pointer stream) 0))))
 
-#+(and clozure-common-lisp (not windows))
-(defun install-nonblock-flag (fd)
-  (ccl::fd-set-flags fd (logior (ccl::fd-get-flags fd)
-                                ;; read-from-string is necessary because
-                                ;; CLISP and perhaps other Lisps are confused
-                                ;; by #$, signaling
-                                ;; "undefined dispatch character $",
-                                ;; even though the defun in conditionalized by
-                                ;; #+clozure-common-lisp
-                                #.(read-from-string "#$O_NONBLOCK"))))
-
 #+(and sbcl (not win32))
 (defun install-nonblock-flag (fd)
   (sb-posix:fcntl fd
                   sb-posix::f-setfl
                   (logior (sb-posix:fcntl fd sb-posix::f-getfl)
                           sb-posix::o-nonblock)))
-
-#-(or (and clozure-common-lisp (not windows)) sbcl)
-(defun install-nonblock-flag (fd)
-  (declare (ignore fd)))
 
 #+(and sbcl win32)
 (defun install-nonblock-flag (fd)

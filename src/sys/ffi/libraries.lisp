@@ -353,7 +353,7 @@ the library as loaded and return."
   (let ((library (filter-pathname library)))
     (restart-case
         (progn
-          ;; dlopen/dlclose does reference counting, but the SYS.FFI.SYS
+          ;; dlopen/dlclose does reference counting, but the SYS.FFI
           ;; API has no infrastructure to track that. Therefore if we
           ;; want to avoid increasing the internal dlopen reference
           ;; counter, and thus thwarting dlclose, then we need to try

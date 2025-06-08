@@ -1,4 +1,4 @@
-(in-package #:epsilon.sys.ffi.sys)
+(in-package #:epsilon.sys.ffi)
 
 ;;;# Misfeatures
 
