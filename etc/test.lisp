@@ -1,4 +1,5 @@
 (require :asdf)
+(require :sb-posix)
 
 (load "epsilon.asd")
 
@@ -6,7 +7,8 @@
     (asdf:load-system "epsilon/tests")
   (error (condition)
     (format *error-output* "~A~%" condition)
-    (sb-debug:print-backtrace :stream *error-output*)))
+    (sb-debug:print-backtrace :stream *error-output*)
+    (sb-posix:exit 1)))
 
 (sb-posix:exit (if (epsilon.tool.test:run-success-p (epsilon.tool.test:run-tests))
                    0
