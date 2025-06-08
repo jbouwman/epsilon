@@ -45,6 +45,7 @@
                    (:file "writer")
                    (:file "yaml")
                    (:file "time")
+                   (:file "base64")
                    (:module "digest"
                     :components ((:file "reader")
                                  (:file "common")
@@ -61,7 +62,6 @@
                                  (:file "type")
                                  (:file "condition")
                                  (:file "hex")
-                                 (:file "base64")
                                  (:file "gzip")
                                  (:file "zlib")
                                  (:file "decompress")
@@ -88,8 +88,7 @@
                                  (:file "types")
                                  (:file "enum")
                                  (:file "strings")
-                                 (:file "structures")
-                                 (:file "functions")))
+                                 (:file "structures")))
                    (:file "fs")
                    (:file "gc")
                    (:module "sync"

@@ -47,4 +47,4 @@
   (if (char= char #\Newline)
       (setf (output-column writer) 0)
       (incf (output-column writer)))
-  (write-char char (writer-streeam writer)))
+  (write-char char (writer-stream writer)))

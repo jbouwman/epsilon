@@ -1,4 +1,4 @@
-(defpackage #:epsilon.lib.codec.base64
+(defpackage #:epsilon.lib.base64
   (:use
    #:cl
    #:epsilon.lib.type)
@@ -30,7 +30,7 @@
    #:+decode-table+
    #:+uri-decode-table+))
 
-(in-package #:epsilon.lib.codec.base64)
+(in-package #:epsilon.lib.base64)
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defvar *encode-table*

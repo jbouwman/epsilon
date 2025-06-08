@@ -5,7 +5,8 @@
   (:export
    :*structures*
    :define-byte-structure
-   :read-structure))
+   :read-structure
+   :write-structure))
 
 (in-package :epsilon.lib.struct)
 
