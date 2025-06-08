@@ -5,7 +5,10 @@
   (:export
    :*structures*
    :define-byte-structure
-   :read-structure))
+   :encode-structure
+   :decode-structure
+   :read-structure
+   :write-structure))
 
 (in-package :epsilon.lib.struct)
 
@@ -112,7 +115,7 @@
                      (incf ,index ,(binary-type-size btype)))))
           (count
            (if (eql type 'character)
-               `(let ((vec (epsilon.lib.char:string-to-u8 ,name :encoding :utf-8)))
+               `(let ((vec (epsilon.lib.char:string-to-bytes ,name :encoding :utf-8)))
                   (loop for char across vec
                         do (setf (aref ,vector ,index) char)
                            (incf ,index)
@@ -132,7 +135,7 @@
              `(,(binary-type-writer btype) ,type ,stream)))
           (count
            (if (eql type 'character)
-               `(let ((vec (epsilon.lib.char:string-to-u8 ,name :encoding :utf-8)))
+               `(let ((vec (epsilon.lib.char:string-to-bytes ,name :encoding :utf-8)))
                   (loop for char across vec
                         do (write-byte char ,stream)))
                `(loop for i from 0 below ,count

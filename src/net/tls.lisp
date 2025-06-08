@@ -2,13 +2,13 @@
   (:use
    :cl
    :epsilon.lib.syntax
-   :epsilon.lib.char
    :epsilon.lib.list
    :epsilon.lib.symbol
    :epsilon.lib.type
    :epsilon.sys.sync.lock
    :epsilon.sys.sync.thread)
   (:local-nicknames
+   (:char :epsilon.lib.char)
    (:stream :epsilon.lib.stream)
    (:writer :epsilon.lib.writer)
    (:ffi :epsilon.sys.ffi))
@@ -1715,12 +1715,12 @@ a Common Lisp string.  The string is returned."
      (unwind-protect
           (progn ,@body)
        (bio-free ,bio))
-     (u8-to-string (stream:buffer *bio-socket*))))
+     (char:bytes-to-string (stream:buffer *bio-socket*))))
 
 (defmacro with-bio-input-from-string ((bio string) &body body)
   "Evaluate BODY with BIO bound to a SSL BIO structure that reads from
 a Common Lisp STRING."
-  `(let ((*bio-socket* (stream:make-input-stream (string-to-u8 ,string)))
+  `(let ((*bio-socket* (stream:make-input-stream (char:string-to-bytes ,string)))
 	 (,bio (bio-new-lisp)))
      (unwind-protect
           (progn ,@body)
@@ -2158,27 +2158,12 @@ ERROR-CODE is return value of SSL_get_error - an explanation of the failure.
         (ensure-ssl-funcall stream #'plusp #'ssl-write handle ptr fill-ptr))
       (setf (ssl-stream-output-pointer stream) 0))))
 
-#+(and clozure-common-lisp (not windows))
-(defun install-nonblock-flag (fd)
-  (ccl::fd-set-flags fd (logior (ccl::fd-get-flags fd)
-                                ;; read-from-string is necessary because
-                                ;; CLISP and perhaps other Lisps are confused
-                                ;; by #$, signaling
-                                ;; "undefined dispatch character $",
-                                ;; even though the defun in conditionalized by
-                                ;; #+clozure-common-lisp
-                                #.(read-from-string "#$O_NONBLOCK"))))
-
 #+(and sbcl (not win32))
 (defun install-nonblock-flag (fd)
   (sb-posix:fcntl fd
                   sb-posix::f-setfl
                   (logior (sb-posix:fcntl fd sb-posix::f-getfl)
                           sb-posix::o-nonblock)))
-
-#-(or (and clozure-common-lisp (not windows)) sbcl)
-(defun install-nonblock-flag (fd)
-  (declare (ignore fd)))
 
 #+(and sbcl win32)
 (defun install-nonblock-flag (fd)
@@ -2937,7 +2922,7 @@ ASN1 string validation references:
 (defmethod decode-asn1-string (asn1-string (type (eql +v-asn1-iastring+)))
   (let ((bytes (asn1-string-bytes-vector asn1-string)))
     (if (asn1-iastring-p bytes)
-        (u8-to-string bytes)
+        (char:bytes-to-string bytes)
         (error 'invalid-asn1-string :type '+v-asn1-iastring+))))
 
 (defun asn1-printable-char-p (byte)
@@ -2972,7 +2957,7 @@ ASN1 string validation references:
 (defmethod decode-asn1-string (asn1-string (type (eql +v-asn1-printablestring+)))
   (let* ((bytes (asn1-string-bytes-vector asn1-string)))
     (if (asn1-printable-string-p bytes)
-        (u8-to-string bytes)
+        (char:bytes-to-string bytes)
         (error 'invalid-asn1-string :type '+v-asn1-printablestring+))))
 
 (defmethod decode-asn1-string (asn1-string (type (eql +v-asn1-utf8string+)))
@@ -3002,7 +2987,7 @@ ASN1 string validation references:
 (defmethod decode-asn1-string (asn1-string (type (eql +v-asn1-teletexstring+)))
   (let ((bytes (asn1-string-bytes-vector asn1-string)))
     (if (asn1-teletex-string-p bytes)
-        (u8-to-string bytes)
+        (char:bytes-to-string bytes)
         (error 'invalid-asn1-string :type '+v-asn1-teletexstring+))))
 
 (defmethod decode-asn1-string (asn1-string (type (eql +v-asn1-bmpstring+)))
@@ -3021,7 +3006,7 @@ ASN1 string validation references:
 (defun decode-asn1-time (asn1-time)
   (when (zerop (asn1-time-check asn1-time))
     (error "asn1-time is not a syntactically valid ASN1 UTCTime"))
-  (let ((time-string (u8-to-string (asn1-string-bytes-vector asn1-time))))
+  (let ((time-string (char:bytes-to-string (asn1-string-bytes-vector asn1-time))))
     (let* ((utctime-p (= 1 (asn1-utctime-check asn1-time)))
            (year-len (if utctime-p 2 4))
            (year-part (parse-integer (subseq time-string 0 year-len)))

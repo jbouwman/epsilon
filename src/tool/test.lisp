@@ -5,9 +5,14 @@
    (#:map #:epsilon.lib.map)
    (#:seq #:epsilon.lib.sequence)
    (#:str #:epsilon.lib.string)
-   (#:pkg #:epsilon.sys.pkg))
+   (#:pkg #:epsilon.sys.pkg)
+   (#:regex #:epsilon.lib.regex))
   (:export #:deftest
            #:is
+           #:is-p
+           #:is-equal
+           #:is-equalp
+           #:is-thrown-p
            #:project-file
            #:run-tests
            #:run-success-p))
@@ -417,3 +422,74 @@ The test's package hierarchy position is derived from the symbol's package."
                       ,(if message-p
                            `(format nil ,message ,@message-args)
                            `(format nil "Assertion ~S failed" ',form)))))
+
+(defmacro is-p (predicate actual expected &optional (message nil message-p) &rest message-args)
+  "Test that (PREDICATE ACTUAL EXPECTED) is true."
+  (let ((actual-var (gensym "ACTUAL"))
+        (expected-var (gensym "EXPECTED"))
+        (predicate-name (if (symbolp predicate) 
+                            predicate 
+                            'predicate)))
+    `(let ((,actual-var ,actual)
+           (,expected-var ,expected))
+       (if (,predicate ,actual-var ,expected-var)
+           (when *test-result*
+             (push (list t (lambda (r) r)) 
+                   (test-assertions *test-result*)))
+           (fail-assertion '(,predicate ,actual ,expected)
+                          ,(if message-p
+                               `(format nil ,message ,@message-args)
+                               `(format nil "~A failed: expected ~S but got ~S~@[: ~A~]"
+                                       ',predicate-name ,expected-var ,actual-var
+                                       ,(when message-p
+                                          `(format nil ,message ,@message-args)))))))))
+
+(defmacro is-equal (actual expected &optional (message nil message-p) &rest message-args)
+  "Test that ACTUAL equals EXPECTED using EQUAL."
+  `(is-p equal ,actual ,expected 
+         ,@(when message-p `(,message ,@message-args))))
+
+(defmacro is-equalp (actual expected &optional (message nil message-p) &rest message-args)
+  "Test that ACTUAL equals EXPECTED using EQUALP (case-insensitive, type-coercing)."
+  `(is-p equalp ,actual ,expected 
+         ,@(when message-p `(,message ,@message-args))))
+
+(defmacro is-thrown-p ((condition-class &optional regex) &body body)
+  "Test that BODY throws a condition of type CONDITION-CLASS.
+If REGEX is provided, the condition's printed representation must match it."
+  (let ((condition-var (gensym "CONDITION"))
+        (caught-var (gensym "CAUGHT")))
+    `(let ((,caught-var nil))
+       (handler-case
+           (progn
+             ,@body
+             (fail-assertion '(is-thrown-p ,condition-class ,@(when regex `(,regex)) ,@body)
+                            ,(if regex
+                                 `(format nil "Expected ~S matching ~S but no condition was thrown" 
+                                         ',condition-class ,regex)
+                                 `(format nil "Expected ~S but no condition was thrown" 
+                                         ',condition-class))))
+         (,condition-class (,condition-var)
+           (setf ,caught-var t)
+           ,(if regex
+                `(let ((condition-string (format nil "~A" ,condition-var)))
+                   (if (regex:match ,regex condition-string)
+                       (when *test-result*
+                         (push (list t (lambda (r) r)) 
+                               (test-assertions *test-result*)))
+                       (fail-assertion '(is-thrown-p ,condition-class ,regex ,@body)
+                                      (format nil "Expected ~S matching ~S but got: ~A" 
+                                             ',condition-class ,regex condition-string))))
+                `(when *test-result*
+                   (push (list t (lambda (r) r)) 
+                         (test-assertions *test-result*)))))
+         (condition (,condition-var)
+           (when ,caught-var
+             (fail-assertion '(is-thrown-p ,condition-class ,@(when regex `(,regex)) ,@body)
+                            ,(if regex
+                                 `(format nil "Expected ~S matching ~S but got ~S: ~A" 
+                                         ',condition-class ,regex 
+                                         (type-of ,condition-var) ,condition-var)
+                                 `(format nil "Expected ~S but got ~S: ~A" 
+                                         ',condition-class 
+                                         (type-of ,condition-var) ,condition-var)))))))))

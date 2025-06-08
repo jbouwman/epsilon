@@ -147,7 +147,7 @@
     (t (error "Integer too large to encode: ~A" int))))
 
 (defun encode-string (stream string)
-  (let* ((bytes (char:string-to-u8 string))
+  (let* ((bytes (char:string-to-bytes string))
          (length (length bytes)))
     (write-size stream length +str8+ +str16+ +str32+ 31 +fixstr+)
     (write-sequence bytes stream)))
@@ -360,7 +360,7 @@
   "Decode a raw string of LENGTH bytes from STREAM."
   (let ((bytes (make-array length :element-type '(unsigned-byte 8))))
     (read-sequence bytes stream :end length)
-    (char:u8-to-string bytes)))
+    (char:bytes-to-string bytes)))
 
 (defun decode-binary (stream length)
   "Decode a binary blob of LENGTH bytes from STREAM."
