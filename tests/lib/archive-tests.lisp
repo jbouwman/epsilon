@@ -2,10 +2,10 @@
   (:use
    :cl
    :epsilon.tool.test
-   :epsilon.lib.char
    :epsilon.lib.string
    :epsilon.lib.type)
   (:local-nicknames
+   (:char :epsilon.lib.char)
    (:stream :epsilon.lib.stream)
    (:uri :epsilon.lib.uri)))
 
@@ -21,6 +21,6 @@
                  (write-sequence buffer stream :start start :end end)
                  end))
           (epsilon.lib.archive:decode-entry #'output entry)
-          (is (starts-with-p (u8-to-string (stream:buffer stream))
+          (is (starts-with-p (char:bytes-to-string (stream:buffer stream))
                              ";;;; types.lisp")))))))
     

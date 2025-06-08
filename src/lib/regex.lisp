@@ -19,6 +19,7 @@
            #:do-matches
            #:do-matches-as-strings
            #:do-scans
+           #:match
            #:parse-string
            #:parse-tree-synonym
            #:regex-error
@@ -6093,3 +6094,6 @@ PARSE-TREE.  Both arguments are quoted."
   `(eval-when (:compile-toplevel :load-toplevel :execute)
      (setf (parse-tree-synonym ',name) ',parse-tree)))
 
+(defun match (&rest args)
+  ;; oof
+  )

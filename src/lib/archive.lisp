@@ -3,6 +3,7 @@
    :cl
    :epsilon.lib.type)                  ; FIXME -- simple puns for common types
   (:local-nicknames
+   (:char :epsilon.lib.char)
    (:stream :epsilon.lib.stream)
    (:struct :epsilon.lib.struct))
   (:export
@@ -45,7 +46,7 @@
 
 (defun ensure-password (password)
   (etypecase password
-    (string (epsilon.lib.char:string-to-u8 password :encoding :utf-8))
+    (string (char:string-to-bytes password :encoding :utf-8))
     ((vector u8) password)
     (null (restart-case (error 'password-required)
             (use-value (password)
@@ -85,11 +86,11 @@
   (if (listp thing) thing (list* thing values)))
 
 (defun decode-string (octets flags)
-  (epsilon.lib.char:u8-to-string octets :encoding (if (logbitp 11 flags) :utf-8 :cp437)))
+  (char:bytes-to-string octets :encoding (if (logbitp 11 flags) :utf-8 :cp437)))
 
 (defun encode-string (string)
   (if string
-      (epsilon.lib.char:string-to-u8 string :encoding :utf-8)
+      (char:string-to-bytes string :encoding :utf-8)
       #()))
 
 (defun decode-msdos-timestamp (date time)
@@ -224,7 +225,7 @@
   (etypecase io
     (vector-input
      (multiple-value-bind (value index)
-         (decode-structure (vector-input-vector io) (vector-input-index io))
+         (struct:decode-structure (vector-input-vector io) (vector-input-index io))
        (setf (vector-input-index io) index)
        value))
     (stream
@@ -234,9 +235,9 @@
   (etypecase io
     (vector-input
      (setf (vector-input-index io)
-           (encode-structure structure (vector-input-vector io) (vector-input-index io))))
+           (struct:encode-structure structure (vector-input-vector io) (vector-input-index io))))
     (stream
-     (write-structure structure io)))
+     (struct:write-structure structure io)))
   io)
 
 (defmacro parse-structure (structure-type io-var)
@@ -1340,7 +1341,7 @@ one."))
     extra))
 
 (defun entry-to-lf (entry)
-  (let ((file-name (epsilon.lib.char:string-to-u8 (file-name entry) :encoding :utf-8))
+  (let ((file-name (char:string-to-bytes (file-name entry) :encoding :utf-8))
         (extra (make-array 0 :adjustable T :element-type 'u8))
         (size (or (size entry) 0))
         (uncompressed-size (or (uncompressed-size entry) 0)))
@@ -1386,7 +1387,7 @@ one."))
         (make-data-descriptor/64 (crc-32 entry) (size entry) uncompressed-size))))
 
 (defun entry-to-cd (entry)
-  (let ((file-name (epsilon.lib.char:string-to-u8 (file-name entry) :encoding :utf-8))
+  (let ((file-name (char:string-to-bytes (file-name entry) :encoding :utf-8))
         (comment (encode-string (comment entry)))
         (extra (make-array 0 :adjustable T :element-type 'u8))
         (size (or (size entry) 0))

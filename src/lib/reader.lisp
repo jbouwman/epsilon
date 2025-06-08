@@ -60,7 +60,7 @@ the code is compiled on.")
   (declare (ignore initargs))
   (with-slots (encoding) stream
     (when (keywordp encoding)
-      (setf encoding (get-character-encoding encoding)))))
+      (setf encoding (char:get-character-encoding encoding)))))
 
 (defun fill-buffer (stream)
   (with-slots (stream buffer buffer-position buffer-end-position) stream
@@ -78,8 +78,7 @@ the code is compiled on.")
         (unless (= n +buffer-size+)
           (setf buffer-end-position n))))))
 
-(defun make-reader (stream &key (encoding epsilon.lib.char:*default-character-encoding*)
-                             (on-close))
+(defun make-reader (stream &key encoding (on-close))
   (let ((reader (make-instance 'reader
                                :stream stream
                                :encoding encoding
@@ -93,7 +92,7 @@ the code is compiled on.")
 
   (with-slots (buffer-position encoding) stream
     (< (- +buffer-size+ (the fixnum buffer-position))
-       (the fixnum (enc-max-units-per-char encoding)))))
+       (the fixnum (char:enc-max-units-per-char encoding)))))
 
 (defmethod stream-read-char ((stream reader))
   (when (needs-to-fill-buffer-p stream)
@@ -104,8 +103,10 @@ the code is compiled on.")
   (with-slots (buffer buffer-position encoding last-char last-char-size)
       stream
     (declare (fixnum buffer-position))
-    (let* ((mapping (lookup-mapping *string-vector-mappings* encoding))
-           (counter (code-point-counter mapping)))
+    ;; FIXME
+    #++
+    (let* ((mapping (char:lookup-mapping char:*string-vector-mappings* encoding))
+           (counter (char:code-point-counter mapping)))
       (declare (type function counter))
       (multiple-value-bind (chars new-end)
           (funcall counter buffer buffer-position +buffer-size+ 1)

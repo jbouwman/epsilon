@@ -1,4 +1,4 @@
-(defpackage #:epsilon.lib.codec.hex
+(defpackage #:epsilon.lib.hex
   (:use
    #:cl
    #:epsilon.lib.type)
@@ -8,7 +8,7 @@
 
 ;; Hexadecimal string encoding
 
-(in-package #:epsilon.lib.codec.hex)
+(in-package #:epsilon.lib.hex)
 
 (defun u8-to-hex (vector &key (start 0) end (element-type 'base-char))
   "Return a string containing the hexadecimal representation of the

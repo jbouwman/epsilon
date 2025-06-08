@@ -20,7 +20,7 @@
            :accessor output-column)
    (row :initform 0
            :accessor output-row)
-   (encoding :initform (char:make-encoding :utf-8)
+   (encoding :initform :utf-8
              :initarg :encoding
              :reader stream-encoding)))
 
@@ -31,7 +31,7 @@
     (error 'stream-closed :stream stream))
   (make-instance 'writer
                  :stream stream
-                 :encoding (char:make-encoding encoding)))
+                 :encoding encoding))
 
 (defun start-line-p (writer)
   "Tell if writer is already at start of fresh new line."
@@ -47,4 +47,4 @@
   (if (char= char #\Newline)
       (setf (output-column writer) 0)
       (incf (output-column writer)))
-  (write-char char (writer-streeam writer)))
+  (write-char char (writer-stream writer)))
