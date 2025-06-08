@@ -68,11 +68,7 @@
                                  (:file "utils")
                                  (:file "early-types")
                                  (:file "foreign-vars")
-                                 (:file "libraries")
-                                 (:file "types")
-                                 (:file "enum")
-                                 (:file "strings")
-                                 (:file "structures")))
+                                 (:file "libraries")))
                    (:file "fs")
                    (:file "gc")
                    (:module "sync"
