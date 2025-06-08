@@ -30,7 +30,7 @@
   (let ((digest (epsilon.lib.digest:make-digest :sha-256)))
     (with-open-file (stream (uri:path uri) :element-type 'unsigned-byte)
       (epsilon.lib.digest:digest-stream digest stream))
-    (epsilon.lib.codec.hex:u8-to-hex
+    (epsilon.lib.hex:u8-to-hex
      (epsilon.lib.digest:get-digest digest))))
 
 (defmethod print-object ((obj source-info) stream)

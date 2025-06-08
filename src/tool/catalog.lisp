@@ -2,7 +2,7 @@
   (:use
    #:cl)
   (:local-nicknames
-   (#:hex #:epsilon.lib.codec.hex)
+   (#:hex #:epsilon.lib.hex)
    (#:digest #:epsilon.lib.digest)
    (#:type #:epsilon.lib.type)))
 
@@ -22,7 +22,7 @@
   (print-unreadable-object (object stream :type t :identity t)
     (with-slots (serial code) object
       (format stream "serial ~A types ~A"
-              (subseq (lib.codec.hex:u8-to-hex serial) 0 12)
+              (subseq (hex:u8-to-hex serial) 0 12)
               (length code)))))
 
 (defclass type-definition ()
