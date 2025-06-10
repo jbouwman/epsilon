@@ -3,6 +3,7 @@
 def build [] {
     (sbcl --noinform
           --non-interactive
+          --eval "(require :asdf)"
           --eval "(load \"epsilon.asd\")"
           --eval "(asdf:load-system \"epsilon\" :force t)")
 }
@@ -10,7 +11,15 @@ def build [] {
 def test [] {
     (sbcl --noinform
           --non-interactive
-          --eval "(load \"etc/test.lisp\")")
+          --eval "(require :asdf)"
+          --eval "(require :sb-posix)"
+          --eval "(load \"epsilon.asd\")"
+          --eval "(asdf:load-system \"epsilon/tests\" :force t)"
+          --eval "(sb-posix:exit
+                    (if (epsilon.tool.test:run-success-p 
+                          (epsilon.tool.test:run-tests))
+                        0
+                        1))")
 }
 
 def coverage [] {

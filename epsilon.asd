@@ -78,7 +78,8 @@
                    (:file "http")
                    (:file "http-server")))
      (:module "tool"
-      :components ((:file "build")
+      :components ((:file "format")
+                   (:file "build")
                    (:file "test")))
      (:file "epsilon"))))
   :in-order-to ((test-op (test-op "epsilon/tests")))
@@ -105,7 +106,9 @@
                            (:file "sequence-tests")))
      (:module "net"
               :components ((:file "http-tests")
-                           (:file "http-server-tests"))))))
+                           (:file "http-server-tests")))
+     (:module "tool"
+              :components ((:file "format-tests"))))))
   :perform (test-op (o c)
                    (symbol-call :epsilon.tool.test ':run-tests)))
 

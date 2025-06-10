@@ -15,7 +15,9 @@
            #:is-thrown-p
            #:project-file
            #:run-tests
-           #:run-success-p))
+           #:run-success-p
+           #:log-test-result
+           #:skip))
 
 (in-package #:epsilon.tool.test)
 
@@ -65,7 +67,7 @@ Ensures tests are re-registered in their suites when loaded from fasl files."
   (with-slots (symbol) self
     (values
      `(make-instance ',(class-name (class-of self))
-                    :symbol ',symbol)
+                     :symbol ',symbol)
      `(ensure-test ',symbol))))
 
 (defun ensure-test-suite (package-name)
@@ -79,7 +81,7 @@ Returns the leaf node for package-name."
                (setf existing (make-instance 'test-suite :name name))
                (setf (children-of current-node)
                      (map:assoc (children-of current-node)
-                                    name existing)))
+                                name existing)))
           do (setf current-node existing)
           finally (return existing))))
 
@@ -117,7 +119,13 @@ Returns the leaf node for package-name."
    (end-time :initform nil
              :accessor end-time)
    (metrics :initform map:+empty+ 
-            :accessor test-metrics)))
+            :accessor test-metrics)
+   (stdout-output :initform nil
+                  :accessor stdout-output)
+   (stderr-output :initform nil
+                  :accessor stderr-output)
+   (return-value :initform nil
+                 :accessor return-value)))
 
 (defclass test-run ()
   ((start-time :initform (get-internal-real-time)
@@ -125,7 +133,16 @@ Returns the leaf node for package-name."
    (end-time :initform nil 
              :accessor end-time)
    (tests :initform map:+empty+
-          :accessor tests)))
+          :accessor tests)
+   (log-file :initform nil
+             :accessor log-file
+             :initarg :log-file)
+   (max-failures :initform 10
+                 :accessor max-failures
+                 :initarg :max-failures)
+   (abort-on-failure :initform nil
+                     :accessor abort-on-failure
+                     :initarg :abort-on-failure)))
 
 (defun test-failures (run)
   "Return list of failed test results"
@@ -182,15 +199,23 @@ Returns the leaf node for package-name."
 ;;; Test execution
 
 (defun run-test-body (test args result)
-  (let ((metrics '(:cpu-time)))  ; removed :wall-time
+  (let ((metrics '(:cpu-time))  ; removed :wall-time
+        (stdout-stream (make-string-output-stream))
+        (stderr-stream (make-string-output-stream))
+        (return-value nil))
     (unwind-protect
          (progn
            (setf (start-time result) (get-internal-real-time))
            (dolist (metric-type metrics)
              (start-metric metric-type result))
-           (let ((*test-result* result))
-             (apply (test-symbol test) args)))
-      (setf (end-time result) (get-internal-real-time))
+           (let ((*test-result* result)
+                 (*standard-output* (make-broadcast-stream *standard-output* stdout-stream))
+                 (*error-output* (make-broadcast-stream *error-output* stderr-stream)))
+             (setf return-value (apply (test-symbol test) args))))
+      (setf (end-time result) (get-internal-real-time)
+            (stdout-output result) (get-output-stream-string stdout-stream)
+            (stderr-output result) (get-output-stream-string stderr-stream)
+            (return-value result) return-value)
       (dolist (metric-type metrics)
         (end-metric metric-type result)))))
 
@@ -215,12 +240,13 @@ Returns the leaf node for package-name."
 (defun format-status-field (result)
   "Format the timing and status field, returning its string representation"
   (when result
-    (format nil "[ ~,3F sec / ~A ]"
+    (format nil "~,2fs~@[ ~A~]"
             (elapsed-time result)
             (case (test-status result)
-              (:failure "FAIL")
+              (:failure "FAILURE")
               (:error "ERROR")
-              (otherwise "PASS")))))
+              (:skip "SKIP")
+              (otherwise nil)))))
 
 (defun format-test-entry (test-name &optional (total-width 78) result)
   "Format a test entry with properly aligned timing and status.
@@ -240,11 +266,11 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
 (defun group-tests-by-package (tests)
   "Group tests by their package, returning alist of (package-name . tests)"
   (let ((groups (reduce (lambda (m test)
-                         (let ((pkg-name (package-name (symbol-package (test-symbol test)))))
-                           (map:assoc m pkg-name
-                                          (cons test (map:get m pkg-name)))))
-                       tests
-                       :initial-value map:+empty+)))
+                          (let ((pkg-name (package-name (symbol-package (test-symbol test)))))
+                            (map:assoc m pkg-name
+                                       (cons test (map:get m pkg-name)))))
+                        tests
+                        :initial-value map:+empty+)))
     (sort (map:seq
            (map:map groups
                     (lambda (pkg pkg-tests)
@@ -283,54 +309,127 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
     (format t "~&~%;; Found ~D test~:P~%" (length tests))
     (length tests)))
 
+(defun first-line (string)
+  "Return the first line of a multiline string"
+  (let ((newline-pos (position #\Newline string)))
+    (if newline-pos
+        (subseq string 0 newline-pos)
+        string)))
+
 (defun format-condition-details (result)
-  "Format detailed information about test failure or error"
+  "Print a message summarizing a test failure, error, or skip"
   (when (test-condition result)
     (case (test-status result)
       (:failure
-       (format nil "~&;;       Failed: ~A~%;;       Form: ~S~%"
-               (failure-message (test-condition result))
-               (failure-form (test-condition result))))
+       (format nil "~&;;       Failed: ~A~%"
+               (first-line (failure-message (test-condition result)))))
       (:error
-       (format nil "~&;;       Error: ~A~%"
-               (original-error (test-condition result)))))))
+       (format nil "~&;;       Failed: ~A~%"
+               (first-line (format nil "~A" (original-error (test-condition result))))))
+      (:skip
+       (format nil "~&;;       Skipped: ~A~%"
+               (first-line (skip-message (test-condition result))))))))
 
-(defun run-tests (&key package (verbose t) (show-failures t))
+(defun log-test-result (result stream)
+  "Log comprehensive test result information to stream"
+  (format stream "~&=== TEST: ~A ===~%" (test-name result))
+  (format stream "Status: ~A~%" (test-status result))
+  (format stream "Time: ~,3F seconds~%" (elapsed-time result))
+  
+  ;; Log return value
+  (when (return-value result)
+    (format stream "Return Value: ~S~%" (return-value result)))
+  
+  ;; Log stdout output
+  (when (and (stdout-output result) (not (string= (stdout-output result) "")))
+    (format stream "STDOUT:~%~A~%" (stdout-output result)))
+  
+  ;; Log stderr output
+  (when (and (stderr-output result) (not (string= (stderr-output result) "")))
+    (format stream "STDERR:~%~A~%" (stderr-output result)))
+  
+  ;; Log condition details
+  (when (test-condition result)
+    (format stream "Condition: ~A~%" (test-condition result)))
+  
+  ;; Log assertions
+  (when (test-assertions result)
+    (format stream "Assertions: ~D~%" (length (test-assertions result))))
+  
+  (format stream "~%"))
+
+(defun run-tests (&key package (verbose t) (show-failures t) (max-failures 10) (abort-on-failure nil) (log-file nil))
   "Run tests, optionally filtered by package.
-SHOW-FAILURES controls whether to show detailed failure information."
+SHOW-FAILURES controls whether to show detailed failure information.
+MAX-FAILURES limits the number of failures shown (default 10).
+ABORT-ON-FAILURE when non-nil, stops execution after max-failures failures.
+LOG-FILE when provided, logs all test output to the specified file."
   (let* ((node (if package
                    (find-test-package (pkg:parse package) *test-root*)
                    *test-root*))
          (tests (collect-tests node))
          (grouped-tests (group-tests-by-package tests))
-         (run (make-instance 'test-run)))
+         (run (make-instance 'test-run
+                             :max-failures max-failures
+                             :abort-on-failure abort-on-failure
+                             :log-file log-file))
+         (failure-count 0)
+         (log-stream nil))
     
-    (when verbose
-      (format t "~&Running tests:~%~%"))
+    (when log-file
+      (setf log-stream (open log-file :direction :output :if-exists :supersede)))
     
-    (dolist (group grouped-tests)
-      (when verbose
-        (format-package-header (car group)))
+    (unwind-protect
+         (progn
+           (when verbose
+             (format t "~&Running tests:~%~%"))
+           
+           (block test-execution
+             (dolist (group grouped-tests)
+               (when verbose
+                 (format-package-header (car group)))
+               
+               (dolist (test (cdr group))
+                 (let ((result (run-testable test run)))
+                   (when verbose
+                     (format-test-entry (symbol-name (test-symbol test)) 60 result)
+                     (when (and show-failures 
+                                (member (test-status result) '(:failure :error)))
+                       (when (< failure-count max-failures)
+                         (format t "~A" (format-condition-details result))
+                         (incf failure-count))))
+                   
+                   ;; Log to file if specified
+                   (when log-stream
+                     (log-test-result result log-stream))
+                   
+                   ;; Check for early termination
+                   (when (and abort-on-failure
+                              (member (test-status result) '(:failure :error))
+                              (>= (+ (length (test-failures run)) (length (test-errors run)))
+                                  max-failures))
+                     (when verbose
+                       (format t "~&~%;; Aborting after ~D failures/errors~%" max-failures))
+                     (return-from test-execution))))))
+           (when log-stream
+             (close log-stream)))
       
-      (dolist (test (cdr group))
-        (let ((result (run-testable test run)))
-          (when verbose
-            (format-test-entry (symbol-name (test-symbol test)) 60 result)
-            (when (and show-failures 
-                      (member (test-status result) '(:failure :error)))
-              (format t "~A" (format-condition-details result)))))))
-    
-    (setf (end-time run) (get-internal-real-time))
-    
-    (when verbose
-      (format t "~&~%Test Run Complete:~%")
-      (format t ";;   Tests: ~D~%" (map:size (tests run)))
-      (format t ";;   Failures: ~D~%" (length (test-failures run)))
-      (format t ";;   Errors: ~D~%" (length (test-errors run)))
-      (format t ";;   Time: ~,2F seconds~%"
-              (/ (- (end-time run) (start-time run))
-                 internal-time-units-per-second)))
-    
+      (setf (end-time run) (get-internal-real-time))
+      
+      (when verbose
+        (let ((total-failures (+ (length (test-failures run)) (length (test-errors run)))))
+          (format t "~&~%Test Run Complete:~%")
+          (format t ";;   Tests: ~D~%" (map:size (tests run)))
+          (format t ";;   Failures: ~D~%" (length (test-failures run)))
+          (format t ";;   Errors: ~D~%" (length (test-errors run)))
+          (format t ";;   Skipped: ~D~%" (length (test-skips run)))
+          (when (> total-failures max-failures)
+            (format t ";;   (Only ~D of ~D failures/errors shown)~%" 
+                    (min failure-count max-failures) total-failures))
+          (format t ";;   Time: ~,2F seconds~%"
+                  (/ (- (end-time run) (start-time run))
+                     internal-time-units-per-second)))))
+      
     run))
 
 (defun run-success-p (run)
@@ -343,6 +442,9 @@ SHOW-FAILURES controls whether to show detailed failure information."
 
 (define-condition test-error (error)
   ((original-error :initarg :error :reader original-error)))
+
+(define-condition test-skip (condition)
+  ((message :initarg :message :reader skip-message :initform "Test skipped")))
 
 (defmacro def-map-setter (name slot-name)
   "Define a setter function that updates a map in a slot with a new key-value pair.
@@ -364,6 +466,9 @@ Returns the test-result instance."
                                 :name (test-symbol test)))
          (*test-result* result))
     (handler-case (run-test-body test '() result)
+      (test-skip (c)
+        (setf (test-status result) :skip
+              (test-condition result) c))
       (test-failure (c)
         (setf (test-status result) :failure
               (test-condition result) c))
@@ -413,15 +518,19 @@ The test's package hierarchy position is derived from the symbol's package."
          :message message
          :form form))
 
+(defun skip (&optional (message "Test skipped"))
+  "Skip the current test with an optional message"
+  (signal 'test-skip :message message))
+
 (defmacro is (form &optional (message nil message-p) &rest message-args)
   `(if ,form
        (when *test-result*
          (push (list t (lambda (r) r)) 
                (test-assertions *test-result*)))
        (fail-assertion ',form 
-                      ,(if message-p
-                           `(format nil ,message ,@message-args)
-                           `(format nil "Assertion ~S failed" ',form)))))
+                       ,(if message-p
+                            `(format nil ,message ,@message-args)
+                            `(format nil "Assertion ~S failed" ',form)))))
 
 (defmacro is-p (predicate actual expected &optional (message nil message-p) &rest message-args)
   "Test that (PREDICATE ACTUAL EXPECTED) is true."
@@ -437,22 +546,22 @@ The test's package hierarchy position is derived from the symbol's package."
              (push (list t (lambda (r) r)) 
                    (test-assertions *test-result*)))
            (fail-assertion '(,predicate ,actual ,expected)
-                          ,(if message-p
-                               `(format nil ,message ,@message-args)
-                               `(format nil "~A failed: expected ~S but got ~S~@[: ~A~]"
-                                       ',predicate-name ,expected-var ,actual-var
-                                       ,(when message-p
-                                          `(format nil ,message ,@message-args)))))))))
+                           ,(if message-p
+                                `(format nil ,message ,@message-args)
+                                `(format nil "~A failed: expected ~S but got ~S~@[: ~A~]"
+                                         ',predicate-name ,expected-var ,actual-var
+                                         ,(when message-p
+                                            `(format nil ,message ,@message-args)))))))))
 
 (defmacro is-equal (actual expected &optional (message nil message-p) &rest message-args)
   "Test that ACTUAL equals EXPECTED using EQUAL."
   `(is-p equal ,actual ,expected 
-         ,@(when message-p `(,message ,@message-args))))
+       ,@(when message-p `(,message ,@message-args))))
 
 (defmacro is-equalp (actual expected &optional (message nil message-p) &rest message-args)
   "Test that ACTUAL equals EXPECTED using EQUALP (case-insensitive, type-coercing)."
   `(is-p equalp ,actual ,expected 
-         ,@(when message-p `(,message ,@message-args))))
+       ,@(when message-p `(,message ,@message-args))))
 
 (defmacro is-thrown-p ((condition-class &optional regex) &body body)
   "Test that BODY throws a condition of type CONDITION-CLASS.
@@ -464,11 +573,11 @@ If REGEX is provided, the condition's printed representation must match it."
            (progn
              ,@body
              (fail-assertion '(is-thrown-p ,condition-class ,@(when regex `(,regex)) ,@body)
-                            ,(if regex
-                                 `(format nil "Expected ~S matching ~S but no condition was thrown" 
-                                         ',condition-class ,regex)
-                                 `(format nil "Expected ~S but no condition was thrown" 
-                                         ',condition-class))))
+                             ,(if regex
+                                  `(format nil "Expected ~S matching ~S but no condition was thrown" 
+                                           ',condition-class ,regex)
+                                  `(format nil "Expected ~S but no condition was thrown" 
+                                           ',condition-class))))
          (,condition-class (,condition-var)
            (setf ,caught-var t)
            ,(if regex
@@ -478,18 +587,18 @@ If REGEX is provided, the condition's printed representation must match it."
                          (push (list t (lambda (r) r)) 
                                (test-assertions *test-result*)))
                        (fail-assertion '(is-thrown-p ,condition-class ,regex ,@body)
-                                      (format nil "Expected ~S matching ~S but got: ~A" 
-                                             ',condition-class ,regex condition-string))))
+                                       (format nil "Expected ~S matching ~S but got: ~A" 
+                                               ',condition-class ,regex condition-string))))
                 `(when *test-result*
                    (push (list t (lambda (r) r)) 
                          (test-assertions *test-result*)))))
          (condition (,condition-var)
            (when ,caught-var
              (fail-assertion '(is-thrown-p ,condition-class ,@(when regex `(,regex)) ,@body)
-                            ,(if regex
-                                 `(format nil "Expected ~S matching ~S but got ~S: ~A" 
-                                         ',condition-class ,regex 
-                                         (type-of ,condition-var) ,condition-var)
-                                 `(format nil "Expected ~S but got ~S: ~A" 
-                                         ',condition-class 
-                                         (type-of ,condition-var) ,condition-var)))))))))
+                             ,(if regex
+                                  `(format nil "Expected ~S matching ~S but got ~S: ~A" 
+                                           ',condition-class ,regex 
+                                           (type-of ,condition-var) ,condition-var)
+                                  `(format nil "Expected ~S but got ~S: ~A" 
+                                           ',condition-class 
+                                           (type-of ,condition-var) ,condition-var)))))))))
