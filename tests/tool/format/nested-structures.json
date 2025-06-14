@@ -1,0 +1,28 @@
+{
+  "metadata": {
+    "limit": 10,
+    "page": 1,
+    "total": 2
+  },
+  "users": [
+    {
+      "active": true,
+      "email": "john@example.com",
+      "id": 1,
+      "name": "John Doe",
+      "tags": [
+        "admin",
+        "developer"
+      ]
+    },
+    {
+      "active": false,
+      "email": "jane@example.com",
+      "id": 2,
+      "name": "Jane Smith",
+      "tags": [
+        "user"
+      ]
+    }
+  ]
+}

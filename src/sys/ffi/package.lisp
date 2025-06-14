@@ -226,10 +226,6 @@
 
 )
 
-;;;# Misfeatures
-
-(pushnew 'flat-namespace *features*)
-
 ;;;# Symbol Case
 
 (declaim (inline canonicalize-symbol-name-case))
