@@ -1,4 +1,4 @@
-(defpackage #:epsilon.sys.sync.lock
+(defpackage #:epsilon.sys.lock
   (:use
    #:cl)
   (:export
@@ -12,7 +12,7 @@
    #:with-lock
    #:with-recursive-lock-held))
 
-(in-package #:epsilon.sys.sync.lock)
+(in-package #:epsilon.sys.lock)
 
 (defun acquire-lock (lock &key (wait t) timeout)
   "Acquire the lock LOCK for the calling thread.

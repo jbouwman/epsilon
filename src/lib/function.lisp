@@ -3,14 +3,10 @@
    #:cl
    #:epsilon.lib.symbol)
   (:export
-   #:ensure-function
-   #:ensure-functionf
-   #:conjoin
    #:compose
    #:multiple-value-compose
-   #:curry
-   #:named-lambda
-   #:rcurry))
+   #:partial
+   #:named-lambda))
 
 (in-package #:epsilon.lib.function)
 
@@ -28,46 +24,6 @@ it must be a function name and its FDEFINITION is returned."
   (if (functionp function-designator)
       function-designator
       (fdefinition function-designator)))
-
-(define-modify-macro ensure-functionf/1 () ensure-function)
-
-(defmacro ensure-functionf (&rest places)
-  "Multiple-place modify macro for ENSURE-FUNCTION: ensures that each of
-PLACES contains a function."
-  `(progn ,@(mapcar (lambda (x) `(ensure-functionf/1 ,x)) places)))
-
-(defun disjoin (predicate &rest more-predicates)
-  "Returns a function that applies each of PREDICATE and MORE-PREDICATE
-functions in turn to its arguments, returning the primary value of the first
-predicate that returns true, without calling the remaining predicates.
-If none of the predicates returns true, NIL is returned."
-  (let ((predicate (ensure-function predicate))
-	(more-predicates (mapcar #'ensure-function more-predicates)))
-    (lambda (&rest arguments)
-      (or (apply predicate arguments)
-	  (some (lambda (p)
-		  (declare (type function p))
-		  (apply p arguments))
-		more-predicates)))))
-
-(defun conjoin (predicate &rest more-predicates)
-  "Returns a function that applies each of PREDICATE and MORE-PREDICATE
-functions in turn to its arguments, returning NIL if any of the predicates
-returns false, without calling the remaining predicates. If none of the
-predicates returns false, returns the primary value of the last predicate."
-  (if (null more-predicates)
-      predicate
-      (lambda (&rest arguments)
-	(and (apply predicate arguments)
-	     ;; Cannot simply use CL:EVERY because we want to return the
-	     ;; non-NIL value of the last predicate if all succeed.
-	     (do ((tail (cdr more-predicates) (cdr tail))
-		  (head (car more-predicates) (car tail)))
-		 ((not tail)
-		  (apply head arguments))
-	       (unless (apply head arguments)
-		 (return nil)))))))
-
 
 (defun compose (function &rest more-functions)
   "Returns a function composed of FUNCTION and MORE-FUNCTIONS that applies its
@@ -121,19 +77,18 @@ the last."
            (declare (dynamic-extent arguments))
            ,(compose-1 funs))))))
 
-(declaim (inline curry rcurry))
+(declaim (inline partial))
 
-(defun curry (function &rest arguments)
+(defun partial (function &rest arguments)
   "Returns a function that applies ARGUMENTS and the arguments
 it is called with to FUNCTION."
   (let ((fn (ensure-function function)))
     (lambda (&rest more)
       (declare (dynamic-extent more))
-      ;; Using M-V-C we don't need to append the arguments.
       (multiple-value-call fn (values-list arguments) (values-list more)))))
 
-(define-compiler-macro curry (function &rest arguments)
-  (let ((curries (make-gensym-list (length arguments) "CURRY"))
+(define-compiler-macro partial (function &rest arguments)
+  (let ((curries (make-gensym-list (length arguments) "PARTIAL"))
         (fun (gensym "FUN")))
     `(let ((,fun (ensure-function ,function))
            ,@(mapcar #'list curries arguments))
@@ -141,24 +96,7 @@ it is called with to FUNCTION."
          (declare (dynamic-extent more))
          (apply ,fun ,@curries more)))))
 
-(defun rcurry (function &rest arguments)
-  "Returns a function that applies the arguments it is called
-with and ARGUMENTS to FUNCTION."
-  (let ((fn (ensure-function function)))
-    (lambda (&rest more)
-      (declare (dynamic-extent more))
-      (multiple-value-call fn (values-list more) (values-list arguments)))))
-
-(define-compiler-macro rcurry (function &rest arguments)
-  (let ((rcurries (make-gensym-list (length arguments) "RCURRY"))
-        (fun (gensym "FUN")))
-    `(let ((,fun (ensure-function ,function))
-           ,@(mapcar #'list rcurries arguments))
-       (lambda (&rest more)
-         (declare (dynamic-extent more))
-         (multiple-value-call ,fun (values-list more) ,@rcurries)))))
-
-(declaim (notinline curry rcurry))
+(declaim (notinline partial))
 
 (defmacro named-lambda (name lambda-list &body body)
   "Expands into a lambda-expression within whose BODY NAME denotes the

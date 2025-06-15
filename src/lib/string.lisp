@@ -45,7 +45,8 @@
            (seq:cons string seq:*empty*))))))
 
 (defun join (delimiter strings)
-  (let ((s (make-string (+ (apply #'+ (mapcar #'length strings))
+  (let* ((strings (seq:realize strings))
+         (s (make-string (+ (apply #'+ (mapcar #'length strings))
                            (1- (length strings)))
                         :initial-element delimiter))
         (offset 0))

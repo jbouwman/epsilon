@@ -3,18 +3,17 @@
 def build [] {
     (sbcl --noinform
           --non-interactive
-          --eval "(require :asdf)"
-          --eval "(load \"epsilon.asd\")"
-          --eval "(asdf:load-system \"epsilon\" :force t)")
+          --eval "(load \"boot.lisp\")"
+          --eval "(boot *boot-order*)"
+          --eval "(epsilon.tool.build:build)")
 }
 
 def test [] {
     (sbcl --noinform
           --non-interactive
-          --eval "(require :asdf)"
-          --eval "(require :sb-posix)"
-          --eval "(load \"epsilon.asd\")"
-          --eval "(asdf:load-system \"epsilon/tests\" :force t)"
+          --eval "(load \"boot.lisp\")"
+          --eval "(boot *boot-order*)"
+          --eval "(epsilon.tool.build:build)"
           --eval "(sb-posix:exit
                     (if (epsilon.tool.test:run-success-p 
                           (epsilon.tool.test:run-tests))

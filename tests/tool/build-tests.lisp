@@ -1,24 +1,21 @@
+(defpackage :epsilon.tool.build.tests
+  (:use
+   :cl
+   :epsilon.tool.test)
+  (:local-nicknames
+   (#:build #:epsilon.tool.build)
+   (#:map #:epsilon.lib.map)
+   (#:seq #:epsilon.lib.sequence)
+   (#:uri #:epsilon.lib.uri)
+   (#:test #:epsilon.tool.test)))
 
+(in-package :epsilon.tool.build.tests)
 
-#++
-(sort-sources (source-info (uri:uri "file:///Users/jbouwman/git/epsilon/src")))
+(defun load-project ()
+  (build::load-project (uri:uri "file:///Users/jbouwman/git/epsilon")))
 
-#++
-(sort-sources (list (make-source-info :uri "a" :hash "a"
-                                      :defines "a" :requires nil)
-                    (make-source-info :uri "abc" :hash "abc"
-                                      :defines "a.b.c" :requires (list "a" "a.b"))
-                    (make-source-info :uri "ab" :hash "ab"
-                                      :defines "a.b" :requires (list "a"))))
+(deftest build-order ()
+  (is (build::build-order (load-project))))
 
-
-#++
-(parse-project-info "/Users/jbouwman/git/epsilon/epsilon.yaml")
-
-#++
-(load-source-set (uri:uri "file:///Users/jbouwman/git/epsilon/src"))
-
-(build-order (uri:uri "file:///Users/jbouwman/git/epsilon"))
-
-#++
-(status (uri:uri "file:///Users/jbouwman/git/epsilon"))
+(deftest test-order ()
+  (is (build::test-order (load-project))))

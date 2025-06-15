@@ -10,6 +10,7 @@
   (:export
    #:make-uri
    #:uri
+   #:file-uri
    #:uri-p
    #:authority
    #:merge
@@ -29,7 +30,8 @@
 (in-package #:epsilon.lib.uri)
 
 ;; URI structure
-(defstruct (uri (:constructor make-uri))
+(defstruct (uri (:constructor make-uri)
+                (:conc-name nil))
   "URI structure containing all components of a URI"
   (scheme nil :type (or string null))
   (userinfo nil :type (or string null))
@@ -47,6 +49,10 @@
                 "ws" 80
                 "wss" 443))
 
+(defun file-uri (path)
+  (make-uri :scheme "file"
+            :path path))
+
 ;; Helper functions
 (defun scheme-default-port (scheme)
   "Return default port for a given scheme, or NIL if unknown"
@@ -54,16 +60,17 @@
 
 (defun normalize-path (path)
   (str:join #\/
-            (reverse
-             (reduce (lambda (stack segment)
-                       (cond ((string= segment ".")
-                              stack)
-                             ((string= segment "..")
-                              (cdr stack))
-                             (t
-                              (cons segment stack))))
-                     (seq:realize (str:split #\/ path))
-                     :initial-value nil))))
+            (seq:seq
+             (reverse
+              (seq:reduce (lambda (stack segment)
+                            (cond ((string= segment ".")
+                                   stack)
+                                  ((string= segment "..")
+                                   (cdr stack))
+                                  (t
+                                   (cons segment stack))))
+                          (str:split #\/ path)
+                          :initial-value nil)))))
 
 (defun path-parent (path)
   "Get the parent of a path"
@@ -74,11 +81,11 @@
 
 (defun parent (uri)
   "Get the parent URI (one directory level up)"
-  (let ((parent-path (path-parent (uri-path uri))))
-    (make-uri :scheme (uri-scheme uri)
-              :userinfo (uri-userinfo uri)
-              :host (uri-host uri)
-              :port (uri-port uri)
+  (let ((parent-path (path-parent (path uri))))
+    (make-uri :scheme (scheme uri)
+              :userinfo (userinfo uri)
+              :host (host uri)
+              :port (port uri)
               :path parent-path
               :query nil
               :fragment nil)))
@@ -173,14 +180,14 @@
 
 (defun authority (uri)
   "Get the authority part of a URI"
-  (when (uri-host uri)
-    (let ((result (uri-host uri)))
-      (when (uri-userinfo uri)
-        (setf result (concatenate 'string (uri-userinfo uri) "@" result)))
-      (when (and (uri-port uri)
-                 (not (eql (uri-port uri)
-                          (scheme-default-port (uri-scheme uri)))))
-        (setf result (concatenate 'string result ":" (write-to-string (uri-port uri)))))
+  (when (host uri)
+    (let ((result (host uri)))
+      (when (userinfo uri)
+        (setf result (concatenate 'string (userinfo uri) "@" result)))
+      (when (and (port uri)
+                 (not (eql (port uri)
+                          (scheme-default-port (scheme uri)))))
+        (setf result (concatenate 'string result ":" (write-to-string (port uri)))))
       result)))
 
 (defun merge (uri rel-path)
@@ -189,15 +196,15 @@
                          ;; Absolute path in rel-uri
                          rel-path
                          ;; Relative path - combine with base path
-                         (let ((base-path (or (uri-path uri) "/")))
+                         (let ((base-path (or (path uri) "/")))
                            (normalize-path (concatenate 'string 
                                                         base-path
                                                         "/"
                                                         rel-path))))))
-    (make-uri :scheme (uri-scheme uri)
-              :userinfo (uri-userinfo uri)
-              :host (uri-host uri)
-              :port (uri-port uri)
+    (make-uri :scheme (scheme uri)
+              :userinfo (userinfo uri)
+              :host (host uri)
+              :port (port uri)
               :path result-path)))
 
 (merge (uri "http://foo.edu/classes/spring") "poetry")
@@ -206,37 +213,37 @@
   "Convert a URI structure to a string"
   (with-output-to-string (s)
     ;; Scheme
-    (when (uri-scheme uri)
-      (write-string (uri-scheme uri) s)
+    (when (scheme uri)
+      (write-string (scheme uri) s)
       (write-char #\: s))
     
     ;; Authority
-    (when (uri-host uri)
+    (when (host uri)
       (write-string "//" s)
-      (when (uri-userinfo uri)
-        (write-string (uri-userinfo uri) s)
+      (when (userinfo uri)
+        (write-string (userinfo uri) s)
         (write-char #\@ s))
-      (write-string (uri-host uri) s)
-      (when (and (uri-port uri)
-                (or (null (uri-scheme uri))
-                    (not (eql (uri-port uri)
-                             (scheme-default-port (uri-scheme uri))))))
+      (write-string (host uri) s)
+      (when (and (port uri)
+                (or (null (scheme uri))
+                    (not (eql (port uri)
+                             (scheme-default-port (scheme uri))))))
         (write-char #\: s)
-        (write-string (write-to-string (uri-port uri)) s)))
+        (write-string (write-to-string (port uri)) s)))
     
     ;; Path
-    (when (uri-path uri)
-      (write-string (uri-path uri) s))
+    (when (path uri)
+      (write-string (path uri) s))
     
     ;; Query
-    (when (uri-query uri)
+    (when (query uri)
       (write-char #\? s)
-      (write-string (uri-query uri) s))
+      (write-string (query uri) s))
     
     ;; Fragment
-    (when (uri-fragment uri)
+    (when (fragment uri)
       (write-char #\# s)
-      (write-string (uri-fragment uri) s))))
+      (write-string (fragment uri) s))))
 
 ;; URL encoding/decoding functions
 (defun url-encode (string)

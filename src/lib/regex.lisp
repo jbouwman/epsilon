@@ -1,3 +1,41 @@
+;;;;  TODO Major Simplification Opportunities
+;;;;
+;;;;  1. Duplicate Character Set Implementations
+;;;;  The module implements both charset (hash table) and charmap - consolidate to one implementation.
+;;;;
+;;;;  2. Optional Boyer-Moore-Horspool Matcher
+;;;;  Complex BMH implementation controlled by *use-bmh-matchers* flag could be removed entirely, falling back to standard library functions.
+;;;;
+;;;;  3. Monolithic File Structure
+;;;;  60,299 tokens in a single file with 240+ functions/methods - should be split into focused modules.
+;;;;
+;;;;  Reusable Components for Epsilon System
+;;;;
+;;;;  Character Set Implementation
+;;;;  The open-addressing hash table in charset could be extracted as epsilon.lib.charset for general use.
+;;;;
+;;;;  String Processing Utilities
+;;;;  - maybe-coerce-to-simple-string - string coercion
+;;;;  - quote-meta-chars - string escaping
+;;;;  - clean-comments - comment processing
+;;;;
+;;;;  Lexer Infrastructure
+;;;;  The lexer struct and parsing predicates (end-of-string-p, looking-at-p) could become epsilon.lib.lexer.
+;;;;
+;;;;  Recommended Refactoring Plan
+;;;;
+;;;;  Phase 1: Extract Utilities
+;;;;  - Move character set implementation to separate module
+;;;;  - Extract string utilities to expand epsilon.lib.string
+;;;;  - Create epsilon.lib.lexer for parser infrastructure
+;;;;
+;;;;  Phase 2: Simplify Core
+;;;;  - Remove BMH matcher complexity
+;;;;  - Consolidate duplicate character set code
+;;;;  - Split into epsilon.lib.regex.{parser,matcher,compiler}
+;;;;
+;;;;  This would reduce the main regex file by ~30-40% while creating reusable utilities for other parts of the system.
+
 (defpackage #:epsilon.lib.regex
   (:use #:cl
         #:epsilon.lib.syntax
@@ -6,10 +44,10 @@
   (:local-nicknames
    (:str :epsilon.lib.string))
   (:import-from :epsilon.lib.string
-   #:word-char-p
-   #:whitespacep
-   #:nsubseq
-   #:string-list-to-simple-string)
+                #:word-char-p
+                #:whitespacep
+                #:nsubseq
+                #:string-list-to-simple-string)
   (:shadow
    #:compile
    #:search)
@@ -26,50 +64,55 @@
 
 (in-package #:epsilon.lib.regex)
 
-;;; special variables used by the lexer/parser combo
-
 (defvar *extended-mode-p* nil
   "Whether the parser will start in extended mode.")
-(declaim (boolean *extended-mode-p*))
 
-;;; special variables used by the SCAN function and the matchers
+(declaim (boolean *extended-mode-p*))
 
 (defvar *regex-char-code-limit* char-code-limit
   "The upper exclusive bound on the char-codes of characters which can
 occur in character classes.  Change this value BEFORE creating
 scanners if you don't need full Unicode support.")
+
 (declaim (fixnum *regex-char-code-limit*))
-  
+
 (defvar *string* (make-sequence 'simple-string 0)
   "The string which is currently scanned by SCAN.
 Will always be coerced to a SIMPLE-STRING.")
+
 (declaim (simple-string *string*))
 
 (defvar *start-pos* 0
   "Where to start scanning within *STRING*.")
+
 (declaim (fixnum *start-pos*))
 
 (defvar *real-start-pos* nil
   "The real start of *STRING*. This is for repeated scans and is only used internally.")
+
 (declaim (type (or null fixnum) *real-start-pos*))
 
 (defvar *end-pos* 0
   "Where to stop scanning within *STRING*.")
+
 (declaim (fixnum *end-pos*))
 
 (defvar *reg-starts* (make-array 0)
   "An array which holds the start positions
 of the current register candidates.")
+
 (declaim (simple-vector *reg-starts*))
-  
+
 (defvar *regs-maybe-start* (make-array 0)
   "An array which holds the next start positions
 of the current register candidates.")
+
 (declaim (simple-vector *regs-maybe-start*))
 
 (defvar *reg-ends* (make-array 0)
   "An array which holds the end positions
 of the current register candidates.")
+
 (declaim (simple-vector *reg-ends*))
 
 (defvar *end-string-pos* nil
@@ -78,11 +121,13 @@ of the current register candidates.")
 (defvar *rep-num* 0
   "Counts the number of \"complicated\" repetitions while the matchers
 are built.")
+
 (declaim (fixnum *rep-num*))
 
 (defvar *zero-length-num* 0
   "Counts the number of repetitions the inner regexes of which may
 have zero-length while the matchers are built.")
+
 (declaim (fixnum *zero-length-num*))
 
 (defvar *repeat-counters* (make-array 0
@@ -90,12 +135,14 @@ have zero-length while the matchers are built.")
                                       :element-type 'fixnum)
   "An array to keep track of how often
 repetitive patterns have been tested already.")
+
 (declaim (type (array fixnum (*)) *repeat-counters*))
 
 (defvar *last-pos-stores* (make-array 0)
   "An array to keep track of the last positions
 where we saw repetitive patterns.
 Only used for patterns which might have zero length.")
+
 (declaim (simple-vector *last-pos-stores*))
 
 (defvar *use-bmh-matchers* nil
@@ -120,25 +167,23 @@ intended to handle `character properties' like \\p{IsAlpha}.  If
 (defvar *allow-quoting* nil
   "Whether the parser should support Perl's \\Q and \\E.")
 
-
 (defmacro maybe-coerce-to-simple-string (string)
   "Coerces STRING to a simple STRING unless it already is one."
   (with-unique-names (=string=)
     `(let ((,=string= ,string))
-      (cond ((simple-string-p ,=string=)
+       (cond ((simple-string-p ,=string=)
               ,=string=)
-            (t
-             (coerce ,=string=
-                     'simple-string))))))
-
+             (t
+              (coerce ,=string=
+                      'simple-string))))))
 
 (defun complement* (test-function)
   "Like COMPLEMENT but optimized for unary functions."
   (typecase test-function
     (function
      (lambda (char)
-       (declare (character char))
-       (not (funcall (the function test-function) char))))
+      (declare (character char))
+      (not (funcall (the function test-function) char))))
     (otherwise
      (lambda (char)
        (declare (character char))
@@ -153,8 +198,8 @@ intended to handle `character properties' like \\p{IsAlpha}.  If
    (pos :initarg :pos
         :reader regex-syntax-error-pos))
   (:default-initargs
-      :pos nil
-      :string *syntax-error-string*)
+   :pos nil
+   :string *syntax-error-string*)
   (:report (lambda (condition stream)
              (format stream "~?~@[ at position ~A~]~@[ in string ~S~]"
                      (simple-condition-format-control condition)
@@ -205,8 +250,6 @@ the table grows, but increase the constant factor.")
 initialized to #\Null except for the first one which is initialized to
 #\?."
   (declare (type (integer 2 #.(1- array-total-size-limit)) size))
-  ;; since #\Null always hashes to 0, store something else there
-  ;; initially, and #\Null everywhere else
   (let ((result (make-array size
                             :element-type 'character
                             :initial-element (code-char 0))))
@@ -214,25 +257,19 @@ initialized to #\Null except for the first one which is initialized to
     result))
 
 (defstruct (charset (:constructor make-charset ()))
-  ;; this is set to 0 when we stop hashing and just use a CHAR-CODE
-  ;; indexed vector
   (depth +probe-depth+ :type fixnum)
-  ;; the number of characters in this set
   (count 0 :type fixnum)
-  ;; the storage vector
   (vector (make-char-vector 12) :type (simple-array character (*))))
 
 (declaim (inline mix))
+
 (defun mix (code hash)
   "Given a character code CODE and a hash code HASH, computes and
 returns the \"next\" hash code.  See comments below."
-  ;; mixing the CHAR-CODE back in at each step makes sure that if two
-  ;; characters collide (their hashes end up pointing in the same
-  ;; storage vector index) on one round, they should (hopefully!) not
-  ;; collide on the next
   (sxhash (logand most-positive-fixnum (+ code hash))))
 
 (declaim (inline compute-index))
+
 (defun compute-index (hash vector)
   "Computes and returns the index into the vector VECTOR corresponding
 to the hash code HASH."
@@ -245,38 +282,25 @@ to the hash code HASH."
         (depth (charset-depth set))
         (code (char-code char)))
     (declare (fixnum depth))
-    ;; as long as the set remains reasonably small, we use non-linear
-    ;; hashing - the first hash of any character is its CHAR-CODE, and
-    ;; subsequent hashes are computed by MIX above
     (cond ((or
-            ;; depth 0 is special - each char maps only to its code,
-            ;; nothing else
             (zerop depth)
-            ;; index 0 is special - only #\Null maps to it, no matter
-            ;; what the depth is
             (zerop code))
            (eq char (char vector code)))
           (t
-           ;; otherwise hash starts out as the character code, but
-           ;; maps to indexes 1-N
            (let ((hash code))
              (tagbody
               :retry
-              (let* ((index (compute-index hash vector))
-                     (x (char vector index)))
-                (cond ((eq x (code-char 0))
-                       ;; empty, no need to probe further
-                       (return-from in-charset-p nil))
-                      ((eq x char)
-                       ;; got it
-                       (return-from in-charset-p t))
-                      ((zerop (decf depth))
-                       ;; max probe depth reached, nothing found
-                       (return-from in-charset-p nil))
-                      (t
-                       ;; nothing yet, try next place
-                       (setf hash (mix code hash))
-                       (go :retry))))))))))
+                (let* ((index (compute-index hash vector))
+                       (x (char vector index)))
+                  (cond ((eq x (code-char 0))
+                         (return-from in-charset-p nil))
+                        ((eq x char)
+                         (return-from in-charset-p t))
+                        ((zerop (decf depth))
+                         (return-from in-charset-p nil))
+                        (t
+                         (setf hash (mix code hash))
+                         (go :retry))))))))))
 
 (defun add-to-charset (char set)
   "Adds the character CHAR to the charset SET, extending SET if
@@ -295,7 +319,6 @@ if COUNT is true and it is added to SET."
         (depth (charset-depth set))
         (code (char-code char)))
     (declare (fixnum depth))
-    ;; see comments in IN-CHARSET-P for algorithm
     (cond ((or (zerop depth) (zerop code))
            (unless (eq char (char vector code))
              (setf (char vector code) char)
@@ -306,21 +329,20 @@ if COUNT is true and it is added to SET."
            (let ((hash code))
              (tagbody
               :retry
-              (let* ((index (compute-index hash vector))
-                     (x (char vector index)))
-                (cond ((eq x (code-char 0))
-                       (setf (char vector index) char)
-                       (when count
-                         (incf (charset-count set)))
-                       (return-from %add-to-charset char))
-                      ((eq x char)
-                       (return-from %add-to-charset char))
-                      ((zerop (decf depth))
-                       ;; need to expand the table
-                       (return-from %add-to-charset nil))
-                      (t
-                       (setf hash (mix code hash))
-                       (go :retry))))))))))
+                (let* ((index (compute-index hash vector))
+                       (x (char vector index)))
+                  (cond ((eq x (code-char 0))
+                         (setf (char vector index) char)
+                         (when count
+                           (incf (charset-count set)))
+                         (return-from %add-to-charset char))
+                        ((eq x char)
+                         (return-from %add-to-charset char))
+                        ((zerop (decf depth))
+                         (return-from %add-to-charset nil))
+                        (t
+                         (setf hash (mix code hash))
+                         (go :retry))))))))))
 
 (defun %add-to-charset/expand (char set)
   "Extends the charset SET and then adds the character CHAR to it."
@@ -329,33 +351,25 @@ if COUNT is true and it is added to SET."
          (new-size (* 2 (length old-vector))))
     (tagbody
      :retry
-     ;; when the table grows large (currently over 1/3 of
-     ;; CHAR-CODE-LIMIT), we dispense with hashing and just allocate a
-     ;; storage vector with space for all characters, so that each
-     ;; character always uses only the CHAR-CODE
-     (multiple-value-bind (new-depth new-vector)
-         (if (>= new-size #.(truncate char-code-limit 3))
-           (values 0 (make-char-vector char-code-limit))
-           (values +probe-depth+ (make-char-vector new-size)))
-       (setf (charset-depth set) new-depth
-             (charset-vector set) new-vector)
-       (flet ((try-add (x)
-                ;; don't count - old characters are already accounted
-                ;; for, and might count the new one multiple times as
-                ;; well
-                (unless (%add-to-charset x set nil)
-                  (assert (not (zerop new-depth)))
-                  (setf new-size (* 2 new-size))
-                  (go :retry))))
-         (try-add char)
-         (dotimes (i (length old-vector))
-           (let ((x (char old-vector i)))
-             (if (eq x (code-char 0))
-               (when (zerop i)
-                 (try-add x))
-               (unless (zerop i)
-                 (try-add x))))))))
-    ;; added and expanded, /now/ count the new character.
+       (multiple-value-bind (new-depth new-vector)
+           (if (>= new-size #.(truncate char-code-limit 3))
+               (values 0 (make-char-vector char-code-limit))
+               (values +probe-depth+ (make-char-vector new-size)))
+         (setf (charset-depth set) new-depth
+               (charset-vector set) new-vector)
+         (flet ((try-add (x)
+                  (unless (%add-to-charset x set nil)
+                    (assert (not (zerop new-depth)))
+                    (setf new-size (* 2 new-size))
+                    (go :retry))))
+           (try-add char)
+           (dotimes (i (length old-vector))
+             (let ((x (char old-vector i)))
+               (if (eq x (code-char 0))
+                   (when (zerop i)
+                     (try-add x))
+                   (unless (zerop i)
+                     (try-add x))))))))
     (incf (charset-count set))
     t))
 
@@ -365,18 +379,15 @@ if COUNT is true and it is added to SET."
   (let* ((n (charset-count charset))
          (vector (charset-vector charset))
          (size (length vector)))
-    ;; see comments in IN-CHARSET-P for algorithm
     (when (eq (code-char 0) (char vector 0))
       (funcall function (code-char 0))
       (decf n))
     (loop for i from 1 below size
           for char = (char vector i)
           unless (eq (code-char 0) char) do
-          (funcall function char)
-          ;; this early termination test should be worth it when
-          ;; mapping across depth 0 charsets.
-          (when (zerop (decf n))
-            (return-from map-charset nil))))
+            (funcall function char)
+            (when (zerop (decf n))
+              (return-from map-charset nil))))
   nil)
 
 (defun create-charset-from-test-function (test-function start end)
@@ -386,34 +397,29 @@ character codes between START and END which satisfy TEST-FUNCTION."
         for code from start below end
         for char = (code-char code)
         when (and char (funcall test-function char))
-        do (add-to-charset char charset)
+          do (add-to-charset char charset)
         finally (return charset)))
 
 (defstruct (charmap  (:constructor make-charmap%))
-  ;; a bit vector mapping char codes to "booleans" (1 for set members,
-  ;; 0 for others)
   (vector #*0 :type simple-bit-vector)
-  ;; the smallest character code of all characters in the set
   (start 0 :type fixnum)
-  ;; the upper (exclusive) bound of all character codes in the set
   (end 0 :type fixnum)
-  ;; the number of characters in the set, or NIL if this is unknown
   (count nil :type (or fixnum null))
-  ;; whether the charmap actually represents the complement of the set  
   (complementp nil :type boolean))
 
 (declaim (inline in-charmap-p))
+
 (defun in-charmap-p (char charmap)
   "Tests whether the character CHAR belongs to the set represented by CHARMAP."
   (declare (character char) (charmap charmap))
   (let* ((char-code (char-code char))
          (char-in-vector-p
-          (let ((charmap-start (charmap-start charmap)))
-            (declare (fixnum charmap-start))
-            (and (<= charmap-start char-code)
-                 (< char-code (the fixnum (charmap-end charmap)))
-                 (= 1 (sbit (the simple-bit-vector (charmap-vector charmap))
-                            (- char-code charmap-start)))))))
+           (let ((charmap-start (charmap-start charmap)))
+             (declare (fixnum charmap-start))
+             (and (<= charmap-start char-code)
+                  (< char-code (the fixnum (charmap-end charmap)))
+                  (= 1 (sbit (the simple-bit-vector (charmap-vector charmap))
+                             (- char-code charmap-start)))))))
     (cond ((charmap-complementp charmap) (not char-in-vector-p))
           (t char-in-vector-p))))
 
@@ -425,7 +431,7 @@ Only works for non-complement charmaps."
        (loop for code of-type fixnum from (charmap-start charmap) to (charmap-end charmap)
              for i across (the simple-bit-vector (charmap-vector charmap))
              when (= i 1)
-             collect (code-char code))))
+               collect (code-char code))))
 
 (defun make-charmap (start end test-function &optional complementp)
   "Creates and returns a charmap representing all characters with
@@ -441,16 +447,12 @@ effect on how TEST-FUNCTION is used."
           for char = (code-char code)
           for index from 0
           when char do
-          (incf count)
-          (setf (sbit vector index) (if (funcall test-function char) 1 0)))
+            (incf count)
+            (setf (sbit vector index) (if (funcall test-function char) 1 0)))
     (make-charmap% :vector vector
                    :start start
                    :end end
-                   ;; we don't know for sure if COMPLEMENTP is true as
-                   ;; there isn't a necessary a character for each
-                   ;; integer below *REGEX-CHAR-CODE-LIMIT*
                    :count (and (not complementp) count)
-                   ;; make sure it's boolean
                    :complementp (not (not complementp)))))
 
 (defun create-charmap-from-test-function (test-function start end)
@@ -460,43 +462,34 @@ Tries to find the smallest interval which is necessary to represent
 the character set and uses the complement representation if that
 helps."
   (let (start-in end-in start-out end-out)
-    ;; determine the smallest intervals containing the set and its
-    ;; complement, [start-in, end-in) and [start-out, end-out) - first
-    ;; the lower bound
     (loop for code from start below end
           for char = (code-char code)
           until (and start-in start-out)
           when (and char
                     (not start-in)
                     (funcall test-function char))
-          do (setq start-in code)
+            do (setq start-in code)
           when (and char
                     (not start-out)
                     (not (funcall test-function char)))
-          do (setq start-out code))
+            do (setq start-out code))
     (unless start-in
-      ;; no character satisfied the test, so return a "pseudo" charmap
-      ;; where IN-CHARMAP-P is always false
       (return-from create-charmap-from-test-function
         (make-charmap% :count 0)))
     (unless start-out
-      ;; no character failed the test, so return a "pseudo" charmap
-      ;; where IN-CHARMAP-P is always true
       (return-from create-charmap-from-test-function
         (make-charmap% :complementp t)))
-    ;; now determine upper bound
     (loop for code from (1- end) downto start
           for char = (code-char code)
           until (and end-in end-out)
           when (and char
                     (not end-in)
                     (funcall test-function char))
-          do (setq end-in (1+ code))
+            do (setq end-in (1+ code))
           when (and char
                     (not end-out)
                     (not (funcall test-function char)))
-          do (setq end-out (1+ code)))
-    ;; use the smaller interval
+            do (setq end-out (1+ code)))
     (cond ((<= (- end-in start-in) (- end-out start-out))
            (make-charmap start-in end-in test-function))
           (t (make-charmap start-out end-out (complement* test-function) t)))))
@@ -508,31 +501,27 @@ character codes between START and END which satisfy TEST-FUNCTION."
         for code from start below end
         for char = (code-char code)
         when (and char (funcall test-function char))
-        do (setf (gethash char hash-table) t)
+          do (setf (gethash char hash-table) t)
         finally (return hash-table)))
 
 (defun create-optimized-test-function (test-function &key
-                                                     (start 0)
-                                                     (end *regex-char-code-limit*)
-                                                     (kind *optimize-char-classes*))
+                                                       (start 0)
+                                                       (end *regex-char-code-limit*)
+                                                       (kind *optimize-char-classes*))
   "Given a unary test function which is applicable to characters
 returns a function which yields the same boolean results for all
 characters with character codes from START to \(excluding) END.  If
 KIND is NIL, TEST-FUNCTION will simply be returned.  Otherwise, KIND
 should be one of:
-
 * :HASH-TABLE - builds a hash table representing all characters which
                 satisfy the test and returns a closure which checks if
                 a character is in that hash table
-
 * :CHARSET - instead of a hash table uses a \"charset\" which is a
              data structure using non-linear hashing and optimized to
              represent \(sparse) sets of characters in a fast and
              space-efficient way \(contributed by Nikodemus Siivola)
-
 * :CHARMAP - instead of a hash table uses a bit vector to represent
              the set of characters
-
 You can also use :HASH-TABLE* or :CHARSET* which are like :HASH-TABLE
 and :CHARSET but use the complement of the set if the set contains
 more than half of all characters between START and END.  This saves
@@ -568,24 +557,26 @@ which contains either the set or its complement."
                   (not (gethash char hash-table)))))))))
 
 (declaim (inline map-char-to-special-class))
+
 (defun map-char-to-special-char-class (chr)
   "Maps escaped characters like \"\\d\" to the tokens which represent
 their associated character classes."
   (case chr
     ((#\d)
-      :digit-class)
+     :digit-class)
     ((#\D)
-      :non-digit-class)
+     :non-digit-class)
     ((#\w)
-      :word-char-class)
+     :word-char-class)
     ((#\W)
-      :non-word-char-class)
+     :non-word-char-class)
     ((#\s)
-      :whitespace-char-class)
+     :whitespace-char-class)
     ((#\S)
-      :non-whitespace-char-class)))
+     :non-whitespace-char-class)))
 
 (declaim (inline make-lexer-internal))
+
 (defstruct (lexer (:constructor make-lexer-internal))
   "LEXER structures are used to hold the regex string which is
 currently lexed and to keep track of the lexer's state."
@@ -601,12 +592,14 @@ currently lexed and to keep track of the lexer's state."
                        :len (length string)))
 
 (declaim (inline end-of-string-p))
+
 (defun end-of-string-p (lexer)
   "Tests whether we're at the end of the regex string."
   (<= (lexer-len lexer)
       (lexer-pos lexer)))
 
 (declaim (inline looking-at-p))
+
 (defun looking-at-p (lexer chr)
   "Tests whether the next character the lexer would see is CHR.
 Does not respect extended mode."
@@ -615,6 +608,7 @@ Does not respect extended mode."
               chr)))
 
 (declaim (inline next-char-non-extended))
+
 (defun next-char-non-extended (lexer)
   "Returns the next character which is to be examined and updates the
 POS slot. Does not respect extended mode."
@@ -630,60 +624,44 @@ nested comments are skipped if applicable."
   (let ((next-char (next-char-non-extended lexer))
         last-loop-pos)
     (loop
-      ;; remember where we started
       (setq last-loop-pos (lexer-pos lexer))
-      ;; first we look for nested comments like (?#foo)
       (when (and next-char
                  (char= next-char #\()
                  (looking-at-p lexer #\?))
         (incf (lexer-pos lexer))
         (cond ((looking-at-p lexer #\#)
-                ;; must be a nested comment - so we have to search for
-                ;; the closing parenthesis
-                (let ((error-pos (- (lexer-pos lexer) 2)))
-                  (unless
-                      ;; loop 'til ')' or end of regex string and
-                      ;; return NIL if ')' wasn't encountered
-                      (loop for skip-char = next-char
-                            then (next-char-non-extended lexer)
-                            while (and skip-char
-                                       (char/= skip-char #\)))
-                            finally (return skip-char))
-                    (signal-syntax-error* error-pos "Comment group not closed.")))
-                (setq next-char (next-char-non-extended lexer)))
+               (let ((error-pos (- (lexer-pos lexer) 2)))
+                 (unless
+                     (loop for skip-char = next-char
+                             then (next-char-non-extended lexer)
+                           while (and skip-char
+                                      (char/= skip-char #\)))
+                           finally (return skip-char))
+                   (signal-syntax-error* error-pos "Comment group not closed.")))
+               (setq next-char (next-char-non-extended lexer)))
               (t
-                ;; undo effect of previous INCF if we didn't see a #
-                (decf (lexer-pos lexer)))))
+               (decf (lexer-pos lexer)))))
       (when *extended-mode-p*
-        ;; now - if we're in extended mode - we skip whitespace and
-        ;; comments; repeat the following loop while we look at
-        ;; whitespace or #\#
         (loop while (and next-char
                          (or (char= next-char #\#)
                              (whitespacep next-char)))
               do (setq next-char
-                         (if (char= next-char #\#)
-                           ;; if we saw a comment marker skip until
-                           ;; we're behind #\Newline...
+                       (if (char= next-char #\#)
                            (loop for skip-char = next-char
-                                 then (next-char-non-extended lexer)
+                                   then (next-char-non-extended lexer)
                                  while (and skip-char
                                             (char/= skip-char #\Newline))
                                  finally (return (next-char-non-extended lexer)))
-                           ;; ...otherwise (whitespace) skip until we
-                           ;; see the next non-whitespace character
                            (loop for skip-char = next-char
-                                 then (next-char-non-extended lexer)
+                                   then (next-char-non-extended lexer)
                                  while (and skip-char
                                             (whitespacep skip-char))
                                  finally (return skip-char))))))
-      ;; if the position has moved we have to repeat our tests
-      ;; because of cases like /^a (?#xxx) (?#yyy) {3}c/x which
-      ;; would be equivalent to /^a{3}c/ in Perl
       (unless (> (lexer-pos lexer) last-loop-pos)
         (return next-char)))))
 
 (declaim (inline fail))
+
 (defun fail (lexer)
   "Moves (LEXER-POS LEXER) back to the last position stored in
 \(LEXER-LAST-POS LEXER) and pops the LAST-POS stack."
@@ -706,24 +684,24 @@ we don't tolerate whitespace in front of the number."
       (parse-integer (lexer-str lexer)
                      :start (lexer-pos lexer)
                      :end (if max-length
-                            (let ((end-pos (+ (lexer-pos lexer)
-                                              (the fixnum max-length)))
-                                  (lexer-len (lexer-len lexer)))
-                              (if (< end-pos lexer-len)
-                                end-pos
-                                lexer-len))
-                            (lexer-len lexer))
+                              (let ((end-pos (+ (lexer-pos lexer)
+                                                (the fixnum max-length)))
+                                    (lexer-len (lexer-len lexer)))
+                                (if (< end-pos lexer-len)
+                                    end-pos
+                                    lexer-len))
+                              (lexer-len lexer))
                      :radix radix
                      :junk-allowed t)
     (cond ((and integer (>= (the fixnum integer) 0))
-            (setf (lexer-pos lexer) new-pos)
-            integer)
+           (setf (lexer-pos lexer) new-pos)
+           integer)
           (t nil))))
 
 (declaim (inline try-number))
+
 (defun try-number (lexer &key (radix 10) max-length no-whitespace-p)
   "Like GET-NUMBER but won't consume anything if no number is seen."
-  ;; remember current position
   (push (lexer-pos lexer) (lexer-last-pos lexer))
   (let ((number (get-number lexer
                             :radix radix
@@ -732,11 +710,11 @@ we don't tolerate whitespace in front of the number."
     (or number (fail lexer))))
 
 (declaim (inline make-char-from-code))
+
 (defun make-char-from-code (number error-pos)
   "Create character from char-code NUMBER. NUMBER can be NIL
 which is interpreted as 0. ERROR-POS is the position where
 the corresponding number started within the regex string."
-  ;; only look at rightmost eight bits in compliance with Perl
   (let ((code (logand #o377 (the fixnum (or number 0)))))
     (or (and (< code char-code-limit)
              (code-char code))
@@ -752,62 +730,50 @@ handled elsewhere."
   (let ((chr (next-char-non-extended lexer)))
     (case chr
       ((#\E)
-        ;; if \Q quoting is on this is ignored, otherwise it's just an
-        ;; #\E
-        (if *allow-quoting*
-          :void
-          #\E))
+       (if *allow-quoting*
+           :void
+           #\E))
       ((#\c)
-        ;; \cx means control-x in Perl
-        (let ((next-char (next-char-non-extended lexer)))
-          (unless next-char
-            (signal-syntax-error* (lexer-pos lexer) "Character missing after '\\c'"))
-          (code-char (logxor #x40 (char-code (char-upcase next-char))))))
+       (let ((next-char (next-char-non-extended lexer)))
+         (unless next-char
+           (signal-syntax-error* (lexer-pos lexer) "Character missing after '\\c'"))
+         (code-char (logxor #x40 (char-code (char-upcase next-char))))))
       ((#\x)
-        ;; \x should be followed by a hexadecimal char code,
-        ;; two digits or less
-        (let* ((error-pos (lexer-pos lexer))
-               (number (get-number lexer :radix 16 :max-length 2 :no-whitespace-p t)))
-          ;; note that it is OK if \x is followed by zero digits
-          (make-char-from-code number error-pos)))
+       (let* ((error-pos (lexer-pos lexer))
+              (number (get-number lexer :radix 16 :max-length 2 :no-whitespace-p t)))
+         (make-char-from-code number error-pos)))
       ((#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
-        ;; \x should be followed by an octal char code,
-        ;; three digits or less
-        (let* ((error-pos (decf (lexer-pos lexer)))
-               (number (get-number lexer :radix 8 :max-length 3)))
-          (make-char-from-code number error-pos)))
-      ;; the following five character names are 'semi-standard'
-      ;; according to the CLHS but I'm not aware of any implementation
-      ;; that doesn't implement them
+       (let* ((error-pos (decf (lexer-pos lexer)))
+              (number (get-number lexer :radix 8 :max-length 3)))
+         (make-char-from-code number error-pos)))
       ((#\t)
-        #\Tab)
+       #\Tab)
       ((#\n)
-        #\Newline)
+       #\Newline)
       ((#\r)
-        #\Return)
+       #\Return)
       ((#\f)
-        #\Page)
+       #\Page)
       ((#\b)
-        #\Backspace)
+       #\Backspace)
       ((#\a)
-        (code-char 7))                  ; ASCII bell
+       (code-char 7))                  ; ASCII bell
       ((#\e)
-        (code-char 27))                 ; ASCII escape
+       (code-char 27))                 ; ASCII escape
       (otherwise
-        ;; all other characters aren't affected by a backslash
-        chr))))
+       chr))))
 
 (defun read-char-property (lexer first-char)
   (unless (eql (next-char-non-extended lexer) #\{)
     (signal-syntax-error* (lexer-pos lexer) "Expected left brace after \\~A." first-char))
   (let ((name (with-output-to-string (out nil :element-type
                                           'character)
-                  (loop
-                   (let ((char (or (next-char-non-extended lexer)
-                                   (signal-syntax-error "Unexpected EOF after \\~A{." first-char))))
-                     (when (char= char #\})
-                       (return))
-                     (write-char char out))))))
+                (loop
+                  (let ((char (or (next-char-non-extended lexer)
+                                  (signal-syntax-error "Unexpected EOF after \\~A{." first-char))))
+                    (when (char= char #\})
+                      (return))
+                    (write-char char out))))))
     (list (if (char= first-char #\p) :property :inverted-property)
           name)))
 
@@ -832,76 +798,51 @@ we're inside a range or not."
              (setq hyphen-seen nil)))
       (loop for first = t then nil
             for c = (next-char-non-extended lexer)
-            ;; leave loop if at end of string
             while c
             do (cond
-                ((char= c #\\)
-                 ;; we've seen a backslash
-                 (let ((next-char (next-char-non-extended lexer)))
-                   (case next-char
-                     ((#\d #\D #\w #\W #\s #\S)
-                      ;; a special character class
-                      (push (map-char-to-special-char-class next-char) list)
-                      ;; if the last character was a hyphen
-                      ;; just collect it literally
-                      (when hyphen-seen
-                        (push #\- list))
-                      ;; if the next character is a hyphen do the same
-                      (when (looking-at-p lexer #\-)
-                        (push #\- list)
-                        (incf (lexer-pos lexer)))
-                      (setq hyphen-seen nil))
-                     ((#\P #\p)
-                      ;; maybe a character property
-                      (cond ((null *property-resolver*)
-                             (handle-char next-char))
-                            (t
-                             (push (read-char-property lexer next-char) list)
-                             ;; if the last character was a hyphen
-                             ;; just collect it literally
-                             (when hyphen-seen
-                               (push #\- list))
-                             ;; if the next character is a hyphen do the same
-                             (when (looking-at-p lexer #\-)
-                               (push #\- list)
-                               (incf (lexer-pos lexer)))
-                             (setq hyphen-seen nil))))
-                     ((#\E)
-                      ;; if \Q quoting is on we ignore \E,
-                      ;; otherwise it's just a plain #\E
-                      (unless *allow-quoting*
-                        (handle-char #\E)))
-                     (otherwise
-                      ;; otherwise unescape the following character(s)
-                      (decf (lexer-pos lexer))
-                      (handle-char (unescape-char lexer))))))
-                (first
-                 ;; the first character must not be a right bracket
-                 ;; and isn't treated specially if it's a hyphen
-                 (handle-char c))
-                ((char= c #\])
-                 ;; end of character class
-                 ;; make sure we collect a pending hyphen
-                 (when hyphen-seen
-                   (setq hyphen-seen nil)
-                   (handle-char #\-))
-                 ;; reverse the list to preserve the order intended
-                 ;; by the author of the regex string
-                 (return-from collect-char-class (nreverse list)))
-                ((and (char= c #\-)
-                      last-char
-                      (not hyphen-seen))
-                 ;; if the last character was 'just a character'
-                 ;; we expect to be in the middle of a range
-                 (setq hyphen-seen t))
-                ((char= c #\-)
-                 ;; otherwise this is just an ordinary hyphen
-                 (handle-char #\-))
-                (t
-                 ;; default case - just collect the character
-                 (handle-char c))))
-      ;; we can only exit the loop normally if we've reached the end
-      ;; of the regex string without seeing a right bracket
+                 ((char= c #\\)
+                  (let ((next-char (next-char-non-extended lexer)))
+                    (case next-char
+                      ((#\d #\D #\w #\W #\s #\S)
+                       (push (map-char-to-special-char-class next-char) list)
+                       (when hyphen-seen
+                         (push #\- list))
+                       (when (looking-at-p lexer #\-)
+                         (push #\- list)
+                         (incf (lexer-pos lexer)))
+                       (setq hyphen-seen nil))
+                      ((#\P #\p)
+                       (cond ((null *property-resolver*)
+                              (handle-char next-char))
+                             (t
+                              (push (read-char-property lexer next-char) list)
+                              (when hyphen-seen
+                                (push #\- list))
+                              (when (looking-at-p lexer #\-)
+                                (push #\- list)
+                                (incf (lexer-pos lexer)))
+                              (setq hyphen-seen nil))))
+                      ((#\E)
+                       (unless *allow-quoting*
+                         (handle-char #\E)))
+                      (otherwise
+                       (decf (lexer-pos lexer))
+                       (handle-char (unescape-char lexer))))))
+                 (first
+                  (handle-char c))
+                 ((char= c #\])
+                  (when hyphen-seen
+                    (setq hyphen-seen nil)
+                    (handle-char #\-))
+                  (return-from collect-char-class (nreverse list)))
+                 ((and (char= c #\-)
+                       last-char
+                       (not hyphen-seen))
+                  (setq hyphen-seen t))
+                 ((char= c #\-)
+                  (handle-char #\-))
+                 (t
+                  (handle-char c))))
       (signal-syntax-error* start-pos "Missing right bracket to close character class."))))
 
 (defun maybe-parse-flags (lexer)
@@ -911,94 +852,75 @@ meaning) and returns a corresponding list of \"flag\" tokens.  The
 the behaviour of the lexer itself via the special variable
 *EXTENDED-MODE-P*."
   (prog1
-    (loop with set = t
-          for chr = (next-char-non-extended lexer)
-          unless chr
-            do (signal-syntax-error "Unexpected end of string.")
-          while (find chr "-imsx" :test #'char=)
-          ;; the first #\- will invert the meaning of all modifiers
-          ;; following it
-          if (char= chr #\-)
-            do (setq set nil)
-          else if (char= chr #\x)
-            do (setq *extended-mode-p* set)
-          else collect (if set
-                         (case chr
-                           ((#\i)
-                             :case-insensitive-p)
-                           ((#\m)
-                             :multi-line-mode-p)
-                           ((#\s)
-                             :single-line-mode-p))
-                         (case chr
-                           ((#\i)
-                             :case-sensitive-p)
-                           ((#\m)
-                             :not-multi-line-mode-p)
-                           ((#\s)
-                             :not-single-line-mode-p))))
+      (loop with set = t
+            for chr = (next-char-non-extended lexer)
+            unless chr
+              do (signal-syntax-error "Unexpected end of string.")
+            while (find chr "-imsx" :test #'char=)
+            if (char= chr #\-)
+              do (setq set nil)
+            else if (char= chr #\x)
+                   do (setq *extended-mode-p* set)
+            else collect (if set
+                             (case chr
+                               ((#\i)
+                                :case-insensitive-p)
+                               ((#\m)
+                                :multi-line-mode-p)
+                               ((#\s)
+                                :single-line-mode-p))
+                             (case chr
+                               ((#\i)
+                                :case-sensitive-p)
+                               ((#\m)
+                                :not-multi-line-mode-p)
+                               ((#\s)
+                                :not-single-line-mode-p))))
     (decf (lexer-pos lexer))))
 
 (defun get-quantifier (lexer)
   "Returns a list of two values (min max) if what the lexer is looking
 at can be interpreted as a quantifier. Otherwise returns NIL and
 resets the lexer to its old position."
-  ;; remember starting position for FAIL and UNGET-TOKEN functions
   (push (lexer-pos lexer) (lexer-last-pos lexer))
   (let ((next-char (next-char lexer)))
     (case next-char
       ((#\*)
-        ;; * (Kleene star): match 0 or more times
-        '(0 nil))
+       '(0 nil))
       ((#\+)
-        ;; +: match 1 or more times
-        '(1 nil))
+       '(1 nil))
       ((#\?)
-        ;; ?: match 0 or 1 times
-        '(0 1))
+       '(0 1))
       ((#\{)
-        ;; one of
-        ;;   {n}:   match exactly n times
-        ;;   {n,}:  match at least n times
-        ;;   {n,m}: match at least n but not more than m times
-        ;; note that anything not matching one of these patterns will
-        ;; be interpreted literally - even whitespace isn't allowed
-        (let ((num1 (get-number lexer :no-whitespace-p t)))
-          (if num1
-            (let ((next-char (next-char-non-extended lexer)))
-              (case next-char
-                ((#\,)
+       (let ((num1 (get-number lexer :no-whitespace-p t)))
+         (if num1
+             (let ((next-char (next-char-non-extended lexer)))
+               (case next-char
+                 ((#\,)
                   (let* ((num2 (get-number lexer :no-whitespace-p t))
                          (next-char (next-char-non-extended lexer)))
                     (case next-char
                       ((#\})
-                        ;; this is the case {n,} (NUM2 is NIL) or {n,m}
-                        (list num1 num2))
+                       (list num1 num2))
                       (otherwise
-                        (fail lexer)))))
-                ((#\})
-                  ;; this is the case {n}
+                       (fail lexer)))))
+                 ((#\})
                   (list num1 num1))
-                (otherwise
+                 (otherwise
                   (fail lexer))))
-            ;; no number following left curly brace, so we treat it
-            ;; like a normal character
-            (fail lexer))))
-      ;; cannot be a quantifier
+             (fail lexer))))
       (otherwise
-        (fail lexer)))))
+       (fail lexer)))))
 
 (defun parse-register-name-aux (lexer)
   "Reads and returns the name in a named register group.  It is
 assumed that the starting #\< character has already been read.  The
 closing #\> will also be consumed."
-  ;; we have to look for an ending > character now
   (let ((end-name (position #\>
                             (lexer-str lexer)
                             :start (lexer-pos lexer)
                             :test #'char=)))
     (unless end-name
-      ;; there has to be > somewhere, syntax error otherwise
       (signal-syntax-error* (1- (lexer-pos lexer)) "Opening #\< in named group has no closing #\>."))
     (let ((name (subseq (lexer-str lexer)
                         (lexer-pos lexer)
@@ -1007,31 +929,26 @@ closing #\> will also be consumed."
                          (or (alphanumericp char)
                              (char= #\- char)))
                      name)
-        ;; register name can contain only alphanumeric characters or #\-
         (signal-syntax-error* (lexer-pos lexer) "Invalid character in named register group."))
-      ;; advance lexer beyond "<name>" part
       (setf (lexer-pos lexer) (1+ end-name))
       name)))
 
 (declaim (inline unget-token))
+
 (defun unget-token (lexer)
   "Moves the lexer back to the last position stored in the LAST-POS stack."
   (if (lexer-last-pos lexer)
-    (setf (lexer-pos lexer)
+      (setf (lexer-pos lexer)
             (pop (lexer-last-pos lexer)))
-    (error "No token to unget \(this should not happen)")))
+      (error "No token to unget \(this should not happen)")))
 
 (defun get-token (lexer)
   "Returns and consumes the next token from the regex string \(or NIL)."
-  ;; remember starting position for UNGET-TOKEN function
   (push (lexer-pos lexer)
         (lexer-last-pos lexer))
   (let ((next-char (next-char lexer)))
     (cond (next-char
            (case next-char
-             ;; the easy cases first - the following six characters
-             ;; always have a special meaning and get translated
-             ;; into tokens immediately
              ((#\))
               :close-paren)
              ((#\|)
@@ -1045,13 +962,8 @@ closing #\> will also be consumed."
              ((#\$)
               :end-anchor)
              ((#\+ #\*)
-              ;; quantifiers will always be consumend by
-              ;; GET-QUANTIFIER, they must not appear here
               (signal-syntax-error* (1- (lexer-pos lexer)) "Quantifier '~A' not allowed." next-char))
              ((#\{)
-              ;; left brace isn't a special character in it's own
-              ;; right but we must check if what follows might
-              ;; look like a quantifier
               (let ((this-pos (lexer-pos lexer))
                     (this-last-pos (lexer-last-pos lexer)))
                 (unget-token lexer)
@@ -1065,7 +977,6 @@ closing #\> will also be consumed."
                       (lexer-last-pos lexer) this-last-pos)
                 next-char))
              ((#\[)
-              ;; left bracket always starts a character class
               (cons  (cond ((looking-at-p lexer #\^)
                             (incf (lexer-pos lexer))
                             :inverted-char-class)
@@ -1073,8 +984,6 @@ closing #\> will also be consumed."
                             :char-class))
                      (collect-char-class lexer)))
              ((#\\)
-              ;; backslash might mean different things so we have
-              ;; to peek one char ahead:
               (let ((next-char (next-char-non-extended lexer)))
                 (case next-char
                   ((#\A)
@@ -1090,57 +999,33 @@ closing #\> will also be consumed."
                   ((#\k)
                    #\k)
                   ((#\d #\D #\w #\W #\s #\S)
-                   ;; these will be treated like character classes
                    (map-char-to-special-char-class next-char))
                   ((#\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
-                   ;; uh, a digit...
                    (let* ((old-pos (decf (lexer-pos lexer)))
-                          ;; ...so let's get the whole number first
                           (backref-number (get-number lexer)))
                      (declare (fixnum backref-number))
                      (cond ((and (> backref-number (lexer-reg lexer))
                                  (<= 10 backref-number))
-                            ;; \10 and higher are treated as octal
-                            ;; character codes if we haven't
-                            ;; opened that much register groups
-                            ;; yet
                             (setf (lexer-pos lexer) old-pos)
-                            ;; re-read the number from the old
-                            ;; position and convert it to its
-                            ;; corresponding character
                             (make-char-from-code (get-number lexer :radix 8 :max-length 3)
                                                  old-pos))
                            (t
-                            ;; otherwise this must refer to a
-                            ;; backreference
                             (list :back-reference backref-number)))))
                   ((#\0)
-                   ;; this always means an octal character code
-                   ;; (at most three digits)
                    (let ((old-pos (decf (lexer-pos lexer))))
                      (make-char-from-code (get-number lexer :radix 8 :max-length 3)
                                           old-pos)))
                   ((#\P #\p)
-                   ;; might be a named property
                    (cond (*property-resolver* (read-char-property lexer next-char))
                          (t next-char)))
                   (otherwise
-                   ;; in all other cases just unescape the
-                   ;; character
                    (decf (lexer-pos lexer))
                    (unescape-char lexer)))))
              ((#\()
-              ;; an open parenthesis might mean different things
-              ;; depending on what follows...
               (cond ((looking-at-p lexer #\?)
-                     ;; this is the case '(?' (and probably more behind)
                      (incf (lexer-pos lexer))
-                     ;; we have to check for modifiers first
-                     ;; because a colon might follow
                      (let* ((flags (maybe-parse-flags lexer))
                             (next-char (next-char-non-extended lexer)))
-                       ;; modifiers are only allowed if a colon
-                       ;; or a closing parenthesis are following
                        (when (and flags
                                   (not (find next-char ":)" :test #'char=)))
                          (signal-syntax-error* (car (lexer-last-pos lexer))
@@ -1150,61 +1035,41 @@ closing #\> will also be consumed."
                                                        (lexer-pos lexer))))
                        (case next-char
                          ((nil)
-                          ;; syntax error
                           (signal-syntax-error "End of string following '(?'."))
                          ((#\))
-                          ;; an empty group except for the flags
-                          ;; (if there are any)
                           (or (and flags
                                    (cons :flags flags))
                               :void))
                          ((#\()
-                          ;; branch
                           :open-paren-paren)
                          ((#\>)
-                          ;; standalone
                           :open-paren-greater)
                          ((#\=)
-                          ;; positive look-ahead
                           :open-paren-equal)
                          ((#\!)
-                          ;; negative look-ahead
                           :open-paren-exclamation)
                          ((#\:)
-                          ;; non-capturing group - return flags as
-                          ;; second value
                           (values :open-paren-colon flags))
                          ((#\<)
-                          ;; might be a look-behind assertion or a named group, so
-                          ;; check next character
                           (let ((next-char (next-char-non-extended lexer)))
                             (cond ((and next-char
                                         (alpha-char-p next-char))
-                                   ;; we have encountered a named group
                                    (signal-syntax-error* (1- (lexer-pos lexer))
                                                          "Character '~A' may not follow '(?<'"
                                                          next-char)
-                                   ;; put the letter back
                                    (decf (lexer-pos lexer))
-                                   ;; named group
                                    :open-paren-less-letter)
                                   (t
                                    (case next-char
                                      ((#\=)
-                                      ;; positive look-behind
                                       :open-paren-less-equal)
                                      ((#\!)
-                                      ;; negative look-behind
                                       :open-paren-less-exclamation)
                                      ((#\))
-                                      ;; Perl allows "(?<)" and treats
-                                      ;; it like a null string
                                       :void)
                                      ((nil)
-                                      ;; syntax error
                                       (signal-syntax-error "End of string following '(?<'."))
                                      (t
-                                      ;; also syntax error
                                       (signal-syntax-error* (1- (lexer-pos lexer))
                                                             "Character '~A' may not follow '(?<'."
                                                             next-char )))))))
@@ -1213,20 +1078,15 @@ closing #\> will also be consumed."
                                                 "Character '~A' may not follow '(?'."
                                                 next-char)))))
                     (t
-                     ;; if next-char was not #\? (this is within
-                     ;; the first COND), we've just seen an opening
-                     ;; parenthesis and leave it like that
                      :open-paren)))
              (otherwise
-              ;; all other characters are their own tokens
               next-char)))
-          ;; we didn't get a character (this if the "else" branch from
-          ;; the first IF), so we don't return a token but NIL
           (t
            (pop (lexer-last-pos lexer))
            nil))))
 
 (declaim (inline start-of-subexpr-p))
+
 (defun start-of-subexpr-p (lexer)
   "Tests whether the next token can start a valid sub-expression, i.e.
 a stand-alone regex."
@@ -1234,9 +1094,9 @@ a stand-alone regex."
          (next-char (next-char lexer)))
     (not (or (null next-char)
              (prog1
-               (member (the character next-char)
-                       '(#\) #\|)
-                       :test #'char=)
+                 (member (the character next-char)
+                         '(#\) #\|)
+                         :test #'char=)
                (setf (lexer-pos lexer) pos))))))
 
 (defun group (lexer)
@@ -1258,45 +1118,30 @@ Will return <parse-tree> or \(<grouping-type> <parse-tree>) where
   (multiple-value-bind (open-token flags)
       (get-token lexer)
     (cond ((eq open-token :open-paren-paren)
-            ;; special case for conditional regular expressions; note
-            ;; that at this point we accept a couple of illegal
-            ;; combinations which'll be sorted out later by the
-            ;; converter
-            (let* ((open-paren-pos (car (lexer-last-pos lexer)))
-                   ;; check if what follows "(?(" is a number
-                   (number (try-number lexer :no-whitespace-p t))
-                   ;; make changes to extended-mode-p local
-                   (*extended-mode-p* *extended-mode-p*))
-              (declare (fixnum open-paren-pos))
-              (cond (number
-                      ;; condition is a number (i.e. refers to a
-                      ;; back-reference)
-                      (let* ((inner-close-token (get-token lexer))
-                             (reg-expr (reg-expr lexer))
-                             (close-token (get-token lexer)))
-                        (unless (eq inner-close-token :close-paren)
-                          (signal-syntax-error* (+ open-paren-pos 2)
-                                                "Opening paren has no matching closing paren."))
-                        (unless (eq close-token :close-paren)
-                          (signal-syntax-error* open-paren-pos
-                                                "Opening paren has no matching closing paren."))
-                        (list :branch number reg-expr)))
-                    (t
-                      ;; condition must be a full regex (actually a
-                      ;; look-behind or look-ahead); and here comes a
-                      ;; terrible kludge: instead of being cleanly
-                      ;; separated from the lexer, the parser pushes
-                      ;; back the lexer by one position, thereby
-                      ;; landing in the middle of the 'token' "(?(" -
-                      ;; yuck!!
-                      (decf (lexer-pos lexer))
-                      (let* ((inner-reg-expr (group lexer))
-                             (reg-expr (reg-expr lexer))
-                             (close-token (get-token lexer)))
-                        (unless (eq close-token :close-paren)
-                          (signal-syntax-error* open-paren-pos
-                                                "Opening paren has no matching closing paren."))
-                        (list :branch inner-reg-expr reg-expr))))))
+           (let* ((open-paren-pos (car (lexer-last-pos lexer)))
+                  (number (try-number lexer :no-whitespace-p t))
+                  (*extended-mode-p* *extended-mode-p*))
+             (declare (fixnum open-paren-pos))
+             (cond (number
+                    (let* ((inner-close-token (get-token lexer))
+                           (reg-expr (reg-expr lexer))
+                           (close-token (get-token lexer)))
+                      (unless (eq inner-close-token :close-paren)
+                        (signal-syntax-error* (+ open-paren-pos 2)
+                                              "Opening paren has no matching closing paren."))
+                      (unless (eq close-token :close-paren)
+                        (signal-syntax-error* open-paren-pos
+                                              "Opening paren has no matching closing paren."))
+                      (list :branch number reg-expr)))
+                   (t
+                    (decf (lexer-pos lexer))
+                    (let* ((inner-reg-expr (group lexer))
+                           (reg-expr (reg-expr lexer))
+                           (close-token (get-token lexer)))
+                      (unless (eq close-token :close-paren)
+                        (signal-syntax-error* open-paren-pos
+                                              "Opening paren has no matching closing paren."))
+                      (list :branch inner-reg-expr reg-expr))))))
           ((member open-token '(:open-paren
                                 :open-paren-colon
                                 :open-paren-greater
@@ -1306,52 +1151,40 @@ Will return <parse-tree> or \(<grouping-type> <parse-tree>) where
                                 :open-paren-less-exclamation
                                 :open-paren-less-letter)
                    :test #'eq)
-            ;; make changes to extended-mode-p local
-            (let ((*extended-mode-p* *extended-mode-p*))
-              ;; we saw one of the six token representing opening
-              ;; parentheses
-              (let* ((open-paren-pos (car (lexer-last-pos lexer)))
-                     (register-name (when (eq open-token :open-paren-less-letter)
-                                      (parse-register-name-aux lexer)))
-                     (reg-expr (reg-expr lexer))
-                     (close-token (get-token lexer)))
-                (when (or (eq open-token :open-paren)
-                          (eq open-token :open-paren-less-letter))
-                  ;; if this is the "("<regex>")" or "(?"<name>""<regex>")" production we have to
-                  ;; increment the register counter of the lexer
-                  (incf (lexer-reg lexer)))
-                (unless (eq close-token :close-paren)
-                  ;; the token following <regex> must be the closing
-                  ;; parenthesis or this is a syntax error
-                  (signal-syntax-error* open-paren-pos
-                                        "Opening paren has no matching closing paren."))
-                (if flags
-                  ;; if the lexer has returned a list of flags this must
-                  ;; have been the "(?:"<regex>")" production
-                  (cons :group (nconc flags (list reg-expr)))
-                  (if (eq open-token :open-paren-less-letter)
-                      (list :named-register register-name
-                            reg-expr)
-                      (list (case open-token
-                              ((:open-paren)
-                               :register)
-                              ((:open-paren-colon)
-                               :group)
-                              ((:open-paren-greater)
-                               :standalone)
-                              ((:open-paren-equal)
-                               :positive-lookahead)
-                              ((:open-paren-exclamation)
-                               :negative-lookahead)
-                              ((:open-paren-less-equal)
-                               :positive-lookbehind)
-                              ((:open-paren-less-exclamation)
-                               :negative-lookbehind))
-                            reg-expr))))))
+           (let ((*extended-mode-p* *extended-mode-p*))
+             (let* ((open-paren-pos (car (lexer-last-pos lexer)))
+                    (register-name (when (eq open-token :open-paren-less-letter)
+                                     (parse-register-name-aux lexer)))
+                    (reg-expr (reg-expr lexer))
+                    (close-token (get-token lexer)))
+               (when (or (eq open-token :open-paren)
+                         (eq open-token :open-paren-less-letter))
+                 (incf (lexer-reg lexer)))
+               (unless (eq close-token :close-paren)
+                 (signal-syntax-error* open-paren-pos
+                                       "Opening paren has no matching closing paren."))
+               (if flags
+                   (cons :group (nconc flags (list reg-expr)))
+                   (if (eq open-token :open-paren-less-letter)
+                       (list :named-register register-name
+                             reg-expr)
+                       (list (case open-token
+                               ((:open-paren)
+                                :register)
+                               ((:open-paren-colon)
+                                :group)
+                               ((:open-paren-greater)
+                                :standalone)
+                               ((:open-paren-equal)
+                                :positive-lookahead)
+                               ((:open-paren-exclamation)
+                                :negative-lookahead)
+                               ((:open-paren-less-equal)
+                                :positive-lookbehind)
+                               ((:open-paren-less-exclamation)
+                                :negative-lookbehind))
+                             reg-expr))))))
           (t
-           ;; this is the <legal-token> production; <legal-token> is
-           ;; any token which passes START-OF-SUBEXPR-P (otherwise
-           ;; parsing had already stopped in the SEQ method)
            open-token))))
 
 (defun greedy-quant (lexer)
@@ -1362,10 +1195,8 @@ Will return <parse-tree> or (:GREEDY-REPETITION <min> <max> <parse-tree>)."
   (let* ((group (group lexer))
          (token (get-quantifier lexer)))
     (if token
-      ;; if GET-QUANTIFIER returned a non-NIL value it's the
-      ;; two-element list (<min> <max>)
-      (list :greedy-repetition (first token) (second token) group)
-      group)))
+        (list :greedy-repetition (first token) (second token) group)
+        group)))
 
 (defun quant (lexer)
   "Parses and consumes a <quant>.
@@ -1377,8 +1208,8 @@ change :GREEDY-REPETITION to :NON-GREEDY-REPETITION."
          (next-char (next-char lexer)))
     (when next-char
       (if (char= next-char #\?)
-        (setf (car greedy-quant) :non-greedy-repetition)
-        (setf (lexer-pos lexer) pos)))
+          (setf (car greedy-quant) :non-greedy-repetition)
+          (setf (lexer-pos lexer) pos)))
     greedy-quant))
 
 (defun seq (lexer)
@@ -1393,42 +1224,37 @@ Will return <parse-tree> or (:SEQUENCE <parse-tree> <parse-tree>)."
              (setf (aref string 0) char1)
              (setf (aref string 1) char2)
              string)))
-    ;; Note that we're calling START-OF-SUBEXPR-P before we actually try
-    ;; to parse a <seq> or <quant> in order to catch empty regular
-    ;; expressions
     (if (start-of-subexpr-p lexer)
         (loop with seq-is-sequence-p = nil
               with last-cdr
               for quant = (quant lexer)
               for quant-is-char-p = (characterp quant)
               for seq = quant
-              then
-              (cond ((and quant-is-char-p (characterp seq))
-                     (make-array-from-two-chars seq quant))
-                    ((and quant-is-char-p (stringp seq))
-                     (vector-push-extend quant seq)
-                     seq)
-                    ((not seq-is-sequence-p)
-                     (setf last-cdr (list quant)
-                           seq-is-sequence-p t)
-                     (list* :sequence seq last-cdr))
-                    ((and quant-is-char-p
-                          (characterp (car last-cdr)))
-                     (setf (car last-cdr)
-                           (make-array-from-two-chars (car last-cdr)
-                                                      quant))
-                     seq)
-                    ((and quant-is-char-p
-                          (stringp (car last-cdr)))
-                     (vector-push-extend quant (car last-cdr))
-                     seq)
-                    (t
-                     ;; if <seq> is also a :SEQUENCE parse tree we merge
-                     ;; both lists into one
-                     (let ((cons (list quant)))
-                       (psetf last-cdr cons
-                              (cdr last-cdr) cons))
-                     seq))
+                then
+                (cond ((and quant-is-char-p (characterp seq))
+                       (make-array-from-two-chars seq quant))
+                      ((and quant-is-char-p (stringp seq))
+                       (vector-push-extend quant seq)
+                       seq)
+                      ((not seq-is-sequence-p)
+                       (setf last-cdr (list quant)
+                             seq-is-sequence-p t)
+                       (list* :sequence seq last-cdr))
+                      ((and quant-is-char-p
+                            (characterp (car last-cdr)))
+                       (setf (car last-cdr)
+                             (make-array-from-two-chars (car last-cdr)
+                                                        quant))
+                       seq)
+                      ((and quant-is-char-p
+                            (stringp (car last-cdr)))
+                       (vector-push-extend quant (car last-cdr))
+                       seq)
+                      (t
+                       (let ((cons (list quant)))
+                         (psetf last-cdr cons
+                                (cdr last-cdr) cons))
+                       seq))
               while (start-of-subexpr-p lexer)
               finally (return seq))
         :void)))
@@ -1440,51 +1266,35 @@ Will return <parse-tree> or (:ALTERNATION <parse-tree> <parse-tree>)."
   (let ((pos (lexer-pos lexer)))
     (case (next-char lexer)
       ((nil)
-        ;; if we didn't get any token we return :VOID which stands for
-        ;; "empty regular expression"
-        :void)
+       :void)
       ((#\|)
-        ;; now check whether the expression started with a vertical
-        ;; bar, i.e. <seq> - the left alternation - is empty
-        (list :alternation :void (reg-expr lexer)))
+       (list :alternation :void (reg-expr lexer)))
       (otherwise
-        ;; otherwise un-read the character we just saw and parse a
-        ;; <seq> plus the character following it
-        (setf (lexer-pos lexer) pos)
-        (let* ((seq (seq lexer))
-               (pos (lexer-pos lexer)))
-          (case (next-char lexer)
-            ((nil)
-              ;; no further character, just a <seq>
-              seq)
-            ((#\|)
-              ;; if the character was a vertical bar, this is an
-              ;; alternation and we have the second production
-              (let ((reg-expr (reg-expr lexer)))
-                (cond ((and (consp reg-expr)
-                            (eq (first reg-expr) :alternation))
-                        ;; again we try to merge as above in SEQ
-                        (setf (cdr reg-expr)
-                                (cons seq (cdr reg-expr)))
-                        reg-expr)
-                      (t (list :alternation seq reg-expr)))))
-            (otherwise
-              ;; a character which is not a vertical bar - this is
-              ;; either a syntax error or we're inside of a group and
-              ;; the next character is a closing parenthesis; so we
-              ;; just un-read the character and let another function
-              ;; take care of it
-              (setf (lexer-pos lexer) pos)
-              seq)))))))
+       (setf (lexer-pos lexer) pos)
+       (let* ((seq (seq lexer))
+              (pos (lexer-pos lexer)))
+         (case (next-char lexer)
+           ((nil)
+            seq)
+           ((#\|)
+            (let ((reg-expr (reg-expr lexer)))
+              (cond ((and (consp reg-expr)
+                          (eq (first reg-expr) :alternation))
+                     (setf (cdr reg-expr)
+                           (cons seq (cdr reg-expr)))
+                     reg-expr)
+                    (t (list :alternation seq reg-expr)))))
+           (otherwise
+            (setf (lexer-pos lexer) pos)
+            seq)))))))
 
 (defun parse-string (string)
   "Translate the regex string STRING into a parse tree."
   (let* ((lexer (make-lexer string))
          (parse-tree (reg-expr lexer)))
-    ;; check whether we've consumed the whole regex string
     (if (end-of-string-p lexer)
-      parse-tree
-      (signal-syntax-error* (lexer-pos lexer) "Expected end of string."))))
+        parse-tree
+        (signal-syntax-error* (lexer-pos lexer) "Expected end of string."))))
 
 (defclass regex ()
   ()
@@ -1589,7 +1399,7 @@ This is the index into *REGS-START* and *REGS-END*.")
           :accessor regex
           :documentation "The inner regex."))
   (:documentation "A standalone regular expression."))
-  
+
 (defclass back-reference (regex)
   ((num :initarg :num
         :accessor num
@@ -1693,7 +1503,7 @@ test succeeds.")
 test fails."))
   (:documentation "BRANCH objects represent Perl's conditional regular
 expressions."))
-    
+
 (defclass filter (regex)
   ((fn :initarg :fn
        :accessor fn
@@ -1714,14 +1524,11 @@ defined by the user."))
   "Automatically computes the length of a STR after initialization."
   (let ((str-slot (slot-value str 'str)))
     (unless (typep str-slot
-                    'simple-string)
+                   'simple-string)
       (setf (slot-value str 'str)
             (coerce str-slot
-                   'simple-string))))
+                    'simple-string))))
   (setf (len str) (length (str str))))
-
-;;; The following four methods allow a VOID object to behave like a
-;;; zero-length STR object (only readers needed)
 
 (defmethod len ((void void))
   0)
@@ -1743,11 +1550,11 @@ which are not of type STR."))
 
 (defmethod case-mode ((str str) old-case-mode)
   (cond ((zerop (len str))
-          old-case-mode)
+         old-case-mode)
         ((case-insensitive-p str)
-          :case-insensitive)
+         :case-insensitive)
         (t
-          :case-sensitive)))
+         :case-sensitive)))
 
 (defmethod case-mode ((regex regex) old-case-mode)
   (declare (ignore old-case-mode))
@@ -1791,8 +1598,8 @@ which are not of type STR."))
       branch
     (make-instance 'branch
                    :test (if (typep test 'regex)
-                           (copy-regex test)
-                           test)
+                             (copy-regex test)
+                             test)
                    :then-regex (copy-regex (then-regex branch))
                    :else-regex (copy-regex (else-regex branch)))))
 
@@ -1841,16 +1648,6 @@ which are not of type STR."))
                  :fn (fn filter)
                  :len (len filter)))
 
-;;; Note that COPY-REGEX and REMOVE-REGISTERS could have easily been
-;;; wrapped into one function. Maybe in the next release...
-
-;;; Further note that this function is used by CONVERT to factor out
-;;; complicated repetitions, i.e. cases like
-;;;   (a)* -> (?:a*(a))?
-;;; This won't work for, say,
-;;;   ((a)|(b))* -> (?:(?:a|b)*((a)|(b)))?
-;;; and therefore we stop REGISTER removal once we see an ALTERNATION.
-
 (defgeneric remove-registers (regex)
   (:documentation "Returns a deep copy of a REGEX (see COPY-REGEX) and
 optionally removes embedded REGISTER objects if possible and if the
@@ -1859,18 +1656,14 @@ special variable REMOVE-REGISTERS-P is true."))
 (defmethod remove-registers ((register register))
   (declare (special remove-registers-p reg-seen))
   (cond (remove-registers-p
-          (remove-registers (regex register)))
+         (remove-registers (regex register)))
         (t
-          ;; mark REG-SEEN as true so enclosing REPETITION objects
-          ;; (see method below) know if they contain a register or not
-          (setq reg-seen t)
-          (copy-regex register))))
+         (setq reg-seen t)
+         (copy-regex register))))
 
 (defmethod remove-registers ((repetition repetition))
   (let* (reg-seen
          (inner-regex (remove-registers (regex repetition))))
-    ;; REMOVE-REGISTERS will set REG-SEEN (see method above) if
-    ;; (REGEX REPETITION) contains a REGISTER
     (declare (special reg-seen))
     (make-instance 'repetition
                    :regex inner-regex
@@ -1901,14 +1694,13 @@ special variable REMOVE-REGISTERS-P is true."))
       branch
     (make-instance 'branch
                    :test (if (typep test 'regex)
-                           (remove-registers test)
-                           test)
+                             (remove-registers test)
+                             test)
                    :then-regex (remove-registers (then-regex branch))
                    :else-regex (remove-registers (else-regex branch)))))
 
 (defmethod remove-registers ((alternation alternation))
   (declare (special remove-registers-p))
-  ;; an ALTERNATION, so we can't remove REGISTER objects further down
   (setq remove-registers-p nil)
   (copy-regex alternation))
 
@@ -1925,8 +1717,6 @@ to this object, otherwise NIL.  So, \"(.){1}\" would return true
 \(i.e. the object corresponding to \".\", for example."))
 
 (defmethod everythingp ((seq seq))
-  ;; we might have degenerate cases like (:SEQUENCE :VOID ...)
-  ;; due to the parsing process
   (let ((cleaned-elements (remove-if #'(lambda (element)
                                          (typep element 'void))
                                      (elements seq))))
@@ -1937,8 +1727,6 @@ to this object, otherwise NIL.  So, \"(.){1}\" would return true
   (with-slots (choices)
       alternation
     (and (= 1 (length choices))
-         ;; this is unlikely to happen for human-generated regexes,
-         ;; but machine-generated ones might look like this
          (everythingp (first choices)))))
 
 (defmethod everythingp ((repetition repetition))
@@ -1946,7 +1734,6 @@ to this object, otherwise NIL.  So, \"(.){1}\" would return true
       repetition
     (and maximum
          (= 1 minimum maximum)
-         ;; treat "<regex>{1,1}" like "<regex>"
          (everythingp regex))))
 
 (defmethod everythingp ((register register))
@@ -1959,23 +1746,18 @@ to this object, otherwise NIL.  So, \"(.){1}\" would return true
   everything)
 
 (defmethod everythingp ((regex regex))
-  ;; the general case for ANCHOR, BACK-REFERENCE, BRANCH, CHAR-CLASS,
-  ;; LOOKAHEAD, LOOKBEHIND, STR, VOID, FILTER, and WORD-BOUNDARY
   nil)
 
 (defgeneric regex-length (regex)
   (:documentation "Return the length of REGEX if it is fixed, NIL otherwise."))
 
 (defmethod regex-length ((seq seq))
-  ;; simply add all inner lengths unless one of them is NIL
   (loop for sub-regex in (elements seq)
         for len = (regex-length sub-regex)
         if (not len) do (return nil)
-        sum len))
+          sum len))
 
 (defmethod regex-length ((alternation alternation))
-  ;; only return a true value if all inner lengths are non-NIL and
-  ;; mutually equal
   (loop for sub-regex in (choices alternation)
         for old-len = nil then len
         for len = (regex-length sub-regex)
@@ -1984,24 +1766,18 @@ to this object, otherwise NIL.  So, \"(.){1}\" would return true
         finally (return len)))
 
 (defmethod regex-length ((branch branch))
-  ;; only return a true value if both alternations have a length and
-  ;; if they're equal
   (let ((then-length (regex-length (then-regex branch))))
     (and then-length
          (eql then-length (regex-length (else-regex branch)))
          then-length)))
 
 (defmethod regex-length ((repetition repetition))
-  ;; we can only compute the length of a REPETITION object if the
-  ;; number of repetitions is fixed; note that we don't call
-  ;; REGEX-LENGTH for the inner regex, we assume that the LEN slot is
-  ;; always set correctly
   (with-slots (len minimum maximum)
       repetition
     (if (and len
              (eql minimum maximum))
-      (* minimum len)
-      nil)))
+        (* minimum len)
+        nil)))
 
 (defmethod regex-length ((register register))
   (regex-length (regex register)))
@@ -2010,10 +1786,8 @@ to this object, otherwise NIL.  So, \"(.){1}\" would return true
   (regex-length (regex standalone)))
 
 (defmethod regex-length ((back-reference back-reference))
-  ;; with enough effort we could possibly do better here, but
-  ;; currently we just give up and return NIL
   nil)
-    
+
 (defmethod regex-length ((char-class char-class))
   1)
 
@@ -2027,42 +1801,34 @@ to this object, otherwise NIL.  So, \"(.){1}\" would return true
   (len filter))
 
 (defmethod regex-length ((regex regex))
-  ;; the general case for ANCHOR, LOOKAHEAD, LOOKBEHIND, VOID, and
-  ;; WORD-BOUNDARY (which all have zero-length)
   0)
 
 (defgeneric regex-min-length (regex)
   (:documentation "Returns the minimal length of REGEX."))
 
 (defmethod regex-min-length ((seq seq))
-  ;; simply add all inner minimal lengths
   (loop for sub-regex in (elements seq)
         for len = (regex-min-length sub-regex)
         sum len))
 
 (defmethod regex-min-length ((alternation alternation))
-  ;; minimal length of an alternation is the minimal length of the
-  ;; "shortest" element
   (loop for sub-regex in (choices alternation)
         for len = (regex-min-length sub-regex)
         minimize len))
 
 (defmethod regex-min-length ((branch branch))
-  ;; minimal length of both alternations
   (min (regex-min-length (then-regex branch))
        (regex-min-length (else-regex branch))))
 
 (defmethod regex-min-length ((repetition repetition))
-  ;; obviously the product of the inner minimal length and the minimal
-  ;; number of repetitions
   (* (minimum repetition) (min-len repetition)))
-    
+
 (defmethod regex-min-length ((register register))
   (regex-min-length (regex register)))
-    
+
 (defmethod regex-min-length ((standalone standalone))
   (regex-min-length (regex standalone)))
-    
+
 (defmethod regex-min-length ((char-class char-class))
   1)
 
@@ -2071,14 +1837,12 @@ to this object, otherwise NIL.  So, \"(.){1}\" would return true
 
 (defmethod regex-min-length ((str str))
   (len str))
-    
+
 (defmethod regex-min-length ((filter filter))
   (or (len filter)
       0))
 
 (defmethod regex-min-length ((regex regex))
-  ;; the general case for ANCHOR, BACK-REFERENCE, LOOKAHEAD,
-  ;; LOOKBEHIND, VOID, and WORD-BOUNDARY
   0)
 
 (defgeneric compute-offsets (regex start-pos)
@@ -2087,15 +1851,8 @@ relative to START-POS or NIL if we can't compute it. Sets the OFFSET
 slot of REGEX to START-POS if REGEX is a STR. May also affect OFFSET
 slots of STR objects further down the tree."))
 
-;; note that we're actually only interested in the offset of
-;; "top-level" STR objects (see ADVANCE-FN in the SCAN function) so we
-;; can stop at variable-length alternations and don't need to descend
-;; into repetitions
-
 (defmethod compute-offsets ((seq seq) start-pos)
   (loop for element in (elements seq)
-        ;; advance offset argument for next call while looping through
-        ;; the elements
         for pos = start-pos then curr-offset
         for curr-offset = (compute-offsets element pos)
         while curr-offset
@@ -2105,67 +1862,53 @@ slots of STR objects further down the tree."))
   (loop for choice in (choices alternation)
         for old-offset = nil then curr-offset
         for curr-offset = (compute-offsets choice start-pos)
-        ;; we stop immediately if two alternations don't result in the
-        ;; same offset
         if (or (not curr-offset)
                (and old-offset (/= curr-offset old-offset)))
           do (return nil)
         finally (return curr-offset)))
 
 (defmethod compute-offsets ((branch branch) start-pos)
-  ;; only return offset if both alternations have equal value
   (let ((then-offset (compute-offsets (then-regex branch) start-pos)))
     (and then-offset
          (eql then-offset (compute-offsets (else-regex branch) start-pos))
          then-offset)))
 
 (defmethod compute-offsets ((repetition repetition) start-pos)
-  ;; no need to descend into the inner regex
   (with-slots (len minimum maximum)
       repetition
     (if (and len
              (eq minimum maximum))
-      ;; fixed number of repetitions, so we know how to proceed
-      (+ start-pos (* minimum len))
-      ;; otherwise return NIL
-      nil)))
+        (+ start-pos (* minimum len))
+        nil)))
 
 (defmethod compute-offsets ((register register) start-pos)
   (compute-offsets (regex register) start-pos))
-    
+
 (defmethod compute-offsets ((standalone standalone) start-pos)
   (compute-offsets (regex standalone) start-pos))
-    
+
 (defmethod compute-offsets ((char-class char-class) start-pos)
   (1+ start-pos))
-    
+
 (defmethod compute-offsets ((everything everything) start-pos)
   (1+ start-pos))
-    
+
 (defmethod compute-offsets ((str str) start-pos)
   (setf (offset str) start-pos)
   (+ start-pos (len str)))
 
 (defmethod compute-offsets ((back-reference back-reference) start-pos)
-  ;; with enough effort we could possibly do better here, but
-  ;; currently we just give up and return NIL
   (declare (ignore start-pos))
   nil)
 
 (defmethod compute-offsets ((filter filter) start-pos)
   (let ((len (len filter)))
     (if len
-      (+ start-pos len)
-      nil)))
+        (+ start-pos len)
+        nil)))
 
 (defmethod compute-offsets ((regex regex) start-pos)
-  ;; the general case for ANCHOR, LOOKAHEAD, LOOKBEHIND, VOID, and
-  ;; WORD-BOUNDARY (which all have zero-length)
   start-pos)
-
-;;; The flags that represent the "ism" modifiers are always kept
-;;; together in a three-element list. We use the following macros to
-;;; access individual elements.
 
 (defmacro case-insensitive-mode-p (flags)
   "Accessor macro to extract the first flag out of a three-element flag list."
@@ -2185,30 +1928,30 @@ the special FLAGS list."
   (declare (special flags))
   (case token
     ((:case-insensitive-p)
-      (setf (case-insensitive-mode-p flags) t))
+     (setf (case-insensitive-mode-p flags) t))
     ((:case-sensitive-p)
-      (setf (case-insensitive-mode-p flags) nil))
+     (setf (case-insensitive-mode-p flags) nil))
     ((:multi-line-mode-p)
-      (setf (multi-line-mode-p flags) t))
+     (setf (multi-line-mode-p flags) t))
     ((:not-multi-line-mode-p)
-      (setf (multi-line-mode-p flags) nil))
+     (setf (multi-line-mode-p flags) nil))
     ((:single-line-mode-p)
-      (setf (single-line-mode-p flags) t))
+     (setf (single-line-mode-p flags) t))
     ((:not-single-line-mode-p)
-      (setf (single-line-mode-p flags) nil))
+     (setf (single-line-mode-p flags) nil))
     (otherwise
-      (signal-syntax-error "Unknown flag token ~A." token))))
+     (signal-syntax-error "Unknown flag token ~A." token))))
 
 (defgeneric resolve-property (property)
   (:documentation "Resolves PROPERTY to a unary character test
 function.  PROPERTY can either be a function designator or it can be a
 string which is resolved using *PROPERTY-RESOLVER*.")
   (:method ((property-name string))
-   (funcall *property-resolver* property-name))
+    (funcall *property-resolver* property-name))
   (:method ((function-name symbol))
-   function-name)
+    function-name)
   (:method ((test-function function))
-   test-function))
+    test-function))
 
 (defun convert-char-class-to-test-function (list invertedp case-insensitive-p)
   "Combines all items in LIST into test function and returns a
@@ -2219,39 +1962,38 @@ respect to case-\(in)sensitivity as specified by the special variable
 FLAGS."
   (declare (special flags))
   (let ((test-functions
-         (loop for item in list
-               collect (cond ((characterp item)
-                              ;; rebind so closure captures the right one
-                              (let ((this-char item))
-                                (lambda (char)
-                                  (declare (character char this-char))
-                                  (char= char this-char))))
-                             ((symbolp item)
-                              (case item
-                                ((:digit-class) #'str:digit-char-p)
-                                ((:non-digit-class) (complement* #'str:digit-char-p))
-                                ((:whitespace-char-class) #'whitespacep)
-                                ((:non-whitespace-char-class) (complement* #'whitespacep))
-                                ((:word-char-class) #'word-char-p)
-                                ((:non-word-char-class) (complement* #'word-char-p))
-                                (otherwise
-                                 (signal-syntax-error "Unknown symbol ~A in character class." item))))
-                             ((and (consp item)
-                                   (eq (first item) :property))
-                              (resolve-property (second item)))
-                             ((and (consp item)
-                                   (eq (first item) :inverted-property))
-                              (complement* (resolve-property (second item))))
-                             ((and (consp item)
-                                   (eq (first item) :range))
-                              (let ((from (second item))
-                                    (to (third item)))
-                                (when (char> from to)
-                                  (signal-syntax-error "Invalid range from ~S to ~S in char-class." from to))
-                                (lambda (char)
-                                  (declare (character char from to))
-                                  (char<= from char to))))
-                             (t (signal-syntax-error "Unknown item ~A in char-class list." item))))))
+          (loop for item in list
+                collect (cond ((characterp item)
+                               (let ((this-char item))
+                                 (lambda (char)
+                                   (declare (character char this-char))
+                                   (char= char this-char))))
+                              ((symbolp item)
+                               (case item
+                                 ((:digit-class) #'str:digit-char-p)
+                                 ((:non-digit-class) (complement* #'str:digit-char-p))
+                                 ((:whitespace-char-class) #'whitespacep)
+                                 ((:non-whitespace-char-class) (complement* #'whitespacep))
+                                 ((:word-char-class) #'word-char-p)
+                                 ((:non-word-char-class) (complement* #'word-char-p))
+                                 (otherwise
+                                  (signal-syntax-error "Unknown symbol ~A in character class." item))))
+                              ((and (consp item)
+                                    (eq (first item) :property))
+                               (resolve-property (second item)))
+                              ((and (consp item)
+                                    (eq (first item) :inverted-property))
+                               (complement* (resolve-property (second item))))
+                              ((and (consp item)
+                                    (eq (first item) :range))
+                               (let ((from (second item))
+                                     (to (third item)))
+                                 (when (char> from to)
+                                   (signal-syntax-error "Invalid range from ~S to ~S in char-class." from to))
+                                 (lambda (char)
+                                   (declare (character char from to))
+                                   (char<= from char to))))
+                              (t (signal-syntax-error "Unknown item ~A in char-class list." item))))))
     (unless test-functions
       (signal-syntax-error "Empty character class."))
     (cond ((cdr test-functions)           
@@ -2271,8 +2013,8 @@ FLAGS."
                           with char-down = (if both-case-p (char-downcase char) char)
                           with char-up = (if both-case-p (char-upcase char) nil)
                           for test-function in test-functions
-                          thereis (or (funcall test-function char-down)
-                                      (and char-up (funcall test-function char-up))))))
+                            thereis (or (funcall test-function char-down)
+                                        (and char-up (funcall test-function char-up))))))
                  (invertedp
                   (lambda (char)
                     (loop for test-function in test-functions
@@ -2280,8 +2022,7 @@ FLAGS."
                  (t
                   (lambda (char)
                     (loop for test-function in test-functions
-                          thereis (funcall test-function char))))))
-          ;; there's only one test-function
+                            thereis (funcall test-function char))))))
           (t (let ((test-function (first test-functions)))
                (cond ((and invertedp case-insensitive-p)
                       (lambda (char)
@@ -2312,37 +2053,27 @@ The arguments to this function correspond to the REPETITION slots of
 the same name."
   (declare (fixnum minimum)
            (type (or fixnum null) maximum))
-  ;; note the usage of COPY-REGEX here; we can't use the same REGEX
-  ;; object in both REPETITIONS because they will have different
-  ;; offsets
   (when maximum
     (when (zerop maximum)
-      ;; trivial case: don't repeat at all
       (return-from maybe-split-repetition
         (make-instance 'void)))
     (when (= 1 minimum maximum)
-      ;; another trivial case: "repeat" exactly once
       (return-from maybe-split-repetition
         regex)))
-  ;; first set up the constant part of the repetition
-  ;; maybe that's all we need
   (let ((constant-repetition (if (plusp minimum)
-                               (make-instance 'repetition
-                                              :regex (copy-regex regex)
-                                              :greedyp greedyp
-                                              :minimum minimum
-                                              :maximum minimum
-                                              :min-len min-len
-                                              :len length
-                                              :contains-register-p reg-seen)
-                               ;; don't create garbage if minimum is 0
-                               nil)))
+                                 (make-instance 'repetition
+                                                :regex (copy-regex regex)
+                                                :greedyp greedyp
+                                                :minimum minimum
+                                                :maximum minimum
+                                                :min-len min-len
+                                                :len length
+                                                :contains-register-p reg-seen)
+                                 nil)))
     (when (and maximum
                (= maximum minimum))
       (return-from maybe-split-repetition
-        ;; no varying part needed because min = max
         constant-repetition))
-    ;; now construct the varying part
     (let ((varying-repetition
             (make-instance 'repetition
                            :regex regex
@@ -2353,24 +2084,15 @@ the same name."
                            :len length
                            :contains-register-p reg-seen)))
       (cond ((zerop minimum)
-              ;; min = 0, no constant part needed
-              varying-repetition)
+             varying-repetition)
             ((= 1 minimum)
-              ;; min = 1, constant part needs no REPETITION wrapped around
-              (make-instance 'seq
-                             :elements (list (copy-regex regex)
-                                             varying-repetition)))
+             (make-instance 'seq
+                            :elements (list (copy-regex regex)
+                                            varying-repetition)))
             (t
-              ;; general case
-              (make-instance 'seq
-                             :elements (list constant-repetition
-                                             varying-repetition)))))))
-
-;; During the conversion of the parse tree we keep track of the start
-;; of the parse tree in the special variable STARTS-WITH which'll
-;; either hold a STR object or an EVERYTHING object. The latter is the
-;; case if the regex starts with ".*" which implicitly anchors the
-;; regex at the start (perhaps modulo #\Newline).
+             (make-instance 'seq
+                            :elements (list constant-repetition
+                                            varying-repetition)))))))
 
 (defun maybe-accumulate (str)
   "Accumulate STR into the special variable STARTS-WITH if
@@ -2381,56 +2103,41 @@ NIL or a STR object of the same case mode. Always returns NIL."
   (when accumulate-start-p
     (etypecase starts-with
       (str
-        ;; STARTS-WITH already holds a STR, so we check if we can
-        ;; concatenate
-        (cond ((eq (case-insensitive-p starts-with)
-                   (case-insensitive-p str))
-                ;; we modify STARTS-WITH in place
-                (setf (len starts-with)
-                        (+ (len starts-with) (len str)))
-                ;; note that we use SLOT-VALUE because the accessor
-                ;; STR has a declared FTYPE which doesn't fit here
-                (adjust-array (slot-value starts-with 'str)
-                              (len starts-with)
-                              :fill-pointer t)
-                (setf (subseq (slot-value starts-with 'str)
-                              (- (len starts-with) (len str)))
-                        (str str)
-                      ;; STR objects that are parts of STARTS-WITH
-                      ;; always have their SKIP slot set to true
-                      ;; because the SCAN function will take care of
-                      ;; them, i.e. the matcher can ignore them
-                      (skip str) t))
-              (t (setq accumulate-start-p nil))))
+       (cond ((eq (case-insensitive-p starts-with)
+                  (case-insensitive-p str))
+              (setf (len starts-with)
+                    (+ (len starts-with) (len str)))
+              (adjust-array (slot-value starts-with 'str)
+                            (len starts-with)
+                            :fill-pointer t)
+              (setf (subseq (slot-value starts-with 'str)
+                            (- (len starts-with) (len str)))
+                    (str str)
+                    (skip str) t))
+             (t (setq accumulate-start-p nil))))
       (null
-        ;; STARTS-WITH is still empty, so we create a new STR object
-        (setf starts-with
-                (make-instance 'str
-                               :str ""
-                               :case-insensitive-p (case-insensitive-p str))
-              ;; INITIALIZE-INSTANCE will coerce the STR to a simple
-              ;; string, so we have to fill it afterwards
-              (slot-value starts-with 'str)
-                (make-array (len str)
-                            :initial-contents (str str)
-                            :element-type 'character
-                            :fill-pointer t
-                            :adjustable t)
-              (len starts-with)
-                (len str)
-              ;; see remark about SKIP above
-              (skip str) t))
+       (setf starts-with
+             (make-instance 'str
+                            :str ""
+                            :case-insensitive-p (case-insensitive-p str))
+             (slot-value starts-with 'str)
+             (make-array (len str)
+                         :initial-contents (str str)
+                         :element-type 'character
+                         :fill-pointer t
+                         :adjustable t)
+             (len starts-with)
+             (len str)
+             (skip str) t))
       (everything
-        ;; STARTS-WITH already holds an EVERYTHING object - we can't
-        ;; concatenate
-        (setq accumulate-start-p nil))))
+       (setq accumulate-start-p nil))))
   nil)
 
 (declaim (inline convert-aux))
+
 (defun convert-aux (parse-tree)
   "Converts the parse tree PARSE-TREE into a REGEX object and returns
 it.  Will also
-
   - split and optimize repetitions,
   - accumulate strings or EVERYTHING objects into the special variable
     STARTS-WITH,
@@ -2442,22 +2149,19 @@ it.  Will also
     variable FLAGS, and
   - maybe even wash your car..."
   (if (consp parse-tree)
-    (convert-compound-parse-tree (first parse-tree) parse-tree)
-    (convert-simple-parse-tree parse-tree)))
+      (convert-compound-parse-tree (first parse-tree) parse-tree)
+      (convert-simple-parse-tree parse-tree)))
 
 (defgeneric convert-compound-parse-tree (token parse-tree &key)
   (:documentation "Helper function for CONVERT-AUX which converts
 parse trees which are conses and dispatches on TOKEN which is the
 first element of the parse tree.")
   (:method ((token t) (parse-tree t) &key)
-   (signal-syntax-error "Unknown token ~A in parse-tree." token)))
+    (signal-syntax-error "Unknown token ~A in parse-tree." token)))
 
 (defmethod convert-compound-parse-tree ((token (eql :sequence)) parse-tree &key)
   "The case for parse trees like \(:SEQUENCE {<regex>}*)."
   (cond ((cddr parse-tree)
-         ;; this is essentially like
-         ;; (MAPCAR 'CONVERT-AUX (REST PARSE-TREE))
-         ;; but we don't cons a new list
          (loop for parse-tree-rest on (rest parse-tree)
                while parse-tree-rest
                do (setf (car parse-tree-rest)
@@ -2467,12 +2171,9 @@ first element of the parse tree.")
 
 (defmethod convert-compound-parse-tree ((token (eql :group)) parse-tree &key)
   "The case for parse trees like \(:GROUP {<regex>}*).
-
 This is a syntactical construct equivalent to :SEQUENCE intended to
 keep the effect of modifiers local."
   (declare (special flags))
-  ;; make a local copy of FLAGS and shadow the global value while we
-  ;; descend into the enclosed regexes
   (let ((flags (copy-list flags)))
     (declare (special flags))
     (cond ((cddr parse-tree)
@@ -2486,8 +2187,6 @@ keep the effect of modifiers local."
 (defmethod convert-compound-parse-tree ((token (eql :alternation)) parse-tree &key)
   "The case for \(:ALTERNATION {<regex>}*)."
   (declare (special accumulate-start-p))
-  ;; we must stop accumulating objects into STARTS-WITH once we reach
-  ;; an alternation
   (setq accumulate-start-p nil)
   (loop for parse-tree-rest on (rest parse-tree)
         while parse-tree-rest
@@ -2497,7 +2196,6 @@ keep the effect of modifiers local."
 
 (defmethod convert-compound-parse-tree ((token (eql :branch)) parse-tree &key)
   "The case for \(:BRANCH <test> <regex>).
-
 Here, <test> must be look-ahead, look-behind or number; if <regex> is
 an alternation it must have one or two choices."
   (declare (special accumulate-start-p))
@@ -2540,8 +2238,6 @@ an alternation it must have one or two choices."
 (defmethod convert-compound-parse-tree ((token (eql :positive-lookahead)) parse-tree &key)
   "The case for \(:POSITIVE-LOOKAHEAD <regex>)."
   (declare (special flags accumulate-start-p))
-  ;; keep the effect of modifiers local to the enclosed regex and stop
-  ;; accumulating into STARTS-WITH
   (setq accumulate-start-p nil)
   (let ((flags (copy-list flags)))
     (declare (special flags))
@@ -2551,7 +2247,6 @@ an alternation it must have one or two choices."
 
 (defmethod convert-compound-parse-tree ((token (eql :negative-lookahead)) parse-tree &key)
   "The case for \(:NEGATIVE-LOOKAHEAD <regex>)."
-  ;; do the same as for positive look-aheads and just switch afterwards
   (let ((regex (convert-compound-parse-tree :positive-lookahead parse-tree)))
     (setf (slot-value regex 'positivep) nil)
     regex))
@@ -2559,14 +2254,11 @@ an alternation it must have one or two choices."
 (defmethod convert-compound-parse-tree ((token (eql :positive-lookbehind)) parse-tree &key)
   "The case for \(:POSITIVE-LOOKBEHIND <regex>)."
   (declare (special flags accumulate-start-p))
-  ;; keep the effect of modifiers local to the enclosed regex and stop
-  ;; accumulating into STARTS-WITH
   (setq accumulate-start-p nil)
   (let* ((flags (copy-list flags))
          (regex (convert-aux (second parse-tree)))
          (len (regex-length regex)))
     (declare (special flags))
-    ;; lookbehind assertions must be of fixed length
     (unless len
       (signal-syntax-error "Variable length look-behind not implemented \(yet): ~S." parse-tree))
     (make-instance 'lookbehind
@@ -2576,18 +2268,15 @@ an alternation it must have one or two choices."
 
 (defmethod convert-compound-parse-tree ((token (eql :negative-lookbehind)) parse-tree &key)
   "The case for \(:NEGATIVE-LOOKBEHIND <regex>)."
-  ;; do the same as for positive look-behinds and just switch afterwards
   (let ((regex (convert-compound-parse-tree :positive-lookbehind parse-tree)))
     (setf (slot-value regex 'positivep) nil)
     regex))
 
 (defmethod convert-compound-parse-tree ((token (eql :greedy-repetition)) parse-tree &key (greedyp t))
   "The case for \(:GREEDY-REPETITION|:NON-GREEDY-REPETITION <min> <max> <regex>).
-
 This function is also used for the non-greedy case in which case it is
 called with GREEDYP set to NIL as you would expect."
   (declare (special accumulate-start-p starts-with))
-  ;; remember the value of ACCUMULATE-START-P upon entering
   (let ((local-accumulate-start-p accumulate-start-p))
     (let ((minimum (second parse-tree))
           (maximum (third parse-tree)))
@@ -2595,105 +2284,66 @@ called with GREEDYP set to NIL as you would expect."
       (declare (type (or null fixnum) maximum))
       (unless (and maximum
                    (= 1 minimum maximum))
-        ;; set ACCUMULATE-START-P to NIL for the rest of
-        ;; the conversion because we can't continue to
-        ;; accumulate inside as well as after a proper
-        ;; repetition
         (setq accumulate-start-p nil))
       (let* (reg-seen
              (regex (convert-aux (fourth parse-tree)))
              (min-len (regex-min-length regex))
              (length (regex-length regex)))
-        ;; note that this declaration already applies to
-        ;; the call to CONVERT-AUX above
         (declare (special reg-seen))
         (when (and local-accumulate-start-p
                    (not starts-with)
                    (zerop minimum)
                    (not maximum))
-          ;; if this repetition is (equivalent to) ".*"
-          ;; and if we're at the start of the regex we
-          ;; remember it for ADVANCE-FN (see the SCAN
-          ;; function)
           (setq starts-with (everythingp regex)))
         (if (or (not reg-seen)
                 (not greedyp)
                 (not length)
                 (zerop length)
                 (and maximum (= minimum maximum)))
-          ;; the repetition doesn't enclose a register, or
-          ;; it's not greedy, or we can't determine it's
-          ;; (inner) length, or the length is zero, or the
-          ;; number of repetitions is fixed; in all of
-          ;; these cases we don't bother to optimize
-          (maybe-split-repetition regex
-                                  greedyp
-                                  minimum
-                                  maximum
-                                  min-len
-                                  length
-                                  reg-seen)
-          ;; otherwise we make a transformation that looks
-          ;; roughly like one of
-          ;;   <regex>* -> (?:<regex'>*<regex>)?
-          ;;   <regex>+ -> <regex'>*<regex>
-          ;; where the trick is that as much as possible
-          ;; registers from <regex> are removed in
-          ;; <regex'>
-          (let* (reg-seen ; new instance for REMOVE-REGISTERS
-                 (remove-registers-p t)
-                 (inner-regex (remove-registers regex))
-                 (inner-repetition
-                  ;; this is the "<regex'>" part
-                  (maybe-split-repetition inner-regex
-                                          ;; always greedy
+            (maybe-split-repetition regex
+                                    greedyp
+                                    minimum
+                                    maximum
+                                    min-len
+                                    length
+                                    reg-seen)
+            (let* (reg-seen ; new instance for REMOVE-REGISTERS
+                   (remove-registers-p t)
+                   (inner-regex (remove-registers regex))
+                   (inner-repetition
+                     (maybe-split-repetition inner-regex
+                                             t
+                                             (if (zerop minimum)
+                                                 0
+                                                 (1- minimum))
+                                             (and maximum
+                                                  (1- maximum))
+                                             min-len
+                                             length
+                                             reg-seen))
+                   (inner-seq
+                     (make-instance 'seq
+                                    :elements (list inner-repetition
+                                                    regex))))
+              (declare (special remove-registers-p reg-seen))
+              (if (plusp minimum)
+                  inner-seq
+                  (maybe-split-repetition inner-seq
                                           t
-                                          ;; reduce minimum by 1
-                                          ;; unless it's already 0
-                                          (if (zerop minimum)
-                                            0
-                                            (1- minimum))
-                                          ;; reduce maximum by 1
-                                          ;; unless it's NIL
-                                          (and maximum
-                                               (1- maximum))
+                                          0
+                                          1
                                           min-len
-                                          length
-                                          reg-seen))
-                 (inner-seq
-                  ;; this is the "<regex'>*<regex>" part
-                  (make-instance 'seq
-                                 :elements (list inner-repetition
-                                                 regex))))
-            ;; note that this declaration already applies
-            ;; to the call to REMOVE-REGISTERS above
-            (declare (special remove-registers-p reg-seen))
-            ;; wrap INNER-SEQ with a greedy
-            ;; {0,1}-repetition (i.e. "?") if necessary
-            (if (plusp minimum)
-              inner-seq
-              (maybe-split-repetition inner-seq
-                                      t
-                                      0
-                                      1
-                                      min-len
-                                      nil
-                                      t))))))))
+                                          nil
+                                          t))))))))
 
 (defmethod convert-compound-parse-tree ((token (eql :non-greedy-repetition)) parse-tree &key)
   "The case for \(:NON-GREEDY-REPETITION <min> <max> <regex>)."
-  ;; just dispatch to the method above with GREEDYP explicitly set to NIL
   (convert-compound-parse-tree :greedy-repetition parse-tree :greedyp nil))
 
 (defmethod convert-compound-parse-tree ((token (eql :register)) parse-tree &key name)
   "The case for \(:REGISTER <regex>).  Also used for named registers
 when NAME is not NIL."
   (declare (special flags reg-num reg-names))
-  ;; keep the effect of modifiers local to the enclosed regex; also,
-  ;; assign the current value of REG-NUM to the corresponding slot of
-  ;; the REGISTER object and increase this counter afterwards; for
-  ;; named register update REG-NAMES and set the corresponding name
-  ;; slot of the REGISTER object too
   (let ((flags (copy-list flags))
         (stored-reg-num reg-num))
     (declare (special flags reg-seen named-reg-seen))
@@ -2708,13 +2358,11 @@ when NAME is not NIL."
 
 (defmethod convert-compound-parse-tree ((token (eql :named-register)) parse-tree &key)
   "The case for \(:NAMED-REGISTER <regex>)."
-  ;; call the method above and use the :NAME keyword argument
   (convert-compound-parse-tree :register parse-tree :name (copy-seq (second parse-tree))))
 
 (defmethod convert-compound-parse-tree ((token (eql :filter)) parse-tree &key)
   "The case for \(:FILTER <function> &optional <length>)."
   (declare (special accumulate-start-p))
-  ;; stop accumulating into STARTS-WITH
   (setq accumulate-start-p nil)
   (make-instance 'filter
                  :fn (second parse-tree)
@@ -2723,9 +2371,7 @@ when NAME is not NIL."
 (defmethod convert-compound-parse-tree ((token (eql :standalone)) parse-tree &key)
   "The case for \(:STANDALONE <regex>)."
   (declare (special flags accumulate-start-p))
-  ;; stop accumulating into STARTS-WITH
   (setq accumulate-start-p nil)
-  ;; keep the effect of modifiers local to the enclosed regex
   (let ((flags (copy-list flags)))
     (declare (special flags))
     (make-instance 'standalone :regex (convert-aux (second parse-tree)))))
@@ -2736,47 +2382,32 @@ when NAME is not NIL."
   (let* ((backref-name (and (stringp (second parse-tree))
                             (second parse-tree)))
          (referred-regs
-          (when backref-name
-            ;; find which register corresponds to the given name
-            ;; we have to deal with case where several registers share
-            ;; the same name and collect their respective numbers
-            (loop for name in reg-names
-                  for reg-index from 0
-                  when (string= name backref-name)
-                  ;; NOTE: REG-NAMES stores register names in reversed
-                  ;; order REG-NUM contains number of (any) registers
-                  ;; seen so far; 1- will be done later
-                  collect (- reg-num reg-index))))
-         ;; store the register number for the simple case
+           (when backref-name
+             (loop for name in reg-names
+                   for reg-index from 0
+                   when (string= name backref-name)
+                     collect (- reg-num reg-index))))
          (backref-number (or (first referred-regs) (second parse-tree))))
     (declare (type (or fixnum null) backref-number))
     (when (or (not (typep backref-number 'fixnum))
               (<= backref-number 0))
       (signal-syntax-error "Illegal back-reference: ~S." parse-tree))
-    ;; stop accumulating into STARTS-WITH and increase MAX-BACK-REF if
-    ;; necessary
     (setq accumulate-start-p nil
           max-back-ref (max (the fixnum max-back-ref)
                             backref-number))
     (flet ((make-back-ref (backref-number)
              (make-instance 'back-reference
-                            ;; we start counting from 0 internally
                             :num (1- backref-number)
                             :case-insensitive-p (case-insensitive-mode-p flags)
-                            ;; backref-name is NIL or string, safe to copy
                             :name (copy-seq backref-name))))
       (cond
-       ((cdr referred-regs)
-        ;; several registers share the same name we will try to match
-        ;; any of them, starting with the most recent first
-        ;; alternation is used to accomplish matching
-        (make-instance 'alternation
-                       :choices (loop
-                                 for reg-index in referred-regs
-                                 collect (make-back-ref reg-index))))
-       ;; simple case - backref corresponds to only one register
-       (t
-        (make-back-ref backref-number))))))
+        ((cdr referred-regs)
+         (make-instance 'alternation
+                        :choices (loop
+                                   for reg-index in referred-regs
+                                   collect (make-back-ref reg-index))))
+        (t
+         (make-back-ref backref-number))))))
 
 (defmethod convert-compound-parse-tree ((token (eql :regex)) parse-tree &key)
   "The case for \(:REGEX <string>)."
@@ -2784,24 +2415,21 @@ when NAME is not NIL."
 
 (defmethod convert-compound-parse-tree ((token (eql :char-class)) parse-tree &key invertedp)
   "The case for \(:CHAR-CLASS {<item>}*) where item is one of
-
 - a character,
 - a character range: \(:RANGE <char1> <char2>), or
 - a special char class symbol like :DIGIT-CHAR-CLASS.
-
 Also used for inverted char classes when INVERTEDP is true."
   (declare (special flags accumulate-start-p))
   (let ((test-function
-         (create-optimized-test-function
-          (convert-char-class-to-test-function (rest parse-tree)
-                                               invertedp
-                                               (case-insensitive-mode-p flags)))))
+          (create-optimized-test-function
+           (convert-char-class-to-test-function (rest parse-tree)
+                                                invertedp
+                                                (case-insensitive-mode-p flags)))))
     (setq accumulate-start-p nil)
     (make-instance 'char-class :test-function test-function)))
 
 (defmethod convert-compound-parse-tree ((token (eql :inverted-char-class)) parse-tree &key)
   "The case for \(:INVERTED-CHAR-CLASS {<item>}*)."
-  ;; just dispatch to the "real" method
   (convert-compound-parse-tree :char-class parse-tree :invertedp t))
 
 (defmethod convert-compound-parse-tree ((token (eql :property)) parse-tree &key)
@@ -2819,13 +2447,7 @@ Also used for inverted char classes when INVERTEDP is true."
 (defmethod convert-compound-parse-tree ((token (eql :flags)) parse-tree &key)
   "The case for \(:FLAGS {<flag>}*) where flag is a modifier symbol
 like :CASE-INSENSITIVE-P."
-  ;; set/unset the flags corresponding to the symbols
-  ;; following :FLAGS
   (mapc #'set-flag (rest parse-tree))
-  ;; we're only interested in the side effect of
-  ;; setting/unsetting the flags and turn this syntactical
-  ;; construct into a VOID object which'll be optimized
-  ;; away when creating the matcher
   (make-instance 'void))
 
 (defgeneric convert-simple-parse-tree (parse-tree)
@@ -2839,72 +2461,65 @@ parse trees which are atoms.")
     (make-instance 'word-boundary :negatedp t))
   (:method ((parse-tree (eql :everything)))
     (declare (special flags accumulate-start-p))
-   (setq accumulate-start-p nil)
-   (make-instance 'everything :single-line-p (single-line-mode-p flags)))
+    (setq accumulate-start-p nil)
+    (make-instance 'everything :single-line-p (single-line-mode-p flags)))
   (:method ((parse-tree (eql :digit-class)))
     (declare (special accumulate-start-p))
-   (setq accumulate-start-p nil)
-   (make-instance 'char-class :test-function #'str:digit-char-p))
+    (setq accumulate-start-p nil)
+    (make-instance 'char-class :test-function #'str:digit-char-p))
   (:method ((parse-tree (eql :word-char-class)))
     (declare (special accumulate-start-p))
-   (setq accumulate-start-p nil)
-   (make-instance 'char-class :test-function #'word-char-p))
+    (setq accumulate-start-p nil)
+    (make-instance 'char-class :test-function #'word-char-p))
   (:method ((parse-tree (eql :whitespace-char-class)))
     (declare (special accumulate-start-p))
-   (setq accumulate-start-p nil)
-   (make-instance 'char-class :test-function #'whitespacep))
+    (setq accumulate-start-p nil)
+    (make-instance 'char-class :test-function #'whitespacep))
   (:method ((parse-tree (eql :non-digit-class)))
     (declare (special accumulate-start-p))
-   (setq accumulate-start-p nil)
-   (make-instance 'char-class :test-function (complement* #'str:digit-char-p)))
+    (setq accumulate-start-p nil)
+    (make-instance 'char-class :test-function (complement* #'str:digit-char-p)))
   (:method ((parse-tree (eql :non-word-char-class)))
     (declare (special accumulate-start-p))
-   (setq accumulate-start-p nil)
-   (make-instance 'char-class :test-function (complement* #'word-char-p)))
+    (setq accumulate-start-p nil)
+    (make-instance 'char-class :test-function (complement* #'word-char-p)))
   (:method ((parse-tree (eql :non-whitespace-char-class)))
     (declare (special accumulate-start-p))
-   (setq accumulate-start-p nil)
-   (make-instance 'char-class :test-function (complement* #'whitespacep)))
+    (setq accumulate-start-p nil)
+    (make-instance 'char-class :test-function (complement* #'whitespacep)))
   (:method ((parse-tree (eql :start-anchor)))
-   ;; Perl's "^"
     (declare (special flags))
-   (make-instance 'anchor :startp t :multi-line-p (multi-line-mode-p flags)))
+    (make-instance 'anchor :startp t :multi-line-p (multi-line-mode-p flags)))
   (:method ((parse-tree (eql :end-anchor)))
-   ;; Perl's "$"
     (declare (special flags))
-   (make-instance 'anchor :startp nil :multi-line-p (multi-line-mode-p flags)))
+    (make-instance 'anchor :startp nil :multi-line-p (multi-line-mode-p flags)))
   (:method ((parse-tree (eql :modeless-start-anchor)))
-   ;; Perl's "\A"
     (make-instance 'anchor :startp t))
   (:method ((parse-tree (eql :modeless-end-anchor)))
-   ;; Perl's "$\Z"
     (make-instance 'anchor :startp nil))
   (:method ((parse-tree (eql :modeless-end-anchor-no-newline)))
-   ;; Perl's "$\z"
     (make-instance 'anchor :startp nil :no-newline-p t))
   (:method ((parse-tree (eql :case-insensitive-p)))
     (set-flag parse-tree)
-   (make-instance 'void))
+    (make-instance 'void))
   (:method ((parse-tree (eql :case-sensitive-p)))
     (set-flag parse-tree)
-   (make-instance 'void))
+    (make-instance 'void))
   (:method ((parse-tree (eql :multi-line-mode-p)))
     (set-flag parse-tree)
-   (make-instance 'void))
+    (make-instance 'void))
   (:method ((parse-tree (eql :not-multi-line-mode-p)))
     (set-flag parse-tree)
-   (make-instance 'void))
+    (make-instance 'void))
   (:method ((parse-tree (eql :single-line-mode-p)))
     (set-flag parse-tree)
-   (make-instance 'void))
+    (make-instance 'void))
   (:method ((parse-tree (eql :not-single-line-mode-p)))
     (set-flag parse-tree)
-   (make-instance 'void)))
+    (make-instance 'void)))
 
 (defmethod convert-simple-parse-tree ((parse-tree string))
   (declare (special flags))
-  ;; turn strings into STR objects and try to accumulate into
-  ;; STARTS-WITH
   (let ((str (make-instance 'str
                             :str parse-tree
                             :case-insensitive-p (case-insensitive-mode-p flags))))
@@ -2912,15 +2527,14 @@ parse trees which are atoms.")
     str))
 
 (defmethod convert-simple-parse-tree ((parse-tree character))
-  ;; dispatch to the method for strings
   (convert-simple-parse-tree (string parse-tree)))
-        
+
 (defmethod convert-simple-parse-tree (parse-tree)
   "The default method - check if there's a translation."
   (let ((translation (and (symbolp parse-tree) (parse-tree-synonym parse-tree))))
     (if translation
-      (convert-aux (copy-tree translation))
-      (signal-syntax-error "Unknown token ~A in parse tree." parse-tree))))
+        (convert-aux (copy-tree translation))
+        (signal-syntax-error "Unknown token ~A in parse tree." parse-tree))))
 
 (defun convert (parse-tree)
   "Converts the parse tree PARSE-TREE into an equivalent REGEX object
@@ -2928,8 +2542,6 @@ and returns three values: the REGEX object, the number of registers
 seen and an object the regex starts with which is either a STR object
 or an EVERYTHING object \(if the regex starts with something like
 \".*\") or NIL."
-  ;; this function basically just initializes the special variables
-  ;; and then calls CONVERT-AUX to do all the work
   (let* ((flags (list nil nil nil))
          (reg-num 0)
          reg-names
@@ -2940,14 +2552,13 @@ or an EVERYTHING object \(if the regex starts with something like
          (converted-parse-tree (convert-aux parse-tree)))
     (declare (special flags reg-num reg-names named-reg-seen
                       accumulate-start-p starts-with max-back-ref))
-    ;; make sure we don't reference registers which aren't there
     (when (> (the fixnum max-back-ref)
              (the fixnum reg-num))
       (signal-syntax-error "Backreference to register ~A which has not been defined." max-back-ref))
     (when (typep starts-with 'str)
       (setf (slot-value starts-with 'str)
-              (coerce (slot-value starts-with 'str)
-                      'simple-string)))
+            (coerce (slot-value starts-with 'str)
+                    'simple-string)))
     (values converted-parse-tree reg-num starts-with
             (when named-reg-seen
               (nreverse reg-names)))))
@@ -2959,8 +2570,6 @@ transforms #<SEQ #<STR \"a\"> #<SEQ #<STR \"b\"> #<STR \"c\">>> to
 operation on REGEX."))
 
 (defmethod flatten ((seq seq))
-  ;; this looks more complicated than it is because we modify SEQ in
-  ;; place to avoid unnecessary consing
   (let ((elements-rest (elements seq)))
     (loop
       (unless elements-rest
@@ -2968,29 +2577,24 @@ operation on REGEX."))
       (let ((flattened-element (flatten (car elements-rest)))
             (next-elements-rest (cdr elements-rest)))
         (cond ((typep flattened-element 'seq)
-                ;; FLATTENED-ELEMENT is a SEQ object, so we "splice"
-                ;; it into out list of elements
-                (let ((flattened-element-elements
-                        (elements flattened-element)))
-                  (setf (car elements-rest)
-                          (car flattened-element-elements)
-                        (cdr elements-rest)
-                          (nconc (cdr flattened-element-elements)
-                                 (cdr elements-rest)))))
+               (let ((flattened-element-elements
+                       (elements flattened-element)))
+                 (setf (car elements-rest)
+                       (car flattened-element-elements)
+                       (cdr elements-rest)
+                       (nconc (cdr flattened-element-elements)
+                              (cdr elements-rest)))))
               (t
-                ;; otherwise we just replace the current element with
-                ;; its flattened counterpart
-                (setf (car elements-rest) flattened-element)))
+               (setf (car elements-rest) flattened-element)))
         (setq elements-rest next-elements-rest))))
   (let ((elements (elements seq)))
     (cond ((cadr elements)
-            seq)
+           seq)
           ((cdr elements)
-            (first elements))
+           (first elements))
           (t (make-instance 'void)))))
 
 (defmethod flatten ((alternation alternation))
-  ;; same algorithm as above
   (let ((choices-rest (choices alternation)))
     (loop
       (unless choices-rest
@@ -2998,28 +2602,28 @@ operation on REGEX."))
       (let ((flattened-choice (flatten (car choices-rest)))
             (next-choices-rest (cdr choices-rest)))
         (cond ((typep flattened-choice 'alternation)
-                (let ((flattened-choice-choices
-                        (choices flattened-choice)))
-                  (setf (car choices-rest)
-                          (car flattened-choice-choices)
-                        (cdr choices-rest)
-                          (nconc (cdr flattened-choice-choices)
-                                 (cdr choices-rest)))))
+               (let ((flattened-choice-choices
+                       (choices flattened-choice)))
+                 (setf (car choices-rest)
+                       (car flattened-choice-choices)
+                       (cdr choices-rest)
+                       (nconc (cdr flattened-choice-choices)
+                              (cdr choices-rest)))))
               (t
-                (setf (car choices-rest) flattened-choice)))
+               (setf (car choices-rest) flattened-choice)))
         (setq choices-rest next-choices-rest))))
   (let ((choices (choices alternation)))
     (cond ((cadr choices)
-            alternation)
+           alternation)
           ((cdr choices)
-            (first choices))
+           (first choices))
           (t (signal-syntax-error "Encountered alternation without choices.")))))
 
 (defmethod flatten ((branch branch))
   (with-slots (test then-regex else-regex)
       branch
     (setq test
-            (if (numberp test)
+          (if (numberp test)
               test
               (flatten test))
           then-regex (flatten then-regex)
@@ -3029,15 +2633,11 @@ operation on REGEX."))
 (defmethod flatten ((regex regex))
   (typecase regex
     ((or repetition register lookahead lookbehind standalone)
-      ;; if REGEX contains exactly one inner REGEX object flatten it
-      (setf (regex regex)
-              (flatten (regex regex)))
-      regex)
+     (setf (regex regex)
+           (flatten (regex regex)))
+     regex)
     (t
-      ;; otherwise (ANCHOR, BACK-REFERENCE, CHAR-CLASS, EVERYTHING,
-      ;; LOOKAHEAD, LOOKBEHIND, STR, VOID, FILTER, and WORD-BOUNDARY)
-      ;; do nothing
-      regex)))
+     regex)))
 
 (defgeneric gather-strings (regex)
   (:documentation "Collects adjacent strings or characters into one
@@ -3045,9 +2645,6 @@ string provided they have the same case mode. This is a destructive
 operation on REGEX."))
 
 (defmethod gather-strings ((seq seq))
-  ;; note that GATHER-STRINGS is to be applied after FLATTEN, i.e. it
-  ;; expects SEQ to be flattened already; in particular, SEQ cannot be
-  ;; empty and cannot contain embedded SEQ objects
   (let* ((start-point (cons nil (elements seq)))
          (curr-point start-point)
          old-case-mode
@@ -3064,115 +2661,93 @@ operation on REGEX."))
                (case-mode (case-mode element old-case-mode)))
           (cond ((and case-mode
                       (eq case-mode old-case-mode))
-                  ;; if ELEMENT is a STR and we have collected a STR of
-                  ;; the same case mode in the last iteration we
-                  ;; concatenate ELEMENT onto COLLECTOR and remember the
-                  ;; value of its SKIP slot
-                  (let ((old-collector-length collector-length))
-                    (unless (and (adjustable-array-p collector)
-                                 (array-has-fill-pointer-p collector))
-                      (setq collector
-                              (make-array collector-length
-                                          :initial-contents collector
-                                          :element-type 'character
-                                          :fill-pointer t
-                                          :adjustable t)
-                            collector-start nil))
-                    (adjust-array collector
-                                  (incf collector-length (len element))
-                                  :fill-pointer t)
-                    (setf (subseq collector
-                                  old-collector-length)
-                            (str element)
-                          ;; it suffices to remember the last SKIP slot
-                          ;; because due to the way MAYBE-ACCUMULATE
-                          ;; works adjacent STR objects have the same
-                          ;; SKIP value
-                          skip (skip element)))
-                  (setf (cdr curr-point) (cdr elements-rest)))
+                 (let ((old-collector-length collector-length))
+                   (unless (and (adjustable-array-p collector)
+                                (array-has-fill-pointer-p collector))
+                     (setq collector
+                           (make-array collector-length
+                                       :initial-contents collector
+                                       :element-type 'character
+                                       :fill-pointer t
+                                       :adjustable t)
+                           collector-start nil))
+                   (adjust-array collector
+                                 (incf collector-length (len element))
+                                 :fill-pointer t)
+                   (setf (subseq collector
+                                 old-collector-length)
+                         (str element)
+                         skip (skip element)))
+                 (setf (cdr curr-point) (cdr elements-rest)))
                 (t
-                  (let ((collected-string
-                          (cond (collector-start
-                                  collector-start)
-                                (collector
-                                  ;; if we have collected something already
-                                  ;; we convert it into a STR
-                                  (make-instance 'str
-                                                 :skip skip
-                                                 :str collector
-                                                 :case-insensitive-p
-                                                 (eq old-case-mode
-                                                     :case-insensitive)))
-                                (t nil))))
-                    (cond (case-mode
-                            ;; if ELEMENT is a string with a different case
-                            ;; mode than the last one we have either just
-                            ;; converted COLLECTOR into a STR or COLLECTOR
-                            ;; is still empty; in both cases we can now
-                            ;; begin to fill it anew
-                            (setq collector (str element)
-                                  collector-start element
-                                  ;; and we remember the SKIP value as above
-                                  skip (skip element)
-                                  collector-length (len element))
-                            (cond (collected-string
-                                    (setf (car elements-rest)
-                                            collected-string
-                                          curr-point
-                                            (cdr curr-point)))
-                                  (t
-                                    (setf (cdr curr-point)
-                                            (cdr elements-rest)))))
-                          (t
-                            ;; otherwise this is not a STR so we apply
-                            ;; GATHER-STRINGS to it and collect it directly
-                            ;; into RESULT
-                            (cond (collected-string
-                                    (setf (car elements-rest)
-                                            collected-string
-                                          curr-point
-                                            (cdr curr-point)
-                                          (cdr curr-point)
-                                            (cons (gather-strings element)
-                                                  (cdr curr-point))
-                                          curr-point
-                                            (cdr curr-point)))
-                                  (t
-                                    (setf (car elements-rest)
-                                            (gather-strings element)
-                                          curr-point
-                                            (cdr curr-point))))
-                            ;; we also have to empty COLLECTOR here in case
-                            ;; it was still filled from the last iteration
-                            (setq collector nil
-                                  collector-start nil))))))
+                 (let ((collected-string
+                         (cond (collector-start
+                                collector-start)
+                               (collector
+                                (make-instance 'str
+                                               :skip skip
+                                               :str collector
+                                               :case-insensitive-p
+                                               (eq old-case-mode
+                                                   :case-insensitive)))
+                               (t nil))))
+                   (cond (case-mode
+                          (setq collector (str element)
+                                collector-start element
+                                skip (skip element)
+                                collector-length (len element))
+                          (cond (collected-string
+                                 (setf (car elements-rest)
+                                       collected-string
+                                       curr-point
+                                       (cdr curr-point)))
+                                (t
+                                 (setf (cdr curr-point)
+                                       (cdr elements-rest)))))
+                         (t
+                          (cond (collected-string
+                                 (setf (car elements-rest)
+                                       collected-string
+                                       curr-point
+                                       (cdr curr-point)
+                                       (cdr curr-point)
+                                       (cons (gather-strings element)
+                                             (cdr curr-point))
+                                       curr-point
+                                       (cdr curr-point)))
+                                (t
+                                 (setf (car elements-rest)
+                                       (gather-strings element)
+                                       curr-point
+                                       (cdr curr-point))))
+                          (setq collector nil
+                                collector-start nil))))))
           (setq old-case-mode case-mode))))
     (when collector
       (setf (cdr curr-point)
-              (cons
-               (make-instance 'str
-                              :skip skip
-                              :str collector
-                              :case-insensitive-p
-                              (eq old-case-mode
-                                  :case-insensitive))
-               nil)))
+            (cons
+             (make-instance 'str
+                            :skip skip
+                            :str collector
+                            :case-insensitive-p
+                            (eq old-case-mode
+                                :case-insensitive))
+             nil)))
     (setf (elements seq) (cdr start-point))
     seq))
 
 (defmethod gather-strings ((alternation alternation))
-  ;; loop ON the choices of ALTERNATION so we can modify them directly
   (loop for choices-rest on (choices alternation)
         while choices-rest
         do (setf (car choices-rest)
-                   (gather-strings (car choices-rest))))
+                 (gather-strings (car choices-rest))))
   alternation)
 
 (defmethod gather-strings ((branch branch))
   (with-slots (test then-regex else-regex)
       branch
     (setq test
-            (if (numberp test)
+          (if (numberp test)
               test
               (gather-strings test))
           then-regex (gather-strings then-regex)
@@ -3182,18 +2757,11 @@ operation on REGEX."))
 (defmethod gather-strings ((regex regex))
   (typecase regex
     ((or repetition register lookahead lookbehind standalone)
-      ;; if REGEX contains exactly one inner REGEX object apply
-      ;; GATHER-STRINGS to it
-      (setf (regex regex)
-              (gather-strings (regex regex)))
-      regex)
+     (setf (regex regex)
+           (gather-strings (regex regex)))
+     regex)
     (t
-      ;; otherwise (ANCHOR, BACK-REFERENCE, CHAR-CLASS, EVERYTHING,
-      ;; LOOKAHEAD, LOOKBEHIND, STR, VOID, FILTER, and WORD-BOUNDARY)
-      ;; do nothing
-      regex)))
-
-;; Note that START-ANCHORED-P will be called after FLATTEN and GATHER-STRINGS.
+     regex)))
 
 (defgeneric start-anchored-p (regex &optional in-seq-p)
   (:documentation "Returns T if REGEX starts with a \"real\" start
@@ -3203,20 +2771,13 @@ zero-length assertion."))
 
 (defmethod start-anchored-p ((seq seq) &optional in-seq-p)
   (declare (ignore in-seq-p))
-  ;; note that START-ANCHORED-P is to be applied after FLATTEN and
-  ;; GATHER-STRINGS, i.e. SEQ cannot be empty and cannot contain
-  ;; embedded SEQ objects
   (loop for element in (elements seq)
         for anchored-p = (start-anchored-p element t)
-        ;; skip zero-length elements because they won't affect the
-        ;; "anchoredness" of the sequence
         while (eq anchored-p :zero-length)
         finally (return (and anchored-p (not (eq anchored-p :zero-length))))))
 
 (defmethod start-anchored-p ((alternation alternation) &optional in-seq-p)
   (declare (ignore in-seq-p))
-  ;; clearly an alternation can only be start-anchored if all of its
-  ;; choices are start-anchored
   (loop for choice in (choices alternation)
         always (start-anchored-p choice)))
 
@@ -3227,7 +2788,6 @@ zero-length assertion."))
 
 (defmethod start-anchored-p ((repetition repetition) &optional in-seq-p)
   (declare (ignore in-seq-p))
-  ;; well, this wouldn't make much sense, but anyway...
   (and (plusp (minimum repetition))
        (start-anchored-p (regex repetition))))
 
@@ -3247,21 +2807,17 @@ zero-length assertion."))
 (defmethod start-anchored-p ((regex regex) &optional in-seq-p)
   (typecase regex
     ((or lookahead lookbehind word-boundary void)
-      ;; zero-length assertions
-      (if in-seq-p
-        :zero-length
-        nil))
+     (if in-seq-p
+         :zero-length
+         nil))
     (filter
-      (if (and in-seq-p
-               (len regex)
-               (zerop (len regex)))
-        :zero-length
-        nil))
+     (if (and in-seq-p
+              (len regex)
+              (zerop (len regex)))
+         :zero-length
+         nil))
     (t
-      ;; BACK-REFERENCE, CHAR-CLASS, EVERYTHING, and STR
-      nil)))
-
-;; Note that END-STRING-AUX will be called after FLATTEN and GATHER-STRINGS.
+     nil)))
 
 (defgeneric end-string-aux (regex &optional old-case-insensitive-p)
   (:documentation "Returns the constant string (if it exists) REGEX
@@ -3274,15 +2830,11 @@ function called by END-STRING.)"))
                            &optional (old-case-insensitive-p :void))
   (declare (special last-str))
   (cond ((and (not (skip str))          ; avoid constituents of STARTS-WITH
-              ;; only use STR if nothing has been collected yet or if
-              ;; the collected string has the same value for
-              ;; CASE-INSENSITIVE-P
               (or (eq old-case-insensitive-p :void)
                   (eq (case-insensitive-p str) old-case-insensitive-p)))
-          (setf last-str str
-                ;; set the SKIP property of this STR
-                (skip str) t)
-          str)
+         (setf last-str str
+               (skip str) t)
+         str)
         (t nil)))
 
 (defmethod end-string-aux ((seq seq)
@@ -3294,114 +2846,89 @@ function called by END-STRING.)"))
         (concatenated-length 0))
     (declare (fixnum concatenated-length))
     (loop for element in (reverse (elements seq))
-          ;; remember the case-(in)sensitivity of the last relevant
-          ;; STR object
           for loop-old-case-insensitive-p = old-case-insensitive-p
             then (if skip
-                   loop-old-case-insensitive-p
-                   (case-insensitive-p element-end))
-          ;; the end-string of the current element
+                     loop-old-case-insensitive-p
+                     (case-insensitive-p element-end))
           for element-end = (end-string-aux element
                                             loop-old-case-insensitive-p)
-          ;; whether we encountered a zero-length element
           for skip = (if element-end
-                       (zerop (len element-end))
-                       nil)
-          ;; set CONTINUEP to NIL if we have to stop collecting to
-          ;; alert END-STRING-AUX methods on enclosing SEQ objects
+                         (zerop (len element-end))
+                         nil)
           unless element-end
             do (setq continuep nil)
-          ;; end loop if we neither got a STR nor a zero-length
-          ;; element
           while element-end
-          ;; only collect if not zero-length
           unless skip
             do (cond (concatenated-string
-                       (when concatenated-start
-                         (setf concatenated-string
-                                 (make-array concatenated-length
-                                             :initial-contents (reverse (str concatenated-start))
-                                             :element-type 'character
-                                             :fill-pointer t
-                                             :adjustable t)
-                               concatenated-start nil))
-                       (let ((len (len element-end))
-                             (str (str element-end)))
-                         (declare (fixnum len))
-                         (incf concatenated-length len)
-                         (loop for i of-type fixnum downfrom (1- len) to 0
-                               do (vector-push-extend (char str i)
-                                                      concatenated-string))))
+                      (when concatenated-start
+                        (setf concatenated-string
+                              (make-array concatenated-length
+                                          :initial-contents (reverse (str concatenated-start))
+                                          :element-type 'character
+                                          :fill-pointer t
+                                          :adjustable t)
+                              concatenated-start nil))
+                      (let ((len (len element-end))
+                            (str (str element-end)))
+                        (declare (fixnum len))
+                        (incf concatenated-length len)
+                        (loop for i of-type fixnum downfrom (1- len) to 0
+                              do (vector-push-extend (char str i)
+                                                     concatenated-string))))
                      (t
-                       (setf concatenated-string
-                               t
-                             concatenated-start
-                               element-end
-                             concatenated-length
-                               (len element-end)
-                             case-insensitive-p
-                               (case-insensitive-p element-end))))
-          ;; stop collecting if END-STRING-AUX on inner SEQ has said so
+                      (setf concatenated-string
+                            t
+                            concatenated-start
+                            element-end
+                            concatenated-length
+                            (len element-end)
+                            case-insensitive-p
+                            (case-insensitive-p element-end))))
           while continuep)
     (cond ((zerop concatenated-length)
-            ;; don't bother to return zero-length strings
-            nil)
+           nil)
           (concatenated-start
-            concatenated-start)
+           concatenated-start)
           (t
-            (make-instance 'str
-                           :str (nreverse concatenated-string)
-                           :case-insensitive-p case-insensitive-p)))))
+           (make-instance 'str
+                          :str (nreverse concatenated-string)
+                          :case-insensitive-p case-insensitive-p)))))
 
 (defmethod end-string-aux ((register register)
                            &optional (old-case-insensitive-p :void))
   (end-string-aux (regex register) old-case-insensitive-p))
-    
+
 (defmethod end-string-aux ((standalone standalone)
                            &optional (old-case-insensitive-p :void))
   (end-string-aux (regex standalone) old-case-insensitive-p))
-    
+
 (defmethod end-string-aux ((regex regex)
                            &optional (old-case-insensitive-p :void))
   (declare (special last-str end-anchored-p continuep))
   (typecase regex
     ((or anchor lookahead lookbehind word-boundary void)
-      ;; a zero-length REGEX object - for the sake of END-STRING-AUX
-      ;; this is a zero-length string
-      (when (and (typep regex 'anchor)
-                 (not (startp regex))
-                 (or (no-newline-p regex)
-                     (not (multi-line-p regex)))
-                 (eq old-case-insensitive-p :void))
-        ;; if this is a "real" end-anchor and we haven't collected
-        ;; anything so far we can set END-ANCHORED-P (where 1 or 0
-        ;; indicate whether we accept a #\Newline at the end or not)
-        (setq end-anchored-p (if (no-newline-p regex) 0 1)))
-      (make-instance 'str
-                     :str ""
-                     :case-insensitive-p :void))
+     (when (and (typep regex 'anchor)
+                (not (startp regex))
+                (or (no-newline-p regex)
+                    (not (multi-line-p regex)))
+                (eq old-case-insensitive-p :void))
+       (setq end-anchored-p (if (no-newline-p regex) 0 1)))
+     (make-instance 'str
+                    :str ""
+                    :case-insensitive-p :void))
     (t
-      ;; (ALTERNATION, BACK-REFERENCE, BRANCH, CHAR-CLASS, EVERYTHING,
-      ;; REPETITION, FILTER)
-      nil)))
+     nil)))
 
 (defun end-string (regex)
   (declare (special end-string-offset))
   "Returns the constant string (if it exists) REGEX ends with wrapped
 into a STR object, otherwise NIL."
-  ;; LAST-STR points to the last STR object (seen from the end) that's
-  ;; part of END-STRING; CONTINUEP is set to T if we stop collecting
-  ;; in the middle of a SEQ
   (let ((continuep t)
         last-str)
     (declare (special continuep last-str))
     (prog1
-      (end-string-aux regex)
+        (end-string-aux regex)
       (when last-str
-        ;; if we've found something set the START-OF-END-STRING-P of
-        ;; the leftmost STR collected accordingly and remember the
-        ;; OFFSET of this STR (in a special variable provided by the
-        ;; caller of this function)
         (setf (start-of-end-string-p last-str) t
               end-string-offset (offset last-str))))))
 
@@ -3416,7 +2943,7 @@ objects."))
         for last-min-rest = current-min-rest then this-min-rest
         for this-min-rest = (compute-min-rest element last-min-rest)
         finally (return this-min-rest)))
-    
+
 (defmethod compute-min-rest ((alternation alternation) current-min-rest)
   (loop for choice in (choices alternation)
         minimize (compute-min-rest choice current-min-rest)))
@@ -3427,10 +2954,10 @@ objects."))
 
 (defmethod compute-min-rest ((str str) current-min-rest)
   (+ current-min-rest (len str)))
-    
+
 (defmethod compute-min-rest ((filter filter) current-min-rest)
   (+ current-min-rest (or (len filter) 0)))
-    
+
 (defmethod compute-min-rest ((repetition repetition) current-min-rest)
   (setf (min-rest repetition) current-min-rest)
   (compute-min-rest (regex repetition) current-min-rest)
@@ -3438,29 +2965,28 @@ objects."))
 
 (defmethod compute-min-rest ((register register) current-min-rest)
   (compute-min-rest (regex register) current-min-rest))
-    
+
 (defmethod compute-min-rest ((standalone standalone) current-min-rest)
   (declare (ignore current-min-rest))
   (compute-min-rest (regex standalone) 0))
-    
+
 (defmethod compute-min-rest ((lookahead lookahead) current-min-rest)
   (compute-min-rest (regex lookahead) 0)
   current-min-rest)
-    
+
 (defmethod compute-min-rest ((lookbehind lookbehind) current-min-rest)
   (compute-min-rest (regex lookbehind) (+ current-min-rest (len lookbehind)))
   current-min-rest)
-    
+
 (defmethod compute-min-rest ((regex regex) current-min-rest)
   (typecase regex
     ((or char-class everything)
-      (1+ current-min-rest))
+     (1+ current-min-rest))
     (t
-      ;; zero min-len and no embedded regexes (ANCHOR,
-      ;; BACK-REFERENCE, VOID, and WORD-BOUNDARY)
-      current-min-rest)))
+     current-min-rest)))
 
 (declaim (inline *string*= *string*-equal))
+
 (defun *string*= (string2 start1 end1 start2 end2)
   "Like STRING=, i.e. compares the special string *STRING* from START1
 to END1 with STRING2 from START2 to END2. Note that there's no
@@ -3485,105 +3011,74 @@ boundary check - this has to be implemented by the caller."
   (:documentation "Creates a closure which takes one parameter,
 START-POS, and tests whether REGEX can match *STRING* at START-POS
 such that the call to NEXT-FN after the match would succeed."))
-                
+
 (defmethod create-matcher-aux ((seq seq) next-fn)
-  ;; the closure for a SEQ is a chain of closures for the elements of
-  ;; this sequence which call each other in turn; the last closure
-  ;; calls NEXT-FN
   (loop for element in (reverse (elements seq))
         for curr-matcher = next-fn then next-matcher
         for next-matcher = (create-matcher-aux element curr-matcher)
         finally (return next-matcher)))
 
 (defmethod create-matcher-aux ((alternation alternation) next-fn)
-  ;; first create closures for all alternations of ALTERNATION
   (let ((all-matchers (mapcar #'(lambda (choice)
                                   (create-matcher-aux choice next-fn))
                               (choices alternation))))
-    ;; now create a closure which checks if one of the closures
-    ;; created above can succeed
     (lambda (start-pos)
       (declare (fixnum start-pos))
       (loop for matcher in all-matchers
-            thereis (funcall (the function matcher) start-pos)))))
+              thereis (funcall (the function matcher) start-pos)))))
 
 (defmethod create-matcher-aux ((register register) next-fn)
-  ;; the position of this REGISTER within the whole regex; we start to
-  ;; count at 0
   (let ((num (num register)))
     (declare (fixnum num))
-    ;; STORE-END-OF-REG is a thin wrapper around NEXT-FN which will
-    ;; update the corresponding values of *REGS-START* and *REGS-END*
-    ;; after the inner matcher has succeeded
     (flet ((store-end-of-reg (start-pos)
-               (declare (fixnum start-pos)
-                        (function next-fn))
-               (setf (svref *reg-starts* num) (svref *regs-maybe-start* num)
-                     (svref *reg-ends* num) start-pos)
-           (funcall next-fn start-pos)))
-      ;; the inner matcher is a closure corresponding to the regex
-      ;; wrapped by this REGISTER
+             (declare (fixnum start-pos)
+                      (function next-fn))
+             (setf (svref *reg-starts* num) (svref *regs-maybe-start* num)
+                   (svref *reg-ends* num) start-pos)
+             (funcall next-fn start-pos)))
       (let ((inner-matcher (create-matcher-aux (regex register)
                                                #'store-end-of-reg)))
         (declare (function inner-matcher))
-        ;; here comes the actual closure for REGISTER
         (lambda (start-pos)
           (declare (fixnum start-pos))
-          ;; remember the old values of *REGS-START* and friends in
-          ;; case we cannot match
           (let ((old-*reg-starts* (svref *reg-starts* num))
                 (old-*regs-maybe-start* (svref *regs-maybe-start* num))
                 (old-*reg-ends* (svref *reg-ends* num)))
-            ;; we cannot use *REGS-START* here because Perl allows
-            ;; regular expressions like /(a|\1x)*/
             (setf (svref *regs-maybe-start* num) start-pos)
             (let ((next-pos (funcall inner-matcher start-pos)))
               (unless next-pos
-                ;; restore old values on failure
                 (setf (svref *reg-starts* num) old-*reg-starts*
                       (svref *regs-maybe-start* num) old-*regs-maybe-start*
                       (svref *reg-ends* num) old-*reg-ends*))
               next-pos)))))))
 
 (defmethod create-matcher-aux ((lookahead lookahead) next-fn)
-  ;; create a closure which just checks for the inner regex and
-  ;; doesn't care about NEXT-FN
   (let ((test-matcher (create-matcher-aux (regex lookahead) #'identity)))
     (declare (function next-fn test-matcher))
     (if (positivep lookahead)
-      ;; positive look-ahead: check success of inner regex, then call
-      ;; NEXT-FN
-      (lambda (start-pos)
-        (and (funcall test-matcher start-pos)
-             (funcall next-fn start-pos)))
-      ;; negative look-ahead: check failure of inner regex, then call
-      ;; NEXT-FN
-      (lambda (start-pos)
-        (and (not (funcall test-matcher start-pos))
-             (funcall next-fn start-pos))))))
+        (lambda (start-pos)
+          (and (funcall test-matcher start-pos)
+               (funcall next-fn start-pos)))
+        (lambda (start-pos)
+          (and (not (funcall test-matcher start-pos))
+               (funcall next-fn start-pos))))))
 
 (defmethod create-matcher-aux ((lookbehind lookbehind) next-fn)
   (let ((len (len lookbehind))
-        ;; create a closure which just checks for the inner regex and
-        ;; doesn't care about NEXT-FN
         (test-matcher (create-matcher-aux (regex lookbehind) #'identity)))
     (declare (function next-fn test-matcher)
              (fixnum len))
     (if (positivep lookbehind)
-      ;; positive look-behind: check success of inner regex (if we're
-      ;; far enough from the start of *STRING*), then call NEXT-FN
-      (lambda (start-pos)
-        (declare (fixnum start-pos))
-        (and (>= (- start-pos (or *real-start-pos* *start-pos*)) len)
-             (funcall test-matcher (- start-pos len))
-             (funcall next-fn start-pos)))
-      ;; negative look-behind: check failure of inner regex (if we're
-      ;; far enough from the start of *STRING*), then call NEXT-FN
-      (lambda (start-pos)
-        (declare (fixnum start-pos))
-        (and (or (< (- start-pos (or *real-start-pos* *start-pos*)) len)
-                 (not (funcall test-matcher (- start-pos len))))
-             (funcall next-fn start-pos))))))
+        (lambda (start-pos)
+          (declare (fixnum start-pos))
+          (and (>= (- start-pos (or *real-start-pos* *start-pos*)) len)
+               (funcall test-matcher (- start-pos len))
+               (funcall next-fn start-pos)))
+        (lambda (start-pos)
+          (declare (fixnum start-pos))
+          (and (or (< (- start-pos (or *real-start-pos* *start-pos*)) len)
+                   (not (funcall test-matcher (- start-pos len))))
+               (funcall next-fn start-pos))))))
 
 (defmacro insert-char-class-tester ((char-class chr-expr) &body body)
   "Utility macro to replace each occurence of '\(CHAR-CLASS-TEST)
@@ -3600,7 +3095,6 @@ against CHR-EXPR."
 
 (defmethod create-matcher-aux ((char-class char-class) next-fn)
   (declare (function next-fn))
-  ;; insert a test against the current character within *STRING*
   (insert-char-class-tester (char-class (schar *string* start-pos))
     (lambda (start-pos)
       (declare (fixnum start-pos))
@@ -3611,8 +3105,6 @@ against CHR-EXPR."
 (defmethod create-matcher-aux ((str str) next-fn)
   (declare (fixnum *end-string-pos*)
            (function next-fn)
-           ;; this special value is set by COMPILE when the
-           ;; closures are built
            (special end-string))
   (let* ((len (len str))
          (case-insensitive-p (case-insensitive-p str))
@@ -3622,97 +3114,75 @@ against CHR-EXPR."
          (chr (schar str 0))
          (end-string (and end-string (str end-string)))
          (end-string-len (if end-string
-                           (length end-string)
-                           nil)))
+                             (length end-string)
+                             nil)))
     (declare (fixnum len))
     (cond ((and start-of-end-string-p case-insensitive-p)
-            ;; closure for the first STR which belongs to the constant
-            ;; string at the end of the regular expression;
-            ;; case-insensitive version
-            (lambda (start-pos)
-              (declare (fixnum start-pos end-string-len))
-              (let ((test-end-pos (+ start-pos end-string-len)))
-                (declare (fixnum test-end-pos))
-                ;; either we're at *END-STRING-POS* (which means that
-                ;; it has already been confirmed that end-string
-                ;; starts here) or we really have to test
-                (and (or (= start-pos *end-string-pos*)
-                         (and (<= test-end-pos *end-pos*)
-                              (*string*-equal end-string start-pos test-end-pos
-                                              0 end-string-len)))
-                     (funcall next-fn (+ start-pos len))))))
+           (lambda (start-pos)
+             (declare (fixnum start-pos end-string-len))
+             (let ((test-end-pos (+ start-pos end-string-len)))
+               (declare (fixnum test-end-pos))
+               (and (or (= start-pos *end-string-pos*)
+                        (and (<= test-end-pos *end-pos*)
+                             (*string*-equal end-string start-pos test-end-pos
+                                             0 end-string-len)))
+                    (funcall next-fn (+ start-pos len))))))
           (start-of-end-string-p
-            ;; closure for the first STR which belongs to the constant
-            ;; string at the end of the regular expression;
-            ;; case-sensitive version
-            (lambda (start-pos)
-              (declare (fixnum start-pos end-string-len))
-              (let ((test-end-pos (+ start-pos end-string-len)))
-                (declare (fixnum test-end-pos))
-                ;; either we're at *END-STRING-POS* (which means that
-                ;; it has already been confirmed that end-string
-                ;; starts here) or we really have to test
-                (and (or (= start-pos *end-string-pos*)
-                         (and (<= test-end-pos *end-pos*)
-                              (*string*= end-string start-pos test-end-pos
-                                         0 end-string-len)))
-                     (funcall next-fn (+ start-pos len))))))
+           (lambda (start-pos)
+             (declare (fixnum start-pos end-string-len))
+             (let ((test-end-pos (+ start-pos end-string-len)))
+               (declare (fixnum test-end-pos))
+               (and (or (= start-pos *end-string-pos*)
+                        (and (<= test-end-pos *end-pos*)
+                             (*string*= end-string start-pos test-end-pos
+                                        0 end-string-len)))
+                    (funcall next-fn (+ start-pos len))))))
           (skip
-            ;; a STR which can be skipped because some other function
-            ;; has already confirmed that it matches
-            (lambda (start-pos)
-              (declare (fixnum start-pos))
-              (funcall next-fn (+ start-pos len))))
+           (lambda (start-pos)
+             (declare (fixnum start-pos))
+             (funcall next-fn (+ start-pos len))))
           ((and (= len 1) case-insensitive-p)
-            ;; STR represent exactly one character; case-insensitive
-            ;; version
-            (lambda (start-pos)
-              (declare (fixnum start-pos))
-              (and (< start-pos *end-pos*)
-                   (char-equal (schar *string* start-pos) chr)
-                   (funcall next-fn (1+ start-pos)))))
+           (lambda (start-pos)
+             (declare (fixnum start-pos))
+             (and (< start-pos *end-pos*)
+                  (char-equal (schar *string* start-pos) chr)
+                  (funcall next-fn (1+ start-pos)))))
           ((= len 1)
-            ;; STR represent exactly one character; case-sensitive
-            ;; version
-            (lambda (start-pos)
-              (declare (fixnum start-pos))
-              (and (< start-pos *end-pos*)
-                   (char= (schar *string* start-pos) chr)
-                   (funcall next-fn (1+ start-pos)))))
+           (lambda (start-pos)
+             (declare (fixnum start-pos))
+             (and (< start-pos *end-pos*)
+                  (char= (schar *string* start-pos) chr)
+                  (funcall next-fn (1+ start-pos)))))
           (case-insensitive-p
-            ;; general case, case-insensitive version
-            (lambda (start-pos)
-              (declare (fixnum start-pos))
-              (let ((next-pos (+ start-pos len)))
-                (declare (fixnum next-pos))
-                (and (<= next-pos *end-pos*)
-                     (*string*-equal str start-pos next-pos 0 len)
-                     (funcall next-fn next-pos)))))
+           (lambda (start-pos)
+             (declare (fixnum start-pos))
+             (let ((next-pos (+ start-pos len)))
+               (declare (fixnum next-pos))
+               (and (<= next-pos *end-pos*)
+                    (*string*-equal str start-pos next-pos 0 len)
+                    (funcall next-fn next-pos)))))
           (t
-            ;; general case, case-sensitive version
-            (lambda (start-pos)
-              (declare (fixnum start-pos))
-              (let ((next-pos (+ start-pos len)))
-                (declare (fixnum next-pos))
-                (and (<= next-pos *end-pos*)
-                     (*string*= str start-pos next-pos 0 len)
-                     (funcall next-fn next-pos))))))))
+           (lambda (start-pos)
+             (declare (fixnum start-pos))
+             (let ((next-pos (+ start-pos len)))
+               (declare (fixnum next-pos))
+               (and (<= next-pos *end-pos*)
+                    (*string*= str start-pos next-pos 0 len)
+                    (funcall next-fn next-pos))))))))
 
 (declaim (inline word-boundary-p))
+
 (defun word-boundary-p (start-pos)
   "Check whether START-POS is a word-boundary within *STRING*."
   (declare (fixnum start-pos))
   (let ((1-start-pos (1- start-pos))
         (*start-pos* (or *real-start-pos* *start-pos*)))
-    ;; either the character before START-POS is a word-constituent and
-    ;; the character at START-POS isn't...
     (or (and (or (= start-pos *end-pos*)
                  (and (< start-pos *end-pos*)
                       (not (word-char-p (schar *string* start-pos)))))
              (and (< 1-start-pos *end-pos*)
                   (<= *start-pos* 1-start-pos)
                   (word-char-p (schar *string* 1-start-pos))))
-        ;; ...or vice versa
         (and (or (= start-pos *start-pos*)
                  (and (< 1-start-pos *end-pos*)
                       (<= *start-pos* 1-start-pos)
@@ -3723,122 +3193,97 @@ against CHR-EXPR."
 (defmethod create-matcher-aux ((word-boundary word-boundary) next-fn)
   (declare (function next-fn))
   (if (negatedp word-boundary)
-    (lambda (start-pos)
-      (and (not (word-boundary-p start-pos))
-           (funcall next-fn start-pos)))
-    (lambda (start-pos)
-      (and (word-boundary-p start-pos)
-           (funcall next-fn start-pos)))))
+      (lambda (start-pos)
+        (and (not (word-boundary-p start-pos))
+             (funcall next-fn start-pos)))
+      (lambda (start-pos)
+        (and (word-boundary-p start-pos)
+             (funcall next-fn start-pos)))))
 
 (defmethod create-matcher-aux ((everything everything) next-fn)
   (declare (function next-fn))
   (if (single-line-p everything)
-    ;; closure for single-line-mode: we really match everything, so we
-    ;; just advance the index into *STRING* by one and carry on
-    (lambda (start-pos)
-      (declare (fixnum start-pos))
-      (and (< start-pos *end-pos*)
-           (funcall next-fn (1+ start-pos))))
-    ;; not single-line-mode, so we have to make sure we don't match
-    ;; #\Newline
-    (lambda (start-pos)
-      (declare (fixnum start-pos))
-      (and (< start-pos *end-pos*)
-           (char/= (schar *string* start-pos) #\Newline)
-           (funcall next-fn (1+ start-pos))))))
+      (lambda (start-pos)
+        (declare (fixnum start-pos))
+        (and (< start-pos *end-pos*)
+             (funcall next-fn (1+ start-pos))))
+      (lambda (start-pos)
+        (declare (fixnum start-pos))
+        (and (< start-pos *end-pos*)
+             (char/= (schar *string* start-pos) #\Newline)
+             (funcall next-fn (1+ start-pos))))))
 
 (defmethod create-matcher-aux ((anchor anchor) next-fn)
   (declare (function next-fn))
   (let ((startp (startp anchor))
         (multi-line-p (multi-line-p anchor)))
     (cond ((no-newline-p anchor)
-            ;; this must be an end-anchor and it must be modeless, so
-            ;; we just have to check whether START-POS equals
-            ;; *END-POS*
-            (lambda (start-pos)
-              (declare (fixnum start-pos))
-              (and (= start-pos *end-pos*)
-                   (funcall next-fn start-pos))))
+           (lambda (start-pos)
+             (declare (fixnum start-pos))
+             (and (= start-pos *end-pos*)
+                  (funcall next-fn start-pos))))
           ((and startp multi-line-p)
-            ;; a start-anchor in multi-line-mode: check if we're at
-            ;; *START-POS* or if the last character was #\Newline
-            (lambda (start-pos)
-              (declare (fixnum start-pos))
-              (let ((*start-pos* (or *real-start-pos* *start-pos*)))
-                (and (or (= start-pos *start-pos*)
-                         (and (<= start-pos *end-pos*)
-                              (> start-pos *start-pos*)
-                              (char= #\Newline
-                                     (schar *string* (1- start-pos)))))
-                     (funcall next-fn start-pos)))))
+           (lambda (start-pos)
+             (declare (fixnum start-pos))
+             (let ((*start-pos* (or *real-start-pos* *start-pos*)))
+               (and (or (= start-pos *start-pos*)
+                        (and (<= start-pos *end-pos*)
+                             (> start-pos *start-pos*)
+                             (char= #\Newline
+                                    (schar *string* (1- start-pos)))))
+                    (funcall next-fn start-pos)))))
           (startp
-            ;; a start-anchor which is not in multi-line-mode, so just
-            ;; check whether we're at *START-POS*
-            (lambda (start-pos)
-              (declare (fixnum start-pos))
-              (and (= start-pos (or *real-start-pos* *start-pos*))
-                   (funcall next-fn start-pos))))
+           (lambda (start-pos)
+             (declare (fixnum start-pos))
+             (and (= start-pos (or *real-start-pos* *start-pos*))
+                  (funcall next-fn start-pos))))
           (multi-line-p
-            ;; an end-anchor in multi-line-mode: check if we're at
-            ;; *END-POS* or if the character we're looking at is
-            ;; #\Newline
-            (lambda (start-pos)
-              (declare (fixnum start-pos))
-              (and (or (= start-pos *end-pos*)
-                       (and (< start-pos *end-pos*)
-                            (char= #\Newline
-                                   (schar *string* start-pos))))
-                   (funcall next-fn start-pos))))
+           (lambda (start-pos)
+             (declare (fixnum start-pos))
+             (and (or (= start-pos *end-pos*)
+                      (and (< start-pos *end-pos*)
+                           (char= #\Newline
+                                  (schar *string* start-pos))))
+                  (funcall next-fn start-pos))))
           (t
-            ;; an end-anchor which is not in multi-line-mode, so just
-            ;; check if we're at *END-POS* or if we're looking at
-            ;; #\Newline and there's nothing behind it
-            (lambda (start-pos)
-              (declare (fixnum start-pos))
-              (and (or (= start-pos *end-pos*)
-                       (and (= start-pos (1- *end-pos*))
-                            (char= #\Newline
-                                   (schar *string* start-pos))))
-                   (funcall next-fn start-pos)))))))
+           (lambda (start-pos)
+             (declare (fixnum start-pos))
+             (and (or (= start-pos *end-pos*)
+                      (and (= start-pos (1- *end-pos*))
+                           (char= #\Newline
+                                  (schar *string* start-pos))))
+                  (funcall next-fn start-pos)))))))
 
 (defmethod create-matcher-aux ((back-reference back-reference) next-fn)
   (declare (function next-fn))
-  ;; the position of the corresponding REGISTER within the whole
-  ;; regex; we start to count at 0
   (let ((num (num back-reference)))
     (if (case-insensitive-p back-reference)
-      ;; the case-insensitive version
-      (lambda (start-pos)
-        (declare (fixnum start-pos))
-        (let ((reg-start (svref *reg-starts* num))
-              (reg-end (svref *reg-ends* num)))
-          ;; only bother to check if the corresponding REGISTER as
-          ;; matched successfully already
-          (and reg-start
-               (let ((next-pos (+ start-pos (- (the fixnum reg-end)
-                                               (the fixnum reg-start)))))
-                 (declare (fixnum next-pos))
-                 (and
-                   (<= next-pos *end-pos*)
-                   (*string*-equal *string* start-pos next-pos
-                                   reg-start reg-end)
-                   (funcall next-fn next-pos))))))
-      ;; the case-sensitive version
-      (lambda (start-pos)
-        (declare (fixnum start-pos))
-        (let ((reg-start (svref *reg-starts* num))
-              (reg-end (svref *reg-ends* num)))
-          ;; only bother to check if the corresponding REGISTER as
-          ;; matched successfully already
-          (and reg-start
-               (let ((next-pos (+ start-pos (- (the fixnum reg-end)
-                                               (the fixnum reg-start)))))
-                 (declare (fixnum next-pos))
-                 (and
-                   (<= next-pos *end-pos*)
-                   (*string*= *string* start-pos next-pos
-                              reg-start reg-end)
-                   (funcall next-fn next-pos)))))))))
+        (lambda (start-pos)
+          (declare (fixnum start-pos))
+          (let ((reg-start (svref *reg-starts* num))
+                (reg-end (svref *reg-ends* num)))
+            (and reg-start
+                 (let ((next-pos (+ start-pos (- (the fixnum reg-end)
+                                                 (the fixnum reg-start)))))
+                   (declare (fixnum next-pos))
+                   (and
+                    (<= next-pos *end-pos*)
+                    (*string*-equal *string* start-pos next-pos
+                                    reg-start reg-end)
+                    (funcall next-fn next-pos))))))
+        (lambda (start-pos)
+          (declare (fixnum start-pos))
+          (let ((reg-start (svref *reg-starts* num))
+                (reg-end (svref *reg-ends* num)))
+            (and reg-start
+                 (let ((next-pos (+ start-pos (- (the fixnum reg-end)
+                                                 (the fixnum reg-start)))))
+                   (declare (fixnum next-pos))
+                   (and
+                    (<= next-pos *end-pos*)
+                    (*string*= *string* start-pos next-pos
+                               reg-start reg-end)
+                    (funcall next-fn next-pos)))))))))
 
 (defmethod create-matcher-aux ((branch branch) next-fn)
   (let* ((test (test branch))
@@ -3846,19 +3291,19 @@ against CHR-EXPR."
          (else-matcher (create-matcher-aux (else-regex branch) next-fn)))
     (declare (function then-matcher else-matcher))
     (cond ((numberp test)
-            (lambda (start-pos)
-              (declare (fixnum test))
-              (if (and (< test (length *reg-starts*))
-                       (svref *reg-starts* test))
-                (funcall then-matcher start-pos)
-                (funcall else-matcher start-pos))))
+           (lambda (start-pos)
+             (declare (fixnum test))
+             (if (and (< test (length *reg-starts*))
+                      (svref *reg-starts* test))
+                 (funcall then-matcher start-pos)
+                 (funcall else-matcher start-pos))))
           (t
-            (let ((test-matcher (create-matcher-aux test #'identity)))
-              (declare (function test-matcher))
-              (lambda (start-pos)
-                (if (funcall test-matcher start-pos)
-                  (funcall then-matcher start-pos)
-                  (funcall else-matcher start-pos))))))))
+           (let ((test-matcher (create-matcher-aux test #'identity)))
+             (declare (function test-matcher))
+             (lambda (start-pos)
+               (if (funcall test-matcher start-pos)
+                   (funcall then-matcher start-pos)
+                   (funcall else-matcher start-pos))))))))
 
 (defmethod create-matcher-aux ((standalone standalone) next-fn)
   (let ((inner-matcher (create-matcher-aux (regex standalone) #'identity)))
@@ -3876,7 +3321,6 @@ against CHR-EXPR."
              (funcall next-fn next-pos))))))
 
 (defmethod create-matcher-aux ((void void) next-fn)
-  ;; optimize away VOIDs: don't create a closure, just return NEXT-FN
   next-fn)
 
 (defmacro incf-after (place &optional (delta 1) &environment env)
@@ -3888,10 +3332,8 @@ value of PLACE and afterwards increment it by DELTA."
       `(let* (,@(mapcar #'list vars vals)
               (,%temp ,reader-form)
               (,(car store-vars) (+ ,%temp ,delta)))
-        ,writer-form
-        ,%temp))))
-
-;; code for greedy repetitions with minimum zero
+         ,writer-form
+         ,%temp))))
 
 (defmacro greedy-constant-length-closure (check-curr-pos)
   "This is the template for simple greedy repetitions (where simple
@@ -3901,90 +3343,69 @@ contain registers, i.e. there's no need for backtracking).
 CHECK-CURR-POS is a form which checks whether the inner regex of the
 repetition matches at CURR-POS."
   `(if maximum
-    (lambda (start-pos)
-      (declare (fixnum start-pos maximum))
-      ;; because we know LEN we know in advance where to stop at the
-      ;; latest; we also take into consideration MIN-REST, i.e. the
-      ;; minimal length of the part behind the repetition
-      (let ((target-end-pos (min (1+ (- *end-pos* len min-rest))
-                                 ;; don't go further than MAXIMUM
-                                 ;; repetitions, of course
-                                 (+ start-pos
-                                    (the fixnum (* len maximum)))))
-            (curr-pos start-pos))
-        (declare (fixnum target-end-pos curr-pos))
-        (block greedy-constant-length-matcher
-          ;; we use an ugly TAGBODY construct because this might be a
-          ;; tight loop and this version is a bit faster than our LOOP
-          ;; version (at least in CMUCL)
-          (tagbody
-            forward-loop
-            ;; first go forward as far as possible, i.e. while
-            ;; the inner regex matches
-            (when (>= curr-pos target-end-pos)
-              (go backward-loop))
-            (when ,check-curr-pos
-              (incf curr-pos len)
-              (go forward-loop))
-            backward-loop
-            ;; now go back LEN steps each until we're able to match
-            ;; the rest of the regex
-            (when (< curr-pos start-pos)
-              (return-from greedy-constant-length-matcher nil))
-            (let ((result (funcall next-fn curr-pos)))
-              (when result
-                (return-from greedy-constant-length-matcher result)))
-            (decf curr-pos len)
-            (go backward-loop)))))
-    ;; basically the same code; it's just a bit easier because we're
-    ;; not bounded by MAXIMUM
-    (lambda (start-pos)
-      (declare (fixnum start-pos))
-      (let ((target-end-pos (1+ (- *end-pos* len min-rest)))
-            (curr-pos start-pos))
-        (declare (fixnum target-end-pos curr-pos))
-        (block greedy-constant-length-matcher
-          (tagbody
-            forward-loop
-            (when (>= curr-pos target-end-pos)
-              (go backward-loop))
-            (when ,check-curr-pos
-              (incf curr-pos len)
-              (go forward-loop))
-            backward-loop
-            (when (< curr-pos start-pos)
-              (return-from greedy-constant-length-matcher nil))
-            (let ((result (funcall next-fn curr-pos)))
-              (when result
-                (return-from greedy-constant-length-matcher result)))
-            (decf curr-pos len)
-            (go backward-loop)))))))
+       (lambda (start-pos)
+         (declare (fixnum start-pos maximum))
+         (let ((target-end-pos (min (1+ (- *end-pos* len min-rest))
+                                    (+ start-pos
+                                       (the fixnum (* len maximum)))))
+               (curr-pos start-pos))
+           (declare (fixnum target-end-pos curr-pos))
+           (block greedy-constant-length-matcher
+             (tagbody
+              forward-loop
+                (when (>= curr-pos target-end-pos)
+                  (go backward-loop))
+                (when ,check-curr-pos
+                  (incf curr-pos len)
+                  (go forward-loop))
+              backward-loop
+                (when (< curr-pos start-pos)
+                  (return-from greedy-constant-length-matcher nil))
+                (let ((result (funcall next-fn curr-pos)))
+                  (when result
+                    (return-from greedy-constant-length-matcher result)))
+                (decf curr-pos len)
+                (go backward-loop)))))
+       (lambda (start-pos)
+         (declare (fixnum start-pos))
+         (let ((target-end-pos (1+ (- *end-pos* len min-rest)))
+               (curr-pos start-pos))
+           (declare (fixnum target-end-pos curr-pos))
+           (block greedy-constant-length-matcher
+             (tagbody
+              forward-loop
+                (when (>= curr-pos target-end-pos)
+                  (go backward-loop))
+                (when ,check-curr-pos
+                  (incf curr-pos len)
+                  (go forward-loop))
+              backward-loop
+                (when (< curr-pos start-pos)
+                  (return-from greedy-constant-length-matcher nil))
+                (let ((result (funcall next-fn curr-pos)))
+                  (when result
+                    (return-from greedy-constant-length-matcher result)))
+                (decf curr-pos len)
+                (go backward-loop)))))))
 
 (defun create-greedy-everything-matcher (maximum min-rest next-fn)
   "Creates a closure which just matches as far ahead as possible,
 i.e. a closure for a dot in single-line mode."
   (declare (fixnum min-rest) (function next-fn))
   (if maximum
-    (lambda (start-pos)
-      (declare (fixnum start-pos maximum))
-      ;; because we know LEN we know in advance where to stop at the
-      ;; latest; we also take into consideration MIN-REST, i.e. the
-      ;; minimal length of the part behind the repetition
-      (let ((target-end-pos (min (+ start-pos maximum)
-                                 (- *end-pos* min-rest))))
-        (declare (fixnum target-end-pos))
-        ;; start from the highest possible position and go backward
-        ;; until we're able to match the rest of the regex
-        (loop for curr-pos of-type fixnum from target-end-pos downto start-pos
-              thereis (funcall next-fn curr-pos))))
-    ;; basically the same code; it's just a bit easier because we're
-    ;; not bounded by MAXIMUM
-    (lambda (start-pos)
-      (declare (fixnum start-pos))
-      (let ((target-end-pos (- *end-pos* min-rest)))
-        (declare (fixnum target-end-pos))
-        (loop for curr-pos of-type fixnum from target-end-pos downto start-pos
-              thereis (funcall next-fn curr-pos))))))
+      (lambda (start-pos)
+        (declare (fixnum start-pos maximum))
+        (let ((target-end-pos (min (+ start-pos maximum)
+                                   (- *end-pos* min-rest))))
+          (declare (fixnum target-end-pos))
+          (loop for curr-pos of-type fixnum from target-end-pos downto start-pos
+                  thereis (funcall next-fn curr-pos))))
+      (lambda (start-pos)
+        (declare (fixnum start-pos))
+        (let ((target-end-pos (- *end-pos* min-rest)))
+          (declare (fixnum target-end-pos))
+          (loop for curr-pos of-type fixnum from target-end-pos downto start-pos
+                  thereis (funcall next-fn curr-pos))))))
 
 (defgeneric create-greedy-constant-length-matcher (repetition next-fn)
   (:documentation "Creates a closure which tries to match REPETITION.
@@ -4001,47 +3422,37 @@ of REPETITION is of fixed length and doesn't contain registers."))
     (declare (fixnum len min-rest)
              (function next-fn))
     (cond ((zerop len)
-            ;; inner regex has zero-length, so we can discard it
-            ;; completely
-            next-fn)
+           next-fn)
           (t
-            ;; now first try to optimize for a couple of common cases
-            (typecase regex
-              (str
-                (let ((str (str regex)))
-                  (if (= 1 len)
-                    ;; a single character
+           (typecase regex
+             (str
+              (let ((str (str regex)))
+                (if (= 1 len)
                     (let ((chr (schar str 0)))
                       (if (case-insensitive-p regex)
-                        (greedy-constant-length-closure
-                         (char-equal chr (schar *string* curr-pos)))
-                        (greedy-constant-length-closure
-                         (char= chr (schar *string* curr-pos)))))
-                    ;; a string
+                          (greedy-constant-length-closure
+                           (char-equal chr (schar *string* curr-pos)))
+                          (greedy-constant-length-closure
+                           (char= chr (schar *string* curr-pos)))))
                     (if (case-insensitive-p regex)
-                      (greedy-constant-length-closure
-                       (*string*-equal str curr-pos (+ curr-pos len) 0 len))
-                      (greedy-constant-length-closure
-                       (*string*= str curr-pos (+ curr-pos len) 0 len))))))
-              (char-class
-                ;; a character class
-                (insert-char-class-tester (regex (schar *string* curr-pos))
-                  (greedy-constant-length-closure
-                   (char-class-test))))
-              (everything
-                ;; an EVERYTHING object, i.e. a dot
-                (if (single-line-p regex)
+                        (greedy-constant-length-closure
+                         (*string*-equal str curr-pos (+ curr-pos len) 0 len))
+                        (greedy-constant-length-closure
+                         (*string*= str curr-pos (+ curr-pos len) 0 len))))))
+             (char-class
+              (insert-char-class-tester (regex (schar *string* curr-pos))
+                (greedy-constant-length-closure
+                 (char-class-test))))
+             (everything
+              (if (single-line-p regex)
                   (create-greedy-everything-matcher maximum min-rest next-fn)
                   (greedy-constant-length-closure
                    (char/= #\Newline (schar *string* curr-pos)))))
-              (t
-                ;; the general case - we build an inner matcher which
-                ;; just checks for immediate success, i.e. NEXT-FN is
-                ;; #'IDENTITY
-                (let ((inner-matcher (create-matcher-aux regex #'identity)))
-                  (declare (function inner-matcher))
-                  (greedy-constant-length-closure
-                   (funcall inner-matcher curr-pos)))))))))
+             (t
+              (let ((inner-matcher (create-matcher-aux regex #'identity)))
+                (declare (function inner-matcher))
+                (greedy-constant-length-closure
+                 (funcall inner-matcher curr-pos)))))))))
 
 (defgeneric create-greedy-no-zero-matcher (repetition next-fn)
   (:documentation "Creates a closure which tries to match REPETITION.
@@ -4052,62 +3463,42 @@ maximal number of repetitions is 1)."))
 
 (defmethod create-greedy-no-zero-matcher ((repetition repetition) next-fn)
   (let ((maximum (maximum repetition))
-        ;; REPEAT-MATCHER is part of the closure's environment but it
-        ;; can only be defined after GREEDY-AUX is defined
         repeat-matcher)
     (declare (function next-fn))
     (cond
       ((eql maximum 1)
-        ;; this is essentially like the next case but with a known
-        ;; MAXIMUM of 1 we can get away without a counter; note that
-        ;; we always arrive here if CONVERT optimizes <regex>* to
-        ;; (?:<regex'>*<regex>)?
-        (setq repeat-matcher
-                (create-matcher-aux (regex repetition) next-fn))
-        (lambda (start-pos)
-          (declare (function repeat-matcher))
-          (or (funcall repeat-matcher start-pos)
-              (funcall next-fn start-pos))))
+       (setq repeat-matcher
+             (create-matcher-aux (regex repetition) next-fn))
+       (lambda (start-pos)
+         (declare (function repeat-matcher))
+         (or (funcall repeat-matcher start-pos)
+             (funcall next-fn start-pos))))
       (maximum
-        ;; we make a reservation for our slot in *REPEAT-COUNTERS*
-        ;; because we need to keep track whether we've reached MAXIMUM
-        ;; repetitions
-        (let ((rep-num (incf-after *rep-num*)))
-          (flet ((greedy-aux (start-pos)
-                   (declare (fixnum start-pos maximum rep-num)
-                            (function repeat-matcher))
-                   ;; the actual matcher which first tries to match the
-                   ;; inner regex of REPETITION (if we haven't done so
-                   ;; too often) and on failure calls NEXT-FN
-                   (or (and (< (aref *repeat-counters* rep-num) maximum)
-                            (incf (aref *repeat-counters* rep-num))
-                            ;; note that REPEAT-MATCHER will call
-                            ;; GREEDY-AUX again recursively
-                            (prog1
-                              (funcall repeat-matcher start-pos)
-                              (decf (aref *repeat-counters* rep-num))))
-                       (funcall next-fn start-pos))))
-            ;; create a closure to match the inner regex and to
-            ;; implement backtracking via GREEDY-AUX
-            (setq repeat-matcher
-                    (create-matcher-aux (regex repetition) #'greedy-aux))
-            ;; the closure we return is just a thin wrapper around
-            ;; GREEDY-AUX to initialize the repetition counter
-            (lambda (start-pos)
-              (declare (fixnum start-pos))
-              (setf (aref *repeat-counters* rep-num) 0)
-              (greedy-aux start-pos)))))
+       (let ((rep-num (incf-after *rep-num*)))
+         (flet ((greedy-aux (start-pos)
+                  (declare (fixnum start-pos maximum rep-num)
+                           (function repeat-matcher))
+                  (or (and (< (aref *repeat-counters* rep-num) maximum)
+                           (incf (aref *repeat-counters* rep-num))
+                           (prog1
+                               (funcall repeat-matcher start-pos)
+                             (decf (aref *repeat-counters* rep-num))))
+                      (funcall next-fn start-pos))))
+           (setq repeat-matcher
+                 (create-matcher-aux (regex repetition) #'greedy-aux))
+           (lambda (start-pos)
+             (declare (fixnum start-pos))
+             (setf (aref *repeat-counters* rep-num) 0)
+             (greedy-aux start-pos)))))
       (t
-        ;; easier code because we're not bounded by MAXIMUM, but
-        ;; basically the same
-        (flet ((greedy-aux (start-pos)
-                 (declare (fixnum start-pos)
-                          (function repeat-matcher))
-                 (or (funcall repeat-matcher start-pos)
-                     (funcall next-fn start-pos))))
-          (setq repeat-matcher
-                  (create-matcher-aux (regex repetition) #'greedy-aux))
-          #'greedy-aux)))))
+       (flet ((greedy-aux (start-pos)
+                (declare (fixnum start-pos)
+                         (function repeat-matcher))
+                (or (funcall repeat-matcher start-pos)
+                    (funcall next-fn start-pos))))
+         (setq repeat-matcher
+               (create-matcher-aux (regex repetition) #'greedy-aux))
+         #'greedy-aux)))))
 
 (defgeneric create-greedy-matcher (repetition next-fn)
   (:documentation "Creates a closure which tries to match REPETITION.
@@ -4116,84 +3507,57 @@ repetitions is zero."))
 
 (defmethod create-greedy-matcher ((repetition repetition) next-fn)
   (let ((maximum (maximum repetition))
-        ;; we make a reservation for our slot in *LAST-POS-STORES* because
-        ;; we have to watch out for endless loops as the inner regex might
-        ;; match zero-length strings
         (zero-length-num (incf-after *zero-length-num*))
-        ;; REPEAT-MATCHER is part of the closure's environment but it
-        ;; can only be defined after GREEDY-AUX is defined
         repeat-matcher)
     (declare (fixnum zero-length-num)
              (function next-fn))
     (cond
       (maximum
-        ;; we make a reservation for our slot in *REPEAT-COUNTERS*
-        ;; because we need to keep track whether we've reached MAXIMUM
-        ;; repetitions
-        (let ((rep-num (incf-after *rep-num*)))
-          (flet ((greedy-aux (start-pos)
-                   ;; the actual matcher which first tries to match the
-                   ;; inner regex of REPETITION (if we haven't done so
-                   ;; too often) and on failure calls NEXT-FN
-                   (declare (fixnum start-pos maximum rep-num)
-                            (function repeat-matcher))
-                   (let ((old-last-pos
-                           (svref *last-pos-stores* zero-length-num)))
-                     (when (and old-last-pos
-                                (= (the fixnum old-last-pos) start-pos))
-                       ;; stop immediately if we've been here before,
-                       ;; i.e. if the last attempt matched a zero-length
-                       ;; string
-                       (return-from greedy-aux (funcall next-fn start-pos)))
-                     ;; otherwise remember this position for the next
-                     ;; repetition
-                     (setf (svref *last-pos-stores* zero-length-num) start-pos)
-                     (or (and (< (aref *repeat-counters* rep-num) maximum)
-                              (incf (aref *repeat-counters* rep-num))
-                              ;; note that REPEAT-MATCHER will call
-                              ;; GREEDY-AUX again recursively
-                              (prog1
-                                (funcall repeat-matcher start-pos)
-                                (decf (aref *repeat-counters* rep-num))
-                                (setf (svref *last-pos-stores* zero-length-num)
-                                        old-last-pos)))
-                         (funcall next-fn start-pos)))))
-            ;; create a closure to match the inner regex and to
-            ;; implement backtracking via GREEDY-AUX
-            (setq repeat-matcher
-                    (create-matcher-aux (regex repetition) #'greedy-aux))
-            ;; the closure we return is just a thin wrapper around
-            ;; GREEDY-AUX to initialize the repetition counter and our
-            ;; slot in *LAST-POS-STORES*
-            (lambda (start-pos)
-              (declare (fixnum start-pos))
-              (setf (aref *repeat-counters* rep-num) 0
-                    (svref *last-pos-stores* zero-length-num) nil)
-              (greedy-aux start-pos)))))
+       (let ((rep-num (incf-after *rep-num*)))
+         (flet ((greedy-aux (start-pos)
+                  (declare (fixnum start-pos maximum rep-num)
+                           (function repeat-matcher))
+                  (let ((old-last-pos
+                          (svref *last-pos-stores* zero-length-num)))
+                    (when (and old-last-pos
+                               (= (the fixnum old-last-pos) start-pos))
+                      (return-from greedy-aux (funcall next-fn start-pos)))
+                    (setf (svref *last-pos-stores* zero-length-num) start-pos)
+                    (or (and (< (aref *repeat-counters* rep-num) maximum)
+                             (incf (aref *repeat-counters* rep-num))
+                             (prog1
+                                 (funcall repeat-matcher start-pos)
+                               (decf (aref *repeat-counters* rep-num))
+                               (setf (svref *last-pos-stores* zero-length-num)
+                                     old-last-pos)))
+                        (funcall next-fn start-pos)))))
+           (setq repeat-matcher
+                 (create-matcher-aux (regex repetition) #'greedy-aux))
+           (lambda (start-pos)
+             (declare (fixnum start-pos))
+             (setf (aref *repeat-counters* rep-num) 0
+                   (svref *last-pos-stores* zero-length-num) nil)
+             (greedy-aux start-pos)))))
       (t
-        ;; easier code because we're not bounded by MAXIMUM, but
-        ;; basically the same
-        (flet ((greedy-aux (start-pos)
-                 (declare (fixnum start-pos)
-                          (function repeat-matcher))
-                 (let ((old-last-pos
-                         (svref *last-pos-stores* zero-length-num)))
-                   (when (and old-last-pos
-                              (= (the fixnum old-last-pos) start-pos))
-                     (return-from greedy-aux (funcall next-fn start-pos)))
-                   (setf (svref *last-pos-stores* zero-length-num) start-pos)
-                   (or (prog1
-                         (funcall repeat-matcher start-pos)
-                         (setf (svref *last-pos-stores* zero-length-num) old-last-pos))
-                       (funcall next-fn start-pos)))))
-          (setq repeat-matcher
-                  (create-matcher-aux (regex repetition) #'greedy-aux))
-          (lambda (start-pos)
-            (declare (fixnum start-pos))
-            (setf (svref *last-pos-stores* zero-length-num) nil)
-            (greedy-aux start-pos)))))))
-  
-;; code for non-greedy repetitions with minimum zero
+       (flet ((greedy-aux (start-pos)
+                (declare (fixnum start-pos)
+                         (function repeat-matcher))
+                (let ((old-last-pos
+                        (svref *last-pos-stores* zero-length-num)))
+                  (when (and old-last-pos
+                             (= (the fixnum old-last-pos) start-pos))
+                    (return-from greedy-aux (funcall next-fn start-pos)))
+                  (setf (svref *last-pos-stores* zero-length-num) start-pos)
+                  (or (prog1
+                          (funcall repeat-matcher start-pos)
+                        (setf (svref *last-pos-stores* zero-length-num) old-last-pos))
+                      (funcall next-fn start-pos)))))
+         (setq repeat-matcher
+               (create-matcher-aux (regex repetition) #'greedy-aux))
+         (lambda (start-pos)
+           (declare (fixnum start-pos))
+           (setf (svref *last-pos-stores* zero-length-num) nil)
+           (greedy-aux start-pos)))))))
 
 (defmacro non-greedy-constant-length-closure (check-curr-pos)
   "This is the template for simple non-greedy repetitions \(where
@@ -4203,33 +3567,26 @@ contain registers, i.e. there's no need for backtracking).
 CHECK-CURR-POS is a form which checks whether the inner regex of the
 repetition matches at CURR-POS."
   `(if maximum
-    (lambda (start-pos)
-      (declare (fixnum start-pos maximum))
-      ;; because we know LEN we know in advance where to stop at the
-      ;; latest; we also take into consideration MIN-REST, i.e. the
-      ;; minimal length of the part behind the repetition
-      (let ((target-end-pos (min (1+ (- *end-pos* len min-rest))
-                                 (+ start-pos
-                                    (the fixnum (* len maximum))))))
-        ;; move forward by LEN and always try NEXT-FN first, then
-        ;; CHECK-CUR-POS
-        (loop for curr-pos of-type fixnum from start-pos
-                                          below target-end-pos
-                                          by len
-              thereis (funcall next-fn curr-pos)
-              while ,check-curr-pos
-              finally (return (funcall next-fn curr-pos)))))
-  ;; basically the same code; it's just a bit easier because we're
-  ;; not bounded by MAXIMUM
-  (lambda (start-pos)
-    (declare (fixnum start-pos))
-    (let ((target-end-pos (1+ (- *end-pos* len min-rest))))
-      (loop for curr-pos of-type fixnum from start-pos
-                                        below target-end-pos
-                                        by len
-            thereis (funcall next-fn curr-pos)
-            while ,check-curr-pos
-            finally (return (funcall next-fn curr-pos)))))))
+       (lambda (start-pos)
+         (declare (fixnum start-pos maximum))
+         (let ((target-end-pos (min (1+ (- *end-pos* len min-rest))
+                                    (+ start-pos
+                                       (the fixnum (* len maximum))))))
+           (loop for curr-pos of-type fixnum from start-pos
+                   below target-end-pos
+                 by len
+                   thereis (funcall next-fn curr-pos)
+                 while ,check-curr-pos
+                 finally (return (funcall next-fn curr-pos)))))
+       (lambda (start-pos)
+         (declare (fixnum start-pos))
+         (let ((target-end-pos (1+ (- *end-pos* len min-rest))))
+           (loop for curr-pos of-type fixnum from start-pos
+                   below target-end-pos
+                 by len
+                   thereis (funcall next-fn curr-pos)
+                 while ,check-curr-pos
+                 finally (return (funcall next-fn curr-pos)))))))
 
 (defgeneric create-non-greedy-constant-length-matcher (repetition next-fn)
   (:documentation "Creates a closure which tries to match REPETITION.
@@ -4245,50 +3602,38 @@ of REPETITION is of fixed length and doesn't contain registers."))
     (declare (fixnum len min-rest)
              (function next-fn))
     (cond ((zerop len)
-            ;; inner regex has zero-length, so we can discard it
-            ;; completely
-            next-fn)
+           next-fn)
           (t
-            ;; now first try to optimize for a couple of common cases
-            (typecase regex
-              (str
-                (let ((str (str regex)))
-                  (if (= 1 len)
-                    ;; a single character
+           (typecase regex
+             (str
+              (let ((str (str regex)))
+                (if (= 1 len)
                     (let ((chr (schar str 0)))
                       (if (case-insensitive-p regex)
-                        (non-greedy-constant-length-closure
-                         (char-equal chr (schar *string* curr-pos)))
-                        (non-greedy-constant-length-closure
-                         (char= chr (schar *string* curr-pos)))))
-                    ;; a string
+                          (non-greedy-constant-length-closure
+                           (char-equal chr (schar *string* curr-pos)))
+                          (non-greedy-constant-length-closure
+                           (char= chr (schar *string* curr-pos)))))
                     (if (case-insensitive-p regex)
-                      (non-greedy-constant-length-closure
-                       (*string*-equal str curr-pos (+ curr-pos len) 0 len))
-                      (non-greedy-constant-length-closure
-                       (*string*= str curr-pos (+ curr-pos len) 0 len))))))
-              (char-class
-                ;; a character class
-                (insert-char-class-tester (regex (schar *string* curr-pos))
-                  (non-greedy-constant-length-closure
-                   (char-class-test))))
-              (everything
-                (if (single-line-p regex)
-                  ;; a dot which really can match everything; we rely
-                  ;; on the compiler to optimize this away
+                        (non-greedy-constant-length-closure
+                         (*string*-equal str curr-pos (+ curr-pos len) 0 len))
+                        (non-greedy-constant-length-closure
+                         (*string*= str curr-pos (+ curr-pos len) 0 len))))))
+             (char-class
+              (insert-char-class-tester (regex (schar *string* curr-pos))
+                (non-greedy-constant-length-closure
+                 (char-class-test))))
+             (everything
+              (if (single-line-p regex)
                   (non-greedy-constant-length-closure
                    t)
-                  ;; a dot which has to watch out for #\Newline
                   (non-greedy-constant-length-closure
                    (char/= #\Newline (schar *string* curr-pos)))))
-              (t
-                ;; the general case - we build an inner matcher which
-                ;; just checks for immediate success, i.e. NEXT-FN is
-                ;; #'IDENTITY
-                (let ((inner-matcher (create-matcher-aux regex #'identity)))
-                  (declare (function inner-matcher))
-                  (non-greedy-constant-length-closure
-                   (funcall inner-matcher curr-pos)))))))))
+             (t
+              (let ((inner-matcher (create-matcher-aux regex #'identity)))
+                (declare (function inner-matcher))
+                (non-greedy-constant-length-closure
+                 (funcall inner-matcher curr-pos)))))))))
 
 (defgeneric create-non-greedy-no-zero-matcher (repetition next-fn)
   (:documentation "Creates a closure which tries to match REPETITION.
@@ -4299,148 +3644,103 @@ maximal number of repetitions is 1)."))
 
 (defmethod create-non-greedy-no-zero-matcher ((repetition repetition) next-fn)
   (let ((maximum (maximum repetition))
-        ;; REPEAT-MATCHER is part of the closure's environment but it
-        ;; can only be defined after NON-GREEDY-AUX is defined
         repeat-matcher)
     (declare (function next-fn))
     (cond
       ((eql maximum 1)
-        ;; this is essentially like the next case but with a known
-        ;; MAXIMUM of 1 we can get away without a counter
-        (setq repeat-matcher
-                (create-matcher-aux (regex repetition) next-fn))
-        (lambda (start-pos)
-          (declare (function repeat-matcher))
-          (or (funcall next-fn start-pos)
-              (funcall repeat-matcher start-pos))))
+       (setq repeat-matcher
+             (create-matcher-aux (regex repetition) next-fn))
+       (lambda (start-pos)
+         (declare (function repeat-matcher))
+         (or (funcall next-fn start-pos)
+             (funcall repeat-matcher start-pos))))
       (maximum
-        ;; we make a reservation for our slot in *REPEAT-COUNTERS*
-        ;; because we need to keep track whether we've reached MAXIMUM
-        ;; repetitions
-        (let ((rep-num (incf-after *rep-num*)))
-          (flet ((non-greedy-aux (start-pos)
-                   ;; the actual matcher which first calls NEXT-FN and
-                   ;; on failure tries to match the inner regex of
-                   ;; REPETITION (if we haven't done so too often)
-                   (declare (fixnum start-pos maximum rep-num)
-                            (function repeat-matcher))
-                   (or (funcall next-fn start-pos)
-                       (and (< (aref *repeat-counters* rep-num) maximum)
-                            (incf (aref *repeat-counters* rep-num))
-                            ;; note that REPEAT-MATCHER will call
-                            ;; NON-GREEDY-AUX again recursively
-                            (prog1
-                              (funcall repeat-matcher start-pos)
-                              (decf (aref *repeat-counters* rep-num)))))))
-            ;; create a closure to match the inner regex and to
-            ;; implement backtracking via NON-GREEDY-AUX
-            (setq repeat-matcher
-                    (create-matcher-aux (regex repetition) #'non-greedy-aux))
-            ;; the closure we return is just a thin wrapper around
-            ;; NON-GREEDY-AUX to initialize the repetition counter
-            (lambda (start-pos)
-              (declare (fixnum start-pos))
-              (setf (aref *repeat-counters* rep-num) 0)
-              (non-greedy-aux start-pos)))))
+       (let ((rep-num (incf-after *rep-num*)))
+         (flet ((non-greedy-aux (start-pos)
+                  (declare (fixnum start-pos maximum rep-num)
+                           (function repeat-matcher))
+                  (or (funcall next-fn start-pos)
+                      (and (< (aref *repeat-counters* rep-num) maximum)
+                           (incf (aref *repeat-counters* rep-num))
+                           (prog1
+                               (funcall repeat-matcher start-pos)
+                             (decf (aref *repeat-counters* rep-num)))))))
+           (setq repeat-matcher
+                 (create-matcher-aux (regex repetition) #'non-greedy-aux))
+           (lambda (start-pos)
+             (declare (fixnum start-pos))
+             (setf (aref *repeat-counters* rep-num) 0)
+             (non-greedy-aux start-pos)))))
       (t
-        ;; easier code because we're not bounded by MAXIMUM, but
-        ;; basically the same
-        (flet ((non-greedy-aux (start-pos)
-                 (declare (fixnum start-pos)
-                          (function repeat-matcher))
-                 (or (funcall next-fn start-pos)
-                     (funcall repeat-matcher start-pos))))
-          (setq repeat-matcher
-                  (create-matcher-aux (regex repetition) #'non-greedy-aux))
-          #'non-greedy-aux)))))
-  
+       (flet ((non-greedy-aux (start-pos)
+                (declare (fixnum start-pos)
+                         (function repeat-matcher))
+                (or (funcall next-fn start-pos)
+                    (funcall repeat-matcher start-pos))))
+         (setq repeat-matcher
+               (create-matcher-aux (regex repetition) #'non-greedy-aux))
+         #'non-greedy-aux)))))
+
 (defgeneric create-non-greedy-matcher (repetition next-fn)
   (:documentation "Creates a closure which tries to match REPETITION.
 It is assumed that REPETITION is non-greedy and the minimal number of
 repetitions is zero."))
 
 (defmethod create-non-greedy-matcher ((repetition repetition) next-fn)
-  ;; we make a reservation for our slot in *LAST-POS-STORES* because
-  ;; we have to watch out for endless loops as the inner regex might
-  ;; match zero-length strings
   (let ((zero-length-num (incf-after *zero-length-num*))
         (maximum (maximum repetition))
-        ;; REPEAT-MATCHER is part of the closure's environment but it
-        ;; can only be defined after NON-GREEDY-AUX is defined
         repeat-matcher)
     (declare (fixnum zero-length-num)
              (function next-fn))
     (cond
       (maximum
-        ;; we make a reservation for our slot in *REPEAT-COUNTERS*
-        ;; because we need to keep track whether we've reached MAXIMUM
-        ;; repetitions
-        (let ((rep-num (incf-after *rep-num*)))
-          (flet ((non-greedy-aux (start-pos)
-                   ;; the actual matcher which first calls NEXT-FN and
-                   ;; on failure tries to match the inner regex of
-                   ;; REPETITION (if we haven't done so too often)
-                   (declare (fixnum start-pos maximum rep-num)
-                            (function repeat-matcher))
-                   (let ((old-last-pos
-                           (svref *last-pos-stores* zero-length-num)))
-                     (when (and old-last-pos
-                                (= (the fixnum old-last-pos) start-pos))
-                       ;; stop immediately if we've been here before,
-                       ;; i.e. if the last attempt matched a zero-length
-                       ;; string
-                       (return-from non-greedy-aux (funcall next-fn start-pos)))
-                     ;; otherwise remember this position for the next
-                     ;; repetition
-                     (setf (svref *last-pos-stores* zero-length-num) start-pos)
-                     (or (funcall next-fn start-pos)
-                         (and (< (aref *repeat-counters* rep-num) maximum)
-                              (incf (aref *repeat-counters* rep-num))
-                              ;; note that REPEAT-MATCHER will call
-                              ;; NON-GREEDY-AUX again recursively
-                              (prog1
-                                (funcall repeat-matcher start-pos)
-                                (decf (aref *repeat-counters* rep-num))
-                                (setf (svref *last-pos-stores* zero-length-num)
-                                        old-last-pos)))))))
-            ;; create a closure to match the inner regex and to
-            ;; implement backtracking via NON-GREEDY-AUX
-            (setq repeat-matcher
-                    (create-matcher-aux (regex repetition) #'non-greedy-aux))
-            ;; the closure we return is just a thin wrapper around
-            ;; NON-GREEDY-AUX to initialize the repetition counter and our
-            ;; slot in *LAST-POS-STORES*
-            (lambda (start-pos)
-              (declare (fixnum start-pos))
-              (setf (aref *repeat-counters* rep-num) 0
-                    (svref *last-pos-stores* zero-length-num) nil)
-              (non-greedy-aux start-pos)))))
+       (let ((rep-num (incf-after *rep-num*)))
+         (flet ((non-greedy-aux (start-pos)
+                  (declare (fixnum start-pos maximum rep-num)
+                           (function repeat-matcher))
+                  (let ((old-last-pos
+                          (svref *last-pos-stores* zero-length-num)))
+                    (when (and old-last-pos
+                               (= (the fixnum old-last-pos) start-pos))
+                      (return-from non-greedy-aux (funcall next-fn start-pos)))
+                    (setf (svref *last-pos-stores* zero-length-num) start-pos)
+                    (or (funcall next-fn start-pos)
+                        (and (< (aref *repeat-counters* rep-num) maximum)
+                             (incf (aref *repeat-counters* rep-num))
+                             (prog1
+                                 (funcall repeat-matcher start-pos)
+                               (decf (aref *repeat-counters* rep-num))
+                               (setf (svref *last-pos-stores* zero-length-num)
+                                     old-last-pos)))))))
+           (setq repeat-matcher
+                 (create-matcher-aux (regex repetition) #'non-greedy-aux))
+           (lambda (start-pos)
+             (declare (fixnum start-pos))
+             (setf (aref *repeat-counters* rep-num) 0
+                   (svref *last-pos-stores* zero-length-num) nil)
+             (non-greedy-aux start-pos)))))
       (t
-        ;; easier code because we're not bounded by MAXIMUM, but
-        ;; basically the same
-        (flet ((non-greedy-aux (start-pos)
-                 (declare (fixnum start-pos)
-                          (function repeat-matcher))
-                 (let ((old-last-pos
-                         (svref *last-pos-stores* zero-length-num)))
-                   (when (and old-last-pos
-                              (= (the fixnum old-last-pos) start-pos))
-                     (return-from non-greedy-aux (funcall next-fn start-pos)))
-                   (setf (svref *last-pos-stores* zero-length-num) start-pos)
-                   (or (funcall next-fn start-pos)
-                       (prog1
-                         (funcall repeat-matcher start-pos)
-                         (setf (svref *last-pos-stores* zero-length-num)
-                                 old-last-pos))))))
-          (setq repeat-matcher
-                  (create-matcher-aux (regex repetition) #'non-greedy-aux))
-          (lambda (start-pos)
-            (declare (fixnum start-pos))
-            (setf (svref *last-pos-stores* zero-length-num) nil)
-            (non-greedy-aux start-pos)))))))
-  
-;; code for constant repetitions, i.e. those with a fixed number of repetitions
-                      
+       (flet ((non-greedy-aux (start-pos)
+                (declare (fixnum start-pos)
+                         (function repeat-matcher))
+                (let ((old-last-pos
+                        (svref *last-pos-stores* zero-length-num)))
+                  (when (and old-last-pos
+                             (= (the fixnum old-last-pos) start-pos))
+                    (return-from non-greedy-aux (funcall next-fn start-pos)))
+                  (setf (svref *last-pos-stores* zero-length-num) start-pos)
+                  (or (funcall next-fn start-pos)
+                      (prog1
+                          (funcall repeat-matcher start-pos)
+                        (setf (svref *last-pos-stores* zero-length-num)
+                              old-last-pos))))))
+         (setq repeat-matcher
+               (create-matcher-aux (regex repetition) #'non-greedy-aux))
+         (lambda (start-pos)
+           (declare (fixnum start-pos))
+           (setf (svref *last-pos-stores* zero-length-num) nil)
+           (non-greedy-aux start-pos)))))))
+
 (defmacro constant-repetition-constant-length-closure (check-curr-pos)
   "This is the template for simple constant repetitions (where simple
 means that the inner regex to be checked is of fixed length LEN, and
@@ -4449,19 +3749,16 @@ backtracking) and where constant means that MINIMUM is equal to
 MAXIMUM.  CHECK-CURR-POS is a form which checks whether the inner
 regex of the repetition matches at CURR-POS."
   `(lambda (start-pos)
-    (declare (fixnum start-pos))
-      (let ((target-end-pos (+ start-pos
-                               (the fixnum (* len repetitions)))))
-        (declare (fixnum target-end-pos))
-        ;; first check if we won't go beyond the end of the string
-        (and (>= *end-pos* target-end-pos)
-             ;; then loop through all repetitions step by step
-             (loop for curr-pos of-type fixnum from start-pos
-                                               below target-end-pos
-                                               by len
-                   always ,check-curr-pos)
-             ;; finally call NEXT-FN if we made it that far
-             (funcall next-fn target-end-pos)))))
+     (declare (fixnum start-pos))
+     (let ((target-end-pos (+ start-pos
+                              (the fixnum (* len repetitions)))))
+       (declare (fixnum target-end-pos))
+       (and (>= *end-pos* target-end-pos)
+            (loop for curr-pos of-type fixnum from start-pos
+                    below target-end-pos
+                  by len
+                  always ,check-curr-pos)
+            (funcall next-fn target-end-pos)))))
 
 (defgeneric create-constant-repetition-constant-length-matcher
     (repetition next-fn)
@@ -4471,166 +3768,121 @@ It is furthermore assumed that the inner regex of REPETITION is of
 fixed length and doesn't contain registers."))
 
 (defmethod create-constant-repetition-constant-length-matcher
-       ((repetition repetition) next-fn)
+    ((repetition repetition) next-fn)
   (let ((len (len repetition))
         (repetitions (minimum repetition))
         (regex (regex repetition)))
     (declare (fixnum len repetitions)
              (function next-fn))
     (if (zerop len)
-      ;; if the length is zero it suffices to try once
-      (create-matcher-aux regex next-fn)
-      ;; otherwise try to optimize for a couple of common cases
-      (typecase regex
-        (str
-          (let ((str (str regex)))
-            (if (= 1 len)
-              ;; a single character
-              (let ((chr (schar str 0)))
-                (if (case-insensitive-p regex)
-                  (constant-repetition-constant-length-closure
-                   (and (char-equal chr (schar *string* curr-pos))
-                        (1+ curr-pos)))
-                  (constant-repetition-constant-length-closure
-                   (and (char= chr (schar *string* curr-pos))
-                        (1+ curr-pos)))))
-              ;; a string
-              (if (case-insensitive-p regex)
-                (constant-repetition-constant-length-closure
-                 (let ((next-pos (+ curr-pos len)))
+        (create-matcher-aux regex next-fn)
+        (typecase regex
+          (str
+           (let ((str (str regex)))
+             (if (= 1 len)
+                 (let ((chr (schar str 0)))
+                   (if (case-insensitive-p regex)
+                       (constant-repetition-constant-length-closure
+                        (and (char-equal chr (schar *string* curr-pos))
+                             (1+ curr-pos)))
+                       (constant-repetition-constant-length-closure
+                        (and (char= chr (schar *string* curr-pos))
+                             (1+ curr-pos)))))
+                 (if (case-insensitive-p regex)
+                     (constant-repetition-constant-length-closure
+                      (let ((next-pos (+ curr-pos len)))
+                        (declare (fixnum next-pos))
+                        (and (*string*-equal str curr-pos next-pos 0 len)
+                             next-pos)))
+                     (constant-repetition-constant-length-closure
+                      (let ((next-pos (+ curr-pos len)))
+                        (declare (fixnum next-pos))
+                        (and (*string*= str curr-pos next-pos 0 len)
+                             next-pos)))))))
+          (char-class
+           (insert-char-class-tester (regex (schar *string* curr-pos))
+             (constant-repetition-constant-length-closure
+              (and (char-class-test)
+                   (1+ curr-pos)))))
+          (everything
+           (if (single-line-p regex)
+               (lambda (start-pos)
+                 (declare (fixnum start-pos))
+                 (let ((next-pos (+ start-pos repetitions)))
                    (declare (fixnum next-pos))
-                   (and (*string*-equal str curr-pos next-pos 0 len)
-                        next-pos)))
-                (constant-repetition-constant-length-closure
-                 (let ((next-pos (+ curr-pos len)))
-                   (declare (fixnum next-pos))
-                   (and (*string*= str curr-pos next-pos 0 len)
-                        next-pos)))))))
-        (char-class
-          ;; a character class
-          (insert-char-class-tester (regex (schar *string* curr-pos))
-            (constant-repetition-constant-length-closure
-             (and (char-class-test)
-                  (1+ curr-pos)))))
-        (everything
-          (if (single-line-p regex)
-            ;; a dot which really matches everything - we just have to
-            ;; advance the index into *STRING* accordingly and check
-            ;; if we didn't go past the end
-            (lambda (start-pos)
-              (declare (fixnum start-pos))
-              (let ((next-pos (+ start-pos repetitions)))
-                (declare (fixnum next-pos))
-                (and (<= next-pos *end-pos*)
-                     (funcall next-fn next-pos))))
-            ;; a dot which is not in single-line-mode - make sure we
-            ;; don't match #\Newline
-            (constant-repetition-constant-length-closure
-             (and (char/= #\Newline (schar *string* curr-pos))
-                  (1+ curr-pos)))))
-        (t
-          ;; the general case - we build an inner matcher which just
-          ;; checks for immediate success, i.e. NEXT-FN is #'IDENTITY
-          (let ((inner-matcher (create-matcher-aux regex #'identity)))
-            (declare (function inner-matcher))
-            (constant-repetition-constant-length-closure
-             (funcall inner-matcher curr-pos))))))))
-  
+                   (and (<= next-pos *end-pos*)
+                        (funcall next-fn next-pos))))
+               (constant-repetition-constant-length-closure
+                (and (char/= #\Newline (schar *string* curr-pos))
+                     (1+ curr-pos)))))
+          (t
+           (let ((inner-matcher (create-matcher-aux regex #'identity)))
+             (declare (function inner-matcher))
+             (constant-repetition-constant-length-closure
+              (funcall inner-matcher curr-pos))))))))
+
 (defgeneric create-constant-repetition-matcher (repetition next-fn)
   (:documentation "Creates a closure which tries to match REPETITION.
 It is assumed that REPETITION has a constant number of repetitions."))
 
 (defmethod create-constant-repetition-matcher ((repetition repetition) next-fn)
   (let ((repetitions (minimum repetition))
-        ;; we make a reservation for our slot in *REPEAT-COUNTERS*
-        ;; because we need to keep track of the number of repetitions
         (rep-num (incf-after *rep-num*))
-        ;; REPEAT-MATCHER is part of the closure's environment but it
-        ;; can only be defined after NON-GREEDY-AUX is defined
         repeat-matcher)
     (declare (fixnum repetitions rep-num)
              (function next-fn))
     (if (zerop (min-len repetition))
-      ;; we make a reservation for our slot in *LAST-POS-STORES*
-      ;; because we have to watch out for needless loops as the inner
-      ;; regex might match zero-length strings
-      (let ((zero-length-num (incf-after *zero-length-num*)))
-        (declare (fixnum zero-length-num))
+        (let ((zero-length-num (incf-after *zero-length-num*)))
+          (declare (fixnum zero-length-num))
+          (flet ((constant-aux (start-pos)
+                   (declare (fixnum start-pos)
+                            (function repeat-matcher))
+                   (let ((old-last-pos
+                           (svref *last-pos-stores* zero-length-num)))
+                     (when (and old-last-pos
+                                (= (the fixnum old-last-pos) start-pos))
+                       (return-from constant-aux (funcall next-fn start-pos)))
+                     (setf (svref *last-pos-stores* zero-length-num) start-pos)
+                     (cond ((< (aref *repeat-counters* rep-num) repetitions)
+                            (incf (aref *repeat-counters* rep-num))
+                            (prog1
+                                (funcall repeat-matcher start-pos)
+                              (decf (aref *repeat-counters* rep-num))
+                              (setf (svref *last-pos-stores* zero-length-num)
+                                    old-last-pos)))
+                           (t
+                            (funcall next-fn start-pos))))))
+            (setq repeat-matcher
+                  (create-matcher-aux (regex repetition) #'constant-aux))
+            (lambda (start-pos)
+              (declare (fixnum start-pos))
+              (setf (aref *repeat-counters* rep-num) 0
+                    (aref *last-pos-stores* zero-length-num) nil)
+              (constant-aux start-pos))))
         (flet ((constant-aux (start-pos)
-                 ;; the actual matcher which first calls NEXT-FN and
-                 ;; on failure tries to match the inner regex of
-                 ;; REPETITION (if we haven't done so too often)
                  (declare (fixnum start-pos)
                           (function repeat-matcher))
-                 (let ((old-last-pos
-                         (svref *last-pos-stores* zero-length-num)))
-                   (when (and old-last-pos
-                              (= (the fixnum old-last-pos) start-pos))
-                     ;; if we've been here before we matched a
-                     ;; zero-length string the last time, so we can
-                     ;; just carry on because we will definitely be
-                     ;; able to do this again often enough
-                     (return-from constant-aux (funcall next-fn start-pos)))
-                   ;; otherwise remember this position for the next
-                   ;; repetition
-                   (setf (svref *last-pos-stores* zero-length-num) start-pos)
-                   (cond ((< (aref *repeat-counters* rep-num) repetitions)
-                           ;; not enough repetitions yet, try it again
-                           (incf (aref *repeat-counters* rep-num))
-                           ;; note that REPEAT-MATCHER will call
-                           ;; CONSTANT-AUX again recursively
-                           (prog1
-                             (funcall repeat-matcher start-pos)
-                             (decf (aref *repeat-counters* rep-num))
-                             (setf (svref *last-pos-stores* zero-length-num)
-                                     old-last-pos)))
-                         (t
-                           ;; we're done - call NEXT-FN
-                           (funcall next-fn start-pos))))))
-          ;; create a closure to match the inner regex and to
-          ;; implement backtracking via CONSTANT-AUX
+                 (cond ((< (aref *repeat-counters* rep-num) repetitions)
+                        (incf (aref *repeat-counters* rep-num))
+                        (prog1
+                            (funcall repeat-matcher start-pos)
+                          (decf (aref *repeat-counters* rep-num))))
+                       (t (funcall next-fn start-pos)))))
           (setq repeat-matcher
-                  (create-matcher-aux (regex repetition) #'constant-aux))
-          ;; the closure we return is just a thin wrapper around
-          ;; CONSTANT-AUX to initialize the repetition counter
+                (create-matcher-aux (regex repetition) #'constant-aux))
           (lambda (start-pos)
             (declare (fixnum start-pos))
-            (setf (aref *repeat-counters* rep-num) 0
-                  (aref *last-pos-stores* zero-length-num) nil)
-            (constant-aux start-pos))))
-      ;; easier code because we don't have to care about zero-length
-      ;; matches but basically the same
-      (flet ((constant-aux (start-pos)
-               (declare (fixnum start-pos)
-                        (function repeat-matcher))
-               (cond ((< (aref *repeat-counters* rep-num) repetitions)
-                       (incf (aref *repeat-counters* rep-num))
-                       (prog1
-                         (funcall repeat-matcher start-pos)
-                         (decf (aref *repeat-counters* rep-num))))
-                     (t (funcall next-fn start-pos)))))
-        (setq repeat-matcher
-                (create-matcher-aux (regex repetition) #'constant-aux))
-        (lambda (start-pos)
-          (declare (fixnum start-pos))
-          (setf (aref *repeat-counters* rep-num) 0)
-          (constant-aux start-pos))))))
-  
-;; the actual CREATE-MATCHER-AUX method for REPETITION objects which
-;; utilizes all the functions and macros defined above
+            (setf (aref *repeat-counters* rep-num) 0)
+            (constant-aux start-pos))))))
 
 (defmethod create-matcher-aux ((repetition repetition) next-fn)
   (with-slots (minimum maximum len min-len greedyp contains-register-p)
       repetition
     (cond ((and maximum
                 (zerop maximum))
-           ;; this should have been optimized away by CONVERT but just
-           ;; in case...
            (error "Got REPETITION with MAXIMUM 0 \(should not happen)"))
           ((and maximum
                 (= minimum maximum 1))
-           ;; this should have been optimized away by CONVERT but just
-           ;; in case...
            (error "Got REPETITION with MAXIMUM 1 and MINIMUM 1 \(should not happen)"))
           ((and (eql minimum maximum)
                 len
@@ -4665,18 +3917,18 @@ It is assumed that REPETITION has a constant number of repetitions."))
        (declare (fixnum start-pos))
        (if (or (minusp start-pos)
                (> (the fixnum (+ start-pos m)) *end-pos*))
-         nil
-         (loop named bmh-matcher
-               for k of-type fixnum = (+ start-pos m -1)
-               then (+ k (max 1 (aref skip (char-code (schar *string* k)))))
-               while (< k *end-pos*)
-               do (loop for j of-type fixnum downfrom (1- m)
-                        for i of-type fixnum downfrom k
-                        while (and (>= j 0)
-                                   (,char-compare (schar *string* i)
-                                                  (schar pattern j)))
-                        finally (if (minusp j)
-                                  (return-from bmh-matcher (1+ i)))))))))
+           nil
+           (loop named bmh-matcher
+                 for k of-type fixnum = (+ start-pos m -1)
+                   then (+ k (max 1 (aref skip (char-code (schar *string* k)))))
+                 while (< k *end-pos*)
+                 do (loop for j of-type fixnum downfrom (1- m)
+                          for i of-type fixnum downfrom k
+                          while (and (>= j 0)
+                                     (,char-compare (schar *string* i)
+                                                    (schar pattern j)))
+                          finally (if (minusp j)
+                                      (return-from bmh-matcher (1+ i)))))))))
 
 (defun create-bmh-matcher (pattern case-insensitive-p)
   "Returns a Boyer-Moore-Horspool matcher which searches the (special)
@@ -4686,8 +3938,6 @@ and stops before *END-POS* is reached.  Depending on the second
 argument the search is case-insensitive or not.  If the special
 variable *USE-BMH-MATCHERS* is NIL, use the standard SEARCH function
 instead.  \(BMH matchers are faster but need much more space.)"
-  ;; see <http://www-igm.univ-mlv.fr/~lecroq/string/node18.html> for
-  ;; details
   (unless *use-bmh-matchers*
     (let ((test (if case-insensitive-p #'char-equal #'char=)))
       (return-from create-bmh-matcher
@@ -4706,22 +3956,22 @@ instead.  \(BMH matchers are faster but need much more space.)"
     (declare (fixnum m))
     (loop for k of-type fixnum below m
           if case-insensitive-p
-          do (setf (aref skip (char-code (char-upcase (schar pattern k)))) (- m k 1)
-                   (aref skip (char-code (char-downcase (schar pattern k)))) (- m k 1))
+            do (setf (aref skip (char-code (char-upcase (schar pattern k)))) (- m k 1)
+                     (aref skip (char-code (char-downcase (schar pattern k)))) (- m k 1))
 	  else
-          do (setf (aref skip (char-code (schar pattern k))) (- m k 1)))
+            do (setf (aref skip (char-code (schar pattern k))) (- m k 1)))
     (if case-insensitive-p
-      (bmh-matcher-aux :case-insensitive-p t)
-      (bmh-matcher-aux))))
+        (bmh-matcher-aux :case-insensitive-p t)
+        (bmh-matcher-aux))))
 
 (defmacro char-searcher-aux (&key case-insensitive-p)
   "Auxiliary macro used by CREATE-CHAR-SEARCHER."
   (let ((char-compare (if case-insensitive-p 'char-equal 'char=)))
     `(lambda (start-pos)
-      (declare (fixnum start-pos))
-      (and (not (minusp start-pos))
-           (loop for i of-type fixnum from start-pos below *end-pos*
-                 thereis (and (,char-compare (schar *string* i) chr) i))))))
+       (declare (fixnum start-pos))
+       (and (not (minusp start-pos))
+            (loop for i of-type fixnum from start-pos below *end-pos*
+                    thereis (and (,char-compare (schar *string* i) chr) i))))))
 
 (defun create-char-searcher (chr case-insensitive-p)
   "Returns a function which searches the (special) simple-string
@@ -4730,21 +3980,19 @@ starts at the position START-POS within *STRING* and stops before
 *END-POS* is reached.  Depending on the second argument the search is
 case-insensitive or not."
   (if case-insensitive-p
-    (char-searcher-aux :case-insensitive-p t)
-    (char-searcher-aux)))
+      (char-searcher-aux :case-insensitive-p t)
+      (char-searcher-aux)))
 
 (declaim (inline newline-skipper))
+
 (defun newline-skipper (start-pos)
   "Finds the next occurence of a character in *STRING* which is behind
 a #\Newline."
   (declare (fixnum start-pos))
-  ;; we can start with (1- START-POS) without testing for (PLUSP
-  ;; START-POS) because we know we'll never call NEWLINE-SKIPPER on
-  ;; the first iteration
   (loop for i of-type fixnum from (1- start-pos) below *end-pos*
-        thereis (and (char= (schar *string* i)
-                            #\Newline)
-                     (1+ i))))
+          thereis (and (char= (schar *string* i)
+                              #\Newline)
+                       (1+ i))))
 
 (defmacro insert-advance-fn (advance-fn)
   "Creates the actual closure returned by COMPILE-AUX by
@@ -4754,58 +4002,36 @@ ADVANCE-FN.  This is a utility macro used by COMPILE-AUX."
    advance-fn '(advance-fn-definition)
    '(lambda (string start end)
      (block scan
-       ;; initialize a couple of special variables used by the
-       ;; matchers (see file specials.lisp)
        (let* ((*string* string)
               (*start-pos* start)
               (*end-pos* end)
-              ;; we will search forward for END-STRING if this value
-              ;; isn't at least as big as POS (see ADVANCE-FN), so it
-              ;; is safe to start to the left of *START-POS*; note
-              ;; that this value will _never_ be decremented - this
-              ;; is crucial to the scanning process
               (*end-string-pos* (1- *start-pos*))
-              ;; the next five will shadow the variables defined by
-              ;; DEFPARAMETER; at this point, we don't know if we'll
-              ;; actually use them, though
               (*repeat-counters* *repeat-counters*)
               (*last-pos-stores* *last-pos-stores*)
               (*reg-starts* *reg-starts*)
               (*regs-maybe-start* *regs-maybe-start*)
               (*reg-ends* *reg-ends*)
-              ;; we might be able to optimize the scanning process by
-              ;; (virtually) shifting *START-POS* to the right
               (scan-start-pos *start-pos*)
               (starts-with-str (if start-string-test
-                                 (str starts-with)
-                                 nil))
-              ;; we don't need to try further than MAX-END-POS
+                                   (str starts-with)
+                                   nil))
               (max-end-pos (- *end-pos* min-len)))
          (declare (fixnum scan-start-pos)
                   (function match-fn))
-         ;; definition of ADVANCE-FN will be inserted here by macrology
          (labels ((advance-fn-definition))
            (declare (inline advance-fn))
            (when (plusp rep-num)
-             ;; we have at least one REPETITION which needs to count
-             ;; the number of repetitions
              (setq *repeat-counters* (make-array rep-num
                                                  :initial-element 0
                                                  :element-type 'fixnum)))
            (when (plusp zero-length-num)
-             ;; we have at least one REPETITION which needs to watch
-             ;; out for zero-length repetitions
              (setq *last-pos-stores* (make-array zero-length-num
                                                  :initial-element nil)))
            (when (plusp reg-num)
-             ;; we have registers in our regular expression
              (setq *reg-starts* (make-array reg-num :initial-element nil)
                    *regs-maybe-start* (make-array reg-num :initial-element nil)
                    *reg-ends* (make-array reg-num :initial-element nil)))
            (when end-anchored-p
-             ;; the regular expression has a constant end string which
-             ;; is anchored at the very end of the target string
-             ;; (perhaps modulo a #\Newline)
              (let ((end-test-pos (- *end-pos* (the fixnum end-string-len))))
                (declare (fixnum end-test-pos)
                         (function end-string-test))
@@ -4814,320 +4040,203 @@ ADVANCE-FN.  This is a utility macro used by COMPILE-AUX."
                  (when (and (= 1 (the fixnum end-anchored-p))
                             (> *end-pos* scan-start-pos)
                             (char= #\Newline (schar *string* (1- *end-pos*))))
-                   ;; if we didn't find an end string candidate from
-                   ;; END-TEST-POS and if a #\Newline at the end is
-                   ;; allowed we try it again from one position to the
-                   ;; left
                    (setq *end-string-pos* (funcall end-string-test
                                                    (1- end-test-pos))))))
              (unless (and *end-string-pos*
                           (<= *start-pos* *end-string-pos*))
-               ;; no end string candidate found, so give up
                (return-from scan nil))
              (when end-string-offset
-               ;; if the offset of the constant end string from the
-               ;; left of the regular expression is known we can start
-               ;; scanning further to the right; this is similar to
-               ;; what we might do in ADVANCE-FN
                (setq scan-start-pos (max scan-start-pos
                                          (- (the fixnum *end-string-pos*)
                                             (the fixnum end-string-offset))))))
-             (cond
-               (start-anchored-p
-                 ;; we're anchored at the start of the target string,
-                 ;; so no need to try again after first failure
-                 (when (or (/= *start-pos* scan-start-pos)
-                           (< max-end-pos *start-pos*))
-                   ;; if END-STRING-OFFSET has proven that we don't
-                   ;; need to bother to scan from *START-POS* or if the
-                   ;; minimal length of the regular expression is
-                   ;; longer than the target string we give up
-                   (return-from scan nil))
-                 (when starts-with-str
-                   (locally
-                     (declare (fixnum starts-with-len))
-                     (cond ((and (case-insensitive-p starts-with)
-                                 (not (*string*-equal starts-with-str
-                                                      *start-pos*
-                                                      (+ *start-pos*
-                                                         starts-with-len)
-                                                      0 starts-with-len)))
-                             ;; the regular expression has a
-                             ;; case-insensitive constant start string
-                             ;; and we didn't find it
-                             (return-from scan nil))
-                           ((and (not (case-insensitive-p starts-with))
-                                 (not (*string*= starts-with-str
-                                            *start-pos*
-                                            (+ *start-pos* starts-with-len)
-                                            0 starts-with-len)))
-                             ;; the regular expression has a
-                             ;; case-sensitive constant start string
-                             ;; and we didn't find it
-                             (return-from scan nil))
-                           (t nil))))
-                 (when (and end-string-test
-                            (not end-anchored-p))
-                   ;; the regular expression has a constant end string
-                   ;; which isn't anchored so we didn't check for it
-                   ;; already
-                   (block end-string-loop
-                     ;; we temporarily use *END-STRING-POS* as our
-                     ;; starting position to look for end string
-                     ;; candidates
-                     (setq *end-string-pos* *start-pos*)
-                     (loop
-                       (unless (setq *end-string-pos*
-                                       (funcall (the function end-string-test)
-                                                *end-string-pos*))
-                         ;; no end string candidate found, so give up
+           (cond
+             (start-anchored-p
+              (when (or (/= *start-pos* scan-start-pos)
+                        (< max-end-pos *start-pos*))
+                (return-from scan nil))
+              (when starts-with-str
+                (locally
+                    (declare (fixnum starts-with-len))
+                  (cond ((and (case-insensitive-p starts-with)
+                              (not (*string*-equal starts-with-str
+                                                   *start-pos*
+                                                   (+ *start-pos*
+                                                      starts-with-len)
+                                                   0 starts-with-len)))
                          (return-from scan nil))
-                       (unless end-string-offset
-                         ;; end string doesn't have an offset so we
-                         ;; can start scanning now
-                         (return-from end-string-loop))
-                       (let ((maybe-start-pos (- (the fixnum *end-string-pos*)
-                                                 (the fixnum end-string-offset))))
-                         (cond ((= maybe-start-pos *start-pos*)
-                                 ;; offset of end string into regular
-                                 ;; expression matches start anchor -
-                                 ;; fine...
-                                 (return-from end-string-loop))
-                               ((and (< maybe-start-pos *start-pos*)
-                                     (< (+ *end-string-pos* end-string-len) *end-pos*))
-                                 ;; no match but maybe we find another
-                                 ;; one to the right - try again
-                                 (incf *end-string-pos*))
-                               (t
-                                 ;; otherwise give up
-                                 (return-from scan nil)))))))
-                 ;; if we got here we scan exactly once
-                 (let ((next-pos (funcall match-fn *start-pos*)))
-                   (when next-pos
-                     (values (if next-pos *start-pos* nil)
-                             next-pos
-                             *reg-starts*
-                             *reg-ends*))))
-               (t
-                 (loop for pos = (if starts-with-everything
-                                   ;; don't jump to the next
-                                   ;; #\Newline on the first
-                                   ;; iteration
-                                   scan-start-pos
-                                   (advance-fn scan-start-pos))
-                           then (advance-fn pos)
-                       ;; give up if the regular expression can't fit
-                       ;; into the rest of the target string
-                       while (and pos
-                                  (<= (the fixnum pos) max-end-pos))
-                       do (let ((next-pos (funcall match-fn pos)))
-                            (when next-pos
-                              (return-from scan (values pos
-                                                        next-pos
-                                                        *reg-starts*
-                                                        *reg-ends*)))
-                            ;; not yet found, increment POS
-                            (incf (the fixnum pos))))))))))
-    :test #'equalp))
+                        ((and (not (case-insensitive-p starts-with))
+                              (not (*string*= starts-with-str
+                                              *start-pos*
+                                              (+ *start-pos* starts-with-len)
+                                              0 starts-with-len)))
+                         (return-from scan nil))
+                        (t nil))))
+              (when (and end-string-test
+                         (not end-anchored-p))
+                (block end-string-loop
+                  (setq *end-string-pos* *start-pos*)
+                  (loop
+                    (unless (setq *end-string-pos*
+                                  (funcall (the function end-string-test)
+                                           *end-string-pos*))
+                      (return-from scan nil))
+                    (unless end-string-offset
+                      (return-from end-string-loop))
+                    (let ((maybe-start-pos (- (the fixnum *end-string-pos*)
+                                              (the fixnum end-string-offset))))
+                      (cond ((= maybe-start-pos *start-pos*)
+                             (return-from end-string-loop))
+                            ((and (< maybe-start-pos *start-pos*)
+                                  (< (+ *end-string-pos* end-string-len) *end-pos*))
+                             (incf *end-string-pos*))
+                            (t
+                             (return-from scan nil)))))))
+              (let ((next-pos (funcall match-fn *start-pos*)))
+                (when next-pos
+                  (values (if next-pos *start-pos* nil)
+                          next-pos
+                          *reg-starts*
+                          *reg-ends*))))
+             (t
+              (loop for pos = (if starts-with-everything
+                                  scan-start-pos
+                                  (advance-fn scan-start-pos))
+                      then (advance-fn pos)
+                    while (and pos
+                               (<= (the fixnum pos) max-end-pos))
+                    do (let ((next-pos (funcall match-fn pos)))
+                         (when next-pos
+                           (return-from scan (values pos
+                                                     next-pos
+                                                     *reg-starts*
+                                                     *reg-ends*)))
+                         (incf (the fixnum pos))))))))))
+   :test #'equalp))
 
 (defun compile-aux (match-fn
-                           min-len
-                           start-anchored-p
-                           starts-with
-                           start-string-test
-                           end-anchored-p
-                           end-string-test
-                           end-string-len
-                           end-string-offset
-                           rep-num
-                           zero-length-num
-                           reg-num)
+                    min-len
+                    start-anchored-p
+                    starts-with
+                    start-string-test
+                    end-anchored-p
+                    end-string-test
+                    end-string-len
+                    end-string-offset
+                    rep-num
+                    zero-length-num
+                    reg-num)
   "Auxiliary function to create and return a scanner \(which is
 actually a closure).  Used by COMPILE."
   (declare (fixnum min-len zero-length-num rep-num reg-num))
   (let ((starts-with-len (if (typep starts-with 'str)
-                           (len starts-with)))
+                             (len starts-with)))
         (starts-with-everything (typep starts-with 'everything)))
     (cond
-      ;; this COND statement dispatches on the different versions we
-      ;; have for ADVANCE-FN and creates different closures for each;
-      ;; note that you see only the bodies of ADVANCE-FN below - the
-      ;; actual scanner is defined in INSERT-ADVANCE-FN above; (we
-      ;; could have done this with closures instead of macrology but
-      ;; would have consed a lot more)
       ((and start-string-test end-string-test end-string-offset)
-        ;; we know that the regular expression has constant start and
-        ;; end strings and we know the end string's offset (from the
-        ;; left)
-        (insert-advance-fn
-          (advance-fn (pos)
-            (declare (fixnum end-string-offset starts-with-len)
-                     (function start-string-test end-string-test))
-            (loop
-              (unless (setq pos (funcall start-string-test pos))
-                ;; give up completely if we can't find a start string
-                ;; candidate
-                (return-from scan nil))
-              (locally
-                ;; from here we know that POS is a FIXNUM
-                (declare (fixnum pos))
-                (when (= pos (- (the fixnum *end-string-pos*) end-string-offset))
-                  ;; if we already found an end string candidate the
-                  ;; position of which matches the start string
-                  ;; candidate we're done
-                  (return-from advance-fn pos))
-                (let ((try-pos (+ pos starts-with-len)))
-                  ;; otherwise try (again) to find an end string
-                  ;; candidate which starts behind the start string
-                  ;; candidate
-                  (loop
-                    (unless (setq *end-string-pos*
-                                    (funcall end-string-test try-pos))
-                      ;; no end string candidate found, so give up
-                      (return-from scan nil))
-                    ;; NEW-POS is where we should start scanning
-                    ;; according to the end string candidate
-                    (let ((new-pos (- (the fixnum *end-string-pos*)
-                                      end-string-offset)))
-                      (declare (fixnum new-pos *end-string-pos*))
-                      (cond ((= new-pos pos)
-                              ;; if POS and NEW-POS are equal then the
-                              ;; two candidates agree so we're fine
-                              (return-from advance-fn pos))
-                            ((> new-pos pos)
-                              ;; if NEW-POS is further to the right we
-                              ;; advance POS and try again, i.e. we go
-                              ;; back to the start of the outer LOOP
-                              (setq pos new-pos)
-                              ;; this means "return from inner LOOP"
-                              (return))
-                            (t
-                              ;; otherwise NEW-POS is smaller than POS,
-                              ;; so we have to redo the inner LOOP to
-                              ;; find another end string candidate
-                              ;; further to the right
-                              (setq try-pos (1+ *end-string-pos*))))))))))))
+       (insert-advance-fn
+        (advance-fn (pos)
+                    (declare (fixnum end-string-offset starts-with-len)
+                             (function start-string-test end-string-test))
+                    (loop
+                      (unless (setq pos (funcall start-string-test pos))
+                        (return-from scan nil))
+                      (locally
+                          (declare (fixnum pos))
+                        (when (= pos (- (the fixnum *end-string-pos*) end-string-offset))
+                          (return-from advance-fn pos))
+                        (let ((try-pos (+ pos starts-with-len)))
+                          (loop
+                            (unless (setq *end-string-pos*
+                                          (funcall end-string-test try-pos))
+                              (return-from scan nil))
+                            (let ((new-pos (- (the fixnum *end-string-pos*)
+                                              end-string-offset)))
+                              (declare (fixnum new-pos *end-string-pos*))
+                              (cond ((= new-pos pos)
+                                     (return-from advance-fn pos))
+                                    ((> new-pos pos)
+                                     (setq pos new-pos)
+                                     (return))
+                                    (t
+                                     (setq try-pos (1+ *end-string-pos*))))))))))))
       ((and starts-with-everything end-string-test end-string-offset)
-        ;; we know that the regular expression starts with ".*" (which
-        ;; is not in single-line-mode, see COMPILE-AUX) and ends
-        ;; with a constant end string and we know the end string's
-        ;; offset (from the left)
-        (insert-advance-fn
-          (advance-fn (pos)
-            (declare (fixnum end-string-offset)
-                     (function end-string-test))
-            (loop
-              (unless (setq pos (newline-skipper pos))
-                ;; if we can't find a #\Newline we give up immediately
-                (return-from scan nil))
-              (locally
-                ;; from here we know that POS is a FIXNUM
-                (declare (fixnum pos))
-                (when (= pos (- (the fixnum *end-string-pos*) end-string-offset))
-                  ;; if we already found an end string candidate the
-                  ;; position of which matches the place behind the
-                  ;; #\Newline we're done
-                  (return-from advance-fn pos))
-                (let ((try-pos pos))
-                  ;; otherwise try (again) to find an end string
-                  ;; candidate which starts behind the #\Newline
-                  (loop
-                    (unless (setq *end-string-pos*
-                                    (funcall end-string-test try-pos))
-                      ;; no end string candidate found, so we give up
-                      (return-from scan nil))
-                    ;; NEW-POS is where we should start scanning
-                    ;; according to the end string candidate
-                    (let ((new-pos (- (the fixnum *end-string-pos*)
-                                      end-string-offset)))
-                      (declare (fixnum new-pos *end-string-pos*))
-                      (cond ((= new-pos pos)
-                              ;; if POS and NEW-POS are equal then the
-                              ;; the end string candidate agrees with
-                              ;; the #\Newline so we're fine
-                              (return-from advance-fn pos))
-                            ((> new-pos pos)
-                              ;; if NEW-POS is further to the right we
-                              ;; advance POS and try again, i.e. we go
-                              ;; back to the start of the outer LOOP
-                              (setq pos new-pos)
-                              ;; this means "return from inner LOOP"
-                              (return))
-                            (t
-                              ;; otherwise NEW-POS is smaller than POS,
-                              ;; so we have to redo the inner LOOP to
-                              ;; find another end string candidate
-                              ;; further to the right
-                              (setq try-pos (1+ *end-string-pos*))))))))))))
+       (insert-advance-fn
+        (advance-fn (pos)
+                    (declare (fixnum end-string-offset)
+                             (function end-string-test))
+                    (loop
+                      (unless (setq pos (newline-skipper pos))
+                        (return-from scan nil))
+                      (locally
+                          (declare (fixnum pos))
+                        (when (= pos (- (the fixnum *end-string-pos*) end-string-offset))
+                          (return-from advance-fn pos))
+                        (let ((try-pos pos))
+                          (loop
+                            (unless (setq *end-string-pos*
+                                          (funcall end-string-test try-pos))
+                              (return-from scan nil))
+                            (let ((new-pos (- (the fixnum *end-string-pos*)
+                                              end-string-offset)))
+                              (declare (fixnum new-pos *end-string-pos*))
+                              (cond ((= new-pos pos)
+                                     (return-from advance-fn pos))
+                                    ((> new-pos pos)
+                                     (setq pos new-pos)
+                                     (return))
+                                    (t
+                                     (setq try-pos (1+ *end-string-pos*))))))))))))
       ((and start-string-test end-string-test)
-        ;; we know that the regular expression has constant start and
-        ;; end strings; similar to the first case but we only need to
-        ;; check for the end string, it doesn't provide enough
-        ;; information to advance POS
-        (insert-advance-fn
-          (advance-fn (pos)
-            (declare (function start-string-test end-string-test))
-            (unless (setq pos (funcall start-string-test pos))
-              (return-from scan nil))
-            (if (<= (the fixnum pos)
-                    (the fixnum *end-string-pos*))
-              (return-from advance-fn pos))
-            (unless (setq *end-string-pos* (funcall end-string-test pos))
-              (return-from scan nil))
-            pos)))
+       (insert-advance-fn
+        (advance-fn (pos)
+                    (declare (function start-string-test end-string-test))
+                    (unless (setq pos (funcall start-string-test pos))
+                      (return-from scan nil))
+                    (if (<= (the fixnum pos)
+                            (the fixnum *end-string-pos*))
+                        (return-from advance-fn pos))
+                    (unless (setq *end-string-pos* (funcall end-string-test pos))
+                      (return-from scan nil))
+                    pos)))
       ((and starts-with-everything end-string-test)
-        ;; we know that the regular expression starts with ".*" (which
-        ;; is not in single-line-mode, see COMPILE-AUX) and ends
-        ;; with a constant end string; similar to the second case but we
-        ;; only need to check for the end string, it doesn't provide
-        ;; enough information to advance POS
-        (insert-advance-fn
-          (advance-fn (pos)
-            (declare (function end-string-test))
-            (unless (setq pos (newline-skipper pos))
-              (return-from scan nil))
-            (if (<= (the fixnum pos)
-                    (the fixnum *end-string-pos*))
-              (return-from advance-fn pos))
-            (unless (setq *end-string-pos* (funcall end-string-test pos))
-              (return-from scan nil))
-            pos)))
+       (insert-advance-fn
+        (advance-fn (pos)
+                    (declare (function end-string-test))
+                    (unless (setq pos (newline-skipper pos))
+                      (return-from scan nil))
+                    (if (<= (the fixnum pos)
+                            (the fixnum *end-string-pos*))
+                        (return-from advance-fn pos))
+                    (unless (setq *end-string-pos* (funcall end-string-test pos))
+                      (return-from scan nil))
+                    pos)))
       (start-string-test
-        ;; just check for constant start string candidate
-        (insert-advance-fn
-          (advance-fn (pos)
-            (declare (function start-string-test))
-            (unless (setq pos (funcall start-string-test pos))
-              (return-from scan nil))
-            pos)))
+       (insert-advance-fn
+        (advance-fn (pos)
+                    (declare (function start-string-test))
+                    (unless (setq pos (funcall start-string-test pos))
+                      (return-from scan nil))
+                    pos)))
       (starts-with-everything
-        ;; just advance POS with NEWLINE-SKIPPER
-        (insert-advance-fn
-          (advance-fn (pos)
-            (unless (setq pos (newline-skipper pos))
-              (return-from scan nil))
-            pos)))
+       (insert-advance-fn
+        (advance-fn (pos)
+                    (unless (setq pos (newline-skipper pos))
+                      (return-from scan nil))
+                    pos)))
       (end-string-test
-        ;; just check for the next end string candidate if POS has
-        ;; advanced beyond the last one
-        (insert-advance-fn
-          (advance-fn (pos)
-            (declare (function end-string-test))
-            (if (<= (the fixnum pos)
-                    (the fixnum *end-string-pos*))
-              (return-from advance-fn pos))
-            (unless (setq *end-string-pos* (funcall end-string-test pos))
-              (return-from scan nil))
-            pos)))
+       (insert-advance-fn
+        (advance-fn (pos)
+                    (declare (function end-string-test))
+                    (if (<= (the fixnum pos)
+                            (the fixnum *end-string-pos*))
+                        (return-from advance-fn pos))
+                    (unless (setq *end-string-pos* (funcall end-string-test pos))
+                      (return-from scan nil))
+                    pos)))
       (t
-        ;; not enough optimization information about the regular
-        ;; expression to optimize so we just return POS
-        (insert-advance-fn
-          (advance-fn (pos)
-            pos))))))
-
-;; TODO merge all behavior dynamics into a single flag set
-;; TODO Make compile operate on parse tree, configuration block
+       (insert-advance-fn
+        (advance-fn (pos)
+                    pos))))))
 
 (defvar *look-ahead-for-suffix* t
   "Controls whether scanners will optimistically look ahead for a
@@ -5147,130 +4256,98 @@ DESTRUCTIVE is not NIL, the function is allowed to destructively
 modify its first argument \(but only if it's a parse tree)."))
 
 (defmethod compile ((regex-string string) &key case-insensitive-mode
-                                                      multi-line-mode
-                                                      single-line-mode
-                                                      extended-mode
-                                                      destructive)
+                                            multi-line-mode
+                                            single-line-mode
+                                            extended-mode
+                                            destructive)
   (declare (ignore destructive))
-  ;; parse the string into a parse-tree and then call COMPILE
-  ;; again
   (let* ((*extended-mode-p* extended-mode)
          (quoted-regex-string (if *allow-quoting*
-                                (quote-sections (clean-comments regex-string extended-mode))
-                                regex-string))
+                                  (quote-sections (clean-comments regex-string extended-mode))
+                                  regex-string))
          (*syntax-error-string* (copy-seq quoted-regex-string)))
-    ;; wrap the result with :GROUP to avoid infinite loops for
-    ;; constant strings
     (compile (cons :group (list (parse-string quoted-regex-string)))
-                    :case-insensitive-mode case-insensitive-mode
-                    :multi-line-mode multi-line-mode
-                    :single-line-mode single-line-mode
-                    :destructive t)))
+             :case-insensitive-mode case-insensitive-mode
+             :multi-line-mode multi-line-mode
+             :single-line-mode single-line-mode
+             :destructive t)))
 
 (defmethod compile ((scanner function) &key case-insensitive-mode
-                                                   multi-line-mode
-                                                   single-line-mode
-                                                   extended-mode
-                                                   destructive)
+                                         multi-line-mode
+                                         single-line-mode
+                                         extended-mode
+                                         destructive)
   (declare (ignore destructive))
   (when (or case-insensitive-mode multi-line-mode single-line-mode extended-mode)
     (signal-invocation-error "You can't use the keyword arguments to modify an existing scanner."))
   scanner)
 
 (defmethod compile ((parse-tree t) &key case-insensitive-mode
-                                               multi-line-mode
-                                               single-line-mode
-                                               extended-mode
-                                               destructive)
+                                     multi-line-mode
+                                     single-line-mode
+                                     extended-mode
+                                     destructive)
   (when extended-mode
     (signal-invocation-error "Extended mode doesn't make sense in parse trees."))
-  ;; convert parse-tree into internal representation REGEX and at the
-  ;; same time compute the number of registers and the constant string
-  ;; (or anchor) the regex starts with (if any)
   (unless destructive
     (setq parse-tree (copy-tree parse-tree)))
   (let (flags)
     (if single-line-mode
-      (push :single-line-mode-p flags))
+        (push :single-line-mode-p flags))
     (if multi-line-mode
-      (push :multi-line-mode-p flags))
+        (push :multi-line-mode-p flags))
     (if case-insensitive-mode
-      (push :case-insensitive-p flags))
+        (push :case-insensitive-p flags))
     (when flags
       (setq parse-tree (list :group (cons :flags flags) parse-tree))))
   (let ((*syntax-error-string* nil))
     (multiple-value-bind (regex reg-num starts-with reg-names)
         (convert parse-tree)
-      ;; simplify REGEX by flattening nested SEQ and ALTERNATION
-      ;; constructs and gathering STR objects
       (let ((regex (gather-strings (flatten regex))))
-        ;; set the MIN-REST slots of the REPETITION objects
         (compute-min-rest regex 0)
-        ;; set the OFFSET slots of the STR objects
         (compute-offsets regex 0)
         (let* (end-string-offset
                end-anchored-p
-               ;; compute the constant string the regex ends with (if
-               ;; any) and at the same time set the special variables
-               ;; END-STRING-OFFSET and END-ANCHORED-P
                (end-string (end-string regex))
-               ;; if we found a non-zero-length end-string we create an
-               ;; efficient search function for it
                (end-string-test (and *look-ahead-for-suffix*
                                      end-string
                                      (plusp (len end-string))
                                      (if (= 1 (len end-string))
-                                       (create-char-searcher
-                                        (schar (str end-string) 0)
-                                        (case-insensitive-p end-string))
-                                       (create-bmh-matcher
-                                        (str end-string)
-                                        (case-insensitive-p end-string)))))
-               ;; initialize the counters for CREATE-MATCHER-AUX
+                                         (create-char-searcher
+                                          (schar (str end-string) 0)
+                                          (case-insensitive-p end-string))
+                                         (create-bmh-matcher
+                                          (str end-string)
+                                          (case-insensitive-p end-string)))))
                (*rep-num* 0)
                (*zero-length-num* 0)
-               ;; create the actual matcher function (which does all the
-               ;; work of matching the regular expression) corresponding
-               ;; to REGEX and at the same time set the special
-               ;; variables *REP-NUM* and *ZERO-LENGTH-NUM*
                (match-fn (create-matcher-aux regex #'identity))
-               ;; if the regex starts with a string we create an
-               ;; efficient search function for it
                (start-string-test (and (typep starts-with 'str)
                                        (plusp (len starts-with))
                                        (if (= 1 (len starts-with))
-                                         (create-char-searcher
-                                          (schar (str starts-with) 0)
-                                          (case-insensitive-p starts-with))
-                                         (create-bmh-matcher
-                                          (str starts-with)
-                                          (case-insensitive-p starts-with))))))
+                                           (create-char-searcher
+                                            (schar (str starts-with) 0)
+                                            (case-insensitive-p starts-with))
+                                           (create-bmh-matcher
+                                            (str starts-with)
+                                            (case-insensitive-p starts-with))))))
           (declare (special end-string-offset end-anchored-p end-string))
-          ;; now create the scanner and return it
           (values (compile-aux match-fn
-                                      (regex-min-length regex)
-                                      (or (start-anchored-p regex)
-                                          ;; a dot in single-line-mode also
-                                          ;; implicitly anchors the regex at
-                                          ;; the start, i.e. if we can't match
-                                          ;; from the first position we won't
-                                          ;; match at all
-                                          (and (typep starts-with 'everything)
-                                               (single-line-p starts-with)))
-                                      starts-with
-                                      start-string-test
-                                      ;; only mark regex as end-anchored if we
-                                      ;; found a non-zero-length string before
-                                      ;; the anchor
-                                      (and end-string-test end-anchored-p)
-                                      end-string-test
-                                      (if end-string-test
-                                          (len end-string)
-                                          nil)
-                                      end-string-offset
-                                      *rep-num*
-                                      *zero-length-num*
-                                      reg-num)
+                               (regex-min-length regex)
+                               (or (start-anchored-p regex)
+                                   (and (typep starts-with 'everything)
+                                        (single-line-p starts-with)))
+                               starts-with
+                               start-string-test
+                               (and end-string-test end-anchored-p)
+                               end-string-test
+                               (if end-string-test
+                                   (len end-string)
+                                   nil)
+                               end-string-offset
+                               *rep-num*
+                               *zero-length-num*
+                               reg-num)
                   reg-names))))))
 
 (defgeneric scan (regex target-string &key start end real-start-pos)
@@ -5285,43 +4362,39 @@ REAL-START-POS parameter should be ignored - it exists only for
 internal purposes."))
 
 (defmethod scan ((regex-string string) target-string
-                                       &key (start 0)
-                                            (end (length target-string))
-                                            ((:real-start-pos *real-start-pos*) nil))
-  ;; note that the scanners are optimized for simple strings so we
-  ;; have to coerce TARGET-STRING into one if it isn't already
+                 &key (start 0)
+                   (end (length target-string))
+                   ((:real-start-pos *real-start-pos*) nil))
   (funcall (compile regex-string)
            (maybe-coerce-to-simple-string target-string)
            start end))
 
 (defmethod scan ((scanner function) target-string
-                                    &key (start 0)
-                                         (end (length target-string))
-                                         ((:real-start-pos *real-start-pos*) nil))
+                 &key (start 0)
+                   (end (length target-string))
+                   ((:real-start-pos *real-start-pos*) nil))
   (funcall scanner
            (maybe-coerce-to-simple-string target-string)
            start end))
 
 (defmethod scan ((parse-tree t) target-string
-                                &key (start 0)
-                                     (end (length target-string))
-                                     ((:real-start-pos *real-start-pos*) nil))
+                 &key (start 0)
+                   (end (length target-string))
+                   ((:real-start-pos *real-start-pos*) nil))
   (funcall (compile parse-tree)
            (maybe-coerce-to-simple-string target-string)
            start end))
 
 (define-compiler-macro scan (&whole form regex target-string &rest rest)
   "Make sure that constant forms are compiled into scanners at compile time."
-  ;; Don't pass &environment to CONSTANTP, it may not be digestable by
-  ;; LOAD-TIME-VALUE, e.g., MACROLETs.
   (cond ((constantp regex)
          `(scan (load-time-value (compile ,regex))
                 ,target-string ,@rest))
         (t form)))
 
 (defun scan-to-strings (regex target-string &key (start 0)
-                                                 (end (length target-string))
-                                                 sharedp)
+                                              (end (length target-string))
+                                              sharedp)
   "Like SCAN but returns substrings of TARGET-STRING instead of
 positions, i.e. this function returns two values on success: the whole
 match as a string plus an array of substrings (or NILs) corresponding
@@ -5337,9 +4410,9 @@ share structure with TARGET-STRING."
               (map 'vector
                    (lambda (reg-start reg-end)
                      (if reg-start
-                       (funcall substr-fn
-                                target-string reg-start reg-end)
-                       nil))
+                         (funcall substr-fn
+                                  target-string reg-start reg-end)
+                         nil))
                    reg-starts
                    reg-ends)))))
 
@@ -5352,9 +4425,9 @@ share structure with TARGET-STRING."
         (t form)))
 
 (defmacro do-scans ((match-start match-end reg-starts reg-ends regex
-                                 target-string
-                                 result-form
-                                 &key start end)
+                     target-string
+                     result-form
+                     &key start end)
                     &body body
                     &environment env)
   "Iterates over TARGET-STRING and tries to match REGEX as often as
@@ -5368,48 +4441,32 @@ declarations."
   (with-rebinding (target-string)
     (with-unique-names (%start %end %regex scanner)
       (declare (ignorable %regex scanner))
-      ;; the NIL BLOCK to enable exits via (RETURN ...)
       `(block nil
          (let* ((,%start (or ,start 0))
                 (,%end (or ,end (length ,target-string)))
                 ,@(unless (constantp regex env)
-                    ;; leave constant regular expressions as they are -
-                    ;; SCAN's compiler macro will take care of them;
-                    ;; otherwise create a scanner unless the regex is
-                    ;; already a function (otherwise SCAN will do this
-                    ;; on each iteration)
                     `((,%regex ,regex)
                       (,scanner (typecase ,%regex
                                   (function ,%regex)
                                   (t (compile ,%regex)))))))
-           ;; coerce TARGET-STRING to a simple string unless it is one
-           ;; already (otherwise SCAN will do this on each iteration)
            (setq ,target-string
                  (maybe-coerce-to-simple-string ,target-string))
            (loop
-            ;; invoke SCAN and bind the returned values to the
-            ;; provided variables
-            (multiple-value-bind
-                (,match-start ,match-end ,reg-starts ,reg-ends)
-                (scan ,(cond ((constantp regex env) regex)
-                             (t scanner))
-                      ,target-string :start ,%start :end ,%end
-                      :real-start-pos (or ,start 0))
-              ;; declare the variables to be IGNORABLE to prevent the
-              ;; compiler from issuing warnings
-              (declare
-               (ignorable ,match-start ,match-end ,reg-starts ,reg-ends))
-              (unless ,match-start
-                ;; stop iteration on first failure
-                (return ,result-form))
-              ;; execute BODY (wrapped in LOCALLY so it can start with
-              ;; declarations)
-              (locally
-                ,@body)
-              ;; advance by one position if we had a zero-length match
-              (setq ,%start (if (= ,match-start ,match-end)
-                              (1+ ,match-end)
-                              ,match-end)))))))))
+             (multiple-value-bind
+                   (,match-start ,match-end ,reg-starts ,reg-ends)
+                 (scan ,(cond ((constantp regex env) regex)
+                              (t scanner))
+                       ,target-string :start ,%start :end ,%end
+                       :real-start-pos (or ,start 0))
+               (declare
+                (ignorable ,match-start ,match-end ,reg-starts ,reg-ends))
+               (unless ,match-start
+                 (return ,result-form))
+               (locally
+                   ,@body)
+               (setq ,%start (if (= ,match-start ,match-end)
+                                 (1+ ,match-end)
+                                 ,match-end)))))))))
 
 (defmacro do-matches ((match-start match-end regex target-string result-form
                        &key start end)
@@ -5422,15 +4479,13 @@ named NIL surrounds DO-MATCHES; RETURN may be used to terminate the
 loop immediately.  If REGEX matches an empty string the scan is
 continued one position behind this match.  BODY may start with
 declarations."
-  ;; this is a simplified form of DO-SCANS - we just provide two dummy
-  ;; vars and ignore them
   (with-unique-names (reg-starts reg-ends)
     `(do-scans (,match-start ,match-end
                 ,reg-starts ,reg-ends
                 ,regex ,target-string
                 ,result-form
                 :start ,start :end ,end)
-      ,@body)))
+       ,@body)))
 
 (defmacro do-matches-as-strings ((match-var regex
                                   target-string
@@ -5449,17 +4504,16 @@ with declarations."
   (with-rebinding (target-string)
     (with-unique-names (match-start match-end substr-fn)
       `(let ((,substr-fn (if ,sharedp #'nsubseq #'subseq)))
-        ;; simple use DO-MATCHES to extract the substrings
-        (do-matches (,match-start ,match-end ,regex ,target-string
-                     ,result-form :start ,start :end ,end)
-          (let ((,match-var
-                  (funcall ,substr-fn
-                           ,target-string ,match-start ,match-end)))
-            ,@body))))))
+         (do-matches (,match-start ,match-end ,regex ,target-string
+                      ,result-form :start ,start :end ,end)
+           (let ((,match-var
+                   (funcall ,substr-fn
+                            ,target-string ,match-start ,match-end)))
+             ,@body))))))
 
 (defun count-matches (regex target-string
                       &key (start 0)
-                           (end (length target-string)))
+                        (end (length target-string)))
   "Returns a count of all substrings of TARGET-STRING which match REGEX."
   (let ((count 0))
     (do-matches (s e regex target-string count
@@ -5475,8 +4529,8 @@ compile time."
         (t form)))
 
 (defun all-matches (regex target-string
-                          &key (start 0)
-                               (end (length target-string)))
+                    &key (start 0)
+                      (end (length target-string)))
   "Returns a list containing the start and end positions of all
 matches of REGEX against TARGET-STRING, i.e. if there are N matches
 the list contains (* 2 N) elements.  If REGEX matches an empty string
@@ -5490,17 +4544,17 @@ the scan is continued one position behind this match."
       (push match-end result-list))))
 
 (define-compiler-macro all-matches (&whole form regex &rest rest)
-   "Make sure that constant forms are compiled into scanners at
+  "Make sure that constant forms are compiled into scanners at
 compile time."
-   (cond ((constantp regex)
-          `(all-matches (load-time-value (compile ,regex))
-                        ,@rest))
-         (t form)))
+  (cond ((constantp regex)
+         `(all-matches (load-time-value (compile ,regex))
+                       ,@rest))
+        (t form)))
 
 (defun all-matches-as-strings (regex target-string
-                                     &key (start 0)
-                                          (end (length target-string))
-                                          sharedp)
+                               &key (start 0)
+                                 (end (length target-string))
+                                 sharedp)
   "Returns a list containing all substrings of TARGET-STRING which
 match REGEX. If REGEX matches an empty string the scan is continued
 one position behind this match. If SHAREDP is true, the substrings may
@@ -5511,21 +4565,21 @@ share structure with TARGET-STRING."
       (push match result-list))))
 
 (define-compiler-macro all-matches-as-strings (&whole form regex &rest rest)
-   "Make sure that constant forms are compiled into scanners at
+  "Make sure that constant forms are compiled into scanners at
 compile time."
-   (cond ((constantp regex)
-          `(all-matches-as-strings
-            (load-time-value (compile ,regex))
-            ,@rest))
-         (t form)))
+  (cond ((constantp regex)
+         `(all-matches-as-strings
+           (load-time-value (compile ,regex))
+           ,@rest))
+        (t form)))
 
 (defun split (regex target-string
-                    &key (start 0)
-                         (end (length target-string))
-                         limit
-                         with-registers-p
-                         omit-unmatched-p
-                         sharedp)
+              &key (start 0)
+                (end (length target-string))
+                limit
+                with-registers-p
+                omit-unmatched-p
+                sharedp)
   "Matches REGEX against TARGET-STRING as often as possible and
 returns a list of the substrings between the matches.  If
 WITH-REGISTERS-P is true, substrings corresponding to matched
@@ -5537,12 +4591,8 @@ equivalent), trailing empty strings are removed from the result list.
 If REGEX matches an empty string the scan is continued one position
 behind this match.  If SHAREDP is true, the substrings may share
 structure with TARGET-STRING."
-  ;; initialize list of positions POS-LIST to extract substrings with
-  ;; START so that the start of the next match will mark the end of
-  ;; the first substring
   (let ((pos-list (list start))
         (counter 0))
-    ;; how would Larry Wall do it?
     (when (eql limit 0)
       (setq limit nil))
     (do-scans (match-start match-end
@@ -5551,48 +4601,35 @@ structure with TARGET-STRING."
                :start start :end end)
       (unless (and (= match-start match-end)
                    (= match-start (car pos-list)))
-        ;; push start of match on list unless this would be an empty
-        ;; string adjacent to the last element pushed onto the list
         (when (and limit
-                   ;; perlfunc(1) says
-                   ;;   If LIMIT is negative, it is treated as if
-                   ;;   it were instead arbitrarily large;
-                   ;;   as many fields as possible are produced.
                    (plusp limit)
                    (>= (incf counter) limit))
           (return))
         (push match-start pos-list)
         (when with-registers-p
-          ;; optionally insert matched registers
           (loop for reg-start across reg-starts
                 for reg-end across reg-ends
                 if reg-start
-                  ;; but only if they've matched
                   do (push reg-start pos-list)
                      (push reg-end pos-list)
                 else unless omit-unmatched-p
-                  ;; or if we're allowed to insert NIL instead
-                  do (push nil pos-list)
-                     (push nil pos-list)))
-        ;; now end of match
+                       do (push nil pos-list)
+                          (push nil pos-list)))
         (push match-end pos-list)))
-    ;; end of whole string
     (push end pos-list)
-    ;; now collect substrings
     (nreverse
      (loop with substr-fn = (if sharedp #'nsubseq #'subseq)
            with string-seen = nil
            for (this-end this-start) on pos-list by #'cddr
-           ;; skip empty strings from end of list
            if (or limit
                   (setq string-seen
-                          (or string-seen
-                              (and this-start
-                                   (> this-end this-start)))))
-           collect (if this-start
-                     (funcall substr-fn
-                              target-string this-start this-end)
-                     nil)))))
+                        (or string-seen
+                            (and this-start
+                                 (> this-end this-start)))))
+             collect (if this-start
+                         (funcall substr-fn
+                                  target-string this-start this-end)
+                         nil)))))
 
 (define-compiler-macro split (&whole form regex target-string &rest rest)
   "Make sure that constant forms are compiled into scanners at compile time."
@@ -5617,53 +4654,41 @@ that \(<= START FROM TO END)."
               (and (< to end)
                    (alphanumericp (char str to))
                    (alphanumericp (char str (1- to)))))
-        ;; if it's a zero-length string or if words extend beyond FROM
-        ;; or TO we return NIL, i.e. #'IDENTITY
-        nil
-        ;; otherwise we loop through STR from FROM to TO
-        (loop with last-char-both-case
-              with current-result
-              for index of-type fixnum from from below to
-              for chr = (char str index)
-              do (cond ((not (both-case-p chr))
-                         ;; this character doesn't have a case so we
-                         ;; consider it as a word boundary (note that
-                         ;; this differs from how \b works in Perl)
-                         (setq last-char-both-case nil))
-                       ((upper-case-p chr)
-                         ;; an uppercase character
-                         (setq current-result
-                                 (if last-char-both-case
-                                   ;; not the first character in a 
-                                   (case current-result
-                                     ((:undecided) :upcase)
-                                     ((:downcase :capitalize) (return nil))
-                                     ((:upcase) current-result))
-                                   (case current-result
-                                     ((nil) :undecided)
-                                     ((:downcase) (return nil))
-                                     ((:capitalize :upcase) current-result)))
-                               last-char-both-case t))
-                       (t
-                         ;; a lowercase character
-                         (setq current-result
-                                 (case current-result
-                                   ((nil) :downcase)
-                                   ((:undecided) :capitalize)
-                                   ((:downcase) current-result)
-                                   ((:capitalize) (if last-char-both-case
-                                                    current-result
-                                                    (return nil)))
-                                   ((:upcase) (return nil)))
-                               last-char-both-case t)))
-              finally (return current-result)))
+          nil
+          (loop with last-char-both-case
+                with current-result
+                for index of-type fixnum from from below to
+                for chr = (char str index)
+                do (cond ((not (both-case-p chr))
+                          (setq last-char-both-case nil))
+                         ((upper-case-p chr)
+                          (setq current-result
+                                (if last-char-both-case
+                                    (case current-result
+                                      ((:undecided) :upcase)
+                                      ((:downcase :capitalize) (return nil))
+                                      ((:upcase) current-result))
+                                    (case current-result
+                                      ((nil) :undecided)
+                                      ((:downcase) (return nil))
+                                      ((:capitalize :upcase) current-result)))
+                                last-char-both-case t))
+                         (t
+                          (setq current-result
+                                (case current-result
+                                  ((nil) :downcase)
+                                  ((:undecided) :capitalize)
+                                  ((:downcase) current-result)
+                                  ((:capitalize) (if last-char-both-case
+                                                     current-result
+                                                     (return nil)))
+                                  ((:upcase) (return nil)))
+                                last-char-both-case t)))
+                finally (return current-result)))
     ((nil) #'identity)
     ((:undecided :upcase) #'string-upcase)
     ((:downcase) #'string-downcase)
     ((:capitalize) #'string-capitalize)))
-
-;; first create a scanner to identify the special parts of the
-;; replacement string (eat your own dog food...)
 
 (defgeneric build-replacement-template (replacement-string)
   (:documentation "Converts a replacement string for REGEX-REPLACE or
@@ -5674,39 +4699,29 @@ S-expression."))
        (reg-scanner (compile "\\\\(?:\\\\|\\{\\d+\\}|\\d+|&|`|')")))
   (defmethod build-replacement-template ((replacement-string string))
     (let ((from 0)
-          ;; COLLECTOR will hold the (reversed) template
           (collector '()))
-      ;; scan through all special parts of the replacement string
       (do-matches (match-start match-end reg-scanner replacement-string nil)
         (when (< from match-start)
-          ;; strings between matches are copied verbatim
           (push (subseq replacement-string from match-start) collector))
-        ;; PARSE-START is true if the pattern matched a number which
-        ;; refers to a register
         (let* ((parse-start (position-if #'str:digit-char-p
                                          replacement-string
                                          :start match-start
                                          :end match-end))
                (token (if parse-start
-                        (1- (parse-integer replacement-string
-                                           :start parse-start
-                                           :junk-allowed t))
-                        ;; if we didn't match a number we convert the
-                        ;; character to a symbol
-                        (case (char replacement-string (1+ match-start))
-                          ((#\&) :match)
-                          ((#\`) :before-match)
-                          ((#\') :after-match)
-                          ((#\\) :backslash)))))
+                          (1- (parse-integer replacement-string
+                                             :start parse-start
+                                             :junk-allowed t))
+                          (case (char replacement-string (1+ match-start))
+                            ((#\&) :match)
+                            ((#\`) :before-match)
+                            ((#\') :after-match)
+                            ((#\\) :backslash)))))
           (when (and (numberp token) (< token 0))
-            ;; make sure we don't accept something like "\\0"
             (signal-invocation-error "Illegal substring ~S in replacement string."
                                      (subseq replacement-string match-start match-end)))
           (push token collector))
-        ;; remember where the match ended
         (setq from match-end))
       (when (< from (length replacement-string))
-        ;; push the rest of the replacement string onto the list
         (push (subseq replacement-string from) collector))
       (nreverse collector))))
 
@@ -5715,10 +4730,10 @@ S-expression."))
 
 (defmethod build-replacement-template ((replacement-function-symbol symbol))
   (list replacement-function-symbol))
-        
+
 (defmethod build-replacement-template ((replacement-list list))
   replacement-list)
-        
+
 (defun build-replacement (replacement-template
                           target-string
                           start end
@@ -5729,142 +4744,120 @@ S-expression."))
   "Accepts a replacement template and the current values from the
 matching process in REGEX-REPLACE or REGEX-REPLACE-ALL and returns the
 corresponding string."
-  ;; the upper exclusive bound of the register numbers in the regular
-  ;; expression
   (let ((reg-bound (if reg-starts
-                     (array-dimension reg-starts 0)
-                     0)))
+                       (array-dimension reg-starts 0)
+                       0)))
     (with-output-to-string (s nil :element-type element-type)
       (loop for token in replacement-template
             do (typecase token
                  (string
-                   ;; transfer string parts verbatim
-                   (write-string token s))
+                  (write-string token s))
                  (integer
-                   ;; replace numbers with the corresponding registers
-                   (when (>= token reg-bound)
-                     ;; but only if the register was referenced in the
-                     ;; regular expression
-                     (signal-invocation-error "Reference to non-existent register ~A in replacement string."
-                                              (1+ token)))
-                   (when (svref reg-starts token)
-                     ;; and only if it matched, i.e. no match results
-                     ;; in an empty string
-                     (write-string target-string s
-                                   :start (svref reg-starts token)
-                                   :end (svref reg-ends token))))
+                  (when (>= token reg-bound)
+                    (signal-invocation-error "Reference to non-existent register ~A in replacement string."
+                                             (1+ token)))
+                  (when (svref reg-starts token)
+                    (write-string target-string s
+                                  :start (svref reg-starts token)
+                                  :end (svref reg-ends token))))
                  (function
-                   (write-string 
-                    (cond (simple-calls
-                           (apply token
-                                  (nsubseq target-string match-start match-end)
-                                  (map 'list
-                                       (lambda (reg-start reg-end)
-                                         (and reg-start
-                                              (nsubseq target-string reg-start reg-end)))
-                                       reg-starts reg-ends)))
-                          (t
-                           (funcall token
-                                    target-string
-                                    start end
-                                    match-start match-end
-                                    reg-starts reg-ends)))
-                    s))
+                  (write-string 
+                   (cond (simple-calls
+                          (apply token
+                                 (nsubseq target-string match-start match-end)
+                                 (map 'list
+                                      (lambda (reg-start reg-end)
+                                        (and reg-start
+                                             (nsubseq target-string reg-start reg-end)))
+                                      reg-starts reg-ends)))
+                         (t
+                          (funcall token
+                                   target-string
+                                   start end
+                                   match-start match-end
+                                   reg-starts reg-ends)))
+                   s))
                  (symbol
-                   (case token
-                     ((:backslash)
-                       ;; just a backslash
-                       (write-char #\\ s))
-                     ((:match)
-                       ;; the whole match
-                       (write-string target-string s
-                                     :start match-start
-                                     :end match-end))
-                     ((:before-match)
-                       ;; the part of the target string before the match
-                       (write-string target-string s
-                                     :start start
-                                     :end match-start))
-                     ((:after-match)
-                       ;; the part of the target string after the match
-                       (write-string target-string s
-                                     :start match-end
-                                     :end end))
-                     (otherwise
-                      (write-string
-                       (cond (simple-calls
-                              (apply token
-                                     (nsubseq target-string match-start match-end)
-                                     (map 'list
-                                          (lambda (reg-start reg-end)
-                                            (and reg-start
-                                                 (nsubseq target-string reg-start reg-end)))
-                                          reg-starts reg-ends)))
-                             (t
-                              (funcall token
-                                       target-string
-                                       start end
-                                       match-start match-end
-                                       reg-starts reg-ends)))
-                       s)))))))))
+                  (case token
+                    ((:backslash)
+                     (write-char #\\ s))
+                    ((:match)
+                     (write-string target-string s
+                                   :start match-start
+                                   :end match-end))
+                    ((:before-match)
+                     (write-string target-string s
+                                   :start start
+                                   :end match-start))
+                    ((:after-match)
+                     (write-string target-string s
+                                   :start match-end
+                                   :end end))
+                    (otherwise
+                     (write-string
+                      (cond (simple-calls
+                             (apply token
+                                    (nsubseq target-string match-start match-end)
+                                    (map 'list
+                                         (lambda (reg-start reg-end)
+                                           (and reg-start
+                                                (nsubseq target-string reg-start reg-end)))
+                                         reg-starts reg-ends)))
+                            (t
+                             (funcall token
+                                      target-string
+                                      start end
+                                      match-start match-end
+                                      reg-starts reg-ends)))
+                      s)))))))))
 
 (defun replace-aux (target-string replacement pos-list reg-list start end
-                                  preserve-case simple-calls element-type)
+                    preserve-case simple-calls element-type)
   "Auxiliary function used by REGEX-REPLACE and REGEX-REPLACE-ALL.
 POS-LIST contains a list with the start and end positions of all
 matches while REG-LIST contains a list of arrays representing the
 corresponding register start and end positions."
-  ;; build the template once before we start the loop
   (let ((replacement-template (build-replacement-template replacement)))
     (with-output-to-string (s nil :element-type element-type)
-      ;; loop through all matches and take the start and end of the
-      ;; whole string into account
       (loop for (from to) on (append (list start) pos-list (list end))
-            ;; alternate between replacement and no replacement
             for replace = nil then (and (not replace) to)
             for reg-starts = (if replace (pop reg-list) nil)
             for reg-ends = (if replace (pop reg-list) nil)
             for curr-replacement = (if replace
-                                     ;; build the replacement string
-                                     (build-replacement replacement-template
-                                                        target-string
-                                                        start end
-                                                        from to
-                                                        reg-starts reg-ends
-                                                        simple-calls
-                                                        element-type)
-                                     nil)
+                                       (build-replacement replacement-template
+                                                          target-string
+                                                          start end
+                                                          from to
+                                                          reg-starts reg-ends
+                                                          simple-calls
+                                                          element-type)
+                                       nil)
             while to
             if replace
               do (write-string (if preserve-case
-                                 ;; modify the case of the replacement
-                                 ;; string if necessary
-                                 (funcall (string-case-modifier target-string
-                                                                from to
-                                                                start end)
-                                          curr-replacement)
-                                 curr-replacement)
+                                   (funcall (string-case-modifier target-string
+                                                                  from to
+                                                                  start end)
+                                            curr-replacement)
+                                   curr-replacement)
                                s)
             else
-              ;; no replacement
               do (write-string target-string s :start from :end to)))))
 
 (defun regex-replace (regex target-string replacement &key
-                            (start 0)
-                            (end (length target-string))
-                            preserve-case
-                            simple-calls
-                            (element-type 'character))
+                                                        (start 0)
+                                                        (end (length target-string))
+                                                        preserve-case
+                                                        simple-calls
+                                                        (element-type 'character))
   "Try to match TARGET-STRING between START and END against REGEX and
 replace the first match with REPLACEMENT.  Two values are returned;
 the modified string, and T if REGEX matched or NIL otherwise.
-
   REPLACEMENT can be a string which may contain the special substrings
 \"\\&\" for the whole match, \"\\`\" for the part of TARGET-STRING
 before the match, \"\\'\" for the part of TARGET-STRING after the
 match, \"\\N\" or \"\\{N}\" for the Nth register where N is a positive
 integer.
-
   REPLACEMENT can also be a function designator in which case the
 match will be replaced with the result of calling the function
 designated by REPLACEMENT with the arguments TARGET-STRING, START,
@@ -5872,29 +4865,26 @@ END, MATCH-START, MATCH-END, REG-STARTS, and REG-ENDS. (REG-STARTS and
 REG-ENDS are arrays holding the start and end positions of matched
 registers or NIL - the meaning of the other arguments should be
 obvious.)
-
   Finally, REPLACEMENT can be a list where each element is a string,
 one of the symbols :MATCH, :BEFORE-MATCH, or :AFTER-MATCH -
 corresponding to \"\\&\", \"\\`\", and \"\\'\" above -, an integer N -
 representing register (1+ N) -, or a function designator.
-
   If PRESERVE-CASE is true, the replacement will try to preserve the
 case (all upper case, all lower case, or capitalized) of the
 match. The result will always be a fresh string, even if REGEX doesn't
 match.
-
   ELEMENT-TYPE is the element type of the resulting string."
   (multiple-value-bind (match-start match-end reg-starts reg-ends)
       (scan regex target-string :start start :end end)
     (if match-start
-      (values (replace-aux target-string replacement
-                           (list match-start match-end)
-                           (list reg-starts reg-ends)
-                           start end preserve-case
-                           simple-calls element-type)
-              t)
-      (values (subseq target-string start end)
-              nil))))
+        (values (replace-aux target-string replacement
+                             (list match-start match-end)
+                             (list reg-starts reg-ends)
+                             start end preserve-case
+                             simple-calls element-type)
+                t)
+        (values (subseq target-string start end)
+                nil))))
 
 (define-compiler-macro regex-replace
     (&whole form regex target-string replacement &rest rest)
@@ -5905,21 +4895,19 @@ match.
         (t form)))
 
 (defun regex-replace-all (regex target-string replacement &key
-                                (start 0)
-                                (end (length target-string))
-                                preserve-case
-                                simple-calls
-                                (element-type 'character))
+                                                            (start 0)
+                                                            (end (length target-string))
+                                                            preserve-case
+                                                            simple-calls
+                                                            (element-type 'character))
   "Try to match TARGET-STRING between START and END against REGEX and
 replace all matches with REPLACEMENT.  Two values are returned; the
 modified string, and T if REGEX matched or NIL otherwise.
-
   REPLACEMENT can be a string which may contain the special substrings
 \"\\&\" for the whole match, \"\\`\" for the part of TARGET-STRING
 before the match, \"\\'\" for the part of TARGET-STRING after the
 match, \"\\N\" or \"\\{N}\" for the Nth register where N is a positive
 integer.
-
   REPLACEMENT can also be a function designator in which case the
 match will be replaced with the result of calling the function
 designated by REPLACEMENT with the arguments TARGET-STRING, START,
@@ -5927,36 +4915,33 @@ END, MATCH-START, MATCH-END, REG-STARTS, and REG-ENDS. (REG-STARTS and
 REG-ENDS are arrays holding the start and end positions of matched
 registers or NIL - the meaning of the other arguments should be
 obvious.)
-
   Finally, REPLACEMENT can be a list where each element is a string,
 one of the symbols :MATCH, :BEFORE-MATCH, or :AFTER-MATCH -
 corresponding to \"\\&\", \"\\`\", and \"\\'\" above -, an integer N -
 representing register (1+ N) -, or a function designator.
-
   If PRESERVE-CASE is true, the replacement will try to preserve the
 case (all upper case, all lower case, or capitalized) of the
 match. The result will always be a fresh string, even if REGEX doesn't
 match.
-
   ELEMENT-TYPE is the element type of the resulting string."
   (let ((pos-list '())
         (reg-list '()))
     (do-scans (match-start match-end reg-starts reg-ends regex target-string
-                           nil
-                           :start start :end end)
+               nil
+               :start start :end end)
       (push match-start pos-list)
       (push match-end pos-list)
       (push reg-starts reg-list)
       (push reg-ends reg-list))
     (if pos-list
-      (values (replace-aux target-string replacement
-                           (nreverse pos-list)
-                           (nreverse reg-list)
-                           start end preserve-case
-                           simple-calls element-type)
-              t)
-      (values (subseq target-string start end)
-              nil))))
+        (values (replace-aux target-string replacement
+                             (nreverse pos-list)
+                             (nreverse reg-list)
+                             start end preserve-case
+                             simple-calls element-type)
+                t)
+        (values (subseq target-string start end)
+                nil))))
 
 (define-compiler-macro regex-replace-all
     (&whole form regex target-string replacement &rest rest)
@@ -5983,7 +4968,7 @@ match.
 QUOTE-META-CHARS). Repeat this as long as there are such
 sections. These sections may nest."
     (flet ((quote-substring (target-string start end match-start
-                                           match-end reg-starts reg-ends)
+                             match-end reg-starts reg-ends)
              (declare (ignore start end match-start match-end))
              (quote-meta-chars target-string
                                :start (svref reg-starts 0)
@@ -6005,17 +4990,15 @@ sections. These sections may nest."
 end-of-line comments, i.e. those starting with #\\# and ending with
 #\\Newline."
     (flet ((remove-tokens (target-string start end match-start
-                                         match-end reg-starts reg-ends)
+                           match-end reg-starts reg-ends)
              (declare (ignore start end reg-starts reg-ends))
              (loop for result = (nsubseq target-string match-start match-end)
-                   then (regex-replace-all quote-token-replace-scanner result "\\1")
-                   ;; we must probably repeat this because the comment
-                   ;; can contain substrings like \\Q
+                     then (regex-replace-all quote-token-replace-scanner result "\\1")
                    while (scan quote-token-scanner result)
                    finally (return result))))
       (regex-replace-all (if extended-mode
-                           extended-comment-scanner
-                           comment-scanner)
+                             extended-comment-scanner
+                             comment-scanner)
                          string
                          #'remove-tokens))))
 

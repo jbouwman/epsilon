@@ -1,15 +1,114 @@
+;;;;  Key Reusable Components from Test Framework
+;;;;
+;;;;  1. Output Capture Mechanism (test.lisp:196-214): The test framework captures stdout/stderr using make-string-output-stream and make-broadcast-stream
+;;;;  2. Timing and Metrics Collection (test.lisp:164-190): Wall-time and CPU-time measurement infrastructure
+;;;;  3. Result Storage (test.lisp:101-121): Structured result objects with status, conditions, and output fields
+;;;;  4. Exception Handling (test.lisp:455-473): Error handling with condition classification
+;;;;
+;;;;  Proposed Integration Strategy
+;;;;
+;;;;  1. Create a Build Result Framework
+;;;;
+;;;;  Extend the build system with similar result tracking:
+;;;;
+;;;;  (defclass compilation-result ()
+;;;;    ((source-file :initarg :source-file :reader source-file)
+;;;;     (target-file :initarg :target-file :reader target-file)
+;;;;     (status :initform :not-compiled :accessor compilation-status)
+;;;;     (warnings :initform nil :accessor compilation-warnings)
+;;;;     (errors :initform nil :accessor compilation-errors)
+;;;;     (stdout-output :initform nil :accessor stdout-output)
+;;;;     (stderr-output :initform nil :accessor stderr-output)
+;;;;     (start-time :initform nil :accessor start-time)
+;;;;     (end-time :initform nil :accessor end-time)))
+;;;;
+;;;;  2. Enhanced Compilation Function
+;;;;
+;;;;  Modify compile-source in build.lisp:206-217 to capture warnings:
+;;;;
+;;;;  (defun compile-source-with-capture (step)
+;;;;    (let ((result (make-instance 'compilation-result
+;;;;                                :source-file (source-uri step)
+;;;;                                :target-file (target-uri step)))
+;;;;          (stdout-stream (make-string-output-stream))
+;;;;          (stderr-stream (make-string-output-stream)))
+;;;;      (unwind-protect
+;;;;           (progn
+;;;;             (setf (start-time result) (get-internal-real-time))
+;;;;             (let ((*standard-output* (make-broadcast-stream *standard-output* stdout-stream))
+;;;;                   (*error-output* (make-broadcast-stream *error-output* stderr-stream)))
+;;;;               (handler-bind ((warning (lambda (w)
+;;;;                                        (push w (compilation-warnings result))
+;;;;                                        (muffle-warning)))
+;;;;                             (error (lambda (e)
+;;;;                                      (push e (compilation-errors result)))))
+;;;;                 (compile-file (uri:path (source-uri step))
+;;;;                             :output-file (uri:path (target-uri step))))))
+;;;;        (setf (end-time result) (get-internal-real-time)
+;;;;              (stdout-output result) (get-output-stream-string stdout-stream)
+;;;;              (stderr-output result) (get-output-stream-string stderr-stream)))
+;;;;      result))
+;;;;
+;;;;  3. Output File Location Control
+;;;;
+;;;;  For controlling output file locations under $REPO/target/fasl/$SRCDIR/, modify %make-build-step in build.lisp:106-115:
+;;;;
+;;;;  (defun %make-build-step (project source-info)
+;;;;    "Create target information for a source file"
+;;;;    (let* ((project-path (path project))
+;;;;           (source-rel-path (subseq (path source-info) (1+ (length project-path))))
+;;;;           (source-dir (directory-namestring source-rel-path))
+;;;;           (source-name (file-namestring source-rel-path))
+;;;;           (target-uri (uri:merge
+;;;;                        (uri:merge (uri project) "target/fasl/")
+;;;;                        (uri:merge source-dir
+;;;;                                  (fs:replace-extension source-name "fasl")))))
+;;;;      (make-instance 'build-step
+;;;;                     :source-info source-info
+;;;;                     :target-info (%make-target-info target-uri))))
+;;;;
+;;;;  4. Reporting Infrastructure
+;;;;
+;;;;  Reuse the test framework's formatting functions (format-test-entry, log-test-result) for compilation results:
+;;;;
+;;;;  (defun format-compilation-entry (source-file result)
+;;;;    (format-test-entry (file-namestring source-file) 78
+;;;;                       (compilation-result-to-test-result result)))
+;;;;
+;;;;  (defun log-compilation-result (result stream)
+;;;;    "Log compilation warnings and errors to stream"
+;;;;    (format stream "~&=== COMPILATION: ~A ===~%" (source-file result))
+;;;;    (when (compilation-warnings result)
+;;;;      (format stream "WARNINGS (~D):~%" (length (compilation-warnings result)))
+;;;;      (dolist (warning (compilation-warnings result))
+;;;;        (format stream "  ~A~%" warning)))
+;;;;    (when (compilation-errors result)
+;;;;      (format stream "ERRORS (~D):~%" (length (compilation-errors result)))
+;;;;      (dolist (error (compilation-errors result))
+;;;;        (format stream "  ~A~%" error))))
+;;;;
+;;;;  This approach reuses the output capture, timing, and reporting
+;;;;  infrastructure from the test framework and extends the build
+;;;;  system to provide compilation feedback and flexible output file
+;;;;  placement.
+
 (defpackage :epsilon.tool.build
   (:use :cl)
   (:local-nicknames
    (#:pkg #:epsilon.sys.pkg)
    (#:fs #:epsilon.sys.fs)
+   (#:digest #:epsilon.lib.digest)
+   (#:fn #:epsilon.lib.function)
+   (#:hex #:epsilon.lib.hex)
    (#:map #:epsilon.lib.map)
    (#:seq #:epsilon.lib.sequence)
    (#:str #:epsilon.lib.string)
    (#:uri #:epsilon.lib.uri)
    (#:yaml #:epsilon.lib.yaml))
   (:export #:build
-           #:status))
+           #:status
+           #:build-for-test
+           #:list-tests))
 
 (in-package :epsilon.tool.build)
 
@@ -27,11 +126,11 @@
   (uri:path (uri self)))
 
 (defun calculate-hash (uri)
-  (let ((digest (epsilon.lib.digest:make-digest :sha-256)))
+  (let ((digest (digest:make-digest :sha-256)))
     (with-open-file (stream (uri:path uri) :element-type 'unsigned-byte)
-      (epsilon.lib.digest:digest-stream digest stream))
-    (epsilon.lib.hex:u8-to-hex
-     (epsilon.lib.digest:get-digest digest))))
+      (digest:digest-stream digest stream))
+    (hex:u8-to-hex
+     (digest:get-digest digest))))
 
 (defmethod print-object ((obj source-info) stream)
   (print-unreadable-object (obj stream :type t)
@@ -62,7 +161,8 @@
   ((name :initarg :name :accessor project-name)
    (version :initarg :version :accessor project-version)
    (author :initarg :author :accessor project-author)
-   (sources :initarg :sources :accessor project-sources)))
+   (sources :initarg :sources :accessor project-sources)
+   (tests :initarg :tests :accessor project-tests)))
 
 (defun make-source-info (uri)
   (multiple-value-bind (defines requires)
@@ -80,13 +180,18 @@
          (defs (map:from-pairs (yaml:node-value (yaml:parse-file path))))
          (sources (sort-sources (mapcan (lambda (path)
                                           (find-source-info (uri:merge uri path)))
-                                        (map:get defs "sources")))))
+                                        (map:get defs "sources"))))
+         (tests (when (map:get defs "tests")
+                  (sort-sources (mapcan (lambda (path)
+                                          (find-source-info (uri:merge uri path)))
+                                        (map:get defs "tests"))))))
     (make-instance 'project
                    :uri uri
                    :name (map:get defs "name")
                    :version (map:get defs "version")
                    :author (map:get defs "author")
-                   :sources sources)))
+                   :sources sources
+                   :tests tests)))
 
 (defun find-source-info (uri)
   (remove-if #'null
@@ -104,11 +209,21 @@
                    :source-info source-info
                    :target-info (%make-target-info target-uri))))
 
-(defun make-build-steps (project)
-  (let ((steps '()))
-    (dolist (info (project-sources project))
-      (push (%make-build-step project info) steps))
-    (nreverse steps)))
+;;;; TODO something like the following should work
+;;;;
+;;;; (seq:map (lambda (source)
+;;;;            (%make-build-step project source))
+;;;;          (project-sources project))
+;;;;
+;;;; Better yet, build the 'steps' at load time
+
+(defun build-order (project)
+  (seq:map (fn:partial #'%make-build-step project)
+           (seq:seq (project-sources project))))
+
+(defun test-order (project)
+  (seq:map (fn:partial #'%make-build-step project)
+           (seq:seq (project-tests project))))
 
 (defun read-first-form (uri)
   (with-open-file (stream (uri::path uri))
@@ -206,23 +321,37 @@
         ;; todo -- capture compilation error, and probably halt
         ))))
 
-(defun build-order (uri)
-  (make-build-steps (load-project uri)))
+(defun load-source (step)
+  (let ((target-uri (target-uri step)))
+    (unless (fs:exists-p target-uri)
+      (error "compile first"))
+    (handler-case
+        (load (uri:path target-uri))
+      (error ()
+        ;; todo -- capture compilation error, and probably halt
+        ))))
 
-(defun build (uri)
-  (dolist (step (make-build-steps (load-project uri)))
-    (case (build-step-status step)
-      ((:target-missing
-        :source-newer)
-       (compile-source step)))))
+(defun build-steps (steps &key force)
+  "Build the given steps, optionally forcing compilation of all steps"
+  (dolist (step (seq:realize steps))
+    (if force
+        (compile-source step)
+        (case (build-step-status step)
+          ((:target-missing
+            :source-newer)
+           (compile-source step))
+          (t
+           (load-source step))))))
 
-
-(defun find-files-without-packages (uri)
-  "Returns a list of source files that don't define their own packages"
-  (let* ((project (load-project uri))
-         (sources (project-sources project)))
-    (remove-if #'source-info-defines sources)))
-
-
-#++
-(find-files-without-packages (uri:uri "file:///Users/jbouwman/git/epsilon"))
+(defun build (&key dir force (test t))
+  "Build project sources and optionally tests.
+  
+  DIR - Directory containing project (defaults to current directory)
+  FORCE - Force compilation of all build steps regardless of timestamps
+  TEST - Build test sources in addition to main sources (default t)"
+  (let* ((project-dir (cond (dir (uri:file-uri dir))
+                           (t (uri:file-uri (namestring *default-pathname-defaults*)))))
+         (project (load-project project-dir)))
+    (build-steps (build-order project) :force force)
+    (when test
+      (build-steps (test-order project) :force force))))

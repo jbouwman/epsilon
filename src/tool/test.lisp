@@ -25,14 +25,7 @@
   "Dynamically bound to current test result during execution")
 
 (defun project-file (system-name relative-path)
-  "Returns the absolute path of a file relative to the system's .asd file location.
-   SYSTEM-NAME: The name of the ASDF system (string or symbol)
-   RELATIVE-PATH: The relative path from the system's root directory"
-  (let* ((system (asdf:find-system system-name))
-         (system-source-directory (asdf:system-source-directory system)))
-    (when (null system-source-directory)
-      (error "Cannot find source directory for system ~A" system-name))
-    (namestring (merge-pathnames relative-path system-source-directory))))
+  (error "fixme"))
 
 (defclass test-node ()
   ((children :initform map:+empty+
@@ -73,7 +66,7 @@ Ensures tests are re-registered in their suites when loaded from fasl files."
 (defun ensure-test-suite (package-name)
   "Ensure package hierarchy exists, creating nodes as needed.
 Returns the leaf node for package-name."
-  (let ((components (pkg:parse package-name)))
+  (let ((components (seq:realize (pkg:parse package-name))))
     (loop with current-node = *test-root*
           for name in components
           for existing = (map:get (children-of current-node) name)
@@ -227,11 +220,12 @@ Returns the leaf node for package-name."
 
 (defun find-test-package (path node)
   "Find all tests defined in package and its subpackages."
-  (loop :for package := (map:get (children-of node) (car path))
-        :unless (and package (cdr path))
-          :return package
-        :do (setf node package
-                  path (cdr path))))
+  (let ((path (seq:realize path)))
+    (loop :for package := (map:get (children-of node) (car path))
+          :unless (and package (cdr path))
+            :return package
+          :do (setf node package
+                    path (cdr path)))))
 
 (defun format-package-header (package-name)
   "Format a package header with standard indentation"
@@ -331,7 +325,7 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
                (first-line (skip-message (test-condition result))))))))
 
 (defun log-test-result (result stream)
-  "Log comprehensive test result information to stream"
+  "Log test result information to stream"
   (format stream "~&=== TEST: ~A ===~%" (test-name result))
   (format stream "Status: ~A~%" (test-status result))
   (format stream "Time: ~,3F seconds~%" (elapsed-time result))
