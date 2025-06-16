@@ -1,4 +1,4 @@
-(defpackage #:epsilon.sys.sync.semaphore
+(defpackage #:epsilon.sys.semaphore
   (:use
    #:cl)
   (:export
@@ -10,7 +10,7 @@
 
 ;;; Semaphores
 
-(in-package #:epsilon.sys.sync.semaphore)
+(in-package #:epsilon.sys.semaphore)
 
 (deftype semaphore ()
   'sb-thread:semaphore)

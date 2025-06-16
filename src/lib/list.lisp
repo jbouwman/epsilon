@@ -24,7 +24,6 @@
    #:make-circular-list
    #:circular-list-subseq
    #:malformed-plist
-   #:map-product
    #:mappend
    #:nconcf
    #:nreversef
@@ -385,27 +384,6 @@ every element of LIST2 matches some element of LIST1. Otherwise returns false."
          (dolist (elt keylist2 t)
            (or (member elt keylist1 :test test)
                (return nil))))))
-
-(defun map-product (function list &rest more-lists)
-  "Returns a list containing the results of calling FUNCTION with one argument
-from LIST, and one from each of MORE-LISTS for each combination of arguments.
-In other words, returns the product of LIST and MORE-LISTS using FUNCTION.
-
-Example:
-
- (map-product 'list '(1 2) '(3 4) '(5 6))
-  => ((1 3 5) (1 3 6) (1 4 5) (1 4 6)
-      (2 3 5) (2 3 6) (2 4 5) (2 4 6))
-"
-  (labels ((%map-product (f lists)
-             (let ((more (cdr lists))
-                   (one (car lists)))
-               (if (not more)
-                   (mapcar f one)
-                   (mappend (lambda (x)
-                              (%map-product (curry f x) more))
-                            one)))))
-    (%map-product (ensure-function function) (cons list more-lists))))
 
 (defun flatten (tree)
   "Traverses the tree in order, collecting non-null leaves into a list."

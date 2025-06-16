@@ -1,14 +1,10 @@
-(defpackage #:epsilon.net
+(defpackage #:epsilon.net.core
   (:use #:cl)
   (:shadow #:listen #:close)
   (:export
    ;; Core types & conditions
    #:socket #:listener #:connection
    #:network-error #:connection-error #:timeout-error
-   
-   ;; Main
-   #:connect #:listen #:accept #:close
-   #:read-bytes #:write-bytes #:flush
    
    ;; High-level operations
    #:with-connection #:with-listener #:with-timeout
@@ -36,7 +32,7 @@
    ;; Socket operations
    #:socket-listen #:socket-connect #:socket-accept #:socket-close))
 
-(in-package :epsilon.net)
+(in-package :epsilon.net.core)
 
 ;;; Conditions
 
@@ -193,46 +189,6 @@
   (if value-provided
       (set-socket-option socket option-name value)
       (get-socket-option socket option-name)))
-
-;;; Legacy API Implementation
-;;; These functions provide backward compatibility with the old API
-
-(defun connect (address port &key timeout (type :tcp))
-  "Connect to remote address. Returns connection object."
-  (socket-connect address port :timeout timeout :type type))
-
-(defun listen (address port &key backlog (reuse t) (type :tcp))
-  "Create listening socket. Returns listener object."
-  (socket-listen address port :reuse-address reuse :backlog backlog :type type))
-
-(defun accept (listener &key timeout)
-  "Accept connection from listener. Returns connection object."
-  (declare (ignore timeout)) ;; we don't support timeout in accept yet
-  (socket-accept listener))
-
-(defun close (socket)
-  "Close socket, listener, or connection."
-  (socket-close socket))
-
-(defun read-bytes (connection count &key timeout)
-  "Read exactly count bytes or signal error."
-  (declare (ignore timeout)) ;; reading with timeouts is handled at the stream level
-  (let ((buffer (make-array count :element-type '(unsigned-byte 8)))
-        (stream (socket-stream connection)))
-    (read-sequence buffer stream)
-    buffer))
-
-(defun write-bytes (connection bytes &key start end timeout)
-  "Write bytes to connection."
-  (declare (ignore timeout)) ;; writing with timeouts is handled at the stream level
-  (let ((stream (socket-stream connection)))
-    (write-sequence bytes stream :start (or start 0) :end (or end (length bytes)))
-    (length bytes)))
-
-(defun flush (connection &key timeout)
-  "Ensure all buffered data is written."
-  (declare (ignore timeout))
-  (force-output (socket-stream connection)))
 
 ;;; Context Managers
 

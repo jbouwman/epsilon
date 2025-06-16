@@ -1,7 +1,7 @@
-(defpackage #:epsilon.sys.sync.variable
+(defpackage #:epsilon.sys.variable
   (:use
    #:cl
-   #:epsilon.sys.sync.lock)
+   #:epsilon.sys.lock)
   (:export
    #:condition-broadcast
    #:condition-notify
@@ -10,7 +10,7 @@
    #:condition-wait
    #:make-condition-variable))
 
-(in-package #:epsilon.sys.sync.variable)
+(in-package #:epsilon.sys.variable)
 
 ;;; Resource contention: condition variables
 

@@ -1,4 +1,4 @@
-(defpackage #:epsilon.sys.sync.error
+(defpackage #:epsilon.sys.error
   (:use
    #:cl)
   (:export
@@ -6,7 +6,7 @@
    #:thread-exit-condition
    #:thread-error))
 
-(in-package #:epsilon.sys.sync.error)
+(in-package #:epsilon.sys.error)
 
 (defun bool (thing) (if thing t nil))
 

@@ -3,7 +3,7 @@
    :cl
    :epsilon.lib.type)
   (:local-nicknames
-   (:ffi :epsilon.sys.ffi)
+   (:seq :epsilon.lib.sequence)
    (:str :epsilon.lib.string)
    (:uri :epsilon.lib.uri))
   (:shadow
@@ -142,7 +142,7 @@
   (subseq path-string 0 (position #\. path-string :from-end t)))
 
 (defun add-extension (path-string extension)
-  (str:join #\. (list path-string extension)))
+  (str:join #\. (seq:seq (list path-string extension))))
 
 (defun replace-extension (path-string extension)
   (add-extension (delete-extension path-string) extension))
@@ -152,13 +152,14 @@
 
 (defun make-dirs (uri)
   (loop :with path := ""
-        :for component :in (remove-if #'str:empty-p
-                                      (str:split #\/
-                                                 (uri:path uri)))
+        :for component :in (seq:realize
+                            (seq:filter (complement #'str:empty-p)
+                                        (str:split #\/
+                                                   (uri:path uri))))
         :do (setf path (format nil "~a/~a" path component))
             (unless (probe-file path)
               (sb-unix:unix-mkdir path #o775))))
-
+  
 (defun list-files (uri extension)
   (let (files)
     (walk-uri uri
@@ -206,156 +207,6 @@
         (t
          (delete-file file))))
 
-(defvar *system*
-  #+unix :unix
-  #+windows :windows
-  #-(or unix windows) :unknown)
-
-(defvar *windows-attributes*
-  '(:read-only :hidden :system-file NIL :directory :archived :device :normal :temporary :sparse :link :compressed :offline :not-indexed :encrypted :integrity :virtual :no-scrub :recall))
-
-(defvar *unix-attributes*
-  '(:other-execute :other-write :other-read :group-execute :group-write :group-read :owner-execute :owner-write :owner-read :sticky :set-group :set-user :fifo :device :directory :normal :link :socket))
-
-(defun decode-bitfield (int bits)
-  (loop for i from 0
-        for bit in bits
-        when bit collect bit
-          when bit collect (logbitp i int)))
-
-(defun encode-bitfield (field bits)
-  (loop with int = 0
-        for i from 0
-        for bit in bits
-        do (when (getf field bit)
-             (setf (ldb (cl:byte 1 i) int) 1))
-        finally (return int)))
-
-(defun decode-attributes (attributes &optional (system *system*))
-  (case system
-    (:unix
-     (decode-bitfield attributes *unix-attributes*))
-    (:windows
-     (decode-bitfield attributes *windows-attributes*))))
-
-(defun encode-attributes (attributes &optional (system *system*))
-  (case system
-    (:unix
-     (encode-bitfield attributes *unix-attributes*))
-    (:windows
-     (encode-bitfield attributes *windows-attributes*))
-    (T
-     0)))
-
-;; Linux 5.7.7 AMD64
-#+linux
-(ffi:defcstruct (stat :size 144)
-  (mode    :uint32 :offset 24)
-  (uid     :uint32 :offset 28)
-  (gid     :uint32 :offset 32)
-  (size    :uint64 :offset 48)
-  (atime   :uint64 :offset 72)
-  (mtime   :uint64 :offset 88))
-
-;; OS X 10.14
-#+darwin
-(ffi:defcstruct (stat :size 144)
-  (mode    :uint16 :offset  4)
-  (uid     :uint32 :offset 16)
-  (gid     :uint32 :offset 20)
-  (atime   :uint64 :offset 32)
-  (mtime   :uint64 :offset 48)
-  (size    :uint64 :offset 96))
-
-(ffi:defcfun (cgstat "stat") :int
-  (path :string)
-  (buffer :pointer))
-
-(ffi:defcfun (cxstat "__xstat") :int
-  (path :string)
-  (buffer :pointer))
-
-(ffi:defcfun (cutimes "utimes") :int
-  (path :string)
-  (times :pointer))
-
-(ffi:defcfun (cchown "chown") :int
-  (path :string)
-  (owner :uint32)
-  (group :uint32))
-
-(ffi:defcfun (cchmod "chmod") :int
-  (path :string)
-  (mode :uint32))
-
-(defun unix->universal (unix)
-  (+ unix (encode-universal-time 0 0 0 1 1 1970 0)))
-
-(defun universal->unix (universal)
-  (- universal (encode-universal-time 0 0 0 1 1 1970 0)))
-
-(defun cstat (path buffer)
-  (cond ((ffi:foreign-symbol-pointer "stat")
-         (cgstat path buffer))
-        ((ffi:foreign-symbol-pointer "__xstat")
-         (cxstat path buffer))
-        (T
-         1)))
-
-(defun stat (path)
-  (ffi:with-foreign-object (ptr '(:struct stat))
-    (when (= 0 (cstat path ptr))
-      (ffi:mem-ref ptr '(:struct stat)))))
-
-(defun utimes (path atime mtime)
-  (ffi:with-foreign-object (ptr :long 4)
-    (setf (ffi:mem-aref ptr :long 0) (universal->unix atime))
-    (setf (ffi:mem-aref ptr :long 2) (universal->unix mtime))
-    (unless (= 0 (cutimes path ptr))
-      (error "Utimes failed."))))
-
-(defun chown (path uid gid)
-  (cchown path uid gid))
-
-(defun chmod (path mode)
-  (cchmod path mode))
-
-(defun access-time (file)
-  (unix->universal (getf (stat file) 'atime)))
-
-(defun (setf access-time) (value file)
-  (utimes file value (modification-time file))
-  value)
-
-(defun modification-time (file)
-  (unix->universal (getf (stat file) 'mtime)))
-
-(defun (setf modification-time) (value file)
-  (utimes file (access-time file) value)
-  value)
-
-(defun group (file)
-  (getf (stat file) 'gid))
-
-(defun (setf group) (value file)
-  (chown file (owner file) value)
-  value)
-
-(defun owner (file)
-  (getf (stat file) 'uid))
-
-(defun (setf owner) (value file)
-  (chown file value (group file))
-  value)
-
-(defun attributes (file)
-  (let ((s (stat file)))
-    (when s
-      (getf s 'mode))))
-
-(defun (setf attributes) (value file)
-  (chmod file value))
-
 (defmacro with-u8-in ((f in) &body body)
   `(with-open-file (,f ,in :element-type 'u8)
      ,@body))
@@ -383,3 +234,10 @@
   (with-u8-in (a a)
     (with-u8-in (b b)
       (stream= a b))))
+
+(defun modification-time (path)
+  "Return the modification time of the file at PATH as a universal time."
+  (handler-case
+      (file-info-mtime (sb-posix:stat path))
+    (sb-posix:syscall-error ()
+      nil)))

@@ -3,6 +3,7 @@
    :cl
    :epsilon.lib.syntax)
   (:local-nicknames
+   (:net :epsilon.net.core)
    (:seq :epsilon.lib.sequence)
    (:str :epsilon.lib.string)
    (:time :epsilon.lib.time)
@@ -789,7 +790,9 @@
                          ssl-cert-file
                          ssl-key-file)
   "Create a new HTTP server."
-  (let ((ssl-context (when (and ssl-cert-file ssl-key-file)
+  (let ((ssl-context nil
+                     #+notyet
+                     (when (and ssl-cert-file ssl-key-file)
                        (let ((ctx (epsilon.net.tls:make-context)))
                          (epsilon.net.tls:use-certificate-chain-file ctx ssl-cert-file)
                          (epsilon.net.tls:use-private-key-file ctx ssl-key-file)
@@ -814,22 +817,23 @@
 (defun handle-client-connection (connection server)
   "Handle a client connection with the server's handler."
   (handler-case
-      (let* ((stream (if (server-ssl-context server)
-                        (epsilon.net.tls:make-ssl-server-stream
-                         (epsilon.net:socket-stream connection)
-                         (server-ssl-context server))
-                        (epsilon.net:socket-stream connection)))
+      (let* ((stream; (if (server-ssl-context server)
+                     ;   (epsilon.net.tls:make-ssl-server-stream
+                      ;   (net:socket-stream connection)
+                       ;  (server-ssl-context server))
+               (net:socket-stream connection))
+             ;)
              (request (parse-request stream
                                    :max-header-size (server-max-header-bytes server)))
              (response (make-response stream)))
         
         ;; Set connection timeout
-        (setf (epsilon.net:socket-option connection :receive-timeout)
+        (setf (net:socket-option connection :receive-timeout)
               (server-read-timeout server))
         
         ;; Set client address in request
         (setf (request-remote-addr request)
-              (epsilon.net:socket-peer-address connection))
+              (net:socket-peer-address connection))
         
         ;; Process request with middleware chain
         (let ((handler-func 
@@ -849,14 +853,14 @@
   "Accept and handle incoming connections."
   (loop while (server-running-p server)
         do (handler-case
-               (let ((connection (epsilon.net:socket-accept 
+               (let ((connection (net:socket-accept 
                                   (server-listener server))))
                  ;; Handle in a new thread
-                 (epsilon.sys.sync.thread:make-thread
+                 (epsilon.sys.thread:make-thread
                   (lambda () 
                     (unwind-protect
                          (handle-client-connection connection server)
-                      (epsilon.net:socket-close connection)))
+                      (net:socket-close connection)))
                   :name "http-server-client-thread"))
              (error (e)
                (format *error-output* "Error accepting connection: ~A~%" e)))))
@@ -868,7 +872,7 @@
   
   ;; Create listener socket
   (setf (server-listener server)
-        (epsilon.net:socket-listen 
+        (net:socket-listen 
          (server-address server)
          (server-port server)
          :reuse-address t
@@ -879,7 +883,7 @@
   
   ;; Start accept thread
   (setf (server-threads server)
-        (list (epsilon.sys.sync.thread:make-thread
+        (list (epsilon.sys.thread:make-thread
                (lambda () (accept-connections server))
                :name "http-server-accept-thread")))
   
@@ -895,11 +899,11 @@
   (setf (server-running server) nil)
   
   ;; Close listener socket
-  (epsilon.net:socket-close (server-listener server))
+  (net:socket-close (server-listener server))
   
   ;; Wait for threads to finish
   (dolist (thread (server-threads server))
-    (epsilon.sys.sync.thread:join-thread thread))
+    (epsilon.sys.thread:join-thread thread))
   
   (setf (server-threads server) nil)
   (setf (server-listener server) nil)

@@ -1,11 +1,11 @@
-(defpackage #:epsilon.sys.sync.timeout
+(defpackage #:epsilon.sys.timeout
   (:use
    #:cl)
   (:export
    #:timeout
    #:with-timeout))
 
-(in-package #:epsilon.sys.sync.timeout)
+(in-package #:epsilon.sys.timeout)
 
 (deftype timeout ()
   'sb-ext:timeout)

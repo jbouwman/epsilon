@@ -12,10 +12,10 @@
 (in-package :epsilon.lib.codec-tests)
 
 (defun encode-file (codec-name in out)
-  (fs:stream-files (curry #'encode (codec::codec codec-name)) in out))
+  (fs:stream-files (partial #'encode (codec::codec codec-name)) in out))
 
 (defun decode-file (codec-name in out)
-  (fs:stream-files (curry #'decode (codec::codec codec-name)) in out))
+  (fs:stream-files (partial #'decode (codec::codec codec-name)) in out))
 
 (defun decompress (codec compressed original)
   (fs:with-temp-file (decompressed)        ; FIME to URL

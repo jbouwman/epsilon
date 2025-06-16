@@ -1,25 +1,28 @@
 (defpackage #:epsilon.tool.catalog
   (:use
-   #:cl)
+   #:cl
+   #:epsilon.lib.type)
   (:local-nicknames
    (#:hex #:epsilon.lib.hex)
    (#:re #:epsilon.lib.regex)
+   (#:seq #:epsilon.lib.sequence)
    (#:digest #:epsilon.lib.digest)
-   (#:type #:epsilon.lib.type)))
+   (#:type #:epsilon.lib.type)
+   (#:str #:epsilon.lib.string)))
 
 (in-package #:epsilon.tool.catalog)
 
 (defun sha-256 (->u8)
-  (let ((digest (lib.digest.sha-2::%make-sha256-digest)))
-    (update-digest digest ->u8)
-    (produce-digest digest)))
+  (let ((digest (digest:make-digest :sha-256)))
+    (digest:digest-vector digest ->u8)
+    (digest:get-digest digest)))
 
 (defclass type-catalog ()
   ((serial :initform (sha-256 (->u8 0)))
    (code :initform (make-array 0 :adjustable t))
    (name :initform (make-hash-table :test #'equal))))
 
-(defmethod print-object ((object catalog) stream)
+(defmethod print-object ((object type-catalog) stream)
   (print-unreadable-object (object stream :type t :identity t)
     (with-slots (serial code) object
       (format stream "serial ~A types ~A"
@@ -64,7 +67,7 @@
 
 (defun parse-excise (string pattern)
   (multiple-value-bind (start-excise end-excise start-group end-group)
-      (lib.regex:scan pattern string)
+      (re:scan pattern string)
     (if start-excise
         (values (excise-range string start-excise end-excise)
                 (subseq string
@@ -73,7 +76,10 @@
         (values string nil))))
 
 (defun parse-reference (ref)
-  (let ((segments (re:split ", *" ref)))
+  (let ((segments (seq:realize
+                   (seq:map (lambda (s)
+                              (string-trim '(#\Space) s))
+                            (str:split #\, ref)))))
     (if (< 1 (length segments))
         (list :type (mapcar #'parse-reference segments)) ; todo structured references later
         (multiple-value-bind (name code)

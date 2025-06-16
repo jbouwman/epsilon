@@ -253,7 +253,7 @@
 (defun decode-unix-timestamp (timestamp-list)
   "Convert a MessagePack encoded timestamp (as a list) to a timestamp object."
   (assert (eq (first timestamp-list) :timestamp))
-  (make-timestamp (second timestamp-list) 
+  (make-timestamp (cl:second timestamp-list) 
                  (if (>= (length timestamp-list) 3)
                      (third timestamp-list)
                      0)))

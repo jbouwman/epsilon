@@ -89,6 +89,17 @@
         while (not (empty-p current))
         collect (first current)))
 
+(defmethod print-object ((seq cons) stream)
+  "Print a lazy sequence in a readable format, respecting *print-length*"
+  (if *print-readably*
+      (call-next-method)
+      (let* ((max-elements (or *print-length* 10))
+             (elements (take max-elements seq))
+             (rest-seq (drop max-elements seq)))
+        (format stream "#<SEQ ~{~S~^ ~}~:[~; ...~]>"
+                elements
+                (not (empty-p rest-seq))))))
+
 (defun take (n seq)
   (loop for i from 1 to n
         for current = seq then (rest current)
@@ -137,3 +148,23 @@ accept as many arguments as there are sequences."
                    (t
                     (next-match (rest s))))))
     (next-match seq)))
+
+(defun reduce (function seq &key (initial-value nil initial-value-p))
+  "Reduces a sequence using function. If initial-value is provided, it is used
+as the first value, otherwise the first element of the sequence is used."
+  (cond ((empty-p seq)
+         (if initial-value-p
+             initial-value
+             (funcall function)))
+        (initial-value-p
+         (loop with acc = initial-value
+               for current = seq then (rest current)
+               while (not (empty-p current))
+               do (setf acc (funcall function acc (first current)))
+               finally (return acc)))
+        (t
+         (loop with acc = (first seq)
+               for current = (rest seq) then (rest current)
+               while (not (empty-p current))
+               do (setf acc (funcall function acc (first current)))
+               finally (return acc)))))
