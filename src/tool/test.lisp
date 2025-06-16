@@ -6,7 +6,9 @@
    (#:seq #:epsilon.lib.sequence)
    (#:str #:epsilon.lib.string)
    (#:pkg #:epsilon.sys.pkg)
-   (#:re #:epsilon.lib.regex))
+   (#:build #:epsilon.tool.build)
+   (#:re #:epsilon.lib.regex)
+   (#:uri #:epsilon.lib.uri))
   (:export #:deftest
            #:is
            #:is-p
@@ -24,8 +26,12 @@
 (defvar *test-result* nil
   "Dynamically bound to current test result during execution")
 
-(defun project-file (system-name relative-path)
-  (error "fixme"))
+;; fixme clean up error handling
+
+(defun project-file (project-name relative-path)
+  (uri:path (uri:merge (or (map:get build::*known-projects* project-name)
+                           (error "unknown project"))
+                       relative-path)))
 
 (defclass test-node ()
   ((children :initform map:+empty+

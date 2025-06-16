@@ -7,7 +7,9 @@
    :epsilon.lib.symbol
    :epsilon.lib.digest.common
    :epsilon.lib.digest.generic
-   :epsilon.lib.digest.reader))
+   :epsilon.lib.digest.reader)
+  (:export
+   :make-sha256-digest))
 
 ;;; implementation of SHA-2/256
 
@@ -115,7 +117,7 @@
 ;;; mid-level
 
 (defstruct (sha256
-             (:constructor %make-sha256-digest nil)
+             (:constructor make-sha256-digest nil)
              (:copier nil)
              (:include mdx))
   (regs (initial-sha256-regs) :type sha256-regs :read-only t)
@@ -124,7 +126,7 @@
 
 (defstruct (sha224
              (:include sha256)
-             (:constructor %make-sha224-digest (&aux (regs (initial-sha224-regs))))
+             (:constructor make-sha224-digest (&aux (regs (initial-sha224-regs))))
              (:copier nil))
   ;; No slots.
   )
@@ -148,8 +150,8 @@
   (let ((copy (if copy
                   copy
                   (etypecase state
-                    (sha224 (%make-sha224-digest))
-                    (sha256 (%make-sha256-digest))))))
+                    (sha224 (make-sha224-digest))
+                    (sha256 (make-sha256-digest))))))
     (declare (type sha256 copy))
     (replace (sha256-regs copy) (sha256-regs state))
     (replace (sha256-buffer copy) (sha256-buffer state))

@@ -9,7 +9,10 @@
 
 ;; Test with socket.c content
 (deftest test-socket-parser ()
-  (let* ((socket-content (with-open-file (stream "socket.c" :direction :input)
+  (let* ((socket-content (with-open-file (stream
+                                          (project-file "epsilon"
+                                                        "tests/lib/socket.c")
+                                                 :direction :input)
                            (let ((content (make-string (file-length stream))))
                              (read-sequence content stream)
                              content)))

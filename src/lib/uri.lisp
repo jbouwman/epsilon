@@ -207,8 +207,6 @@
               :port (port uri)
               :path result-path)))
 
-(merge (uri "http://foo.edu/classes/spring") "poetry")
-
 (defun to-string (uri)
   "Convert a URI structure to a string"
   (with-output-to-string (s)

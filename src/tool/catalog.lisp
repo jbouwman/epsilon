@@ -7,7 +7,6 @@
    (#:re #:epsilon.lib.regex)
    (#:seq #:epsilon.lib.sequence)
    (#:digest #:epsilon.lib.digest)
-   (#:type #:epsilon.lib.type)
    (#:str #:epsilon.lib.string)))
 
 (in-package #:epsilon.tool.catalog)
