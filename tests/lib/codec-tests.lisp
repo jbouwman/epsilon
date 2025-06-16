@@ -23,7 +23,7 @@
     (is (fs:file= original decompressed))))
 
 (defun get-test-relative-path (name)
-  (project-file :epsilon/tests
+  (project-file "epsilon"
                 (format nil "tests/lib/~a" name)))
 
 (defun test-decompress (codec compressed original)
@@ -37,7 +37,7 @@
     (decompress codec compressed original)))
 
 (defun test-roundtrip (codec original)
-  (let ((path (project-file :epsilon/tests
+  (let ((path (project-file "epsilon"
                             (format nil "tests/lib/~a" original))))
     (roundtrip codec path)))
 

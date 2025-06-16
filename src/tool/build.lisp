@@ -51,9 +51,9 @@
 ;;;;
 ;;;;  3. Output File Location Control
 ;;;;
-;;;;  For controlling output file locations under $REPO/target/fasl/$SRCDIR/, modify %make-build-step in build.lisp:106-115:
+;;;;  For controlling output file locations under $REPO/target/fasl/$SRCDIR/, modify %make-build-node in build.lisp:106-115:
 ;;;;
-;;;;  (defun %make-build-step (project source-info)
+;;;;  (defun %make-build-node (project source-info)
 ;;;;    "Create target information for a source file"
 ;;;;    (let* ((project-path (path project))
 ;;;;           (source-rel-path (subseq (path source-info) (1+ (length project-path))))
@@ -63,7 +63,7 @@
 ;;;;                        (uri:merge (uri project) "target/fasl/")
 ;;;;                        (uri:merge source-dir
 ;;;;                                  (fs:replace-extension source-name "fasl")))))
-;;;;      (make-instance 'build-step
+;;;;      (make-instance 'build-node
 ;;;;                     :source-info source-info
 ;;;;                     :target-info (%make-target-info target-uri))))
 ;;;;
@@ -106,9 +106,7 @@
    (#:uri #:epsilon.lib.uri)
    (#:yaml #:epsilon.lib.yaml))
   (:export #:build
-           #:status
-           #:build-for-test
-           #:list-tests))
+           #:*loaded-projects*))
 
 (in-package :epsilon.tool.build)
 
@@ -141,20 +139,40 @@
 (defclass target-info (locatable hashable)
   ())
 
-(defclass build-step ()
-  ((source-info :initarg :source-info :accessor source-info)
-   (target-info :initarg :target-info :accessor target-info)))
+(defclass build-node ()
+  ((project :initarg :project :accessor project)
+   (source-info :initarg :source-info :accessor source-info)))
 
-(defmethod print-object ((obj build-step) stream)
+(defmethod build-order ((node build-node))
+  (let ((root (list node)))
+    (dolist (r (source-info-requires (source-info node)))
+      (let ((p (find-provider (project node) r)))
+        (when p
+          (setf root (append (build-order p) root)))))
+    (remove-duplicates root
+                       :key (lambda (node)
+                              (source-info node)))))
+
+(defun provided-package (node)
+  (source-info-defines (source-info node)))
+
+(defun find-provider (project package)
+  (seq:first
+   (seq:filter (lambda (node)
+                 (string= (provided-package node)
+                          package))
+               (build-order project))))
+
+(defmethod print-object ((obj build-node) stream)
   (print-unreadable-object (obj stream :type t)
     (format stream "~a (~a)"
             (path (source-info obj))
-            (build-step-status obj))))
+            (build-node-status obj))))
 
-(defmethod source-uri ((self build-step))
+(defmethod source-uri ((self build-node))
   (uri (source-info self)))
 
-(defmethod target-uri ((self build-step))
+(defmethod target-uri ((self build-node))
   (uri (target-info self)))
 
 (defclass project (locatable)
@@ -174,6 +192,9 @@
                      :defines (normalize-package defines)
                      :requires (mapcar #'normalize-package requires)))))
 
+(defvar *known-projects*
+  map:+empty+)
+
 (defun load-project (uri)
   "Parse project definition in directory URI"
   (let* ((path (uri:path (uri:merge uri "package.yaml")))
@@ -185,45 +206,50 @@
                   (sort-sources (mapcan (lambda (path)
                                           (find-source-info (uri:merge uri path)))
                                         (map:get defs "tests"))))))
-    (make-instance 'project
-                   :uri uri
-                   :name (map:get defs "name")
-                   :version (map:get defs "version")
-                   :author (map:get defs "author")
-                   :sources sources
-                   :tests tests)))
+    (let ((project (make-instance 'project
+                                  :uri uri
+                                  :name (map:get defs "name")
+                                  :version (map:get defs "version")
+                                  :author (map:get defs "author")
+                                  :sources sources
+                                  :tests tests)))
+      (setf *known-projects* (map:assoc *known-projects* 
+                                        (map:get defs "name")
+                                        uri))
+      project)))
 
 (defun find-source-info (uri)
   (remove-if #'null
              (mapcar #'make-source-info
                      (fs:list-files uri ".lisp"))))
 
-(defun %make-build-step (project source-info)
+(defun target-info (build-node)
   "Create target information for a source file"
-  (let* ((project-path (path project))
-         (source-ext (subseq (path source-info) (1+ (length project-path))))
+  (let* ((project (project build-node))
+         (project-path (path project))
+         (source-ext (subseq (path (source-info build-node))
+                             (1+ (length project-path))))
          (target-uri (uri:merge
                       (uri:merge (uri project) "target/lisp")
                       (fs:replace-extension source-ext "fasl"))))
-    (make-instance 'build-step
-                   :source-info source-info
-                   :target-info (%make-target-info target-uri))))
+    (make-instance 'target-info
+                   :uri target-uri
+                   :hash (when (fs:exists-p target-uri)
+                           (calculate-hash target-uri)))))
 
-;;;; TODO something like the following should work
-;;;;
-;;;; (seq:map (lambda (source)
-;;;;            (%make-build-step project source))
-;;;;          (project-sources project))
-;;;;
-;;;; Better yet, build the 'steps' at load time
+(defun %make-build-node (project source-info)
+  "Create target information for a source file"
+  (make-instance 'build-node
+                 :project project
+                 :source-info source-info))
 
-(defun build-order (project)
-  (seq:map (fn:partial #'%make-build-step project)
-           (seq:seq (project-sources project))))
+(defgeneric build-order (node)
+  (:documentation "Produce a sequence of steps necessary to build a specific node in the project source tree."))
 
-(defun test-order (project)
-  (seq:map (fn:partial #'%make-build-step project)
-           (seq:seq (project-tests project))))
+(defmethod build-order ((project project))
+  (seq:map (fn:partial #'%make-build-node project)
+           (seq:seq (append (project-sources project)
+                            (project-tests project)))))
 
 (defun read-first-form (uri)
   (with-open-file (stream (uri::path uri))
@@ -293,13 +319,7 @@
                (nreverse sorted))
        cycles))))
 
-(defun %make-target-info (uri)
-  (make-instance 'target-info
-                 :uri uri
-                 :hash (when (fs:exists-p uri)
-                        (calculate-hash uri))))
-
-(defun build-step-status (step)
+(defun build-node-status (step)
   (cond ((not (fs:exists-p (target-uri step)))
          :target-missing)
         ((< (fs:modification-time (uri:path (target-uri step)))
@@ -318,7 +338,6 @@
          (compile-file (uri:path source-uri)
                        :output-file (uri:path target-uri)))
       (error ()
-        ;; todo -- capture compilation error, and probably halt
         ))))
 
 (defun load-source (step)
@@ -328,30 +347,28 @@
     (handler-case
         (load (uri:path target-uri))
       (error ()
-        ;; todo -- capture compilation error, and probably halt
         ))))
 
-(defun build-steps (steps &key force)
+(defun build-nodes (steps &key force)
   "Build the given steps, optionally forcing compilation of all steps"
   (dolist (step (seq:realize steps))
     (if force
         (compile-source step)
-        (case (build-step-status step)
+        (case (build-node-status step)
           ((:target-missing
             :source-newer)
            (compile-source step))
           (t
            (load-source step))))))
 
-(defun build (&key dir force (test t))
+(defun build (&key dir force)
   "Build project sources and optionally tests.
   
   DIR - Directory containing project (defaults to current directory)
-  FORCE - Force compilation of all build steps regardless of timestamps
-  TEST - Build test sources in addition to main sources (default t)"
-  (let* ((project-dir (cond (dir (uri:file-uri dir))
-                           (t (uri:file-uri (namestring *default-pathname-defaults*)))))
+  FORCE - Force compilation of all build steps regardless of timestamps"
+  (let* ((project-dir (cond (dir
+                             (uri:file-uri dir))
+                            (t
+                             (uri:file-uri (namestring *default-pathname-defaults*)))))
          (project (load-project project-dir)))
-    (build-steps (build-order project) :force force)
-    (when test
-      (build-steps (test-order project) :force force))))
+    (build-nodes (build-order project) :force force)))

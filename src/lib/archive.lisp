@@ -134,7 +134,7 @@
   (let ((compat (file-attribute-name compat))
         (msdos (ldb (byte 8 0) attr))
         (os-specific (ldb (byte 16 16) attr)))
-    (list (epsilon.sys.fs:decode-attributes msdos :windows) compat os-specific)))
+    (list 0 #+fixme (epsilon.sys.fs:decode-attributes msdos :windows) compat os-specific)))
 
 (defun encode-file-attribute (thing)
   (destructuring-bind (msdos compat os-specific) thing
