@@ -9,7 +9,8 @@ def build [] {
 }
 
 def test [] {
-    (sbcl --noinform
+    try {
+       (sbcl --noinform
           --non-interactive
           --eval "(load \"boot.lisp\")"
           --eval "(boot *boot-order*)"
@@ -19,6 +20,9 @@ def test [] {
                           (epsilon.tool.test:run-tests))
                         0
                         1))")
+    } catch {
+      exit 1
+    }
 }
 
 def coverage [] {
