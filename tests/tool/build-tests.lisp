@@ -17,7 +17,4 @@
 (deftest build-order ()
   (is (build::build-order (load-project))))
 
-(deftest test-order ()
-  (is (build::test-order (load-project))))
-
 

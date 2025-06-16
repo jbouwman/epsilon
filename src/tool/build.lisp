@@ -361,15 +361,14 @@
           (t
            (load-source step))))))
 
-(defun build (&key dir force (test t))
+(defun build (&key dir force)
   "Build project sources and optionally tests.
   
   DIR - Directory containing project (defaults to current directory)
-  FORCE - Force compilation of all build steps regardless of timestamps
-  TEST - Build test sources in addition to main sources (default t)"
-  (let* ((project-dir (cond (dir (uri:file-uri dir))
-                           (t (uri:file-uri (namestring *default-pathname-defaults*)))))
+  FORCE - Force compilation of all build steps regardless of timestamps"
+  (let* ((project-dir (cond (dir
+                             (uri:file-uri dir))
+                            (t
+                             (uri:file-uri (namestring *default-pathname-defaults*)))))
          (project (load-project project-dir)))
-    (build-nodes (build-order project) :force force)
-    (when test
-      (build-nodes (test-order project) :force force))))
+    (build-nodes (build-order project) :force force)))
