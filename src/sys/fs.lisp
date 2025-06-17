@@ -20,7 +20,9 @@
    :temp-dir
    :with-temp-file
    :replace-extension
-   
+
+   :read-file
+ 
    :create-symbolic-link
    :delete-directory
    :delete-file*
@@ -149,6 +151,12 @@
 
 (defun exists-p (uri)
   (not (null (probe-file (uri:path uri)))))
+
+(defun read-file (filename)
+  (with-open-file (stream filename :direction :input)
+    (let ((contents (make-string (file-length stream))))
+      (read-sequence contents stream)
+      contents)))
 
 (defun make-dirs (uri)
   (loop :with path := ""

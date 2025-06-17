@@ -1,3 +1,36 @@
+;;;;  TODO Major Simplification Opportunities
+;;;;
+;;;;  1. Generic Interface Over-Engineering
+;;;;  The extensive generic function protocol (encoder, decoder, process, etc.) creates
+;;;;  complexity that could be simplified with direct function dispatch or method combination.
+;;;;
+;;;;  2. Checksum Integration Coupling
+;;;;  Direct dependencies on multiple checksum packages (adler-32, crc-32) couples codec
+;;;;  to specific implementations. Consider a pluggable checksum interface.
+;;;;
+;;;;  3. Bitstream Abstraction Complexity
+;;;;  The bitstream operations (write-bits, flush) may be over-abstracted for the
+;;;;  actual use cases in the system.
+;;;;
+;;;;  Reusable Components for Epsilon System
+;;;;
+;;;;  Generic Codec Framework
+;;;;  The encoder/decoder generic protocol could be extracted as epsilon.lib.codec-protocol
+;;;;  for use with other serialization formats (JSON, YAML, MessagePack).
+;;;;
+;;;;  Bitstream Processing
+;;;;  The bitstream operations could become epsilon.lib.bitstream for use in
+;;;;  other binary processing contexts throughout the system.
+;;;;
+;;;;  Compression Interface
+;;;;  The compression generics (start-data-format, compress-octet) could be separated into
+;;;;  epsilon.lib.compression-protocol for use with archive formats.
+;;;;
+;;;;  Stream Integration
+;;;;  Better integration with epsilon.lib.stream could eliminate custom stream handling
+;;;;  and leverage the existing gray stream infrastructure.
+;;;;
+
 (defpackage :epsilon.lib.codec
   (:use
    :cl

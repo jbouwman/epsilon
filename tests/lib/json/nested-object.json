@@ -1,0 +1,13 @@
+{
+  "user": {
+    "name": "Alice",
+    "details": {
+      "age": 25,
+      "hobbies": ["reading", "coding"]
+    }
+  },
+  "settings": {
+    "theme": "dark",
+    "notifications": false
+  }
+}

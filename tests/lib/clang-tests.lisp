@@ -1,21 +1,17 @@
-(defpackage :epsilon.lib.c-parser.test
+(defpackage :epsilon.lib.clang.test
   (:use :cl
         :epsilon.tool.test)
   (:local-nicknames 
-   (:parser :epsilon.lib.c-parser)
+   (:fs :epsilon.sys.fs)
+   (:parser :epsilon.lib.clang)
    (:map :epsilon.lib.map)))
 
-(in-package :epsilon.lib.c-parser.test)
+(in-package :epsilon.lib.clang.test)
 
 ;; Test with socket.c content
 (deftest test-socket-parser ()
-  (let* ((socket-content (with-open-file (stream
-                                          (project-file "epsilon"
-                                                        "tests/lib/socket.c")
-                                                 :direction :input)
-                           (let ((content (make-string (file-length stream))))
-                             (read-sequence content stream)
-                             content)))
+  (let* ((socket-content (fs:read-file
+                          (project-file "epsilon" "tests/lib/socket.c")))
          (database (parser:parse-clang-output socket-content)))
     
     (format t "~%=== TYPEDEFS ===~%")

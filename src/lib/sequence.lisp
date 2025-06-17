@@ -23,7 +23,8 @@
    :realize
    :seq
    :drop
-   :take))
+   :take
+   :each))
 
 (in-package :epsilon.lib.sequence)
 
@@ -168,3 +169,11 @@ as the first value, otherwise the first element of the sequence is used."
                while (not (empty-p current))
                do (setf acc (funcall function acc (first current)))
                finally (return acc)))))
+
+(defun each (function seq)
+  "Applies function to each element of seq for side effects, consuming the entire sequence.
+Returns no value."
+  (loop for current = seq then (rest current)
+        while (not (empty-p current))
+        do (funcall function (first current)))
+  (values))

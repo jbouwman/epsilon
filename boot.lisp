@@ -4,14 +4,16 @@
 (require :sb-rotate-byte)
 (require :sb-posix)
 
-(defvar *boot-order*
+(defvar *epsilon-modules*
   '((:module "src"
      :components
     ((:module "lib"
       :components ((:file "symbol")
                    (:file "syntax")
                    (:file "process")
+                   (:file "charset")
                    (:file "map")
+                   (:file "lexer")
                    (:file "array")
                    (:file "condition")
                    (:file "function")
@@ -48,7 +50,7 @@
                                  (:file "crc-32")))
                    (:file "codec")
                    (:file "hex")
-                   (:file "c-parser")
+                   (:file "clang")
                    (:file "msgpack")))
      (:module "sys"
       :components ((:file "env")
@@ -75,15 +77,34 @@
                    (:file "build")
                    (:file "test")))))))
 
-(defun boot (modules &optional basedir)
+(defun load-modules (modules &optional basedir)
   (dolist (module modules)
     (destructuring-bind (&key file module components) module
       (cond (file
-             (load (compile-file (if basedir
-                                     (concatenate 'string basedir "/" file ".lisp")
-                                     file))))
+             (let ((filepath (if basedir
+                                 (concatenate 'string basedir "/" file ".lisp")
+                                 (concatenate 'string file ".lisp"))))
+               ;; Print progress dot
+               (format t ".")
+               (force-output)
+               ;; Suppress warnings and errors during compilation and loading
+               (handler-bind ((warning #'muffle-warning)
+                              (error (lambda (c) 
+                                       (declare (ignore c))
+                                       (invoke-restart 'continue))))
+                 (let ((*standard-output* (make-broadcast-stream))
+                       (*error-output* (make-broadcast-stream)))
+                   (load (compile-file filepath))))))
             (module
              (let ((basedir (if basedir
                                 (concatenate 'string basedir "/" module)
                                 module)))
-               (boot components basedir)))))))
+               (load-modules components basedir)))))))
+
+(defun load-epsilon ()
+  "Load the Epsilon library"
+  (format t "Loading Epsilon")
+  (force-output)
+  (load-modules *epsilon-modules*)
+  (format t " done.~%")
+  (force-output))

@@ -3,9 +3,11 @@
    :cl
    :epsilon.tool.test)
   (:local-nicknames
+   (#:fs #:epsilon.sys.fs)
    (#:fmt #:epsilon.tool.format)
    (#:map #:epsilon.lib.map)
    (#:seq #:epsilon.lib.sequence)
+   (#:str #:epsilon.lib.string)
    (#:test #:epsilon.tool.test)))
 
 (in-package :epsilon.tool.format.tests)
@@ -79,10 +81,7 @@
 (defun load-test-resource (filename)
   "Load the contents of a test resource file"
   (let ((path (test:project-file "epsilon" (format nil "tests/tool/format/~a" filename))))
-    (with-open-file (stream path :direction :input)
-      (let ((contents (make-string (file-length stream))))
-        (read-sequence contents stream)
-        contents))))
+    (fs:read-file path)))
 
 (defun find-string-difference (str1 str2)
   "Find the first character position where two strings differ. 
@@ -181,7 +180,7 @@
   (let ((data (make-test-data)))
     (let ((result (format-to-string data :indent-width 4 :line-limit 40)))
       ;; Check that indentation increases inside objects/arrays
-      (let ((lines (loop for line in (uiop:split-string result :separator '(#\Newline))
+      (let ((lines (loop for line in (str:split #\Newline result)
                          collect line)))
         (is (some (lambda (line) 
                     (and (> (length line) 4)

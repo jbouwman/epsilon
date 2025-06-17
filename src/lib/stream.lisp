@@ -1,3 +1,36 @@
+;;;;  TODO
+;;;;
+;;;;  1. Limited Gray Stream Implementation
+;;;;  Currently only implements binary streams, but many epsilon.lib modules work with
+;;;;  character data. Consider adding character stream support.
+;;;;
+;;;;  2. Minimal Stream Types
+;;;;  Only provides basic input/output streams. Could be extended with specialized streams
+;;;;  for common patterns (buffering, filtering, transformation).
+;;;;
+;;;;  3. Buffer Management
+;;;;  The buffer export suggests buffer management capabilities that could be more
+;;;;  fully developed for memory-efficient stream processing.
+;;;;
+;;;;  Reusable Components for Epsilon System
+;;;;
+;;;;  Character Stream Support
+;;;;  Adding character stream implementations would benefit JSON, YAML, regex, and
+;;;;  other text processing modules currently using string-based parsing.
+;;;;
+;;;;  Stream Transformation Pipeline
+;;;;  A composable stream transformation system could support codec, compression,
+;;;;  and other data processing pipelines throughout epsilon.
+;;;;
+;;;;  Memory-Mapped Stream Support
+;;;;  For large file processing in archive, codec, and other modules, memory-mapped
+;;;;  stream support could improve performance.
+;;;;
+;;;;  Stream Position Management
+;;;;  Enhanced position tracking and seeking could benefit parsers that need
+;;;;  backtracking or multi-pass processing.
+;;;;
+
 (defpackage :epsilon.lib.stream
   (:use
    :cl

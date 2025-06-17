@@ -25,7 +25,11 @@
    #:to-string
    #:url-decode
    #:url-encode
-   #:url-encode-params))
+   #:url-encode-params
+   ;; Path utilities
+   #:ensure-directory-path
+   #:ensure-file-path
+   #:path-join))
 
 (in-package #:epsilon.lib.uri)
 
@@ -190,16 +194,31 @@
         (setf result (concatenate 'string result ":" (write-to-string (port uri)))))
       result)))
 
+(defun trim-front (s c)
+  (if (char= (char s 0) c)
+      (subseq s 1)))
+
 (defun merge (uri rel-path)
-  "Merge a URI with a path string. Discards query and fragment."
-  (let ((result-path (if (char= (char rel-path 0) #\/)
+  "Merge a URI with a path string. Discards query and fragment.
+   
+   URI Path Handling Best Practice:
+   - Directories should end with '/' in paths 
+   - Files should NOT end with '/'
+   - Double slashes '//' are avoided by checking separators
+   - Empty relative paths are handled gracefully"
+  (let ((result-path (if (and (> (length rel-path) 0)
+                              (char= (char rel-path 0) #\/))
                          ;; Absolute path in rel-uri
                          rel-path
                          ;; Relative path - combine with base path
-                         (let ((base-path (or (path uri) "/")))
+                         (let* ((base-path (or (path uri) "/"))
+                                (needs-separator (and (> (length base-path) 0)
+                                                      (> (length rel-path) 0)
+                                                      (not (char= (char base-path (1- (length base-path))) #\/))
+                                                      (not (char= (char rel-path 0) #\/)))))
                            (normalize-path (concatenate 'string 
                                                         base-path
-                                                        "/"
+                                                        (if needs-separator "/" "")
                                                         rel-path))))))
     (make-uri :scheme (scheme uri)
               :userinfo (userinfo uri)
@@ -291,3 +310,52 @@
              (write-string (url-encode (string key)) s)
              (write-char #\= s)
              (write-string (url-encode (string value)) s))))
+
+;;;;  URI Path Utilities
+;;;;
+;;;;  Best Practices for URI Path Handling:
+;;;;
+;;;;  1. Directory paths SHOULD end with '/' to indicate they are directories
+;;;;  2. File paths SHOULD NOT end with '/' 
+;;;;  3. Double slashes '//' MUST be avoided in paths (except in scheme://authority)
+;;;;  4. Empty path components should be handled gracefully
+;;;;  5. Relative path merging should preserve the above conventions
+;;;;
+;;;;  Examples:
+;;;;    Directory: "src/lib/"     (ends with /)
+;;;;    File:      "src/lib/uri.lisp"  (no trailing /)
+;;;;    Merge:     merge("src/lib/", "uri.lisp") → "src/lib/uri.lisp"
+
+(defun ensure-directory-path (path)
+  "Ensure path ends with '/' to indicate it's a directory.
+   Returns the path with trailing '/' added if not present."
+  (if (and (> (length path) 0)
+           (not (char= (char path (1- (length path))) #\/)))
+      (concatenate 'string path "/")
+      path))
+
+(defun ensure-file-path (path)
+  "Ensure path does not end with '/' to indicate it's a file.
+   Returns the path with trailing '/' removed if present."
+  (if (and (> (length path) 0)
+           (char= (char path (1- (length path))) #\/))
+      (subseq path 0 (1- (length path)))
+      path))
+
+(defun path-join (&rest components)
+  "Join path components with proper separator handling.
+   Avoids double slashes and handles empty components gracefully.
+   
+   Example: (path-join \"src\" \"lib/\" \"uri.lisp\") → \"src/lib/uri.lisp\""
+  (when components
+    (let ((result (first components)))
+      (dolist (component (rest components))
+        (when (and component (> (length component) 0))
+          (let ((needs-separator (and (> (length result) 0)
+                                      (not (char= (char result (1- (length result))) #\/))
+                                      (not (char= (char component 0) #\/)))))
+            (setf result (concatenate 'string 
+                                      result
+                                      (if needs-separator "/" "")
+                                      component)))))
+      result)))

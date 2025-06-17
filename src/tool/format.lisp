@@ -294,7 +294,7 @@
     ;; Close with proper formatting
     (when contents
       (collect-token collector (make-dedent 1))
-      (collect-token collector (make-newline)))!
+      (collect-token collector (make-newline)))
     
     (collect-token collector (make-close "]"))))
 
