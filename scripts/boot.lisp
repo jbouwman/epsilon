@@ -1,6 +1,5 @@
 (in-package :cl-user)
 
-(require :sb-bsd-sockets)
 (require :sb-rotate-byte)
 (require :sb-posix)
 
@@ -18,6 +17,7 @@
                    (:file "condition")
                    (:file "function")
                    (:file "sequence")
+                   (:file "parser")
                    (:file "string")
                    (:file "list")
                    (:file "json")
@@ -75,7 +75,8 @@
      (:module "tool"
       :components ((:file "format")
                    (:file "build")
-                   (:file "test")))))))
+                   (:file "test")
+                   (:file "dev")))))))
 
 (defun load-modules (modules &optional basedir)
   (dolist (module modules)
@@ -85,8 +86,8 @@
                                  (concatenate 'string basedir "/" file ".lisp")
                                  (concatenate 'string file ".lisp"))))
                ;; Print progress dot
-               (format t ".")
-               (force-output)
+;               (format t ".")
+;               (force-output)
                ;; Suppress warnings and errors during compilation and loading
                (handler-bind ((warning #'muffle-warning)
                               (error (lambda (c) 
@@ -103,8 +104,10 @@
 
 (defun load-epsilon ()
   "Load the Epsilon library"
-  (format t "Loading Epsilon")
+  ;(format t "Loading Epsilon...")
   (force-output)
   (load-modules *epsilon-modules*)
-  (format t " done.~%")
+  ;(format t " done.~%")
   (force-output))
+
+(load-epsilon)

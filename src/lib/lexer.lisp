@@ -32,6 +32,7 @@
    ;; Token structure
    #:token
    #:make-token
+   #:%make-token
    #:token-type
    #:token-value
    #:token-position

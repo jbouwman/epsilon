@@ -15,6 +15,7 @@
    :empty-p
    :sequence-p
    :filter
+   :from-list
    :map
    :cons
    :first
@@ -23,6 +24,8 @@
    :realize
    :seq
    :drop
+   :iterate
+   :partition-when
    :take
    :each))
 
@@ -65,7 +68,19 @@
   (or (cons-p obj)
       (eq obj *empty*)))
 
+;; TODO -- update all useages then remove
+
 (defun seq (list)
+  (labels ((convert (remaining)
+             (if (null remaining)
+                 *empty*
+                 (cons (car remaining)
+                       (convert (cdr remaining))))))
+    (if (listp list)
+        (convert list)
+        (convert (coerce list 'list)))))
+
+(defun from-list (list)
   (labels ((convert (remaining)
              (if (null remaining)
                  *empty*
@@ -177,3 +192,32 @@ Returns no value."
         while (not (empty-p current))
         do (funcall function (first current)))
   (values))
+
+(defun partition-when (predicate sequence)
+  "Returns a lazy sequence of subsequences, split when predicate returns true.
+
+The element that matches the predicate starts a new partition."
+  (labels ((partition-rec (remaining current-partition)
+             (if (empty-p remaining)
+                 (if (null current-partition)
+                     *empty*
+                     (cons (seq (nreverse current-partition)) *empty*))
+                 (let ((head (first remaining))
+                       (tail (rest remaining)))
+                   (if (funcall predicate head)
+                       (if (null current-partition)
+                           ;; Start new partition with this element
+                           (partition-rec tail (list head))
+                           ;; Emit current partition and start new one
+                           (cons (seq (nreverse current-partition))
+                                 (partition-rec remaining '())))
+                       ;; Add to current partition
+                       (partition-rec tail (cl:cons head current-partition)))))))
+    (partition-rec sequence '())))
+
+(defun iterate (function initial-value)
+  "Returns a lazy sequence of (initial-value, (f initial-value), (f (f initial-value)), ...)."
+  (labels ((iterate-seq (current)
+             (cons current
+                   (iterate-seq (funcall function current)))))
+    (iterate-seq initial-value)))

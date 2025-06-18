@@ -16,5 +16,5 @@ jobs:
 
     - name: Run Unit Tests
       run: |
-        chmod +x make
-        ./make test
+        chmod +x run.sh
+        ./run.sh test

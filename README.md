@@ -8,8 +8,8 @@ To that extent, it was originally based on parts of number of open
 source packages, such as dexador, cl+ssl, cffi, ironclad, zippy and so
 on.
 
-Install nushell, and run tests with:
+Tun tests with:
 
 ```
-./make test
+./run.sh test
 ```

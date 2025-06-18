@@ -70,13 +70,13 @@
 #++
 (defun get-socket-option (socket option-name)
   "Get socket option value."
-  (sb-bsd-sockets:socket-option (socket-handle socket) option-name))
+  (error "todo implement"))
 
 ;; FIXME
 #++
 (defun set-socket-option (socket option-name value)
   "Set socket option value."
-  (setf (sb-bsd-sockets:socket-option (socket-handle socket) option-name) value))
+  (error "todo implement"))
 
 ;;; Stream Creation and Access
 
@@ -84,12 +84,7 @@
   "Get a bidirectional stream for the socket."
   (or (socket-stream-slot socket)
       (setf (socket-stream-slot socket)
-             (sb-bsd-sockets:socket-make-stream 
-              (socket-handle socket) 
-              :input t 
-              :output t 
-              :element-type '(unsigned-byte 8)
-              :buffering :full))))
+            (error "unimplemented"))))
 
 (defun socket-from-stream (stream)
   "Get the socket object associated with a stream."
@@ -99,7 +94,7 @@
 (defun socket-peer-address (socket)
   "Get the peer address of a socket."
   (multiple-value-bind (address port) 
-      (sb-bsd-sockets:socket-peername (socket-handle socket))
+      (error "unimplemented")
     (values address port)))
 
 ;;; Core Socket Operations
@@ -108,20 +103,18 @@
   "Create a listening socket on the given address and port."
   (declare (ignore type)) ;; we only support TCP for now
   (handler-case
-      (let* ((socket (make-instance 'sb-bsd-sockets:inet-socket 
-                                   :type :stream 
-                                   :protocol :tcp))
+      (let* ((socket (error "unimplemented"))
              (host (if (or (string= address "0.0.0.0") (string= address "*"))
                        "0.0.0.0"
                        address)))
         ;; Set socket options
-        (setf (sb-bsd-sockets:sockopt-reuse-address socket) reuse-address)
+        ;;(setf (sb-bsd-sockets:sockopt-reuse-address socket) reuse-address)
         
         ;; Bind socket
-        (sb-bsd-sockets:socket-bind socket host port)
+        ;;(sb-bsd-sockets:socket-bind socket host port)
         
         ;; Listen
-        (sb-bsd-sockets:socket-listen socket backlog)
+        ;;(sb-bsd-sockets:socket-listen socket backlog)
         
         ;; Create and return listener object
         (make-instance 'listener
@@ -136,17 +129,15 @@
   "Connect to a remote host and port."
   (declare (ignore type)) ;; we only support TCP for now
   (handler-case
-      (let ((socket (make-instance 'sb-bsd-sockets:inet-socket 
-                                   :type :stream 
-                                   :protocol :tcp)))
+      (let ((socket (error "unimplemented")))
         ;; Set non-blocking mode for timeout support
-        (setf (sb-bsd-sockets:non-blocking-mode socket) t)
+        ;;(setf (sb-bsd-sockets:non-blocking-mode socket) t)
         
         ;; Connect with timeout
-        (sb-bsd-sockets:socket-connect socket host port)
+        ;; (sb-bsd-sockets:socket-connect socket host port)
         
         ;; Revert to blocking mode
-        (setf (sb-bsd-sockets:non-blocking-mode socket) nil)
+        ;; (setf (sb-bsd-sockets:non-blocking-mode socket) nil)
         
         ;; Create and return connection object
         (make-instance 'connection
@@ -160,7 +151,7 @@
   "Accept a connection from a listener."
   (handler-case
       (multiple-value-bind (client-socket remote-host remote-port)
-          (sb-bsd-sockets:socket-accept (socket-handle listener))
+          (error "unimplemented")
         (make-instance 'connection
                        :handle client-socket
                        :remote-address remote-host
@@ -178,7 +169,7 @@
           (setf (socket-stream-slot socket) nil))
         
         ;; Close the socket
-        (sb-bsd-sockets:socket-close (socket-handle socket)))
+        (error "unimplemented"))
     (error (e)
       (error 'network-error :message (format nil "Error closing socket: ~A" e)))))
 
@@ -256,11 +247,7 @@
 
 (defun resolve (hostname &key (family :any))
   "Resolve hostname to address(es)."
-  (handler-case
-      (sb-bsd-sockets:host-ent-addresses
-       (sb-bsd-sockets:get-host-by-name hostname))
-    (error (e)
-      (error 'network-error :message (format nil "Error resolving ~A: ~A" hostname e)))))
+  (error "unimplemented"))
 
 (defun parse-address (string)
   "Parse address from string form."

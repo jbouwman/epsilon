@@ -72,17 +72,16 @@ Ensures tests are re-registered in their suites when loaded from fasl files."
 (defun ensure-test-suite (package-name)
   "Ensure package hierarchy exists, creating nodes as needed.
 Returns the leaf node for package-name."
-  (let ((components (seq:realize (pkg:parse package-name))))
-    (loop with current-node = *test-root*
-          for name in components
-          for existing = (map:get (children-of current-node) name)
-          do (unless existing
-               (setf existing (make-instance 'test-suite :name name))
-               (setf (children-of current-node)
-                     (map:assoc (children-of current-node)
-                                name existing)))
-          do (setf current-node existing)
-          finally (return existing))))
+  (seq:reduce (lambda (current-node name)
+                (let ((existing (map:get (children-of current-node) name)))
+                  (unless existing
+                    (setf existing (make-instance 'test-suite :name name))
+                    (setf (children-of current-node)
+                          (map:assoc (children-of current-node)
+                                     name existing)))
+                  existing))
+              (pkg:parse package-name)
+              :initial-value *test-root*))
 
 ;;; Metric collection
 
@@ -105,12 +104,16 @@ Returns the leaf node for package-name."
 ;;; Test results
 
 (defclass test-result ()
-  ((name :initarg :name 
+  ((test :initarg :test
+         :reader test-result-test)
+   (name :initarg :name 
          :reader test-name)
    (status :initform :not-run 
            :accessor test-status)
    (condition :initform nil 
               :accessor test-condition)
+   (stack-trace :initform nil 
+                :accessor stack-trace)
    (assertions :initform nil 
                :accessor test-assertions)
    (start-time :initform nil
@@ -133,6 +136,9 @@ Returns the leaf node for package-name."
              :accessor end-time)
    (tests :initform map:+empty+
           :accessor tests)
+   (formatter :initarg :formatter
+              :initform (error "specify test formatter")
+              :reader test-run-formatter)
    (log-file :initform nil
              :accessor log-file
              :initarg :log-file)
@@ -226,12 +232,11 @@ Returns the leaf node for package-name."
 
 (defun find-test-package (path node)
   "Find all tests defined in package and its subpackages."
-  (let ((path (seq:realize path)))
-    (loop :for package := (map:get (children-of node) (car path))
-          :unless (and package (cdr path))
-            :return package
-          :do (setf node package
-                    path (cdr path)))))
+  (seq:reduce (lambda (node name)
+                (when node
+                  (map:get (children-of node) name)))
+              path
+              :initial-value node))
 
 (defun format-package-header (package-name)
   "Format a package header with standard indentation"
@@ -280,13 +285,15 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
                                    (symbol-name (test-symbol test)))))))
           #'string< :key #'car)))
 
-(defun collect-tests (test-suite)
+(defun collect-tests (test-suite &key name)
   "Recursively collect all tests from test-suite and its children"
   (let ((tests '()))
     (labels ((collect (node)
                (when (typep node 'test-suite)
                  (loop for test in (map:vals (tests-of node))
-                       do (push test tests)))
+                       do (cond ((or (null name)
+                                     (string-equal name (test-symbol test)))
+                                 (push test tests)))))
                (when (typep node 'test-node)
                  (loop for child in (map:vals (children-of node))
                        do (collect child)))))
@@ -321,14 +328,15 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
   (when (test-condition result)
     (case (test-status result)
       (:failure
-       (format nil "~&;;       Failed: ~A~%"
-               (first-line (failure-message (test-condition result)))))
+       (format nil "~&~%~%~A~%~%"
+               (failure-message (test-condition result))))
       (:error
-       (format nil "~&;;       Failed: ~A~%"
-               (first-line (format nil "~A" (original-error (test-condition result))))))
+       (format nil "~&~%~%~A~%~%Stack:~%~%~A~%~%"
+               (original-error (test-condition result))
+               (stack-trace result)))
       (:skip
        (format nil "~&;;       Skipped: ~A~%"
-               (first-line (skip-message (test-condition result))))))))
+               (skip-message (test-condition result)))))))
 
 (defun log-test-result (result stream)
   "Log test result information to stream"
@@ -358,78 +366,80 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
   
   (format stream "~%"))
 
-(defun run-tests (&key package (verbose t) (show-failures t) (max-failures 10) (abort-on-failure nil) (log-file nil))
+(defclass shell-test-formatter ()
+  ((failure-count :initform 0)
+   (max-failures :initform 10)))
+
+
+(defgeneric event (formatter event-type event-data))
+
+(defmethod event (formatter event-type event-data)
+  )
+
+(defmethod event ((formatter shell-test-formatter) (event-type (eql :start)) event-data)
+  (format t "~&Running tests:~%~%"))
+
+(defmethod event ((formatter shell-test-formatter) (event-type (eql :start-group)) group)
+  (format-package-header (first group)))
+
+(defmethod event ((formatter shell-test-formatter) (event-type (eql :end-test)) result)
+  (with-slots (failure-count max-failures) formatter
+    (let ((test (test-result-test result)))
+      (format-test-entry (symbol-name (test-symbol test)) 60 result)
+      (when (member (test-status result) '(:failure :error))
+        (when (< failure-count max-failures)
+          (format t "~A" (format-condition-details result))
+          (incf failure-count))))))
+
+(defmethod event ((formatter shell-test-formatter) (event-type (eql :end)) run)
+  (let ((total-failures (+ (length (test-failures run)) (length (test-errors run)))))
+    (with-slots (failure-count max-failures) formatter
+      (format t "~&~%Test Run Complete:~%")
+      (format t ";;   Tests: ~D~%" (map:size (tests run)))
+      (format t ";;   Failures: ~D~%" (length (test-failures run)))
+      (format t ";;   Errors: ~D~%" (length (test-errors run)))
+      (format t ";;   Skipped: ~D~%" (length (test-skips run)))
+      (when (> total-failures max-failures)
+        (format t ";;   (Only ~D of ~D failures/errors shown)~%" 
+                (min failure-count max-failures) total-failures))
+      (format t ";;   Time: ~,2F seconds~%"
+              (/ (- (end-time run) (start-time run))
+                 internal-time-units-per-second)))))
+
+(defmethod event ((run test-run) type data)
+  (event (test-run-formatter run) type data))
+
+(defvar *test-formats*
+  (map:make-map :shell 'shell-test-formatter
+                :human 'human-test-formatter
+                :junit 'junit-test-formatter))
+
+(defun make-test-formatter (type)
+  (make-instance (or (map:get *test-formats* type)
+                     (error "unknonw test runner type ~s" type))))
+
+(defun run-tests (&key package name (format :shell))
   "Run tests, optionally filtered by package.
 SHOW-FAILURES controls whether to show detailed failure information.
 MAX-FAILURES limits the number of failures shown (default 10).
-ABORT-ON-FAILURE when non-nil, stops execution after max-failures failures.
-LOG-FILE when provided, logs all test output to the specified file."
+ABORT-ON-FAILURE when non-nil, stops execution after max-failures failures."
   (let* ((node (if package
                    (find-test-package (pkg:parse package) *test-root*)
                    *test-root*))
-         (tests (collect-tests node))
+         (formatter (make-test-formatter format))
+         (tests (collect-tests node :name name))
          (grouped-tests (group-tests-by-package tests))
          (run (make-instance 'test-run
-                             :max-failures max-failures
-                             :abort-on-failure abort-on-failure
-                             :log-file log-file))
-         (failure-count 0)
-         (log-stream nil))
-    
-    (when log-file
-      (setf log-stream (open log-file :direction :output :if-exists :supersede)))
-    
-    (unwind-protect
-         (progn
-           (when verbose
-             (format t "~&Running tests:~%~%"))
-           
-           (block test-execution
-             (dolist (group grouped-tests)
-               (when verbose
-                 (format-package-header (car group)))
-               
-               (dolist (test (cdr group))
-                 (let ((result (run-testable test run)))
-                   (when verbose
-                     (format-test-entry (symbol-name (test-symbol test)) 60 result)
-                     (when (and show-failures 
-                                (member (test-status result) '(:failure :error)))
-                       (when (< failure-count max-failures)
-                         (format t "~A" (format-condition-details result))
-                         (incf failure-count))))
-                   
-                   ;; Log to file if specified
-                   (when log-stream
-                     (log-test-result result log-stream))
-                   
-                   ;; Check for early termination
-                   (when (and abort-on-failure
-                              (member (test-status result) '(:failure :error))
-                              (>= (+ (length (test-failures run)) (length (test-errors run)))
-                                  max-failures))
-                     (when verbose
-                       (format t "~&~%;; Aborting after ~D failures/errors~%" max-failures))
-                     (return-from test-execution))))))
-           (when log-stream
-             (close log-stream)))
-      
-      (setf (end-time run) (get-internal-real-time))
-      
-      (when verbose
-        (let ((total-failures (+ (length (test-failures run)) (length (test-errors run)))))
-          (format t "~&~%Test Run Complete:~%")
-          (format t ";;   Tests: ~D~%" (map:size (tests run)))
-          (format t ";;   Failures: ~D~%" (length (test-failures run)))
-          (format t ";;   Errors: ~D~%" (length (test-errors run)))
-          (format t ";;   Skipped: ~D~%" (length (test-skips run)))
-          (when (> total-failures max-failures)
-            (format t ";;   (Only ~D of ~D failures/errors shown)~%" 
-                    (min failure-count max-failures) total-failures))
-          (format t ";;   Time: ~,2F seconds~%"
-                  (/ (- (end-time run) (start-time run))
-                     internal-time-units-per-second)))))
-      
+                             :formatter formatter)))    
+    (event run :start run)
+    (dolist (group grouped-tests)
+      (event run :start-group group)
+      (dolist (test (cdr group))
+        (event run :start-test test)
+        (let ((result (run-testable test run)))
+          (event run :end-test result))))
+    (setf (end-time run) (get-internal-real-time))
+    (event run :end run)
     run))
 
 (defun run-success-p (run)
@@ -456,33 +466,35 @@ LOG-FILE when provided, logs all test output to the specified file."
 
 (def-map-setter set-result! tests)
 
-;; Usage example:
-;; (def-map-setter set-result! tests)
-
 (defun run-testable (test run)
   "Run a test and record results in the test-run.
 Returns the test-result instance."
   (let* ((result (make-instance 'test-result
+                                :test test
                                 :name (test-symbol test)))
          (*test-result* result))
-    (handler-case (run-test-body test '() result)
-      (test-skip (c)
-        (setf (test-status result) :skip
-              (test-condition result) c))
-      (test-failure (c)
-        (setf (test-status result) :failure
-              (test-condition result) c))
-      (error (c)
-        (setf (test-status result) :error
-              (test-condition result)
-              (make-instance 'test-error :error c))))
-    (set-result! run (test-symbol test) result)
+    (unwind-protect
+         (handler-bind
+             ((test-skip (lambda (c)
+                           (setf (test-status result) :skip
+                                 (test-condition result) c)
+                           (return-from run-testable result)))
+              (test-failure (lambda (c)
+                              (setf (test-status result) :failure
+                                    (test-condition result) c)
+                              (return-from run-testable result)))
+              (error (lambda (c)
+                       (setf (test-status result) :error
+                             (test-condition result)
+                             (make-instance
+                              'test-error :error c)
+                             (stack-trace result)
+                             (with-output-to-string (stream)
+                               (sb-debug:print-backtrace :stream stream)))
+                       (return-from run-testable result))))
+           (run-test-body test '() result))
+      (set-result! run (test-symbol test) result))
     result))
-
-(defun print-test-backtrace (condition stream)
-  (format stream "~A~%" condition)
-  #+sbcl
-  (sb-debug:print-backtrace :stream stream))
 
 (defun get-test (suite name)
   (map:get (tests-of suite) name))
