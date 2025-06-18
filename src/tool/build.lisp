@@ -1,97 +1,3 @@
-;;;;  Key Reusable Components from Test Framework
-;;;;
-;;;;  1. Output Capture Mechanism (test.lisp:196-214): The test framework captures stdout/stderr using make-string-output-stream and make-broadcast-stream
-;;;;  2. Timing and Metrics Collection (test.lisp:164-190): Wall-time and CPU-time measurement infrastructure
-;;;;  3. Result Storage (test.lisp:101-121): Structured result objects with status, conditions, and output fields
-;;;;  4. Exception Handling (test.lisp:455-473): Error handling with condition classification
-;;;;
-;;;;  Proposed Integration Strategy
-;;;;
-;;;;  1. Create a Build Result Framework
-;;;;
-;;;;  Extend the build system with similar result tracking:
-;;;;
-;;;;  (defclass compilation-result ()
-;;;;    ((source-file :initarg :source-file :reader source-file)
-;;;;     (target-file :initarg :target-file :reader target-file)
-;;;;     (status :initform :not-compiled :accessor compilation-status)
-;;;;     (warnings :initform nil :accessor compilation-warnings)
-;;;;     (errors :initform nil :accessor compilation-errors)
-;;;;     (stdout-output :initform nil :accessor stdout-output)
-;;;;     (stderr-output :initform nil :accessor stderr-output)
-;;;;     (start-time :initform nil :accessor start-time)
-;;;;     (end-time :initform nil :accessor end-time)))
-;;;;
-;;;;  2. Enhanced Compilation Function
-;;;;
-;;;;  Modify compile-source in build.lisp:206-217 to capture warnings:
-;;;;
-;;;;  (defun compile-source-with-capture (step)
-;;;;    (let ((result (make-instance 'compilation-result
-;;;;                                :source-file (source-uri step)
-;;;;                                :target-file (target-uri step)))
-;;;;          (stdout-stream (make-string-output-stream))
-;;;;          (stderr-stream (make-string-output-stream)))
-;;;;      (unwind-protect
-;;;;           (progn
-;;;;             (setf (start-time result) (get-internal-real-time))
-;;;;             (let ((*standard-output* (make-broadcast-stream *standard-output* stdout-stream))
-;;;;                   (*error-output* (make-broadcast-stream *error-output* stderr-stream)))
-;;;;               (handler-bind ((warning (lambda (w)
-;;;;                                        (push w (compilation-warnings result))
-;;;;                                        (muffle-warning)))
-;;;;                             (error (lambda (e)
-;;;;                                      (push e (compilation-errors result)))))
-;;;;                 (compile-file (uri:path (source-uri step))
-;;;;                             :output-file (uri:path (target-uri step))))))
-;;;;        (setf (end-time result) (get-internal-real-time)
-;;;;              (stdout-output result) (get-output-stream-string stdout-stream)
-;;;;              (stderr-output result) (get-output-stream-string stderr-stream)))
-;;;;      result))
-;;;;
-;;;;  3. Output File Location Control
-;;;;
-;;;;  For controlling output file locations under $REPO/target/fasl/$SRCDIR/, modify %make-build-node in build.lisp:106-115:
-;;;;
-;;;;  (defun %make-build-node (project source-info)
-;;;;    "Create target information for a source file"
-;;;;    (let* ((project-path (path project))
-;;;;           (source-rel-path (subseq (path source-info) (1+ (length project-path))))
-;;;;           (source-dir (directory-namestring source-rel-path))
-;;;;           (source-name (file-namestring source-rel-path))
-;;;;           (target-uri (uri:merge
-;;;;                        (uri:merge (uri project) "target/fasl/")
-;;;;                        (uri:merge source-dir
-;;;;                                  (fs:replace-extension source-name "fasl")))))
-;;;;      (make-instance 'build-node
-;;;;                     :source-info source-info
-;;;;                     :target-info (%make-target-info target-uri))))
-;;;;
-;;;;  4. Reporting Infrastructure
-;;;;
-;;;;  Reuse the test framework's formatting functions (format-test-entry, log-test-result) for compilation results:
-;;;;
-;;;;  (defun format-compilation-entry (source-file result)
-;;;;    (format-test-entry (file-namestring source-file) 78
-;;;;                       (compilation-result-to-test-result result)))
-;;;;
-;;;;  (defun log-compilation-result (result stream)
-;;;;    "Log compilation warnings and errors to stream"
-;;;;    (format stream "~&=== COMPILATION: ~A ===~%" (source-file result))
-;;;;    (when (compilation-warnings result)
-;;;;      (format stream "WARNINGS (~D):~%" (length (compilation-warnings result)))
-;;;;      (dolist (warning (compilation-warnings result))
-;;;;        (format stream "  ~A~%" warning)))
-;;;;    (when (compilation-errors result)
-;;;;      (format stream "ERRORS (~D):~%" (length (compilation-errors result)))
-;;;;      (dolist (error (compilation-errors result))
-;;;;        (format stream "  ~A~%" error))))
-;;;;
-;;;;  This approach reuses the output capture, timing, and reporting
-;;;;  infrastructure from the test framework and extends the build
-;;;;  system to provide compilation feedback and flexible output file
-;;;;  placement.
-
 (defpackage :epsilon.tool.build
   (:use :cl)
   (:local-nicknames
@@ -105,16 +11,23 @@
    (#:str #:epsilon.lib.string)
    (#:uri #:epsilon.lib.uri)
    (#:yaml #:epsilon.lib.yaml))
-  (:export #:build
-           #:*loaded-projects*))
+  (:export
+   #:build
+   #:*known-projects*))
 
 (in-package :epsilon.tool.build)
+
+(defvar *known-projects*
+  map:+empty+)
 
 (defclass locatable ()
   ((uri :initarg :uri :accessor uri)))
 
 (defclass hashable ()
   ((hash :initarg :hash :accessor hash)))
+
+(defgeneric build-order (node)
+  (:documentation "Produce a sequence of steps necessary to build a specific node in the project source tree."))
 
 (defclass source-info (locatable hashable)
   ((defines :initarg :defines :accessor source-info-defines)
@@ -139,11 +52,25 @@
 (defclass target-info (locatable hashable)
   ())
 
-(defclass build-node ()
+(defclass build-input ()
   ((project :initarg :project :accessor project)
    (source-info :initarg :source-info :accessor source-info)))
 
-(defmethod build-order ((node build-node))
+(defclass build-result ()
+  ((build-input :initarg :build-input :reader build-input)
+   (status :initform :not-compiled :accessor compilation-status)
+   (warnings :initform nil :accessor compilation-warnings)
+   (errors :initform nil :accessor compilation-errors)
+   (stdout-output :initform nil :accessor stdout-output)
+   (stderr-output :initform nil :accessor stderr-output)
+   (start-time :initform nil :accessor start-time)
+   (end-time :initform nil :accessor end-time)))
+
+(defclass project-build ()
+  ((project :initarg :project)
+   (results :initarg :results)))
+
+(defmethod build-order ((node build-input))
   (let ((root (list node)))
     (dolist (r (source-info-requires (source-info node)))
       (let ((p (find-provider (project node) r)))
@@ -163,16 +90,16 @@
                           package))
                (build-order project))))
 
-(defmethod print-object ((obj build-node) stream)
+(defmethod print-object ((obj build-input) stream)
   (print-unreadable-object (obj stream :type t)
     (format stream "~a (~a)"
             (path (source-info obj))
-            (build-node-status obj))))
+            (build-input-status obj))))
 
-(defmethod source-uri ((self build-node))
+(defmethod source-uri ((self build-input))
   (uri (source-info self)))
 
-(defmethod target-uri ((self build-node))
+(defmethod target-uri ((self build-input))
   (uri (target-info self)))
 
 (defclass project (locatable)
@@ -191,9 +118,6 @@
                      :hash (calculate-hash uri)
                      :defines (normalize-package defines)
                      :requires (mapcar #'normalize-package requires)))))
-
-(defvar *known-projects*
-  map:+empty+)
 
 (defun load-project (uri)
   "Parse project definition in directory URI"
@@ -223,31 +147,33 @@
              (mapcar #'make-source-info
                      (fs:list-files uri ".lisp"))))
 
-(defun target-info (build-node)
-  "Create target information for a source file"
-  (let* ((project (project build-node))
+(defun target-info (build-input)
+  "Create target information for a source file
+   
+   Follows URI path best practices using uri:path-join utility:
+   - Proper directory/file path distinction
+   - Avoids double slashes in path construction  
+   - Clean, readable path construction"
+  (let* ((project (project build-input))
          (project-path (path project))
-         (source-ext (subseq (path (source-info build-node))
-                             (1+ (length project-path))))
-         (target-uri (uri:merge
-                      (uri:merge (uri project) "target/lisp")
-                      (fs:replace-extension source-ext "fasl"))))
+         (source-rel-path (subseq (path (source-info build-input))
+                                  (length project-path)))
+         (target-rel-path (fs:replace-extension source-rel-path "fasl"))
+         (target-path (uri:path-join "target" "lisp" target-rel-path))
+         (target-uri (uri:merge (uri project) target-path)))
     (make-instance 'target-info
                    :uri target-uri
                    :hash (when (fs:exists-p target-uri)
                            (calculate-hash target-uri)))))
 
-(defun %make-build-node (project source-info)
+(defun %make-build-input (project source-info)
   "Create target information for a source file"
-  (make-instance 'build-node
+  (make-instance 'build-input
                  :project project
                  :source-info source-info))
 
-(defgeneric build-order (node)
-  (:documentation "Produce a sequence of steps necessary to build a specific node in the project source tree."))
-
 (defmethod build-order ((project project))
-  (seq:map (fn:partial #'%make-build-node project)
+  (seq:map (fn:partial #'%make-build-input project)
            (seq:seq (append (project-sources project)
                             (project-tests project)))))
 
@@ -319,56 +245,109 @@
                (nreverse sorted))
        cycles))))
 
-(defun build-node-status (step)
-  (cond ((not (fs:exists-p (target-uri step)))
+(defun build-input-status (build-input)
+  (cond ((not (fs:exists-p (target-uri build-input)))
          :target-missing)
-        ((< (fs:modification-time (uri:path (target-uri step)))
-            (fs:modification-time (uri:path (source-uri step))))
+        ((< (fs:modification-time (uri:path (target-uri build-input)))
+            (fs:modification-time (uri:path (source-uri build-input))))
          :source-newer)
         (t
          :up-to-date)))
 
-(defun compile-source (step)
-  (let ((source-uri (source-uri step))
-        (target-uri (target-uri step)))
-    (unless (fs:exists-p target-uri)
-      (fs:make-dirs (uri:parent target-uri)))
-    (handler-case
-        (load
-         (compile-file (uri:path source-uri)
-                       :output-file (uri:path target-uri)))
-      (error ()
-        ))))
+(defun watch-operation (build-input fn)
+  (let ((result (make-instance 'build-result
+                               :build-input build-input))
+        (stdout-stream (make-string-output-stream))
+        (stderr-stream (make-string-output-stream)))
+    (unwind-protect
+         (progn
+           (setf (start-time result) (get-internal-real-time))
+           (let ((*standard-output* stdout-stream)
+                 (*error-output* stderr-stream))
+             (handler-bind ((warning (lambda (w)
+                                       (push w (compilation-warnings result))
+                                       (muffle-warning)))
+                            (error (lambda (e)
+                                     (push e (compilation-errors result)))))
+               (funcall fn))))
+      (setf (end-time result) (get-internal-real-time)
+            (stdout-output result) (get-output-stream-string stdout-stream)
+            (stderr-output result) (get-output-stream-string stderr-stream)))
+    (report-result result)
+    result))
 
-(defun load-source (step)
-  (let ((target-uri (target-uri step)))
-    (unless (fs:exists-p target-uri)
-      (error "compile first"))
-    (handler-case
-        (load (uri:path target-uri))
-      (error ()
-        ))))
+(defun compile-source (build-input)
+  (watch-operation build-input
+                   (lambda ()
+                     (fs:make-dirs (uri:parent (target-uri build-input)))
+                     (compile-file (uri:path (source-uri build-input))
+                                   :output-file (uri:path (target-uri build-input))))))
 
-(defun build-nodes (steps &key force)
-  "Build the given steps, optionally forcing compilation of all steps"
-  (dolist (step (seq:realize steps))
-    (if force
-        (compile-source step)
-        (case (build-node-status step)
-          ((:target-missing
-            :source-newer)
-           (compile-source step))
-          (t
-           (load-source step))))))
+(defun load-source (build-input)
+  (watch-operation build-input
+                   (lambda ()
+                     (load (uri:path (target-uri build-input))))))
+
+(defun %build (project &key force)
+  "Build the given build-inputs, optionally forcing compilation of all steps"
+  (let ((results (seq:seq (seq:realize (seq:map (lambda (build-input)
+                                                  (if force
+                                                      (compile-source build-input)
+                                                      (case (build-input-status build-input)
+                                                        ((:target-missing
+                                                          :source-newer)
+                                                         (compile-source build-input))
+                                                        (t
+                                                         (load-source build-input)))))
+                                                (build-order project))))))
+    (make-instance 'project-build
+                   :project project
+                   :results results)))
 
 (defun build (&key dir force)
   "Build project sources and optionally tests.
   
   DIR - Directory containing project (defaults to current directory)
   FORCE - Force compilation of all build steps regardless of timestamps"
-  (let* ((project-dir (cond (dir
-                             (uri:file-uri dir))
-                            (t
-                             (uri:file-uri (namestring *default-pathname-defaults*)))))
+  (let* ((project-dir (uri:file-uri (or dir (namestring *default-pathname-defaults*))))
          (project (load-project project-dir)))
-    (build-nodes (build-order project) :force force)))
+    (%build project :force force)))
+
+(defun operation-wall-time (result)
+  (if (and (start-time result) (end-time result))
+      (/ (- (end-time result) (start-time result))
+         internal-time-units-per-second)
+      0))
+
+(defun report-result (result)
+  (let* ((build-input (build-input result))
+         (source-path (path (source-info build-input)))
+         (action (if (compilation-errors result) "FAILED" 
+                     (if (compilation-warnings result) "COMPILED" "LOADED")))
+         (warning-count (length (compilation-warnings result)))
+         (error-count (length (compilation-errors result))))
+    (format t "  ~a ~a" action source-path)
+    (when (or (> warning-count 0) (> error-count 0))
+      (format t " (")
+      (when (> warning-count 0)
+        (format t "~d warning~:p" warning-count))
+      (when (> error-count 0)
+        (when (> warning-count 0)
+          (format t " "))
+        (format t "~d error~:p" error-count))
+      (format t ")"))
+    (format t "~%")
+    (when (compilation-errors result)
+      (when (stdout-output result)
+        (format t "    stdout: ~a~%" (stdout-output result)))
+      (when (stderr-output result)
+        (format t "    stderr: ~a~%" (stderr-output result))))))
+
+(defun report (project-build)
+  (with-slots (project results) project-build
+    (let ((total-time (seq:reduce #'+ (seq:map #'operation-wall-time results)
+                                  :initial-value 0)))
+      (format t "~&Project: ~a (build time: ~,2fs)~%"
+              (uri:path (uri project))
+              total-time)
+      (seq:each #'report-result results))))

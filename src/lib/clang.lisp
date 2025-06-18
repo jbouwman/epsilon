@@ -1,8 +1,9 @@
-(defpackage :epsilon.lib.c-parser
+(defpackage :epsilon.lib.clang
   (:use
    :cl
    :epsilon.lib.syntax)
   (:local-nicknames
+   (:lexer :epsilon.lib.lexer)
    (:map :epsilon.lib.map)
    (:str :epsilon.lib.string)
    (:seq :epsilon.lib.sequence))
@@ -13,15 +14,10 @@
    :get-functions
    :get-typedefs))
 
-(in-package :epsilon.lib.c-parser)
-
-;; Token types
-(defstruct token
-  type
-  value
-  position)
+(in-package :epsilon.lib.clang)
 
 ;; AST node types  
+
 (defstruct c-typedef
   name
   underlying-type)
@@ -52,6 +48,7 @@
   type)
 
 ;; Database structure
+
 (defstruct type-database
   (typedefs map:+empty+)
   (functions map:+empty+)
@@ -59,9 +56,7 @@
   (unions map:+empty+)
   (enums map:+empty+))
 
-;; Lexer
-(defun whitespace-p (char)
-  (member char '(#\Space #\Tab #\Newline #\Return)))
+;; Character classification utilities
 
 (defun alpha-p (char)
   (or (char<= #\a char #\z)
@@ -72,85 +67,98 @@
   (or (alpha-p char)
       (digit-char-p char)))
 
-(defun tokenize (text)
-  "Split text into tokens"
-  (let ((tokens '())
-        (pos 0)
-        (len (length text)))
-    (flet ((%peek (&optional (offset 0))
-             (when (< (+ pos offset) len)
-               (char text (+ pos offset))))
-           (advance ()
-             (incf pos))
-           (read-while (predicate)
-             (let ((start pos))
-               (loop while (and (< pos len) (funcall predicate (%peek)))
-                     do (advance))
-               (subseq text start pos))))
-      
-      (loop while (< pos len)
-            do (let ((ch (%peek)))
-                 (cond
-                   ;; Skip whitespace
-                   ((whitespace-p ch)
-                    (advance))
-                   
-                   ;; Identifiers and keywords
-                   ((alpha-p ch)
-                    (let ((word (read-while #'alphanum-p)))
-                      (push (make-token :type (if (member word '("typedef" "struct" "union" "enum" "static" "inline" "const" "volatile" "restrict" "extern") :test #'string=)
-                                                  :keyword
-                                                  :identifier)
-                                        :value word
-                                        :position pos)
-                            tokens)))
-                   
-                   ;; Numeric literals
-                   ((digit-char-p ch)
-                    (let ((number (read-while (lambda (c) (or (digit-char-p c) (char= c #\.))))))
-                      (push (make-token :type :number
-                                        :value number
-                                        :position pos)
-                            tokens)))
-                   
-                   ;; String literals
-                   ((char= ch #\")
-                    (advance) ; skip opening quote
-                    (let ((start pos))
-                      (loop while (and (< pos len) (not (char= (%peek) #\")))
-                            do (if (char= (%peek) #\\)
-                                   (progn (advance) (advance)) ; skip escaped char
-                                   (advance)))
-                      (when (< pos len) (advance)) ; skip closing quote
-                      (push (make-token :type :string
-                                        :value (subseq text start (1- pos))
-                                        :position pos)
-                            tokens)))
-                   
-                   ;; Single character tokens
-                   (t
-                    (let ((token-type
-                           (case ch
-                             (#\( :lparen)
-                             (#\) :rparen)
-                             (#\{ :lbrace)
-                             (#\} :rbrace)
-                             (#\[ :lbracket)
-                             (#\] :rbracket)
-                             (#\; :semicolon)
-                             (#\, :comma)
-                             (#\* :star)
-                             (#\& :ampersand)
-                             (#\= :equals)
-                             (#\< :less)
-                             (#\> :greater)
-                             (t :other))))
-                      (push (make-token :type token-type
-                                        :value (string ch)
-                                        :position pos)
-                            tokens)
-                      (advance))))))
-      (nreverse tokens))))
+;; Token recognizer functions using epsilon.lib.lexer
+(defun recognize-identifier-or-keyword (lexer)
+  "Recognize identifier or keyword from lexer"
+  (when (and (not (lexer:at-end-p lexer))
+             (alpha-p (lexer:peek lexer)))
+    (let ((word (lexer:consume-while lexer #'alphanum-p)))
+      (lexer:make-token lexer 
+                        (if (member word '("typedef" "struct" "union" "enum" "static" "inline" "const" "volatile" "restrict" "extern") :test #'string=)
+                            :keyword
+                            :identifier)
+                        word))))
+
+(defun recognize-number (lexer)
+  "Recognize numeric literal from lexer"
+  (when (and (not (lexer:at-end-p lexer))
+             (digit-char-p (lexer:peek lexer)))
+    (let ((number (lexer:consume-while lexer (lambda (ch)
+                                               (or (digit-char-p ch) (char= ch #\.))))))
+      (lexer:make-token lexer :number number))))
+
+(defun recognize-string (lexer)
+  "Recognize string literal from lexer"
+  (when (and (not (lexer:at-end-p lexer))
+             (char= (lexer:peek lexer) #\"))
+    (lexer:next lexer) ; consume opening quote
+    (let ((string-content (with-output-to-string (s)
+                            (loop while (and (not (lexer:at-end-p lexer))
+                                             (not (char= (lexer:peek lexer) #\")))
+                                  do (let ((ch (lexer:peek lexer)))
+                                       (if (char= ch #\\)
+                                           (progn
+                                             (lexer:next lexer) ; consume backslash
+                                             (when (not (lexer:at-end-p lexer))
+                                               (write-char (lexer:next lexer) s))) ; consume escaped char
+                                           (write-char (lexer:next lexer) s)))))))
+      (when (not (lexer:at-end-p lexer)) ; consume closing quote if present
+        (lexer:next lexer))
+      (lexer:make-token lexer :string string-content))))
+
+(defun recognize-single-char (lexer)
+  "Recognize single character token from lexer"
+  (when (not (lexer:at-end-p lexer))
+    (let ((ch (lexer:next lexer)))
+      (let ((lexer:token-type
+              (case ch
+                (#\( :lparen)
+                (#\) :rparen)
+                (#\{ :lbrace)
+                (#\} :rbrace)
+                (#\[ :lbracket)
+                (#\] :rbracket)
+                (#\; :semicolon)
+                (#\, :comma)
+                (#\* :star)
+                (#\& :ampersand)
+                (#\= :equals)
+                (#\< :less)
+                (#\> :greater)
+                (t :other))))
+        (lexer:make-token lexer lexer:token-type (string ch))))))
+
+(defun tokenize (stream)
+  "Split character stream into tokens using epsilon.lib.lexer"
+  (let ((lexer (lexer:make-lexer stream))
+        (tokens '()))
+    (loop while (not (lexer:at-end-p lexer))
+          do (progn
+               ;; Skip whitespace
+               (lexer:skip-whitespace lexer)
+               (when (not (lexer:at-end-p lexer))
+                 (let ((ch (lexer:peek lexer)))
+                   (cond
+                     ;; Identifiers and keywords
+                     ((alpha-p ch)
+                      (let ((token (recognize-identifier-or-keyword lexer)))
+                        (when token (push token tokens))))
+                     
+                     ;; Numeric literals
+                     ((digit-char-p ch)
+                      (let ((token (recognize-number lexer)))
+                        (when token (push token tokens))))
+                     
+                     ;; String literals
+                     ((char= ch #\")
+                      (let ((token (recognize-string lexer)))
+                        (when token (push token tokens))))
+                     
+                     ;; Single character tokens
+                     (t
+                      (let ((token (recognize-single-char lexer)))
+                        (when token (push token tokens)))))))))
+    (nreverse tokens)))
 
 ;; Parser
 (defun parse-section (tokens)
@@ -165,10 +173,10 @@
                (incf pos)))
            (match-token (type)
              (and (peek-token)
-                  (eq (token-type (peek-token)) type)))
+                  (eq (lexer:token-type (peek-token)) type)))
            (match-value (value)
              (and (peek-token)
-                  (string= (token-value (peek-token)) value))))
+                  (string= (lexer:token-value (peek-token)) value))))
       
       (loop while (< pos (length tokens))
             do (cond
@@ -190,8 +198,8 @@
                  ((and (peek-token)
                        (peek-token 1)
                        (peek-token 2)
-                       (eq (token-type (peek-token 1)) :identifier)
-                       (eq (token-type (peek-token 2)) :lparen))
+                       (eq (lexer:token-type (peek-token 1)) :identifier)
+                       (eq (lexer:token-type (peek-token 2)) :lparen))
                   (let ((func (parse-function tokens pos)))
                     (when func
                       (push func declarations)
@@ -205,16 +213,16 @@
   "Parse a typedef declaration"
   (let ((pos start-pos))
     (when (and (< pos (length tokens))
-               (string= (token-value (nth pos tokens)) "typedef"))
+               (string= (lexer:token-value (nth pos tokens)) "typedef"))
       (incf pos) ; skip 'typedef'
       
       ;; Simple case: typedef existing_type new_name;
       (when (and (< (+ pos 2) (length tokens))
-                 (eq (token-type (nth pos tokens)) :identifier)
-                 (eq (token-type (nth (1+ pos) tokens)) :identifier)
-                 (eq (token-type (nth (+ pos 2) tokens)) :semicolon))
-        (let ((underlying-type (token-value (nth pos tokens)))
-              (new-name (token-value (nth (1+ pos) tokens))))
+                 (eq (lexer:token-type (nth pos tokens)) :identifier)
+                 (eq (lexer:token-type (nth (1+ pos) tokens)) :identifier)
+                 (eq (lexer:token-type (nth (+ pos 2) tokens)) :semicolon))
+        (let ((underlying-type (lexer:token-value (nth pos tokens)))
+              (new-name (lexer:token-value (nth (1+ pos) tokens))))
           (list :type :typedef
                 :name new-name
                 :underlying-type underlying-type
@@ -224,48 +232,48 @@
   "Parse a struct declaration"
   (let ((pos start-pos))
     (when (and (< pos (length tokens))
-               (string= (token-value (nth pos tokens)) "struct"))
+               (string= (lexer:token-value (nth pos tokens)) "struct"))
       (incf pos) ; skip 'struct'
       
       ;; Get struct name if present
       (let ((struct-name nil))
         (when (and (< pos (length tokens))
-                   (eq (token-type (nth pos tokens)) :identifier))
-          (setf struct-name (token-value (nth pos tokens)))
+                   (eq (lexer:token-type (nth pos tokens)) :identifier))
+          (setf struct-name (lexer:token-value (nth pos tokens)))
           (incf pos))
         
         ;; Look for opening brace
         (when (and (< pos (length tokens))
-                   (eq (token-type (nth pos tokens)) :lbrace))
+                   (eq (lexer:token-type (nth pos tokens)) :lbrace))
           (incf pos) ; skip '{'
           
           ;; Parse fields (simplified)
           (let ((fields '()))
             (loop while (and (< pos (length tokens))
-                             (not (eq (token-type (nth pos tokens)) :rbrace)))
-                  do (when (eq (token-type (nth pos tokens)) :identifier)
-                       (let ((field-type (token-value (nth pos tokens))))
+                             (not (eq (lexer:token-type (nth pos tokens)) :rbrace)))
+                  do (when (eq (lexer:token-type (nth pos tokens)) :identifier)
+                       (let ((field-type (lexer:token-value (nth pos tokens))))
                          (incf pos)
                          (when (and (< pos (length tokens))
-                                    (eq (token-type (nth pos tokens)) :identifier))
-                           (let ((field-name (token-value (nth pos tokens))))
+                                    (eq (lexer:token-type (nth pos tokens)) :identifier))
+                           (let ((field-name (lexer:token-value (nth pos tokens))))
                              (push (list :name field-name :type field-type) fields)
                              (incf pos)))))
-                  ;; Skip to next statement
+                     ;; Skip to next statement
                   while (and (< pos (length tokens))
-                             (not (eq (token-type (nth pos tokens)) :semicolon)))
+                             (not (eq (lexer:token-type (nth pos tokens)) :semicolon)))
                   do (incf pos)
                   when (< pos (length tokens))
-                  do (incf pos)) ; skip semicolon
+                    do (incf pos)) ; skip semicolon
             
             ;; Skip closing brace
             (when (and (< pos (length tokens))
-                       (eq (token-type (nth pos tokens)) :rbrace))
+                       (eq (lexer:token-type (nth pos tokens)) :rbrace))
               (incf pos))
             
             ;; Skip optional semicolon
             (when (and (< pos (length tokens))
-                       (eq (token-type (nth pos tokens)) :semicolon))
+                       (eq (lexer:token-type (nth pos tokens)) :semicolon))
               (incf pos))
             
             (list :type :struct
@@ -278,51 +286,51 @@
   (let ((pos start-pos))
     ;; Return type
     (when (and (< pos (length tokens))
-               (eq (token-type (nth pos tokens)) :identifier))
-      (let ((return-type (token-value (nth pos tokens))))
+               (eq (lexer:token-type (nth pos tokens)) :identifier))
+      (let ((return-type (lexer:token-value (nth pos tokens))))
         (incf pos)
         
         ;; Function name
         (when (and (< pos (length tokens))
-                   (eq (token-type (nth pos tokens)) :identifier))
-          (let ((func-name (token-value (nth pos tokens))))
+                   (eq (lexer:token-type (nth pos tokens)) :identifier))
+          (let ((func-name (lexer:token-value (nth pos tokens))))
             (incf pos)
             
             ;; Opening parenthesis
             (when (and (< pos (length tokens))
-                       (eq (token-type (nth pos tokens)) :lparen))
+                       (eq (lexer:token-type (nth pos tokens)) :lparen))
               (incf pos)
               
               ;; Parse parameters (simplified)
               (let ((params '()))
                 (loop while (and (< pos (length tokens))
-                                 (not (eq (token-type (nth pos tokens)) :rparen)))
-                      do (when (eq (token-type (nth pos tokens)) :identifier)
-                           (let ((param-type (token-value (nth pos tokens))))
+                                 (not (eq (lexer:token-type (nth pos tokens)) :rparen)))
+                      do (when (eq (lexer:token-type (nth pos tokens)) :identifier)
+                           (let ((param-type (lexer:token-value (nth pos tokens))))
                              (incf pos)
                              (when (and (< pos (length tokens))
-                                        (eq (token-type (nth pos tokens)) :identifier))
-                               (let ((param-name (token-value (nth pos tokens))))
+                                        (eq (lexer:token-type (nth pos tokens)) :identifier))
+                               (let ((param-name (lexer:token-value (nth pos tokens))))
                                  (push (list :name param-name :type param-type) params)
                                  (incf pos)))))
-                      ;; Skip commas and other tokens
+                         ;; Skip commas and other tokens
                       while (and (< pos (length tokens))
-                                 (not (member (token-type (nth pos tokens)) '(:rparen :identifier))))
+                                 (not (member (lexer:token-type (nth pos tokens)) '(:rparen :identifier))))
                       do (incf pos))
                 
                 ;; Skip closing parenthesis
                 (when (and (< pos (length tokens))
-                           (eq (token-type (nth pos tokens)) :rparen))
+                           (eq (lexer:token-type (nth pos tokens)) :rparen))
                   (incf pos))
                 
                 ;; Skip to semicolon
                 (loop while (and (< pos (length tokens))
-                                 (not (eq (token-type (nth pos tokens)) :semicolon)))
+                                 (not (eq (lexer:token-type (nth pos tokens)) :semicolon)))
                       do (incf pos))
                 
                 ;; Skip semicolon
                 (when (and (< pos (length tokens))
-                           (eq (token-type (nth pos tokens)) :semicolon))
+                           (eq (lexer:token-type (nth pos tokens)) :semicolon))
                   (incf pos))
                 
                 (list :type :function
@@ -339,7 +347,7 @@
     
     (dolist (section sections)
       (when (and section (> (length (string-trim '(#\space #\tab #\newline #\return) section)) 0))
-        (let* ((tokens (tokenize section))
+        (let* ((tokens (tokenize (make-string-input-stream section)))
                (declarations (parse-section tokens)))
           
           (dolist (decl declarations)

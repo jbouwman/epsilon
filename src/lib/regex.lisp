@@ -1,40 +1,11 @@
-;;;;  TODO Major Simplification Opportunities
-;;;;
-;;;;  1. Duplicate Character Set Implementations
-;;;;  The module implements both charset (hash table) and charmap - consolidate to one implementation.
-;;;;
-;;;;  2. Optional Boyer-Moore-Horspool Matcher
-;;;;  Complex BMH implementation controlled by *use-bmh-matchers* flag could be removed entirely, falling back to standard library functions.
-;;;;
-;;;;  3. Monolithic File Structure
-;;;;  60,299 tokens in a single file with 240+ functions/methods - should be split into focused modules.
-;;;;
-;;;;  Reusable Components for Epsilon System
-;;;;
-;;;;  Character Set Implementation
-;;;;  The open-addressing hash table in charset could be extracted as epsilon.lib.charset for general use.
+;;;;  TODO
 ;;;;
 ;;;;  String Processing Utilities
 ;;;;  - maybe-coerce-to-simple-string - string coercion
 ;;;;  - quote-meta-chars - string escaping
-;;;;  - clean-comments - comment processing
 ;;;;
-;;;;  Lexer Infrastructure
-;;;;  The lexer struct and parsing predicates (end-of-string-p, looking-at-p) could become epsilon.lib.lexer.
-;;;;
-;;;;  Recommended Refactoring Plan
-;;;;
-;;;;  Phase 1: Extract Utilities
-;;;;  - Move character set implementation to separate module
-;;;;  - Extract string utilities to expand epsilon.lib.string
-;;;;  - Create epsilon.lib.lexer for parser infrastructure
-;;;;
-;;;;  Phase 2: Simplify Core
-;;;;  - Remove BMH matcher complexity
-;;;;  - Consolidate duplicate character set code
-;;;;  - Split into epsilon.lib.regex.{parser,matcher,compiler}
-;;;;
-;;;;  This would reduce the main regex file by ~30-40% while creating reusable utilities for other parts of the system.
+;;;;  The lexer struct and parsing predicates (end-of-string-p,
+;;;;  looking-at-p) could become epsilon.lib.lexer.
 
 (defpackage #:epsilon.lib.regex
   (:use #:cl
@@ -42,7 +13,8 @@
         #:epsilon.lib.symbol
         #:epsilon.lib.type)
   (:local-nicknames
-   (:str :epsilon.lib.string))
+   (:str :epsilon.lib.string)
+   (:charset :epsilon.lib.charset))
   (:import-from :epsilon.lib.string
                 #:word-char-p
                 #:whitespacep
@@ -69,12 +41,6 @@
 
 (declaim (boolean *extended-mode-p*))
 
-(defvar *regex-char-code-limit* char-code-limit
-  "The upper exclusive bound on the char-codes of characters which can
-occur in character classes.  Change this value BEFORE creating
-scanners if you don't need full Unicode support.")
-
-(declaim (fixnum *regex-char-code-limit*))
 
 (defvar *string* (make-sequence 'simple-string 0)
   "The string which is currently scanned by SCAN.
@@ -177,17 +143,6 @@ intended to handle `character properties' like \\p{IsAlpha}.  If
               (coerce ,=string=
                       'simple-string))))))
 
-(defun complement* (test-function)
-  "Like COMPLEMENT but optimized for unary functions."
-  (typecase test-function
-    (function
-     (lambda (char)
-      (declare (character char))
-      (not (funcall (the function test-function) char))))
-    (otherwise
-     (lambda (char)
-       (declare (character char))
-       (not (funcall test-function char))))))
 
 (defvar *syntax-error-string* nil
   "The string which caused the syntax error.")
@@ -238,323 +193,8 @@ invoked with wrong arguments."))
           :format-control ,format-control
           :format-arguments (list ,@format-arguments)))
 
-(defconstant +probe-depth+ 3
-  "Maximum number of collisions \(for any element) we accept before we
-allocate more storage.  This is now fixed, but could be made to vary
-depending on the size of the storage vector \(e.g. in the range of
-1-4).  Larger probe-depths mean more collisions are tolerated before
-the table grows, but increase the constant factor.")
 
-(defun make-char-vector (size)
-  "Returns a vector of size SIZE to hold characters.  All elements are
-initialized to #\Null except for the first one which is initialized to
-#\?."
-  (declare (type (integer 2 #.(1- array-total-size-limit)) size))
-  (let ((result (make-array size
-                            :element-type 'character
-                            :initial-element (code-char 0))))
-    (setf (char result 0) #\?)
-    result))
 
-(defstruct (charset (:constructor make-charset ()))
-  (depth +probe-depth+ :type fixnum)
-  (count 0 :type fixnum)
-  (vector (make-char-vector 12) :type (simple-array character (*))))
-
-(declaim (inline mix))
-
-(defun mix (code hash)
-  "Given a character code CODE and a hash code HASH, computes and
-returns the \"next\" hash code.  See comments below."
-  (sxhash (logand most-positive-fixnum (+ code hash))))
-
-(declaim (inline compute-index))
-
-(defun compute-index (hash vector)
-  "Computes and returns the index into the vector VECTOR corresponding
-to the hash code HASH."
-  (1+ (mod hash (1- (length vector)))))
-
-(defun in-charset-p (char set)
-  "Checks whether the character CHAR is in the charset SET."
-  (declare (character char) (charset set))
-  (let ((vector (charset-vector set))
-        (depth (charset-depth set))
-        (code (char-code char)))
-    (declare (fixnum depth))
-    (cond ((or
-            (zerop depth)
-            (zerop code))
-           (eq char (char vector code)))
-          (t
-           (let ((hash code))
-             (tagbody
-              :retry
-                (let* ((index (compute-index hash vector))
-                       (x (char vector index)))
-                  (cond ((eq x (code-char 0))
-                         (return-from in-charset-p nil))
-                        ((eq x char)
-                         (return-from in-charset-p t))
-                        ((zerop (decf depth))
-                         (return-from in-charset-p nil))
-                        (t
-                         (setf hash (mix code hash))
-                         (go :retry))))))))))
-
-(defun add-to-charset (char set)
-  "Adds the character CHAR to the charset SET, extending SET if
-necessary.  Returns CHAR."
-  (or (%add-to-charset char set t)
-      (%add-to-charset/expand char set)
-      (error "Oops, this should not happen..."))
-  char)
-
-(defun %add-to-charset (char set count)
-  "Tries to add the character CHAR to the charset SET without
-extending it.  Returns NIL if this fails.  Counts CHAR as new
-if COUNT is true and it is added to SET."
-  (declare (character char) (charset set))
-  (let ((vector (charset-vector set))
-        (depth (charset-depth set))
-        (code (char-code char)))
-    (declare (fixnum depth))
-    (cond ((or (zerop depth) (zerop code))
-           (unless (eq char (char vector code))
-             (setf (char vector code) char)
-             (when count
-               (incf (charset-count set))))
-           char)
-          (t
-           (let ((hash code))
-             (tagbody
-              :retry
-                (let* ((index (compute-index hash vector))
-                       (x (char vector index)))
-                  (cond ((eq x (code-char 0))
-                         (setf (char vector index) char)
-                         (when count
-                           (incf (charset-count set)))
-                         (return-from %add-to-charset char))
-                        ((eq x char)
-                         (return-from %add-to-charset char))
-                        ((zerop (decf depth))
-                         (return-from %add-to-charset nil))
-                        (t
-                         (setf hash (mix code hash))
-                         (go :retry))))))))))
-
-(defun %add-to-charset/expand (char set)
-  "Extends the charset SET and then adds the character CHAR to it."
-  (declare (character char) (charset set))
-  (let* ((old-vector (charset-vector set))
-         (new-size (* 2 (length old-vector))))
-    (tagbody
-     :retry
-       (multiple-value-bind (new-depth new-vector)
-           (if (>= new-size #.(truncate char-code-limit 3))
-               (values 0 (make-char-vector char-code-limit))
-               (values +probe-depth+ (make-char-vector new-size)))
-         (setf (charset-depth set) new-depth
-               (charset-vector set) new-vector)
-         (flet ((try-add (x)
-                  (unless (%add-to-charset x set nil)
-                    (assert (not (zerop new-depth)))
-                    (setf new-size (* 2 new-size))
-                    (go :retry))))
-           (try-add char)
-           (dotimes (i (length old-vector))
-             (let ((x (char old-vector i)))
-               (if (eq x (code-char 0))
-                   (when (zerop i)
-                     (try-add x))
-                   (unless (zerop i)
-                     (try-add x))))))))
-    (incf (charset-count set))
-    t))
-
-(defun map-charset (function charset)
-  "Calls FUNCTION with all characters in SET.  Returns NIL."
-  (declare (function function))
-  (let* ((n (charset-count charset))
-         (vector (charset-vector charset))
-         (size (length vector)))
-    (when (eq (code-char 0) (char vector 0))
-      (funcall function (code-char 0))
-      (decf n))
-    (loop for i from 1 below size
-          for char = (char vector i)
-          unless (eq (code-char 0) char) do
-            (funcall function char)
-            (when (zerop (decf n))
-              (return-from map-charset nil))))
-  nil)
-
-(defun create-charset-from-test-function (test-function start end)
-  "Creates and returns a charset representing all characters with
-character codes between START and END which satisfy TEST-FUNCTION."
-  (loop with charset = (make-charset)
-        for code from start below end
-        for char = (code-char code)
-        when (and char (funcall test-function char))
-          do (add-to-charset char charset)
-        finally (return charset)))
-
-(defstruct (charmap  (:constructor make-charmap%))
-  (vector #*0 :type simple-bit-vector)
-  (start 0 :type fixnum)
-  (end 0 :type fixnum)
-  (count nil :type (or fixnum null))
-  (complementp nil :type boolean))
-
-(declaim (inline in-charmap-p))
-
-(defun in-charmap-p (char charmap)
-  "Tests whether the character CHAR belongs to the set represented by CHARMAP."
-  (declare (character char) (charmap charmap))
-  (let* ((char-code (char-code char))
-         (char-in-vector-p
-           (let ((charmap-start (charmap-start charmap)))
-             (declare (fixnum charmap-start))
-             (and (<= charmap-start char-code)
-                  (< char-code (the fixnum (charmap-end charmap)))
-                  (= 1 (sbit (the simple-bit-vector (charmap-vector charmap))
-                             (- char-code charmap-start)))))))
-    (cond ((charmap-complementp charmap) (not char-in-vector-p))
-          (t char-in-vector-p))))
-
-(defun charmap-contents (charmap)
-  "Returns a list of all characters belonging to a character map.
-Only works for non-complement charmaps."
-  (declare (charmap charmap))
-  (and (not (charmap-complementp charmap))
-       (loop for code of-type fixnum from (charmap-start charmap) to (charmap-end charmap)
-             for i across (the simple-bit-vector (charmap-vector charmap))
-             when (= i 1)
-               collect (code-char code))))
-
-(defun make-charmap (start end test-function &optional complementp)
-  "Creates and returns a charmap representing all characters with
-character codes in the interval [start end) that satisfy
-TEST-FUNCTION.  The COMPLEMENTP slot of the charmap is set to the
-value of the optional argument, but this argument doesn't have an
-effect on how TEST-FUNCTION is used."
-  (declare (fixnum start end))
-  (let ((vector (make-array (- end start) :element-type 'bit))
-        (count 0))
-    (declare (fixnum count))
-    (loop for code from start below end
-          for char = (code-char code)
-          for index from 0
-          when char do
-            (incf count)
-            (setf (sbit vector index) (if (funcall test-function char) 1 0)))
-    (make-charmap% :vector vector
-                   :start start
-                   :end end
-                   :count (and (not complementp) count)
-                   :complementp (not (not complementp)))))
-
-(defun create-charmap-from-test-function (test-function start end)
-  "Creates and returns a charmap representing all characters with
-character codes between START and END which satisfy TEST-FUNCTION.
-Tries to find the smallest interval which is necessary to represent
-the character set and uses the complement representation if that
-helps."
-  (let (start-in end-in start-out end-out)
-    (loop for code from start below end
-          for char = (code-char code)
-          until (and start-in start-out)
-          when (and char
-                    (not start-in)
-                    (funcall test-function char))
-            do (setq start-in code)
-          when (and char
-                    (not start-out)
-                    (not (funcall test-function char)))
-            do (setq start-out code))
-    (unless start-in
-      (return-from create-charmap-from-test-function
-        (make-charmap% :count 0)))
-    (unless start-out
-      (return-from create-charmap-from-test-function
-        (make-charmap% :complementp t)))
-    (loop for code from (1- end) downto start
-          for char = (code-char code)
-          until (and end-in end-out)
-          when (and char
-                    (not end-in)
-                    (funcall test-function char))
-            do (setq end-in (1+ code))
-          when (and char
-                    (not end-out)
-                    (not (funcall test-function char)))
-            do (setq end-out (1+ code)))
-    (cond ((<= (- end-in start-in) (- end-out start-out))
-           (make-charmap start-in end-in test-function))
-          (t (make-charmap start-out end-out (complement* test-function) t)))))
-
-(defun create-hash-table-from-test-function (test-function start end)
-  "Creates and returns a hash table representing all characters with
-character codes between START and END which satisfy TEST-FUNCTION."
-  (loop with hash-table = (make-hash-table)
-        for code from start below end
-        for char = (code-char code)
-        when (and char (funcall test-function char))
-          do (setf (gethash char hash-table) t)
-        finally (return hash-table)))
-
-(defun create-optimized-test-function (test-function &key
-                                                       (start 0)
-                                                       (end *regex-char-code-limit*)
-                                                       (kind *optimize-char-classes*))
-  "Given a unary test function which is applicable to characters
-returns a function which yields the same boolean results for all
-characters with character codes from START to \(excluding) END.  If
-KIND is NIL, TEST-FUNCTION will simply be returned.  Otherwise, KIND
-should be one of:
-* :HASH-TABLE - builds a hash table representing all characters which
-                satisfy the test and returns a closure which checks if
-                a character is in that hash table
-* :CHARSET - instead of a hash table uses a \"charset\" which is a
-             data structure using non-linear hashing and optimized to
-             represent \(sparse) sets of characters in a fast and
-             space-efficient way \(contributed by Nikodemus Siivola)
-* :CHARMAP - instead of a hash table uses a bit vector to represent
-             the set of characters
-You can also use :HASH-TABLE* or :CHARSET* which are like :HASH-TABLE
-and :CHARSET but use the complement of the set if the set contains
-more than half of all characters between START and END.  This saves
-space but needs an additional pass across all characters to create the
-data structure.  There is no corresponding :CHARMAP* kind as the bit
-vectors are already created to cover the smallest possible interval
-which contains either the set or its complement."
-  (ecase kind
-    ((nil) test-function)
-    (:charmap
-     (let ((charmap (create-charmap-from-test-function test-function start end)))
-       (lambda (char)
-         (in-charmap-p char charmap))))
-    ((:charset :charset*)
-     (let ((charset (create-charset-from-test-function test-function start end)))
-       (cond ((or (eq kind :charset)
-                  (<= (charset-count charset) (ceiling (- end start) 2)))
-              (lambda (char)
-                (in-charset-p char charset)))
-             (t (setq charset (create-charset-from-test-function (complement* test-function)
-                                                                 start end))
-                (lambda (char)
-                  (not (in-charset-p char charset)))))))
-    ((:hash-table :hash-table*)
-     (let ((hash-table (create-hash-table-from-test-function test-function start end)))
-       (cond ((or (eq kind :hash-table)
-                  (<= (hash-table-count hash-table) (ceiling (- end start) 2)))
-              (lambda (char)
-                (gethash char hash-table)))
-             (t (setq hash-table (create-hash-table-from-test-function (complement* test-function)
-                                                                       start end))
-                (lambda (char)
-                  (not (gethash char hash-table)))))))))
 
 (declaim (inline map-char-to-special-class))
 
@@ -1971,11 +1611,11 @@ FLAGS."
                               ((symbolp item)
                                (case item
                                  ((:digit-class) #'str:digit-char-p)
-                                 ((:non-digit-class) (complement* #'str:digit-char-p))
+                                 ((:non-digit-class) (charset:complement* #'str:digit-char-p))
                                  ((:whitespace-char-class) #'whitespacep)
-                                 ((:non-whitespace-char-class) (complement* #'whitespacep))
+                                 ((:non-whitespace-char-class) (charset:complement* #'whitespacep))
                                  ((:word-char-class) #'word-char-p)
-                                 ((:non-word-char-class) (complement* #'word-char-p))
+                                 ((:non-word-char-class) (charset:complement* #'word-char-p))
                                  (otherwise
                                   (signal-syntax-error "Unknown symbol ~A in character class." item))))
                               ((and (consp item)
@@ -1983,7 +1623,7 @@ FLAGS."
                                (resolve-property (second item)))
                               ((and (consp item)
                                     (eq (first item) :inverted-property))
-                               (complement* (resolve-property (second item))))
+                               (charset:complement* (resolve-property (second item))))
                               ((and (consp item)
                                     (eq (first item) :range))
                                (let ((from (second item))
@@ -2036,7 +1676,7 @@ FLAGS."
                         (or (funcall test-function (char-downcase char))
                             (and (both-case-p char)
                                  (funcall test-function (char-upcase char))))))
-                     (invertedp (complement* test-function))
+                     (invertedp (charset:complement* test-function))
                      (t test-function)))))))
 
 (defun maybe-split-repetition (regex
@@ -2421,7 +2061,7 @@ when NAME is not NIL."
 Also used for inverted char classes when INVERTEDP is true."
   (declare (special flags accumulate-start-p))
   (let ((test-function
-          (create-optimized-test-function
+          (charset:create-optimized-test-function
            (convert-char-class-to-test-function (rest parse-tree)
                                                 invertedp
                                                 (case-insensitive-mode-p flags)))))
@@ -2442,7 +2082,7 @@ Also used for inverted char classes when INVERTEDP is true."
   "The case for \(:INVERTED-PROPERTY <name>) where <name> is a string."
   (declare (special accumulate-start-p))
   (setq accumulate-start-p nil)
-  (make-instance 'char-class :test-function (complement* (resolve-property (second parse-tree)))))
+  (make-instance 'char-class :test-function (charset:complement* (resolve-property (second parse-tree)))))
 
 (defmethod convert-compound-parse-tree ((token (eql :flags)) parse-tree &key)
   "The case for \(:FLAGS {<flag>}*) where flag is a modifier symbol
@@ -2478,15 +2118,15 @@ parse trees which are atoms.")
   (:method ((parse-tree (eql :non-digit-class)))
     (declare (special accumulate-start-p))
     (setq accumulate-start-p nil)
-    (make-instance 'char-class :test-function (complement* #'str:digit-char-p)))
+    (make-instance 'char-class :test-function (charset:complement* #'str:digit-char-p)))
   (:method ((parse-tree (eql :non-word-char-class)))
     (declare (special accumulate-start-p))
     (setq accumulate-start-p nil)
-    (make-instance 'char-class :test-function (complement* #'word-char-p)))
+    (make-instance 'char-class :test-function (charset:complement* #'word-char-p)))
   (:method ((parse-tree (eql :non-whitespace-char-class)))
     (declare (special accumulate-start-p))
     (setq accumulate-start-p nil)
-    (make-instance 'char-class :test-function (complement* #'whitespacep)))
+    (make-instance 'char-class :test-function (charset:complement* #'whitespacep)))
   (:method ((parse-tree (eql :start-anchor)))
     (declare (special flags))
     (make-instance 'anchor :startp t :multi-line-p (multi-line-mode-p flags)))
@@ -3950,7 +3590,7 @@ instead.  \(BMH matchers are faster but need much more space.)"
                           :end2 *end-pos*
                           :test test))))))
   (let* ((m (length pattern))
-	 (skip (make-array *regex-char-code-limit*
+	 (skip (make-array charset:*char-code-limit*
                            :element-type 'fixnum
                            :initial-element m)))
     (declare (fixnum m))

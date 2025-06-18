@@ -1,204 +1,186 @@
-(defpackage #:epsilon.lib.json
-  (:use #:cl))
+;;;;  TODO
+;;;;
+;;;;  JSON string escape parsing (\", \\, \n, etc.) could be extracted as
+;;;;  epsilon.lib.string-escape for reuse in other text formats.
+;;;;
+;;;;  JSON number parsing (parse-number function) could extend epsilon.lib.type
+;;;;  with numeric parsing for multiple formats.
 
-(in-package #:epsilon.lib.json)
+(defpackage :epsilon.lib.json
+  (:use :cl)
+  (:local-nicknames
+   (:lexer
+    :epsilon.lib.lexer))
+  (:export
+   :parse
+   :parse-string))
+
+(in-package :epsilon.lib.json)
 
 (define-condition json-parse-error (error)
   ((message :initarg :message :reader json-error-message)
    (position :initarg :position :reader json-error-position))
   (:report (lambda (c s)
-            (format s "JSON parse error at position ~A: ~A"
-                    (json-error-position c)
-                    (json-error-message c)))))
+             (format s "JSON parse error at position ~A: ~A"
+                     (json-error-position c)
+                     (json-error-message c)))))
 
-(defstruct json-parser
-  (source nil)
-  (position 0)
-  (length 0))
+(defun skip-whitespace (lexer)
+  (lexer:skip-whitespace lexer))
 
-(defun make-json-error (parser message)
-  (error 'json-parse-error 
-         :message message 
-         :position (json-parser-position parser)))
-
-(defun peek-char* (parser)
-  (when (< (json-parser-position parser)
-           (json-parser-length parser))
-    (char (json-parser-source parser)
-          (json-parser-position parser))))
-
-(defun next-char (parser)
-  (let ((ch (peek-char* parser)))
-    (when ch
-      (incf (json-parser-position parser)))
-    ch))
-
-(defun skip-whitespace (parser)
-  (loop while (member (peek-char* parser) '(#\Space #\Tab #\Newline #\Return))
-        do (next-char parser)))
-
-(defun parse-string (parser)
-  (unless (char= (next-char parser) #\")
-    (make-json-error parser "Expected string"))
+(defun %parse-string (lexer)
+  (unless (char= (lexer:next lexer) #\")
+    (lexer:lexer-error lexer "Expected string"))
   
   (with-output-to-string (s)
-    (loop for ch = (next-char parser)
+    (loop for ch = (lexer:next lexer)
           do (case ch
-               ((nil) (make-json-error parser "Unterminated string"))
+               ((nil) (lexer:lexer-error lexer "Unterminated string"))
                (#\" (return))
-               (#\\ (let ((next (next-char parser)))
-                     (case next
-                       (#\" (write-char #\" s))
-                       (#\\ (write-char #\\ s))
-                       (#\/ (write-char #\/ s))
-                       (#\b (write-char #\Backspace s))
-                       (#\f (write-char #\Page s))
-                       (#\n (write-char #\Newline s))
-                       (#\r (write-char #\Return s))
-                       (#\t (write-char #\Tab s))
-                       (#\u (let ((code (parse-integer 
-                                       (with-output-to-string (hex)
-                                         (dotimes (i 4)
-                                           (write-char (or (next-char parser)
-                                                         (make-json-error parser "Invalid unicode escape"))
-                                                     hex)))
-                                       :radix 16)))
-                              (write-char (code-char code) s)))
-                       (otherwise (make-json-error parser "Invalid escape sequence")))))
+               (#\\ (let ((next (lexer:next lexer)))
+                      (case next
+                        (#\" (write-char #\" s))
+                        (#\\ (write-char #\\ s))
+                        (#\/ (write-char #\/ s))
+                        (#\b (write-char #\Backspace s))
+                        (#\f (write-char #\Page s))
+                        (#\n (write-char #\Newline s))
+                        (#\r (write-char #\Return s))
+                        (#\t (write-char #\Tab s))
+                        (#\u (let ((code (parse-integer 
+                                          (with-output-to-string (hex)
+                                            (dotimes (i 4)
+                                              (write-char (or (lexer:next lexer)
+                                                              (lexer:lexer-error lexer "Invalid unicode escape"))
+                                                          hex)))
+                                          :radix 16)))
+                               (write-char (code-char code) s)))
+                        (otherwise (lexer:lexer-error lexer "Invalid escape sequence")))))
                (otherwise (write-char ch s))))))
 
-(defun parse-number (parser)
+(defun parse-number (lexer)
   (let* ((has-decimal nil)
          (has-exponent nil)
          (number-str (with-output-to-string (s)
-                      ;; Sign
-                      (let ((ch (peek-char* parser)))
-                        (when (and ch (char= ch #\-))
-                          (write-char (next-char parser) s)))
-                      
-                      ;; Integer part  
-                      (loop for ch = (peek-char* parser)
-                            while (and ch (digit-char-p ch))
-                            do (write-char (next-char parser) s))
-                      
-                      ;; Decimal part
-                      (let ((ch (peek-char* parser)))
-                        (when (and ch (char= ch #\.))
-                          (write-char (next-char parser) s)
-                          (setf has-decimal t)
-                          (loop for ch = (peek-char* parser)
-                                while (and ch (digit-char-p ch)) 
-                                do (write-char (next-char parser) s))))
-                      
-                      ;; Exponent
-                      (let ((ch (peek-char* parser)))
-                        (when (and ch (member ch '(#\e #\E)))
-                          (write-char (next-char parser) s)
-                          (setf has-exponent t)
-                          (let ((ch (peek-char* parser)))
-                            (when (and ch (member ch '(#\+ #\-)))
-                              (write-char (next-char parser) s)))
-                          (loop for ch = (peek-char* parser)
-                                while (and ch (digit-char-p ch))
-                                do (write-char (next-char parser) s)))))))
+                       ;; Sign
+                       (let ((ch (lexer:peek lexer)))
+                         (when (and ch (char= ch #\-))
+                           (write-char (lexer:next lexer) s)))
+                       
+                       ;; Integer part  
+                       (loop for ch = (lexer:peek lexer)
+                             while (and ch (digit-char-p ch))
+                             do (write-char (lexer:next lexer) s))
+                       
+                       ;; Decimal part
+                       (let ((ch (lexer:peek lexer)))
+                         (when (and ch (char= ch #\.))
+                           (write-char (lexer:next lexer) s)
+                           (setf has-decimal t)
+                           (loop for ch = (lexer:peek lexer)
+                                 while (and ch (digit-char-p ch)) 
+                                 do (write-char (lexer:next lexer) s))))
+                       
+                       ;; Exponent
+                       (let ((ch (lexer:peek lexer)))
+                         (when (and ch (member ch '(#\e #\E)))
+                           (write-char (lexer:next lexer) s)
+                           (setf has-exponent t)
+                           (let ((ch (lexer:peek lexer)))
+                             (when (and ch (member ch '(#\+ #\-)))
+                               (write-char (lexer:next lexer) s)))
+                           (loop for ch = (lexer:peek lexer)
+                                 while (and ch (digit-char-p ch))
+                                 do (write-char (lexer:next lexer) s)))))))
     
     (if (or has-decimal has-exponent)
         (read-from-string number-str)
         (parse-integer number-str))))
 
-(defun parse-value (parser)
-  (skip-whitespace parser)
-  (let ((ch (peek-char* parser)))
+(defun parse-value (lexer)
+  (skip-whitespace lexer)
+  (let ((ch (lexer:peek lexer)))
     (case ch
-      (#\" (parse-string parser))
-      (#\{ (parse-object parser))
-      (#\[ (parse-array parser))
-      (#\t (parse-true parser))
-      (#\f (parse-false parser))
-      (#\n (parse-null parser))
+      (#\" (%parse-string lexer))
+      (#\{ (parse-object lexer))
+      (#\[ (parse-array lexer))
+      (#\t (parse-true lexer))
+      (#\f (parse-false lexer))
+      (#\n (parse-null lexer))
       ((#\- #\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
-       (parse-number parser))
-      (otherwise (make-json-error parser "Invalid JSON value")))))
+       (parse-number lexer))
+      (otherwise (lexer:lexer-error lexer "Invalid JSON value")))))
 
-(defun parse-object (parser)
-  (unless (char= (next-char parser) #\{)
-    (make-json-error parser "Expected '{'"))
+(defun parse-object (lexer)
+  (unless (char= (lexer:next lexer) #\{)
+    (lexer:lexer-error lexer "Expected '{'"))
   
-  (skip-whitespace parser)
-  (if (char= (peek-char* parser) #\})
-      (progn (next-char parser) nil)
+  (skip-whitespace lexer)
+  (if (char= (lexer:peek lexer) #\})
+      (progn (lexer:next lexer) nil)
       (loop for first = t then nil
             collect (progn
-                     (when (not first)
-                       (skip-whitespace parser)
-                       (unless (char= (next-char parser) #\,)
-                         (make-json-error parser "Expected ',' between object members")))
-                     (skip-whitespace parser)
-                     (let ((key (parse-string parser)))
-                       (skip-whitespace parser)
-                       (unless (char= (next-char parser) #\:)
-                         (make-json-error parser "Expected ':' after object key"))
-                       (cons key (parse-value parser))))
+                      (when (not first)
+                        (skip-whitespace lexer)
+                        (unless (char= (lexer:next lexer) #\,)
+                          (lexer:lexer-error lexer "Expected ',' between object members")))
+                      (skip-whitespace lexer)
+                      (let ((key (%parse-string lexer)))
+                        (skip-whitespace lexer)
+                        (unless (char= (lexer:next lexer) #\:)
+                          (lexer:lexer-error lexer "Expected ':' after object key"))
+                        (cons key (parse-value lexer))))
             until (progn
-                   (skip-whitespace parser)
-                   (when (char= (peek-char* parser) #\})
-                     (next-char parser)
-                     t)))))
+                    (skip-whitespace lexer)
+                    (when (char= (lexer:peek lexer) #\})
+                      (lexer:next lexer)
+                      t)))))
 
-(defun parse-array (parser)
-  (unless (char= (next-char parser) #\[)
-    (make-json-error parser "Expected '['"))
+(defun parse-array (lexer)
+  (unless (char= (lexer:next lexer) #\[)
+    (lexer:lexer-error lexer "Expected '['"))
   
-  (skip-whitespace parser)
-  (if (char= (peek-char* parser) #\])
-      (progn (next-char parser) nil)
+  (skip-whitespace lexer)
+  (if (char= (lexer:peek lexer) #\])
+      (progn (lexer:next lexer) nil)
       (loop for first = t then nil
             collect (progn
-                     (when (not first)
-                       (skip-whitespace parser)
-                       (unless (char= (next-char parser) #\,)
-                         (make-json-error parser "Expected ',' between array elements")))
-                     (parse-value parser))
+                      (when (not first)
+                        (skip-whitespace lexer)
+                        (unless (char= (lexer:next lexer) #\,)
+                          (lexer:lexer-error lexer "Expected ',' between array elements")))
+                      (parse-value lexer))
             until (progn
-                   (skip-whitespace parser)
-                   (when (char= (peek-char* parser) #\])
-                     (next-char parser)
-                     t)))))
+                    (skip-whitespace lexer)
+                    (when (char= (lexer:peek lexer) #\])
+                      (lexer:next lexer)
+                      t)))))
 
-(defun parse-true (parser)
-  (unless (and (char= (next-char parser) #\t)
-               (char= (next-char parser) #\r)
-               (char= (next-char parser) #\u)
-               (char= (next-char parser) #\e))
-    (make-json-error parser "Expected 'true'"))
+(defun parse-true (lexer)
+  (unless (lexer:consume-string lexer "true")
+    (lexer:lexer-error lexer "Expected 'true'"))
   t)
 
-(defun parse-false (parser)
-  (unless (and (char= (next-char parser) #\f)
-               (char= (next-char parser) #\a)
-               (char= (next-char parser) #\l)
-               (char= (next-char parser) #\s)
-               (char= (next-char parser) #\e))
-    (make-json-error parser "Expected 'false'"))
+(defun parse-false (lexer)
+  (unless (lexer:consume-string lexer "false")
+    (lexer:lexer-error lexer "Expected 'false'"))
   nil)
 
-(defun parse-null (parser)
-  (unless (and (char= (next-char parser) #\n)
-               (char= (next-char parser) #\u)
-               (char= (next-char parser) #\l)
-               (char= (next-char parser) #\l))
-    (make-json-error parser "Expected 'null'"))
+(defun parse-null (lexer)
+  (unless (lexer:consume-string lexer "null")
+    (lexer:lexer-error lexer "Expected 'null'"))
   nil)
 
-(defun parse-json (string)
+(defun parse (stream)
   "Parse a JSON string into Lisp data structures.
    Objects are represented as alists, arrays as lists."
-  (let ((parser (make-json-parser :source string
-                                 :position 0
-                                 :length (length string))))
-    (let ((result (parse-value parser)))
-      (skip-whitespace parser)
-      (when (< (json-parser-position parser)
-               (json-parser-length parser))
-        (make-json-error parser "Unexpected trailing content"))
+  (let ((lexer (lexer:make-lexer stream)))
+    (let ((result (parse-value lexer)))
+      (skip-whitespace lexer)
+      (when (not (lexer:at-end-p lexer))
+        (lexer:lexer-error lexer "Unexpected trailing content"))
       result)))
+
+(defun parse-string (string)
+  (with-input-from-string (stream string)
+    (parse stream)))

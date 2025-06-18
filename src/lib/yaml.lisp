@@ -135,12 +135,16 @@
                   :stream (make-line-stream s))))
       (parse-document state))))
 
+;;; TODO can a yaml file contain multiple nodes?
+
+;;; TODO is it wise to wrap an open stream with something that
+;;; provides a sequence of tokens, and can be closed?
+
 (defun parse-file (pathname)
   (with-open-file (s pathname)
     (let ((state (make-parser-state 
                   :stream (make-line-stream s))))
       (parse-next-node state))))
-
 
 
 (defun parse-document (state)

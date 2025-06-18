@@ -1,7 +1,7 @@
 (defpackage :epsilon.lib.archive
   (:use
    :cl
-   :epsilon.lib.type)                  ; FIXME -- simple puns for common types
+   :epsilon.lib.type)
   (:local-nicknames
    (:char :epsilon.lib.char)
    (:stream :epsilon.lib.stream)
@@ -93,6 +93,19 @@
       (char:string-to-bytes string :encoding :utf-8)
       #()))
 
+;;; TODO
+;;;
+;;; msdos timestamp is really a kind of thing. at core, a byte range
+;;; may express one. there should be a simple, inlinable function that
+;;; accomplishes the decoding. outside of that, a generaliation of how
+;;; to decode things. there is some kind of monomorphizing, optimizing
+;;; compiler in here somewhere.
+
+;;; TODO
+;;;
+;;; The ldb stuff looks messy. it looks like there's a declarative,
+;;; packed, c-like struct in there somewhere.
+
 (defun decode-msdos-timestamp (date time)
   (let ((yy (ldb (byte 7 9) date))
         (mm (ldb (byte 4 5) date))
@@ -134,7 +147,7 @@
   (let ((compat (file-attribute-name compat))
         (msdos (ldb (byte 8 0) attr))
         (os-specific (ldb (byte 16 16) attr)))
-    (list 0 #+fixme (epsilon.sys.fs:decode-attributes msdos :windows) compat os-specific)))
+    (list #+fixme (epsilon.sys.fs:decode-attributes msdos :windows) compat os-specific)))
 
 (defun encode-file-attribute (thing)
   (destructuring-bind (msdos compat os-specific) thing

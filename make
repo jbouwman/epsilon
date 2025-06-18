@@ -4,7 +4,7 @@ def build [] {
     (sbcl --noinform
           --non-interactive
           --eval "(load \"boot.lisp\")"
-          --eval "(boot *boot-order*)"
+          --eval "(load-epsilon)"
           --eval "(epsilon.tool.build:build)")
 }
 
@@ -13,7 +13,7 @@ def test [] {
        (sbcl --noinform
           --non-interactive
           --eval "(load \"boot.lisp\")"
-          --eval "(boot *boot-order*)"
+          --eval "(load-epsilon)"
           --eval "(epsilon.tool.build:build)"
           --eval "(sb-posix:exit
                     (if (epsilon.tool.test:run-success-p 
