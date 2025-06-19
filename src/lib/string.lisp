@@ -45,6 +45,8 @@
            (seq:cons string seq:*empty*))))))
 
 (defun join (delimiter strings)
+  (when (seq:empty-p strings)
+    (return-from join ""))
   (let* ((strings (seq:realize strings))
          (s (make-string (+ (apply #'+ (mapcar #'length strings))
                            (1- (length strings)))

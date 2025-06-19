@@ -20,6 +20,12 @@
 (defvar *known-projects*
   map:+empty+)
 
+(defvar *error-behavior* :halt
+  "How to handle compilation errors: :halt, :ignore, or :print")
+
+(defvar *warning-behavior* :ignore  
+  "How to handle compilation warnings: :halt, :ignore, or :print")
+
 (defclass locatable ()
   ((uri :initarg :uri :accessor uri)))
 
@@ -63,6 +69,7 @@
    (errors :initform nil :accessor compilation-errors)
    (stdout-output :initform nil :accessor stdout-output)
    (stderr-output :initform nil :accessor stderr-output)
+   (stack-trace :initform nil :accessor stack-trace)
    (start-time :initform nil :accessor start-time)
    (end-time :initform nil :accessor end-time)))
 
@@ -116,8 +123,8 @@
       (make-instance 'source-info
                      :uri uri
                      :hash (calculate-hash uri)
-                     :defines (normalize-package defines)
-                     :requires (mapcar #'normalize-package requires)))))
+                     :defines (pkg:normalize defines)
+                     :requires (mapcar #'pkg:normalize requires)))))
 
 (defun load-project (uri)
   "Parse project definition in directory URI"
@@ -180,15 +187,6 @@
 (defun read-first-form (uri)
   (with-open-file (stream (uri::path uri))
     (read stream)))
-
-(defun normalize-package-component (component)
-  (string-downcase component))
-
-(defun normalize-package (sym)
-  (when sym
-    (str:join #\.
-              (seq:map #'normalize-package-component
-                       (pkg:parse (symbol-name sym))))))
 
 (defun interpret-package (form)
   (cond ((string-equal 'defpackage (first form))
@@ -254,6 +252,62 @@
         (t
          :up-to-date)))
 
+(defun print-build-output (result)
+  "Print stdout and stderr output from build result"
+  (when (stdout-output result)
+    (format *error-output* "~%--- Build Output ---~%~A~%" (stdout-output result)))
+  (when (stderr-output result)
+    (format *error-output* "~%--- Error Output ---~%~A~%" (stderr-output result))))
+
+(defun redefinition-warning-p (warning)
+  "Check if warning is about redefinition (which we want to suppress)"
+  (let ((warning-string (format nil "~A" warning)))
+    (or (search "redefin" warning-string)
+        (search "REDEFIN" warning-string))))
+
+(defun handle-warning (warning result)
+  "Handle compilation warning based on *warning-behavior*"
+  (push warning (compilation-warnings result))
+  
+  ;; Always suppress redefinition warnings for interactive development
+  (when (redefinition-warning-p warning)
+    (muffle-warning)
+    (return-from handle-warning))
+  
+  (case *warning-behavior*
+    (:halt 
+     ;; Force output to be flushed before halting
+     (force-output *standard-output*)
+     (force-output *error-output*)
+     (format t "~%BUILD HALTED: Warning encountered~%")
+     (format t "Warning: ~A~%" warning)
+     (print-build-output result)
+     ;; Don't muffle so the warning prints normally, then halt
+     (error "Build halted due to warning"))
+    (:print 
+     ;; Let warning print and continue (don't muffle)
+     nil)
+    (:ignore 
+     ;; Suppress the warning
+     (muffle-warning))))
+
+(defun handle-error (error result)
+  "Handle compilation error based on *error-behavior*"  
+  (push error (compilation-errors result))
+  (case *error-behavior*
+    (:halt 
+     ;; Force output to be flushed before halting
+     (force-output *standard-output*)
+     (force-output *error-output*)
+     (format t "~%BUILD HALTED: Error encountered~%")
+     (format t "Error: ~A~%" error)
+     (print-build-output result)
+     (error error))
+    (:print 
+     ;; Print error but continue
+     (format t "Error: ~A~%" error))
+    (:ignore nil)))
+
 (defun watch-operation (build-input fn)
   (let ((result (make-instance 'build-result
                                :build-input build-input))
@@ -265,23 +319,37 @@
            (let ((*standard-output* stdout-stream)
                  (*error-output* stderr-stream))
              (handler-bind ((warning (lambda (w)
-                                       (push w (compilation-warnings result))
-                                       (muffle-warning)))
+                                       ;; Capture output before handling warning
+                                       (setf (stdout-output result) (get-output-stream-string stdout-stream)
+                                             (stderr-output result) (get-output-stream-string stderr-stream))
+                                       (handle-warning w result)))
                             (error (lambda (e)
-                                     (push e (compilation-errors result)))))
+                                     ;; Capture output before handling error  
+                                     (setf (stdout-output result) (get-output-stream-string stdout-stream)
+                                           (stderr-output result) (get-output-stream-string stderr-stream)
+                                           (stack-trace result) (sb-debug:list-backtrace))
+                                     (handle-error e result))))
                (funcall fn))))
-      (setf (end-time result) (get-internal-real-time)
-            (stdout-output result) (get-output-stream-string stdout-stream)
-            (stderr-output result) (get-output-stream-string stderr-stream)))
-    (report-result result)
+      (setf (end-time result) (get-internal-real-time))
+      ;; Always capture final output
+      (unless (stdout-output result)
+        (setf (stdout-output result) (get-output-stream-string stdout-stream)))
+      (unless (stderr-output result)
+        (setf (stderr-output result) (get-output-stream-string stderr-stream))))
+    ; (report-result result)
     result))
 
 (defun compile-source (build-input)
   (watch-operation build-input
                    (lambda ()
                      (fs:make-dirs (uri:parent (target-uri build-input)))
-                     (compile-file (uri:path (source-uri build-input))
-                                   :output-file (uri:path (target-uri build-input))))))
+                     ;; Set compiler policy to ensure warnings are visible
+                     (let ((*compile-verbose* t)
+                           (*compile-print* t))
+                       (compile-file (uri:path (source-uri build-input))
+                                     :output-file (uri:path (target-uri build-input))
+                                     :verbose t
+                                     :print t)))))
 
 (defun load-source (build-input)
   (watch-operation build-input
@@ -304,13 +372,19 @@
                    :project project
                    :results results)))
 
-(defun build (&key dir force)
+(defun build (&key dir force 
+                   (error-behavior :halt) 
+                   (warning-behavior :ignore))
   "Build project sources and optionally tests.
   
   DIR - Directory containing project (defaults to current directory)
-  FORCE - Force compilation of all build steps regardless of timestamps"
+  FORCE - Force compilation of all build steps regardless of timestamps
+  ERROR-BEHAVIOR - How to handle compilation errors: :halt (default), :ignore, :print
+  WARNING-BEHAVIOR - How to handle compilation warnings: :ignore (default), :halt, :print"
   (let* ((project-dir (uri:file-uri (or dir (namestring *default-pathname-defaults*))))
-         (project (load-project project-dir)))
+         (project (load-project project-dir))
+         (*error-behavior* error-behavior)
+         (*warning-behavior* warning-behavior))
     (%build project :force force)))
 
 (defun operation-wall-time (result)
@@ -337,6 +411,18 @@
         (format t "~d error~:p" error-count))
       (format t ")"))
     (format t "~%")
+    
+    ;; Show detailed errors/warnings based on behavior settings
+    (when (and (compilation-errors result) 
+               (eq *error-behavior* :print))
+      (dolist (error (compilation-errors result))
+        (format t "    ERROR: ~a~%" error)))
+    
+    (when (and (compilation-warnings result)
+               (eq *warning-behavior* :print))
+      (dolist (warning (compilation-warnings result))
+        (format t "    WARNING: ~a~%" warning)))
+    
     (when (compilation-errors result)
       (when (stdout-output result)
         (format t "    stdout: ~a~%" (stdout-output result)))

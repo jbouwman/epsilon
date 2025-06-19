@@ -4,6 +4,7 @@
   (:export
    :define-constant
    :->
+   :->>
    :if-let
    :when-let
    :when-let*
@@ -26,9 +27,10 @@
   `(do () ((not ,cond)) ,@body))
 
 (defmacro -> (x &rest forms)
-  "Thread-first macro (similar to Clojure's ->).
-   Takes a value and a series of forms, threading the value as the first argument
-   through each form in succession."
+  "Thread-first macro.
+
+   Takes a value and a series of forms, threading the value as the
+   first argument through each form in succession."
   (if (null forms)
       x
       (let ((form (car forms)))
@@ -38,6 +40,19 @@
             `(-> (,form ,x)
                  ,@(cdr forms))))))
 
+(defmacro ->> (x &rest forms)
+  "Thread-last macro.
+
+   Takes a value and a series of forms, threading the value as the
+   last argument through each form in succession."
+  (if (null forms)
+      x
+      (let ((form (car forms)))
+        (if (listp form)
+            `(->> ,(append form (list x))
+                 ,@(cdr forms))
+            `(->> (,form ,x)
+                 ,@(cdr forms))))))
 
 (defmacro if-let (bindings &body (then-form &optional else-form))
     "Creates new variable bindings, and conditionally executes either

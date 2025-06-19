@@ -5,11 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ### Building and Testing
-- `./make build` - Build the Epsilon library using SBCL
-- `./make test` - Run all tests and exit with appropriate code (0 for success, 1 for failure)
-- `./make coverage` - Generate test coverage report and open in browser
-
-The `make` script is written in Nushell and provides the primary interface for development tasks.
+- `./run.sh build` - Build the Epsilon library using SBCL
+- `./run.sh test` - Run all tests and exit with appropriate code (0 for success, 1 for failure)
+- `./run.sh test --package epsilon.lib.json.tests --name parse-empty-structures` - Run a single, specific test
 
 ## Architecture Overview
 
@@ -64,7 +62,6 @@ The codebase is organized into several major modules:
 The system depends only on SBCL built-in modules:
 - `sb-posix` for POSIX system calls
 - `sb-rotate-byte` for bit manipulation
-- `sb-cltl2` for code walking
 - `sb-bsd-sockets` for networking
 
 ## Major Differences from Standard Common Lisp Practices
@@ -89,3 +86,11 @@ Packages follow the pattern `epsilon.{module}.{submodule}` with hierarchical org
 - Source files are organized by functionality in `src/`
 - Tests mirror the source structure in `tests/`
 - Build artifacts and coverage reports go in `target/`
+
+### Documentation Style
+- Use dry, matter-of-fact technical style for all documentation in this project
+- Avoiding subjective language like "elegant", "good", "simple", "powerful", etc.
+- Focus on factual descriptions of functionality, API specifications, and implementation details
+  
+## Project Resources
+- The file `docs/wishlist.md` contains a structured list of desired future capabilities of various degrees of difficulty

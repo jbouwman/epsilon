@@ -1,186 +1,227 @@
-;;;;  TODO
-;;;;
-;;;;  JSON string escape parsing (\", \\, \n, etc.) could be extracted as
-;;;;  epsilon.lib.string-escape for reuse in other text formats.
-;;;;
-;;;;  JSON number parsing (parse-number function) could extend epsilon.lib.type
-;;;;  with numeric parsing for multiple formats.
-
 (defpackage :epsilon.lib.json
   (:use :cl)
   (:local-nicknames
-   (:lexer
-    :epsilon.lib.lexer))
+   (:p :epsilon.lib.parser)
+   (:seq :epsilon.lib.sequence)
+   (:lexer :epsilon.lib.lexer))
   (:export
-   :parse
-   :parse-string))
+   :tokenize
+   :parse))
 
 (in-package :epsilon.lib.json)
 
-(define-condition json-parse-error (error)
-  ((message :initarg :message :reader json-error-message)
-   (position :initarg :position :reader json-error-position))
-  (:report (lambda (c s)
-             (format s "JSON parse error at position ~A: ~A"
-                     (json-error-position c)
-                     (json-error-message c)))))
+;;;; JSON Parser Using Parser Combinators with Tokenization
 
-(defun skip-whitespace (lexer)
-  (lexer:skip-whitespace lexer))
+;;; Tokenizer
 
-(defun %parse-string (lexer)
-  (unless (char= (lexer:next lexer) #\")
-    (lexer:lexer-error lexer "Expected string"))
-  
-  (with-output-to-string (s)
-    (loop for ch = (lexer:next lexer)
-          do (case ch
-               ((nil) (lexer:lexer-error lexer "Unterminated string"))
-               (#\" (return))
-               (#\\ (let ((next (lexer:next lexer)))
-                      (case next
-                        (#\" (write-char #\" s))
-                        (#\\ (write-char #\\ s))
-                        (#\/ (write-char #\/ s))
-                        (#\b (write-char #\Backspace s))
-                        (#\f (write-char #\Page s))
-                        (#\n (write-char #\Newline s))
-                        (#\r (write-char #\Return s))
-                        (#\t (write-char #\Tab s))
-                        (#\u (let ((code (parse-integer 
-                                          (with-output-to-string (hex)
-                                            (dotimes (i 4)
-                                              (write-char (or (lexer:next lexer)
-                                                              (lexer:lexer-error lexer "Invalid unicode escape"))
-                                                          hex)))
-                                          :radix 16)))
-                               (write-char (code-char code) s)))
-                        (otherwise (lexer:lexer-error lexer "Invalid escape sequence")))))
-               (otherwise (write-char ch s))))))
+(deftype json-token-type ()
+  '(member :string :number :true :false :null
+           :lbrace :rbrace :lbracket :rbracket
+           :comma :colon :eof))
 
-(defun parse-number (lexer)
-  (let* ((has-decimal nil)
-         (has-exponent nil)
-         (number-str (with-output-to-string (s)
-                       ;; Sign
-                       (let ((ch (lexer:peek lexer)))
-                         (when (and ch (char= ch #\-))
-                           (write-char (lexer:next lexer) s)))
-                       
-                       ;; Integer part  
-                       (loop for ch = (lexer:peek lexer)
-                             while (and ch (digit-char-p ch))
-                             do (write-char (lexer:next lexer) s))
-                       
-                       ;; Decimal part
-                       (let ((ch (lexer:peek lexer)))
-                         (when (and ch (char= ch #\.))
-                           (write-char (lexer:next lexer) s)
-                           (setf has-decimal t)
-                           (loop for ch = (lexer:peek lexer)
-                                 while (and ch (digit-char-p ch)) 
-                                 do (write-char (lexer:next lexer) s))))
-                       
-                       ;; Exponent
-                       (let ((ch (lexer:peek lexer)))
-                         (when (and ch (member ch '(#\e #\E)))
-                           (write-char (lexer:next lexer) s)
-                           (setf has-exponent t)
-                           (let ((ch (lexer:peek lexer)))
-                             (when (and ch (member ch '(#\+ #\-)))
-                               (write-char (lexer:next lexer) s)))
-                           (loop for ch = (lexer:peek lexer)
-                                 while (and ch (digit-char-p ch))
-                                 do (write-char (lexer:next lexer) s)))))))
+(defun tokenize-string (lexer)
+  "Tokenize a JSON string literal."
+  (multiple-value-bind (start-pos start-line start-column)
+      (lexer:lexer-position lexer)
+    (unless (char= (lexer:next lexer) #\")
+      (lexer:lexer-error lexer "Expected string"))
     
-    (if (or has-decimal has-exponent)
-        (read-from-string number-str)
-        (parse-integer number-str))))
+    (let ((value (with-output-to-string (s)
+                   (loop for ch = (lexer:next lexer)
+                         do (case ch
+                              ((nil) (lexer:lexer-error lexer "Unterminated string"))
+                              (#\" (return))
+                              (#\\ (let ((next (lexer:next lexer)))
+                                     (case next
+                                       (#\" (write-char #\" s))
+                                       (#\\ (write-char #\\ s))
+                                       (#\/ (write-char #\/ s))
+                                       (#\b (write-char #\Backspace s))
+                                       (#\f (write-char #\Page s))
+                                       (#\n (write-char #\Newline s))
+                                       (#\r (write-char #\Return s))
+                                       (#\t (write-char #\Tab s))
+                                       (#\u (let ((code (parse-integer 
+                                                         (with-output-to-string (hex)
+                                                           (dotimes (i 4)
+                                                             (write-char (or (lexer:next lexer)
+                                                                             (lexer:lexer-error lexer "Invalid unicode escape"))
+                                                                         hex)))
+                                                         :radix 16)))
+                                              (write-char (code-char code) s)))
+                                       (otherwise (lexer:lexer-error lexer "Invalid escape sequence")))))
+                              (otherwise (write-char ch s)))))))
+      (lexer:%make-token :type :string 
+                         :value value 
+                         :position start-pos
+                         :line start-line
+                         :column start-column))))
 
-(defun parse-value (lexer)
-  (skip-whitespace lexer)
-  (let ((ch (lexer:peek lexer)))
-    (case ch
-      (#\" (%parse-string lexer))
-      (#\{ (parse-object lexer))
-      (#\[ (parse-array lexer))
-      (#\t (parse-true lexer))
-      (#\f (parse-false lexer))
-      (#\n (parse-null lexer))
-      ((#\- #\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
-       (parse-number lexer))
-      (otherwise (lexer:lexer-error lexer "Invalid JSON value")))))
+(defun tokenize-number (lexer)
+  "Tokenize a JSON number."
+  (multiple-value-bind (start-pos start-line start-column)
+      (lexer:lexer-position lexer)
+    (let ((has-decimal nil)
+          (has-exponent nil))
+    
+    (let ((number-str (with-output-to-string (s)
+                        ;; Sign
+                        (let ((ch (lexer:peek lexer)))
+                          (when (and ch (char= ch #\-))
+                            (write-char (lexer:next lexer) s)))
+                        
+                        ;; Integer part
+                        (loop for ch = (lexer:peek lexer)
+                              while (and ch (digit-char-p ch))
+                              do (write-char (lexer:next lexer) s))
+                        
+                        ;; Decimal part
+                        (let ((ch (lexer:peek lexer)))
+                          (when (and ch (char= ch #\.))
+                            (write-char (lexer:next lexer) s)
+                            (setf has-decimal t)
+                            (loop for ch = (lexer:peek lexer)
+                                  while (and ch (digit-char-p ch))
+                                  do (write-char (lexer:next lexer) s))))
+                        
+                        ;; Exponent
+                        (let ((ch (lexer:peek lexer)))
+                          (when (and ch (member ch '(#\e #\E)))
+                            (write-char (lexer:next lexer) s)
+                            (setf has-exponent t)
+                            (let ((ch (lexer:peek lexer)))
+                              (when (and ch (member ch '(#\+ #\-)))
+                                (write-char (lexer:next lexer) s)))
+                            (loop for ch = (lexer:peek lexer)
+                                  while (and ch (digit-char-p ch))
+                                  do (write-char (lexer:next lexer) s)))))))
+      
+      (let ((value (if (or has-decimal has-exponent)
+                       (read-from-string number-str)
+                       (parse-integer number-str))))
+        (lexer:%make-token :type :number 
+                           :value value 
+                           :position start-pos
+                           :line start-line
+                           :column start-column))))))
 
-(defun parse-object (lexer)
-  (unless (char= (lexer:next lexer) #\{)
-    (lexer:lexer-error lexer "Expected '{'"))
-  
-  (skip-whitespace lexer)
-  (if (char= (lexer:peek lexer) #\})
-      (progn (lexer:next lexer) nil)
-      (loop for first = t then nil
-            collect (progn
-                      (when (not first)
-                        (skip-whitespace lexer)
-                        (unless (char= (lexer:next lexer) #\,)
-                          (lexer:lexer-error lexer "Expected ',' between object members")))
-                      (skip-whitespace lexer)
-                      (let ((key (%parse-string lexer)))
-                        (skip-whitespace lexer)
-                        (unless (char= (lexer:next lexer) #\:)
-                          (lexer:lexer-error lexer "Expected ':' after object key"))
-                        (cons key (parse-value lexer))))
-            until (progn
-                    (skip-whitespace lexer)
-                    (when (char= (lexer:peek lexer) #\})
-                      (lexer:next lexer)
-                      t)))))
+(defun tokenize-keyword (lexer keyword token-type)
+  "Tokenize a JSON keyword (true, false, null)."
+  (multiple-value-bind (start-pos start-line start-column)
+      (lexer:lexer-position lexer)
+    (unless (lexer:consume-string lexer keyword)
+      (lexer:lexer-error lexer (format nil "Expected '~A'" keyword)))
+    (lexer:%make-token :type token-type 
+                       :value (case token-type
+                                (:true t)
+                                (:false nil)
+                                (:null nil))
+                       :position start-pos
+                       :line start-line
+                       :column start-column)))
 
-(defun parse-array (lexer)
-  (unless (char= (lexer:next lexer) #\[)
-    (lexer:lexer-error lexer "Expected '['"))
-  
-  (skip-whitespace lexer)
-  (if (char= (lexer:peek lexer) #\])
-      (progn (lexer:next lexer) nil)
-      (loop for first = t then nil
-            collect (progn
-                      (when (not first)
-                        (skip-whitespace lexer)
-                        (unless (char= (lexer:next lexer) #\,)
-                          (lexer:lexer-error lexer "Expected ',' between array elements")))
-                      (parse-value lexer))
-            until (progn
-                    (skip-whitespace lexer)
-                    (when (char= (lexer:peek lexer) #\])
-                      (lexer:next lexer)
-                      t)))))
+(defun tokenize-syntax (lexer type value)
+  (prog1
+      (lexer:make-token lexer type value)
+    (lexer:next lexer)))
 
-(defun parse-true (lexer)
-  (unless (lexer:consume-string lexer "true")
-    (lexer:lexer-error lexer "Expected 'true'"))
-  t)
+(defun next-token (lexer)
+  "Get the next JSON token from the lexer."
+  (lexer:skip-whitespace lexer)
+  (if (lexer:at-end-p lexer)
+      (lexer:make-token lexer :eof nil)
+      (let ((ch (lexer:peek lexer)))
+        (case ch
+          (#\" (tokenize-string lexer))
+          (#\{ (tokenize-syntax lexer :lbrace #\{))
+          (#\} (tokenize-syntax lexer :rbrace #\}))
+          (#\[ (tokenize-syntax lexer :lbracket #\[))
+          (#\] (tokenize-syntax lexer :rbracket #\]))
+          (#\, (tokenize-syntax lexer :comma #\,))
+          (#\: (tokenize-syntax lexer :colon #\:))
+          (#\t (tokenize-keyword lexer "true" :true))
+          (#\f (tokenize-keyword lexer "false" :false))
+          (#\n (tokenize-keyword lexer "null" :null))
+          ((#\- #\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
+           (tokenize-number lexer))
+          (otherwise
+           (lexer:lexer-error lexer (format nil "Unexpected character: ~A" ch)))))))
 
-(defun parse-false (lexer)
-  (unless (lexer:consume-string lexer "false")
-    (lexer:lexer-error lexer "Expected 'false'"))
-  nil)
+(defun tokenize (input)
+  "Tokenize JSON input into a lazy sequence of tokens."
+  (let ((lexer (if (stringp input)
+                   (lexer:make-lexer (make-string-input-stream input))
+                   (lexer:make-lexer input))))
+    (labels ((token-stream ()
+               (let ((token (next-token lexer)))
+                 (if (eq (lexer:token-type token) :eof)
+                     (seq:cons token seq:*empty*)
+                     (seq:cons token (token-stream))))))
+      (token-stream))))
 
-(defun parse-null (lexer)
-  (unless (lexer:consume-string lexer "null")
-    (lexer:lexer-error lexer "Expected 'null'"))
-  nil)
+;;;; Parser
 
-(defun parse (stream)
-  "Parse a JSON string into Lisp data structures.
-   Objects are represented as alists, arrays as lists."
-  (let ((lexer (lexer:make-lexer stream)))
-    (let ((result (parse-value lexer)))
-      (skip-whitespace lexer)
-      (when (not (lexer:at-end-p lexer))
-        (lexer:lexer-error lexer "Unexpected trailing content"))
-      result)))
+(defun token-p (type)
+  "Parse a token of the expected type."
+  (p:satisfy (lambda (token)
+               (eq (lexer:token-type token) type))
+             (format nil "token ~A" type)))
 
-(defun parse-string (string)
-  (with-input-from-string (stream string)
-    (parse stream)))
+(defun json-atom (type)
+  (p:match ((token (token-p type)))
+    (p:return (lexer:token-value token))))
+
+(defun json-array ()
+  "Parse JSON array."
+  (p:match ((_ (token-p :lbracket)))
+    (p:choice (p:match ((_ (token-p :rbracket)))
+                (p:return '()))
+              (p:match ((values (p:sepBy1 (json-value)
+                                          (token-p :comma)))
+                        (_ (token-p :rbracket)))
+                (p:return values)))))
+
+(defun json-pair ()
+  "Parse JSON key-value pair."
+  (p:match ((key (json-atom :string))
+            (_ (token-p :colon))
+            (value (json-value)))
+    (p:return (cons key value))))
+
+(defun json-object ()
+  "Parse JSON object."
+  (p:match ((_ (token-p :lbrace)))
+    (p:choice (p:match ((_ (token-p :rbrace)))
+                (p:return '()))
+              (p:match ((pairs (p:sepBy1 (json-pair)
+                                         (token-p :comma)))
+                        (_ (token-p :rbrace)))
+                (p:return pairs)))))
+
+(defun json-value ()
+  "Parse any JSON value."
+  (p:choice (json-atom :string)
+            (json-atom :number)
+            (json-object)
+            (json-array)
+            (json-atom :true)
+            (json-atom :false)
+            (json-atom :null)))
+
+(defun json-document ()
+  "Parse complete JSON document."
+  (p:match ((value (json-value))
+            (_ (token-p :eof)))
+    (p:return value)))
+
+;; Public API
+
+(defun parse (input)
+  "Parse JSON from character sequence or string.
+   Returns parsed value or signals error on parse failure."
+  (let* ((tokens (tokenize input))
+         (result (p:parse (json-document) tokens)))
+    (if (p:success-p result)
+        (p:success-value result)
+        (error "JSON parse error: ~A"
+               (p::parse-failure-message result)))))
