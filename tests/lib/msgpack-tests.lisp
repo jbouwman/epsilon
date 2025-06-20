@@ -10,14 +10,14 @@
 
 (in-package #:epsilon.lib.msgpack.tests)
 
-(deftest nil-bool-values ()
+(deftest nil-bool-values
   (is (equalp (msgp:encode nil) #(192)))
   (is (equalp (msgp:encode t) #(195)))
   (is (equalp (msgp:decode #(192)) nil))
   (is (equalp (msgp:decode #(195)) t))
   (is (equalp (msgp:decode #(194)) nil)))
 
-(deftest encode-string ()
+(deftest encode-string
   (is (equalp (msgp:encode "abc")
               #(163 97 98 99)))
   (is (equalp (msgp:decode #(163 97 98 99))
@@ -34,7 +34,7 @@
     (is (= (length (msgp:encode long-str)) 52))  ; 2 bytes header + 50 content
     (is (string= (msgp:decode (msgp:encode long-str)) long-str))))
 
-(deftest integer-formats ()
+(deftest integer-formats
   ;; Positive fixint (0-127)
   (is (equalp (msgp:encode 0) #(0)))
   (is (equalp (msgp:encode 127) #(127)))
@@ -71,7 +71,7 @@
                      -1 -32 -33 -128 -129 -32768 -32769 -2147483648))
     (is (= (msgp:decode (msgp:encode num)) num))))
 
-(deftest float-formats ()
+(deftest float-formats
   ;; Test single-float
   (let ((val 123.456))
     (is (equalp (msgp:decode (msgp:encode (float val 0.0s0)))
@@ -81,7 +81,7 @@
   (let ((val 123.456d0))
     (is (equalp (msgp:decode (msgp:encode val)) val))))
 
-(deftest encode-map ()
+(deftest encode-map
   ;; Test empty map
   (is (equalp (msgp:encode map:+empty+) #(128)))
   
@@ -97,7 +97,7 @@
                                 "bool" t)))
     (is (map:map= original (msgp:decode (msgp:encode original))))))
 
-(deftest array-formats ()
+(deftest array-formats
   ;; Test empty array
   (is (equalp (msgp:encode #()) #(144)))
   
@@ -108,7 +108,7 @@
   (let ((array #("string" 42 3.14d0 nil t)))
     (is (equalp (msgp:decode (msgp:encode array)) array))))
 
-(deftest bin-format ()
+(deftest bin-format
   ;; Test empty binary
   (let ((bin (make-array 0 :element-type 'u8)))
     (is (equalp (msgp:encode bin) #(196 0))))
@@ -119,7 +119,7 @@
     (is (equalp (msgp:encode bin) #(196 5 1 2 3 4 5)))
     (is (equalp (msgp:decode (msgp:encode bin)) bin))))
 
-(deftest ext-format ()
+(deftest ext-format
   ;; Test ext format (as a list with :ext tag)
   (let* ((type-code 1)
          (data (make-array 4 :element-type 'u8 
@@ -130,7 +130,7 @@
 
 ;; FIXME
 #++
-(deftest timestamp-format ()
+(deftest timestamp-format
   ;; Test timestamp encoding/decoding using our epsilon.lib.time implementation
   (let* ((timestamp (time:make-timestamp 1000000000 0)))
     (let ((decoded (msgp:decode (msgp:encode timestamp))))

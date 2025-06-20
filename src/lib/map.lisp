@@ -468,11 +468,11 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
              (seq map)
              :initial-value initial-value))
 
-(defun map (map fn)
+(defun map (fn map)
   "Apply FN to each value in MAP, returning a new map with the same keys but transformed values.
    FN should take two arguments: key and value."
   (reduce (lambda (result k v)
-            (assoc result k (funcall fn k v)))
+            (assoc result k (funcall fn v)))
           map
           +empty+))
 

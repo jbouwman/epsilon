@@ -14,7 +14,7 @@
 (defun load-project ()
   (build::load-project (uri:uri "file:///Users/jbouwman/git/epsilon")))
 
-(deftest build-order ()
+(deftest build-order
   (is (seq:each (lambda (x) (format t "~S~%" x)) (build::build-order (load-project))))
 
 

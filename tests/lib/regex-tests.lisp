@@ -7,43 +7,7 @@
 
 (in-package :epsilon.lib.regex.tests)
 
-#++
-(deftest scan ()
-  (is (equalp (multiple-value-list (re:scan "(a)*b" "xaaabd"))
-              (list 1 5 #(3) #(4))))
-
-  (is (equalp (multiple-value-list (re:scan "(a)*b" "xaaabd" :start 1))
-              (list 1 5 #(3) #(4))))
-
-  (is (equalp (multiple-value-list (re:scan "(a)*b" "xaaabd" :start 2))
-              (list 2 5 #(3) #(4))))
-
-  (is (null (re:scan "(a)*b" "xaaabd" :end 4)))
-
-  (is (equalp (multiple-value-list (re:scan '(:greedy-repetition 0 nil #\b) "bbbc"))
-              (list 0 3 #() #())))
-
-  (is (null (re:scan '(:greedy-repetition 4 6 #\b) "bbbc"))))
-
-#++
-(deftest create-scanner ()
-  (let ((s (re:create-scanner "(([a-c])+)x")))
-    (is (equalp (multiple-value-list (re:scan s "abcxy"))
-                (list 0 4 #(0 2) #(3 3))))))
-
-#++
-(deftest scan-to-strings ()
-  (is (equalp (multiple-value-list (re:scan-to-strings "[^b]*b" "aaabd"))
-              (list "aaab" #())))
-
-  (is (equalp (multiple-value-list (re:scan-to-strings "([^b])*b" "aaabd"))
-              (list "aaab" #("a"))))
-
-  (is (equalp (multiple-value-list (re:scan-to-strings "(([^b])*)b" "aaabd"))
-              (list "aaab" #("aaa" "a")))))
-
-
-(deftest search-test ()
+(deftest search-test
   "Test search"
   
   ;; Basic search functionality
@@ -77,7 +41,7 @@
 
 
 
-(deftest match ()
+(deftest match
   "Test re.match() equivalent - matches only at beginning"
   
   ;; Successful matches at beginning
@@ -110,7 +74,7 @@
     (list "world" #())
     "Match with start parameter"))
 
-(deftest findall ()
+(deftest findall
   "Test re.findall() equivalent"
   
   ;; Basic findall
@@ -142,7 +106,7 @@
     (list "456")
     "Findall with start and end parameters"))
 
-(deftest finditer ()
+(deftest finditer
   "Test finditer() equivalent - returns position pairs"
   
   ;; Basic finditer
@@ -168,7 +132,7 @@
     (list (cons 6 11))
     "Finditer with single match"))
 
-(deftest sub ()
+(deftest sub
   "Test re.sub() equivalent"
   
   ;; Replace all by default
@@ -211,7 +175,7 @@
     "123abcXdef789"
     "Sub with start and end parameters"))
 
-(deftest subn ()
+(deftest subn
   "Test re.subn() equivalent - returns count of replacements"
   
   ;; Replace all and count
@@ -242,7 +206,7 @@
     (list "abcdef" 0)
     "Subn with no matches returns zero count"))
 
-(deftest compile-test ()
+(deftest compile-test
   "Test re.compile() equivalent"
   
   ;; Basic compilation and usage
@@ -267,7 +231,7 @@
       (list "hello world" #("hello" "world"))
       "Complex compiled pattern works")))
 
-(deftest edge-cases ()
+(deftest edge-cases
   "Test edge cases and error conditions"
   
   ;; Empty strings
@@ -302,7 +266,7 @@
     "hello hello world"
     "Replacement with reference to whole match"))
 
-(deftest python-compatibility ()
+(deftest python-compatibility
   "Test cases that mirror Python's re module behavior"
   
   ;; Basic search vs match difference
