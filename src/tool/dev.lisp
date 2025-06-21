@@ -17,7 +17,9 @@
 
 (defun test (&rest args)
   (build:build)
-  (apply #'test:run-tests args))
+  (let ((result (apply #'test:run args)))
+    (unless (test:success-p result)
+      (sb-posix:exit 1))))
 
 (defvar *commands*
   (map:make-map "build" #'build:build

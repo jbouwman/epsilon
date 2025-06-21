@@ -1,0 +1,227 @@
+(defpackage epsilon.tool.test.report
+  (:use
+   cl)
+  (:local-nicknames
+   (suite epsilon.tool.test.suite)
+   (map epsilon.lib.map)
+   (xml epsilon.lib.xml))
+  (:export
+   make))
+
+(in-package epsilon.tool.test.report)
+
+;;;
+;;; 'shell' formatter
+;;;
+
+(defclass shell-report ()
+  ((failure-count :initform 0)
+   (max-failures :initform 10)))
+
+(defmethod suite:event ((formatter shell-report) event-type event-data)
+  )
+
+(defmethod suite:event ((formatter shell-report) (event-type (eql :start)) event-data)
+  (format t "~&Running tests:~%~%"))
+
+(defmethod suite:event ((formatter shell-report) (event-type (eql :start-group)) group)
+  (format-package-header (first group)))
+
+(defun format-package-header (package-name)
+  "Format a package header with standard indentation"
+  (format t "~&;; ~A~%" package-name))
+
+(defun format-status-field (result)
+  "Format the timing and status field, returning its string representation"
+  (when result
+    (format nil "~,2fs~@[ ~A~]"
+            (suite::elapsed-time result)
+            (case (suite:status result)
+              (:failure "FAILURE")
+              (:error "ERROR")  
+              (:skip "SKIP")
+              (otherwise nil)))))
+
+(defun format-test-entry (test-name &optional (total-width 78) result)
+  "Format a test entry with properly aligned timing and status.
+TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
+  (let* ((status-field (format-status-field result))
+         (status-width (if status-field (length status-field) 0))
+         (assertion-count (length (suite:assertions result)))
+         (name-field (format nil "~a (~d)" test-name assertion-count))
+         (name-width (length (string name-field)))
+         (dots-width (+ 10 (- total-width 
+                              name-width 
+                              status-width))))
+    (format t ";;     ~A ~V,,,'.A ~A~%"
+            name-field
+            dots-width
+            "."
+            (or status-field ""))))
+
+(defun format-condition-details (result)
+  "Print a message summarizing a test failure, error, or skip"
+  (when (suite:condition result)
+    (case (suite:status result)
+      (:failure
+       (format nil "~&~%~%~A~%~%"
+               (suite::failure-message (suite:condition result))))
+      (:error
+       (format nil "~&~%~%~A~%~%Stack:~%~%~A~%~%"
+               (suite::original-error (suite:condition result))
+               (suite::stack-trace result)))
+      (:skip
+       (format nil "~&;;       Skipped: ~A~%"
+               (suite::skip-message (suite:condition result)))))))
+
+(defmethod suite:event ((formatter shell-report) (event-type (eql :end-test)) result)
+  (with-slots (failure-count max-failures) formatter
+    (let ((test (suite:test result)))
+      (format-test-entry (symbol-name test) 60 result)
+      (when (member (suite:status result) '(:failure :error))
+        (when (< failure-count max-failures)
+          (format t "~A" (format-condition-details result))
+          (incf failure-count))))))
+
+(defmethod suite:event ((formatter shell-report) (event-type (eql :end)) run)
+  (let ((total-failures (+ (length (suite:failures run)) (length (suite:errors run)))))
+    (with-slots (failure-count max-failures) formatter
+      (format t "~&~%Test Run Complete:~%")
+      (format t ";;   Tests: ~D~%" (map:size (suite::tests run)))
+      (format t ";;   Failures: ~D~%" (length (suite:failures run)))
+      (format t ";;   Errors: ~D~%" (length (suite:errors run)))
+      (format t ";;   Skipped: ~D~%" (length (suite:skipped run)))
+      (when (> total-failures max-failures)
+        (format t ";;   (Only ~D of ~D failures/errors shown)~%" 
+                (min failure-count max-failures) total-failures))
+      (format t ";;   Time: ~,2F seconds~%"
+              (/ (- (suite::end-time run) (suite::start-time run))
+                 internal-time-units-per-second)))))
+
+;;;
+;;; 'junit' XML formatter
+;;;
+
+(defclass junit-report ()
+  ((test-suites :initform map:+empty+ :accessor test-suites)
+   (current-suite :initform nil :accessor current-suite)
+   (output-file :initarg :output-file :accessor output-file :initform "TEST-results.xml")))
+
+(defmethod suite:event ((formatter junit-report) (event-type (eql :start)) event-data)
+  (setf (test-suites formatter) map:+empty+))
+
+(defmethod suite:event ((formatter junit-report) (event-type (eql :start-group)) group)
+  (let ((suite-name (first group)))
+    (setf (current-suite formatter) suite-name)
+    (setf (test-suites formatter)
+          (map:assoc (test-suites formatter) suite-name '()))))
+
+(defmethod suite:event ((formatter junit-report) (event-type (eql :end-test)) result)
+  (when (current-suite formatter)
+    (let ((current-tests (map:get (test-suites formatter) (current-suite formatter))))
+      (setf (test-suites formatter)
+            (map:assoc (test-suites formatter) 
+                       (current-suite formatter)
+                       (cons result current-tests))))))
+
+(defmethod suite:event ((formatter junit-report) (event-type (eql :end)) run)
+  (emit-junit-xml formatter run))
+
+(defun emit-junit-xml (formatter run)
+  "Emit JUnit XML format test results to file"
+  (with-open-file (stream (output-file formatter)
+                          :direction :output 
+                          :if-exists :supersede
+                          :if-does-not-exist :create)
+    (format stream "<?xml version=\"1.0\" encoding=\"UTF-8\"?>~%")
+    (xml:emit (make-junit-testsuites formatter run) stream)))
+
+(defun make-junit-testsuites (formatter run)
+  "Create JUnit XML testsuites element"
+  (let* ((all-tests (map:vals (suite::tests run)))
+         (total-tests (length all-tests))
+         (total-failures (length (suite:failures run)))
+         (total-errors (length (suite:errors run)))
+         (total-skipped (length (suite:skipped run)))
+         (total-time (/ (- (suite::end-time run) (suite::start-time run)) 
+                        internal-time-units-per-second)))
+    (xml:element "testsuites"
+                 :attributes (list "tests" total-tests
+                                   "failures" total-failures
+                                   "errors" total-errors
+                                   "skipped" total-skipped
+                                   "time" (format nil "~,3F" total-time))
+                 :children (sort-into-suites all-tests))))
+
+(defun make-junit-testsuite (suite-name tests)
+  "Create JUnit XML testsuite element for a package"
+  (let* ((test-count (length tests))
+         (failures (count-if (lambda (r) (eq :failure (suite:status r))) tests))
+         (errors (count-if (lambda (r) (eq :error (suite:status r))) tests))
+         (skipped (count-if (lambda (r) (eq :skip (suite:status r))) tests))
+         (suite-time (reduce #'+ tests :key #'suite::elapsed-time :initial-value 0))
+         (testcases (mapcar #'make-junit-testcase (reverse tests))))
+    (xml:element "testsuite"
+                 :attributes (list "name" suite-name
+                                   "tests" test-count
+                                   "failures" failures
+                                   "errors" errors
+                                   "skipped" skipped
+                                   "time" (format nil "~,3F" suite-time))
+                 :children testcases)))
+
+(defun make-junit-testcase (result)
+  "Create JUnit XML testcase element for a test result"
+  (let* ((test-symbol (suite:test result))
+         (test-name (symbol-name test-symbol))
+         (class-name (package-name (symbol-package test-symbol)))
+         (test-time (suite::elapsed-time result))
+         (children '()))
+    
+    (case (suite:status result)
+      (:failure
+       (push (xml:element "failure"
+                          :attributes (list "message" (suite::failure-message (suite:condition result)))
+                          :children (list (xml:text (suite::failure-message (suite:condition result)))))
+             children))
+      (:error
+       (push (xml:element "error"
+                          :attributes (list "message" (format nil "~A" (suite::original-error (suite:condition result))))
+                          :children (list (xml:text (format nil "~A~%~%~A" 
+                                                            (suite::original-error (suite:condition result))
+                                                            (or (suite::stack-trace result) "")))))
+             children))
+      (:skip
+       (push (xml:element "skipped"
+                          :attributes (list "message" (suite::skip-message (suite:condition result))))
+             children)))
+    
+    (when (and (suite::stdout-output result) (not (string= (suite::stdout-output result) "")))
+      (push (xml:element "system-out" 
+                         :children (list (xml:text (suite::stdout-output result))))
+            children))
+    
+    (when (and (suite::stderr-output result) (not (string= (suite::stderr-output result) "")))
+      (push (xml:element "system-err"
+                         :children (list (xml:text (suite::stderr-output result))))
+            children))
+    
+    (xml:element "testcase"
+                 :attributes (list "name" test-name
+                                   "classname" class-name
+                                   "time" (format nil "~,3F" test-time))
+                 :children (reverse children))))
+
+(defvar *report-formats*
+  (map:make-map :shell 'shell-report
+                :junit 'junit-report))
+
+(defun to-keyword (value)
+  (etypecase value
+    (symbol (intern (string value) :keyword))
+    (string (intern (string-upcase value) :keyword))))
+
+(defun make (&key format file)
+  (make-instance (or (map:get *report-formats* (to-keyword format))
+                     (error "unknown test formatter type ~s: want one of ~A" type
+                            (map:keys *report-formats*)))))

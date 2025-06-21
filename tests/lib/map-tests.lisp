@@ -8,40 +8,40 @@
 
 (in-package :epsilon.lib.map.tests)
 
-(deftest empty-map-has-zero-count ()
+(deftest empty-map-has-zero-count
   (let ((m map:+empty+))
     (is (= (map::hamt-count m) 0)
         "The empty map has count = 0")))
 
-(deftest assoc-increases-count ()
+(deftest assoc-increases-count
   (let* ((m1 map:+empty+)
          (m2 (map:assoc m1 :a 1)))
     (is (= (map::hamt-count m2) 1))))
 
-(deftest get-returns-default-for-missing-key ()
+(deftest get-returns-default-for-missing-key
   (let ((m map:+empty+))
     (is (eql (map:get m :missing :default) :default))
     t))
 
-(deftest get-returns-value-for-existing-key ()
+(deftest get-returns-value-for-existing-key
   (let* ((m (map:assoc map:+empty+ :key "value")))
     (is (string= (map:get m :key) "value"))
     t))
 
-(deftest assoc-overwrites-existing-value ()
+(deftest assoc-overwrites-existing-value
   (let* ((m1 (map:assoc map:+empty+ :a 1))
          (m2 (map:assoc m1 :a 2)))
     (is (= (map:get m2 :a) 2))
     (is (= (map::hamt-count m2) 1))
     t))
 
-(deftest dissoc-decreases-count ()
+(deftest dissoc-decreases-count
   (let* ((m1 (map:assoc map:+empty+ :a 1))
          (m2 (map:dissoc m1 :a)))
     (is (= (map::hamt-count m2) 0))
     t))
 
-(deftest dissoc-preserves-other-values ()
+(deftest dissoc-preserves-other-values
   (let* ((m1 (map:assoc map:+empty+ :a 1))
          (m2 (map:assoc m1 :b 2))
          (m3 (map:dissoc m2 :a)))
@@ -49,13 +49,13 @@
     (is (= (map::hamt-count m3) 1))
     t))
 
-(deftest map-contains-p-works-correctly ()
+(deftest map-contains-p-works-correctly
   (let* ((m1 (map:assoc map:+empty+ :a 1)))
     (is (map:contains-p m1 :a))
     (is (not (map:contains-p m1 :b)))
     t))
 
-(deftest original-map-remains-unchanged ()
+(deftest original-map-remains-unchanged
   (let* ((m1 (map:assoc map:+empty+ :a 1))
          (m2 (map:assoc m1 :b 2)))
     (is (= (map::hamt-count m1) 1))
@@ -63,12 +63,12 @@
     (is (not (map:contains-p m1 :b)))
     m2))
 
-(deftest null-keys ()
+(deftest null-keys
   (let ((m (map:assoc map:+empty+ nil 1)))
     (is (= 1 (map:get m nil)))
     (is (map:contains-p m nil))))
 
-(deftest map-invert ()
+(deftest map-invert
   (let* ((m (-> map:+empty+
                      (map:assoc :a 1)
                      (map:assoc :b 2)
@@ -82,7 +82,7 @@
 (defun range (start end)
   (loop for i from start to end collect i))
 
-(deftest large-maps ()
+(deftest large-maps
   (let* ((pairs (loop for i below 1000
                       collect (cons i i)))
          (m (map::from-pairs pairs)))
@@ -90,21 +90,21 @@
     (is (every (lambda (i) (= i (map:get m i))) 
                (range 0 999)))))
 
-(deftest map-seq ()
+(deftest map-seq
   (let* ((pairs '((:a . 1) (:b . 2) (:c . 3)))
          (m (map::from-pairs pairs)))
     (is (= (length pairs) (length (map::seq m))))
     (is (equal (sort (copy-list pairs) #'string< :key #'car)
                (sort (map::seq m) #'string< :key #'car)))))
 
-(deftest single-assoc ()
+(deftest single-assoc
   (let* ((m map:+empty+)
          (m2 (map:assoc m :a 1)))
     (is (= 1 (map::hamt-count m2)))
     (is (= 1 (map:get m2 :a)))
     (is (null (map:get m :a)))))
 
-(deftest multiple-assocs ()
+(deftest multiple-assocs
   (let ((m (-> map:+empty+
                     (map:assoc :a 1)
                     (map:assoc :b 2)
@@ -114,13 +114,13 @@
     (is (= 2 (map:get m :b)))
     (is (= 3 (map:get m :c)))))
 
-(deftest update-existing ()
+(deftest update-existing
   (let* ((m1 (map:assoc map:+empty+ :a 1))
          (m2 (map:assoc m1 :a 2)))
     (is (= 2 (map:get m2 :a)))
     (is (= 1 (map:get m1 :a)))))
 
-(deftest dissoc-existing ()
+(deftest dissoc-existing
   (let* ((m1 (-> map:+empty+
                       (map:assoc :a 1)
                       (map:assoc :b 2)))
@@ -129,17 +129,17 @@
     (is (null (map:get m2 :a)))
     (is (= 2 (map:get m2 :b)))))
 
-(deftest dissoc-missing ()
+(deftest dissoc-missing
   (let* ((m1 (map:assoc map:+empty+ :a 1))
          (m2 (map:dissoc m1 :b)))
     (is (eq m1 m2))))
 
-(deftest contains ()
+(deftest contains
   (let ((m (map:assoc map:+empty+ :a 1)))
     (is (map:contains-p m :a))
     (is (not (map:contains-p m :b)))))
 
-(deftest map-merge ()
+(deftest map-merge
   (let* ((m1 (-> map:+empty+
                       (map:assoc :a 1)
                       (map:assoc :b 2)))
@@ -152,7 +152,7 @@
     (is (= 3 (map:get merged :b)))
     (is (= 4 (map:get merged :c)))))
 
-(deftest depth-handling ()
+(deftest depth-handling
   (let* ((count 1000)
          (m (loop with map = map:+empty+
                   for i below count

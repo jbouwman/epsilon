@@ -159,7 +159,8 @@
 
 ;; Charmap implementation (bit vector)
 
-(defstruct charmap
+(defstruct (charmap
+            (:constructor %make-charmap))
   "Dense character set using bit vector with complement representation"
   (vector nil :type (or null simple-bit-vector))
   (range 0 :type fixnum)
@@ -207,7 +208,7 @@
                         (not (funcall test-function char))
                         (funcall test-function char)))
             do (setf (bit vector code) 1))
-    (make-charmap :vector vector
+    (%make-charmap :vector vector
                   :range range
                   :complement-p complement-p)))
 
@@ -227,7 +228,7 @@
     
     (if (zerop count)
         ;; Empty set
-        (make-charmap :vector (make-array 0 :element-type 'bit)
+        (%make-charmap :vector (make-array 0 :element-type 'bit)
                       :range 0
                       :complement-p nil)
         ;; Choose normal or complement representation

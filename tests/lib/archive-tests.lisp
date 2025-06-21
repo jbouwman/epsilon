@@ -11,7 +11,7 @@
 
 (in-package :epsilon.lib.archive-tests)
 
-(deftest zipfile ()
+(deftest zipfile
   (let ((nibbles (project-file "epsilon"
                                "tests/lib/nibbles-0.15-a46a67736e07.zip")))
     (epsilon.lib.archive:with-zip-file (file nibbles)

@@ -3,71 +3,69 @@
 (require :sb-rotate-byte)
 (require :sb-posix)
 
-(defvar *files*
-  '("src/lib/symbol"
-    "src/lib/syntax"
-    "src/lib/process"
-    "src/lib/charset"
-    "src/lib/map"
-    "src/lib/lexer"
-    "src/lib/array"
-    "src/lib/condition"
-    "src/lib/function"
-    "src/lib/sequence"
-    "src/lib/parser"
-    "src/lib/string"
-    "src/lib/list"
-    "src/lib/json"
-    "src/lib/collect"
-    "src/lib/control"
-    "src/lib/type"
-    "src/lib/vector"
-    "src/lib/uuid"
-    "src/lib/char"
-    "src/lib/encoding/cp437"
-    "src/lib/encoding/unicode"
-    "src/lib/struct"
-    "src/lib/uri"
-    "src/lib/stream"
-    "src/lib/reader"
-    "src/lib/writer"
-    "src/lib/yaml"
-    "src/lib/time"
-    "src/lib/base64"
-    "src/lib/digest/reader"
-    "src/lib/digest/common"
-    "src/lib/digest/generic"
-    "src/lib/digest/sha-2"
-    "src/lib/digest/public"
-    "src/lib/checksum/generic"
-    "src/lib/checksum/adler-32"
-    "src/lib/checksum/crc-32"
-    "src/lib/codec"
-    "src/lib/hex"
-    "src/lib/clang"
-    "src/lib/msgpack"
-    "src/sys/env"
-    "src/sys/pkg"
-    "src/sys/lib"
-    "src/sys/fs"
-    "src/sys/gc"
-    "src/sys/error"
-    "src/sys/atomic"
-    "src/sys/lock"
-    "src/sys/semaphore"
-    "src/sys/thread"
-    "src/sys/variable"
-    "src/sys/timeout"
-    "src/lib/regex"
-    "src/lib/archive"
-    "src/net/core"
-    "src/net/tls"
-    "src/net/http"
-    "src/net/http-server"
-    "src/tool/format"
-    "src/tool/build"
-    "src/tool/test"
-    "src/tool/dev"))
+(defvar *files*)
+
+(setf *files*
+  '("lib/symbol"
+    "lib/syntax"
+    "lib/process"
+    "lib/charset"
+    "lib/map"
+    "lib/set"
+    "lib/lexer"
+    "lib/array"
+    "lib/condition"
+    "lib/function"
+    "lib/sequence"
+    "lib/parser"
+    "lib/string"
+    "lib/list"
+    "lib/json"
+    "lib/collect"
+    "lib/control"
+    "lib/type"
+    "lib/vector"
+    "lib/uuid"
+    "lib/char"
+    "lib/encoding/cp437"
+    "lib/encoding/unicode"
+    "lib/struct"
+    "lib/uri"
+    "lib/stream"
+    "lib/reader"
+    "lib/writer"
+    "lib/yaml"
+    "lib/time"
+    "lib/base64"
+    "lib/digest/reader"
+    "lib/digest/common"
+    "lib/digest/generic"
+    "lib/digest/sha-2"
+    "lib/digest/public"
+    "lib/checksum/generic"
+    "lib/checksum/adler-32"
+    "lib/checksum/crc-32"
+    "lib/codec"
+    "lib/hex"
+    "sys/env"
+    "sys/pkg"
+    "sys/lib"
+    "sys/fs"
+    "sys/gc"
+    "sys/error"
+    "sys/atomic"
+    "sys/lock"
+    "sys/semaphore"
+    "sys/thread"
+    "sys/variable"
+    "sys/timeout"
+    "lib/regex"
+    "lib/xml"
+    "tool/build"
+    "tool/test/suite"
+    "tool/test/report"
+    "tool/test"
+    "tool/dev"))
 
 (defun concatenate-fasls (fasl-files output-file)
   "Concatenate compiled FASL files into a single boot file"
@@ -86,19 +84,23 @@
 
 (defun load-and-build-boot (files)
   (let ((fasls '()))
-    (ensure-directories-exist "target/")
+    (dolist (dir (list "target"
+                       "target/fasl"
+                       "target/fasl/lib"
+                       "target/fasl/lib/checksum"
+                       "target/fasl/lib/digest"
+                       "target/fasl/lib/encoding"
+                       "target/fasl/sys"
+                       "target/fasl/tool"
+                       "target/fasl/tool/test"))
+      (ignore-errors
+       (sb-posix:mkdir dir #o755)))
     (dolist (file files)
-      (let ((source (concatenate 'string file ".lisp"))
-            (output (concatenate 'string file ".fasl")))
-        (handler-bind ((warning #'muffle-warning)
-                       (error (lambda (c) 
-                                (declare (ignore c))
-                                (invoke-restart 'continue))))
-          (let ((*standard-output* (make-broadcast-stream))
-                (*error-output* (make-broadcast-stream)))
-            (compile-file source :output-file output)
-            (load output)
-            (push output fasls)))))
+      (let ((source (concatenate 'string "src/" file ".lisp"))
+            (output (concatenate 'string "target/fasl/" file ".fasl")))
+        (compile-file source :output-file output)
+        (load output)
+        (push output fasls)))
     (concatenate-fasls (reverse fasls) "target/boot.fasl")))
 
 (defun load-epsilon ()

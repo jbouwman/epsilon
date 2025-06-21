@@ -8,6 +8,6 @@
 
 (in-package :epsilon.net.tls.tests)
 
-(deftest test-tls-initialization ()
+(deftest test-tls-initialization
   "Test basic TLS initialization"
   (skip))

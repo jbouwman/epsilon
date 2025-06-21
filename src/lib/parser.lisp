@@ -12,15 +12,15 @@
    :make-parse-state
    :success-p
    :success-value
+   :failure-message
    :parse-position
    :parse-remaining
    :parse-context
    
    ;; Core combinators
-   :parse
+   :bind
    :return
    :fail
-   :bind
    :satisfy
    :token
    :choice
@@ -29,7 +29,7 @@
    :many1
    :optional
    :sepBy
-   :sepBy1
+   :sep+
    :chainl1
    :between
    
@@ -38,30 +38,21 @@
    :try
    :eof
    :label
-   :match))
+
+   ;; Execution
+   :parse))
 
 (in-package :epsilon.lib.parser)
 
 ;;;; Parser Combinator Library
 ;;;;
-;;;; This library implements monadic parser combinators inspired by Haskell's Parsec.
-;;;; Parser combinators provide a compositional approach to building parsers from
-;;;; simple, reusable primitives.
-;;;;
-;;;; Key Design Principles:
-;;;; - Monadic composition (Functor → Applicative → Monad hierarchy)
-;;;; - Lazy evaluation for efficient parsing
-;;;; - Backtracking with soft/hard failure distinction
-;;;; - Clear error reporting with context
-;;;; - Type-safe parser composition
+;;;; This library implements monadic parser combinators, providing a
+;;;; way to build parsers from reusable primitives.
 
-;;;; Parser State and Result Types
-;;;;
-;;;; The parser state tracks position, remaining input, and error context.
-;;;; Results are either parse-success or parse-failure, enabling proper
-;;;; error handling and backtracking.
+;;; Parser State and Result Types
+;;;
+;;; The parser state tracks position, remaining input, and error context.
 
-;; Parser state representation
 (defstruct parse-state
   position        ; Current position in input
   remaining       ; Remaining input (lazy sequence)
@@ -78,17 +69,13 @@
   state
   expected)
 
-;; Parser type - function from state to result
 (deftype parser () '(function (parse-state) (or success failure)))
 
-;;;; Monadic Operations
-;;;;
-;;;; The parser monad provides the mathematical foundation for composition.
-;;;; - return: Lift a value into the parser monad
-;;;; - fail: Signal parser failure 
-;;;; - bind: Sequential composition where later parsers depend on earlier results
-
-;; Core monadic operations
+;;; Monadic Operations
+;;;
+;;;   return: Lift a value into the parser monad
+;;;   fail: Signal parser failure 
+;;;   bind: Sequential composition where later parsers depend on earlier results
 
 (defun return (value)
   "Return a value without consuming input."
@@ -102,7 +89,7 @@
                   :state state
                   :expected expected)))
 
-(defun bind (parser func)
+(defun %bind (parser func)
   "Monadic bind - sequence two parsers where second depends on first result."
   (lambda (state)
     (let ((result (funcall parser state)))
@@ -111,13 +98,29 @@
                    (success-state result))
           result))))
 
-;;;; Primitive Combinators
-;;;;
-;;;; These form the foundation for all other combinators:
-;;;; - satisfy: Parse tokens matching a predicate
-;;;; - token: Parse a specific token value
+(defmacro bind (bindings &body body)
+  "Monadic bind - sequence two parsers where latter depend on former.
 
-;; Fundamental primitives
+   Example: (bind ((key (json-atom :string)) 
+                   (colon (token-p :colon))
+                   (value (json-value)))
+             (return (cons key value)))"
+  (if (null bindings)
+      `(progn ,@body)
+      (let ((var (first (first bindings)))
+            (parser (second (first bindings)))
+            (rest-bindings (rest bindings)))
+        `(%bind ,parser
+                (lambda (,var)
+                  (declare (ignorable ,var))
+                  (bind ,rest-bindings ,@body))))))
+
+;;; Primitive Combinators
+;;;
+;;; These form the foundation for all other combinators:
+;;;   satisfy: Parse tokens matching a predicate
+;;;   token: Parse a specific token value
+
 (defun satisfy (predicate &optional expected)
   "Parse a token satisfying the predicate."
   (lambda (state)
@@ -143,13 +146,11 @@
   (satisfy (lambda (tok) (equal tok expected-token))
            (format nil "~A" expected-token)))
 
-;;;; Choice and Sequence Combinators
-;;;;
-;;;; Essential combinators for building complex parsers:
-;;;; - choice: Try alternatives in order (ordered choice)
-;;;; - sequence: Parse all elements in order, collecting results
+;;; Choice and Sequence Combinators
+;;;
+;;;   choice: Try alternatives in order (ordered choice)
+;;;   sequence: Parse all elements in order, collecting results
 
-;; Choice combinator
 (defun choice (&rest parsers)
   "Try parsers in order, returning first success."
   (lambda (state)
@@ -165,7 +166,6 @@
                          (try-parsers (rest parsers)))))))
       (try-parsers parsers))))
 
-;; Sequence combinator  
 (defun sequence (&rest parsers)
   "Parse all parsers in sequence, collecting results."
   (lambda (state)
@@ -180,14 +180,12 @@
                          result)))))
       (parse-seq parsers state '()))))
 
-;;;; Repetition Combinators
-;;;;
-;;;; Handle repeated structures with different cardinalities:
-;;;; - many: Zero or more occurrences (Kleene star)
-;;;; - many1: One or more occurrences (plus)
-;;;; - optional: Zero or one occurrence
-
-;; Repetition combinators
+;;; Repetition Combinators
+;;;
+;;; Handle repeated structures with different cardinalities:
+;;;   many: Zero or more occurrences (Kleene star)
+;;;   many1: One or more occurrences (plus)
+;;;   optional: Zero or one occurrence
 
 (defun many (parser)
   "Parse zero or more occurrences."
@@ -202,67 +200,54 @@
 
 (defun many1 (parser)
   "Parse one or more occurrences."
-  (bind parser
-        (lambda (first)
-          (bind (many parser)
-                (lambda (rest)
-                  (return (cons first rest)))))))
+  (bind ((first parser)
+         (rest (many parser)))
+    (return (cons first rest))))
 
 (defun optional (parser &optional default)
   "Parse optional element."
   (choice parser (return default)))
 
-;;;; Utility Combinators
-;;;;
-;;;; Higher-level combinators for common parsing patterns:
-;;;; - sepBy/sepBy1: Parse separated lists (e.g., comma-separated values)
-;;;; - chainl1: Left-associative operator parsing
-;;;; - between: Parse content between delimiters
+;;; Utility Combinators
+;;;
+;;;   sepBy/sep+: Parse separated lists (e.g., comma-separated values)
+;;;   chainl1: Left-associative operator parsing
+;;;   between: Parse content between delimiters
 
-;; Utility combinators
 (defun sepBy (parser separator)
   "Parse zero or more elements separated by separator."
-  (optional (sepBy1 parser separator) '()))
+  (optional (sep+ parser separator) '()))
 
-(defun sepBy1 (parser separator)
+(defun sep+ (parser separator)
   "Parse one or more elements separated by separator."
-  (bind parser
-        (lambda (first)
-          (bind (many (bind separator (lambda (_) parser)))
-                (lambda (rest)
-                  (return (cons first rest)))))))
+  (bind ((first parser)
+         (rest (many (bind ((_ separator)) parser))))
+    (return (cons first rest))))
 
 (defun chainl1 (parser operator)
   "Left-associative operator parsing."
-  (bind parser
-        (lambda (first)
-          (labels ((rest (acc)
-                     (choice
-                      (bind operator
-                            (lambda (op)
-                              (bind parser
-                                    (lambda (next)
-                                      (rest (funcall op acc next))))))
-                      (return acc))))
-            (rest first)))))
+  (bind ((first parser))
+    (labels ((%rest (acc)
+               (choice
+                (bind ((op operator)
+                       (next parser))
+                  (%rest (funcall op acc next)))
+                (return acc))))
+      (%rest first))))
 
 (defun between (open close parser)
   "Parse parser between open and close."
-  (bind open
-        (lambda (_)
-          (bind parser
-                (lambda (result)
-                  (bind close
-                        (lambda (_)
-                          (return result))))))))
+  (bind ((_ open)
+         (result parser)
+         (_ close))
+    (return result)))
 
-;;;; Advanced Combinators
-;;;;
-;;;; Sophisticated parsing control:
-;;;; - lookahead: Parse without consuming input
-;;;; - try: Backtrack on failure without committing
-;;;; - eof: Match end of input
-;;;; - label: Provide better error messages
+;;; Control Flow Combinators
+;;;
+;;;   lookahead: Parse without consuming input
+;;;   try: Backtrack on failure without committing
+;;;   eof: Match end of input
+;;;   label: Label failures with specific error messages
 
 (defun lookahead (parser)
   "Look ahead without consuming input."
@@ -304,31 +289,12 @@
                         :expected name)
           result))))
 
-(defmacro match (bindings &body body)
-  "Syntax for sequential parsing with variable binding.
-   Example: (match ((key (json-atom :string)) 
-                    (colon (token-p :colon))
-                    (value (json-value)))
-             (return (cons key value)))"
-  (if (null bindings)
-      `(progn ,@body)
-      (let ((var (first (first bindings)))
-            (parser (second (first bindings)))
-            (rest-bindings (rest bindings)))
-        `(bind ,parser
-               (lambda (,var)
-                 (declare (ignorable ,var))
-                 (match ,rest-bindings ,@body))))))
+;;; Parser Execution
 
-;;;; Parser Execution
-;;;;
-;;;; The main entry point for running parsers on input.
-
-;; Parse runner
 (defun parse (parser input &key (position 0))
   "Run parser on input sequence."
-  (let ((initial-state (make-parse-state :position position
-                                         :remaining input
-                                         :context '()
-                                         :consumed-p nil)))
-    (funcall parser initial-state)))
+  (funcall parser
+           (make-parse-state :position position
+                             :remaining input
+                             :context '()
+                             :consumed-p nil)))

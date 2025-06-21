@@ -23,24 +23,24 @@
 
 ;;;; Basic value tests
 
-(deftest parse-string ()
+(deftest parse-string
   "Test parsing JSON strings"
   (let ((content (load-test-json "simple-string.json")))
-    (is (string= (json:parse content) "hello world")))
+    (is-equal (json:parse content) "hello world"))
   (is-equal (json:parse "\"hello\"") "hello")
   (is-equal (json:parse "\"\"") ""))
 
-(deftest parse-string-escapes ()
+(deftest parse-string-escapes
   "Test parsing JSON strings with escape sequences"
-  (is (string= (json:parse "\"\\\"quoted\\\"\"") "\"quoted\""))
-  (is (string= (json:parse "\"line1\\nline2\"") (format nil "line1~%line2")))
+  (is-equal (json:parse "\"\\\"quoted\\\"\"") "\"quoted\"")
+  (is-equal (json:parse "\"line1\\nline2\"") (format nil "line1~%line2"))
   (is-equal (json:parse "\"tab\\there\"") (format nil "tab	here"))
-  (is (string= (json:parse "\"back\\\\slash\"") "back\\slash")))
+  (is-equal (json:parse "\"back\\\\slash\"") "back\\slash"))
 
-(deftest parse-number ()
+(deftest parse-number
   "Test parsing JSON numbers"
   (let ((content (load-test-json "simple-number.json")))
-    (is (= (json:parse content) 42)))
+    (is-= (json:parse content) 42))
   (is-equal (json:parse "42") 42)
   (is-equal (json:parse "-42") -42)
   (is-equal (json:parse "3.14") 3.14)
@@ -49,15 +49,15 @@
   (is-equal (json:parse "2.5e-1") 0.25)
   (is-equal (json:parse "0") 0))
 
-(deftest parse-literals ()
+(deftest parse-literals
   "Test parsing JSON literal values"
-  (is (eq (json:parse "true") t))
-  (is (eq (json:parse "false") nil))
-  (is (eq (json:parse "null") nil)))
+  (is-eq (json:parse "true") t)
+  (is-eq (json:parse "false") nil)
+  (is-eq (json:parse "null") nil))
 
 ;;;; Array tests
 
-(deftest parse-array ()
+(deftest parse-array
   "Test parsing JSON arrays"
   (let ((content (load-test-json "simple-array.json")))
     (let ((result (json:parse content)))
@@ -76,7 +76,7 @@
 
 ;;;; Object tests
 
-(deftest parse-object ()
+(deftest parse-object
   "Test parsing JSON objects"
   (let ((content (load-test-json "simple-object.json")))
     (let ((result (json:parse content)))
@@ -92,7 +92,7 @@
   (is-equal (json:parse "{\"nested\": {\"key\": \"value\"}}")
             '(("nested" . (("key" . "value"))))))
 
-(deftest parse-nested-object ()
+(deftest parse-nested-object
   "Test parsing nested JSON objects"
   (let ((content (load-test-json "nested-object.json")))
     (let ((result (json:parse content)))
@@ -107,7 +107,7 @@
           (is (= (cdr (assoc "age" details :test #'string=)) 25))
           (let ((hobbies (cdr (assoc "hobbies" details :test #'string=))))
             (is (listp hobbies))
-            (is (= (length hobbies) 2))
+            (is-= (length hobbies) 2)
             (is (string= (first hobbies) "reading"))
             (is (string= (second hobbies) "coding")))))
       ;; Check settings object
@@ -116,11 +116,11 @@
         (is (string= (cdr (assoc "theme" settings :test #'string=)) "dark"))
         (is (eq (cdr (assoc "notifications" settings :test #'string=)) nil))))))
 
-(deftest parse-empty-structures ()
+(deftest parse-empty-structures
   "Test parsing JSON with empty objects and arrays"
   (let ((content (load-test-json "empty-structures.json")))
     (let ((result (json:parse content)))
-      (is (listp result))
+      (is (typep result 'list))
       ;; Check empty object
       (let ((empty-obj (cdr (assoc "empty_object" result :test #'string=))))
         (is (listp empty-obj))
@@ -131,20 +131,20 @@
         (is (null empty-arr)))
       ;; Check null value
       (let ((null-val (cdr (assoc "null_value" result :test #'string=))))
-        (is (eq null-val nil))))))
+        (is-eq null-val nil)))))
 
 ;;;; Whitespace tests
 
-(deftest parse-whitespace ()
+(deftest parse-whitespace
   "Test parsing JSON with various whitespace"
   (let ((result (json:parse "  {  \"key\"  :  \"value\"  }  ")))
-    (is (listp result))
-    (is (string= (cdr (assoc "key" result :test #'string=)) "value")))
+    (is (typep result 'list))
+    (is-equal (cdr (assoc "key" result :test #'string=)) "value"))
   (is-equal (json:parse "[ 1 , 2 , 3 ]") '(1 2 3)))
 
 ;;;; Complex structure tests
 
-(deftest parse-complex ()
+(deftest parse-complex
   "Test parsing complex JSON structures"
   (let ((json-str "{
     \"name\": \"Alice\",
@@ -164,9 +164,9 @@
 
 ;;;; Error handling tests
 
-(deftest parse-invalid-json ()
+(deftest parse-invalid-json
   "Test that invalid JSON throws appropriate errors"
-  (is-thrown-p (error) (json:parse "{"))
-  (is-thrown-p (error) (json:parse "invalid"))
-  (is-thrown-p (error) (json:parse "{key: value}"))  ; unquoted key
-  (is-thrown-p (error) (json:parse "{'key': 'value'}")))  ; single quotes
+  (is-thrown (error) (json:parse "{"))
+  (is-thrown (error) (json:parse "invalid"))
+  (is-thrown (error) (json:parse "{key: value}"))  ; unquoted key
+  (is-thrown (error) (json:parse "{'key': 'value'}")))  ; single quotes
