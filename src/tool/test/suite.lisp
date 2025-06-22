@@ -37,7 +37,9 @@
 (defvar *test* nil
   "Dynamically bound to current test result during execution")
 
-(defgeneric event (reporter event-type event-data))
+(defgeneric event (report event-type event-data))
+
+(defmethod event (report event-type event-data))
 
 (defclass test-node ()
   ((children :initform map:+empty+
@@ -47,7 +49,7 @@
 
 (defmethod collect ((suite test-node))
   "Recursively collect all tests from test-suite and its children"
-  (mapcan #'collect (map:vals (children-of suite))))
+  (seq:mapcat #'collect (map:vals (children-of suite))))
 
 (defclass test-root (test-node)
   ())
@@ -65,8 +67,8 @@
 
 (defmethod collect ((suite test-suite))
   "Recursively collect all tests from test-suite and its children"
-  (append (set:seq (tests-of suite))
-          (call-next-method)))
+  (seq::concat-two (set:seq (tests-of suite))
+                   (call-next-method)))
 
 (defun register-suite (package-name)
   "Ensure package hierarchy exists, creating nodes as needed.
@@ -148,18 +150,21 @@ Returns the leaf node for package-name."
 
 (defun failures (run)
   "Return list of failed test results"
-  (remove-if-not (lambda (r) (eq :failure (status r)))
-                 (map:vals (tests run))))
+  (seq:filter (lambda (r)
+                (eq :failure (status r)))
+              (map:vals (tests run))))
 
 (defun errors (run)
   "Return list of errored test results"
-  (remove-if-not (lambda (r) (eq :error (status r)))
-                 (map:vals (tests run))))
+  (seq:filter (lambda (r)
+                (eq :error (status r)))
+              (map:vals (tests run))))
 
 (defun skipped (run)
   "Return list of skipped test results"
-  (remove-if-not (lambda (r) (eq :skip (status r)))
-                 (map:vals (tests run))))
+  (seq:filter (lambda (r)
+                (eq :skip (status r)))
+              (map:vals (tests run))))
 
 ;;; Metric implementations
 
@@ -229,14 +234,16 @@ Returns the leaf node for package-name."
 
 (defun group-by-package (tests)
   "Group tests by their package, returning alist of (package-name . tests)"
-  (sort (->> (seq:seq tests)
+  (sort (->> tests
              (seq:group-by (f:compose #'package-name #'symbol-package))
              (map:map (lambda (tests)
                         (sort (seq:realize tests) #'string< :key #'symbol-name)))
-             (map:vals))
+             (map:vals)
+             (seq:realize))
         #'string< :key (f:compose #'package-name #'symbol-package #'car)))
 
 (defun select (&key package name)
+  ;; todo fixme: filter
   (collect *test-root*))
 
 (defun run (tests reporter)
@@ -255,8 +262,8 @@ Returns the leaf node for package-name."
     run))
 
 (defun run-success-p (run)
-  (zerop (+ (length (failures run))
-            (length (errors run)))))
+  (zerop (+ (seq:count (failures run))
+            (seq:count (errors run)))))
 
 (define-condition test-failure (error)
   ((message :initarg :message :reader failure-message)

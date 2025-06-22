@@ -5,6 +5,7 @@
   (:local-nicknames
    (build epsilon.tool.build)
    (map epsilon.lib.map)
+   (seq epsilon.lib.sequence)
    (pkg epsilon.sys.pkg)
    (re epsilon.lib.regex)
    (report epsilon.tool.test.report)
@@ -51,8 +52,8 @@ If FILE is provided, write the report to the named file."
                           :file file)))
 
 (defun success-p (run)
-  (zerop (+ (length (suite:failures run))
-            (length (suite:errors run)))))
+  (zerop (+ (seq:count (suite:failures run))
+            (seq:count (suite:errors run)))))
 
 (defun skip (&optional (message "Test skipped"))
   "Skip the current test with an optional message"

@@ -46,6 +46,8 @@
    :merge
    :reduce
    :seq)
+  (:local-nicknames
+   (seq epsilon.lib.sequence))
   (:export
    :+empty+
    :assoc
@@ -153,23 +155,35 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
     (not (eq (get map key not-found)
              not-found))))
 
+(defun make-generator (map)
+  "Create a generator for map key-value pairs"
+  (let ((stack (list (hamt-root map)))
+        (current-collision nil))
+    (lambda ()
+      (loop
+        (cond (current-collision
+               (let ((entry (pop current-collision)))
+                 (when entry
+                   (return (values entry t)))))
+              ((null stack)
+               (return (values nil nil)))
+              (t
+               (let ((node (pop stack)))
+                 (etypecase node
+                   (null nil)
+                   (leaf-node
+                    (return (values (cons (leaf-node-key node)
+                                          (leaf-node-value node))
+                                    t)))
+                   (collision-node
+                    (setf current-collision (collision-node-entries node)))
+                   (bitmap-node
+                    (loop for child across (bitmap-node-array node)
+                          do (push child stack)))))))))))
+
 (defun seq (map)
-  "Return a sequence of key-value pairs from the map"
-  (let ((result nil))
-    (labels ((collect (node)
-               (etypecase node
-                 (null nil)
-                 (leaf-node 
-                  (push (cons (leaf-node-key node)
-                              (leaf-node-value node))
-                        result))
-                 (bitmap-node
-                  (loop for child across (bitmap-node-array node)
-                        do (collect child)))
-                 (collision-node
-                  (setf result (append (collision-node-entries node) result))))))
-      (collect (hamt-root map))
-      (nreverse result))))
+  "Return a lazy sequence of key-value pairs from the map"
+  (seq:from-generator (make-generator map)))
 
 (defun map= (map1 map2)
   "Return true if maps are equal"
@@ -183,7 +197,7 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
 (defun print-map-pairs (map stream &key (format-fn #'write))
   (write-char #\{ stream)
   (let ((first t))
-    (dolist (pair (seq map))
+    (dolist (pair (seq:realize (seq map)))
       (if first
           (setf first nil)
           (write-char #\Space stream))
@@ -463,10 +477,10 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
 
 (defun reduce (function map &optional (initial-value +empty+))
   "Reduce over key-value pairs in the map"
-  (cl:reduce (lambda (acc pair)
-               (funcall function acc (car pair) (cdr pair)))
-             (seq map)
-             :initial-value initial-value))
+  (seq:reduce (lambda (acc pair)
+                (funcall function acc (car pair) (cdr pair)))
+              (seq map)
+              :initial-value initial-value))
 
 (defun map (fn map)
   "Apply FN to each value in MAP, returning a new map with the same keys but transformed values.
@@ -515,7 +529,7 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
            (and (contains-p map2 (car pair))
                 (equalp (get map2 (car pair))
                         (cdr pair))))
-         (seq map1)))
+         (seq:realize (seq map1))))
 
 (defun difference (map1 map2)
   "Return a map of key/value pairs in map1 but not in map2"
@@ -537,11 +551,11 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
 
 (defun keys (map)
   "Return a list of all keys in the map"
-  (mapcar #'car (seq map)))
+  (seq:map #'car (seq map)))
 
 (defun vals (map)
   "Return a list of all values in the map"
-  (mapcar #'cdr (seq map)))
+  (seq:map #'cdr (seq map)))
 
 (defun merge (map1 map2)
   "Merge two maps, with map2 values taking precedence"
@@ -616,3 +630,14 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
   "Enable {} reader syntax for maps"
   (set-macro-character #\{ #'read-map)
   (set-macro-character #\} (get-macro-character #\))))
+
+(defun seq:group-by (key-fn sequence)
+  "Group elements of sequence by the result of applying key-fn to each element.
+Returns a map where keys are the group keys and values are lists of elements."
+  (seq:reduce (lambda (groups element)
+                (let ((key (funcall key-fn element)))
+                  (assoc groups key
+                         (seq:cons element
+                                   (get groups key seq:*empty*)))))
+              sequence
+              :initial-value +empty+))

@@ -8,7 +8,7 @@ To that extent, it was originally based on parts of number of open
 source packages, such as dexador, cl+ssl, cffi, ironclad, zippy and so
 on.
 
-Tun tests with:
+Run tests with:
 
 ```
 ./run.sh test

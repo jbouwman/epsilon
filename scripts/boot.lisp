@@ -8,6 +8,7 @@
 (setf *files*
   '("lib/symbol"
     "lib/syntax"
+    "lib/sequence"
     "lib/process"
     "lib/charset"
     "lib/map"
@@ -16,7 +17,6 @@
     "lib/array"
     "lib/condition"
     "lib/function"
-    "lib/sequence"
     "lib/parser"
     "lib/string"
     "lib/list"

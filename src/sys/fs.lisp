@@ -144,7 +144,7 @@
   (subseq path-string 0 (position #\. path-string :from-end t)))
 
 (defun add-extension (path-string extension)
-  (str:join #\. (seq:seq (list path-string extension))))
+  (str:join #\. (seq:from-list (list path-string extension))))
 
 (defun replace-extension (path-string extension)
   (add-extension (delete-extension path-string) extension))

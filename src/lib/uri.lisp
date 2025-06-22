@@ -64,7 +64,7 @@
 
 (defun normalize-path (path)
   (str:join #\/
-            (seq:seq
+            (seq:from-list
              (reverse
               (seq:reduce (lambda (stack segment)
                             (cond ((string= segment ".")

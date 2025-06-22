@@ -4,6 +4,7 @@
   (:local-nicknames
    (suite epsilon.tool.test.suite)
    (map epsilon.lib.map)
+   (seq epsilon.lib.sequence)
    (xml epsilon.lib.xml))
   (:export
    make))
@@ -11,20 +12,17 @@
 (in-package epsilon.tool.test.report)
 
 ;;;
-;;; 'shell' formatter
+;;; 'shell' report
 ;;;
 
 (defclass shell-report ()
   ((failure-count :initform 0)
    (max-failures :initform 10)))
 
-(defmethod suite:event ((formatter shell-report) event-type event-data)
-  )
-
-(defmethod suite:event ((formatter shell-report) (event-type (eql :start)) event-data)
+(defmethod suite:event ((report shell-report) (event-type (eql :start)) event-data)
   (format t "~&Running tests:~%~%"))
 
-(defmethod suite:event ((formatter shell-report) (event-type (eql :start-group)) group)
+(defmethod suite:event ((report shell-report) (event-type (eql :start-group)) group)
   (format-package-header (first group)))
 
 (defun format-package-header (package-name)
@@ -74,8 +72,8 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
        (format nil "~&;;       Skipped: ~A~%"
                (suite::skip-message (suite:condition result)))))))
 
-(defmethod suite:event ((formatter shell-report) (event-type (eql :end-test)) result)
-  (with-slots (failure-count max-failures) formatter
+(defmethod suite:event ((report shell-report) (event-type (eql :end-test)) result)
+  (with-slots (failure-count max-failures) report
     (let ((test (suite:test result)))
       (format-test-entry (symbol-name test) 60 result)
       (when (member (suite:status result) '(:failure :error))
@@ -83,14 +81,14 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
           (format t "~A" (format-condition-details result))
           (incf failure-count))))))
 
-(defmethod suite:event ((formatter shell-report) (event-type (eql :end)) run)
-  (let ((total-failures (+ (length (suite:failures run)) (length (suite:errors run)))))
-    (with-slots (failure-count max-failures) formatter
+(defmethod suite:event ((report shell-report) (event-type (eql :end)) run)
+  (let ((total-failures (+ (seq:count (suite:failures run)) (seq:count (suite:errors run)))))
+    (with-slots (failure-count max-failures) report
       (format t "~&~%Test Run Complete:~%")
       (format t ";;   Tests: ~D~%" (map:size (suite::tests run)))
-      (format t ";;   Failures: ~D~%" (length (suite:failures run)))
-      (format t ";;   Errors: ~D~%" (length (suite:errors run)))
-      (format t ";;   Skipped: ~D~%" (length (suite:skipped run)))
+      (format t ";;   Failures: ~D~%" (seq:count (suite:failures run)))
+      (format t ";;   Errors: ~D~%" (seq:count (suite:errors run)))
+      (format t ";;   Skipped: ~D~%" (seq:count (suite:skipped run)))
       (when (> total-failures max-failures)
         (format t ";;   (Only ~D of ~D failures/errors shown)~%" 
                 (min failure-count max-failures) total-failures))
@@ -99,50 +97,32 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
                  internal-time-units-per-second)))))
 
 ;;;
-;;; 'junit' XML formatter
+;;; 'junit' XML report
 ;;;
 
 (defclass junit-report ()
-  ((test-suites :initform map:+empty+ :accessor test-suites)
-   (current-suite :initform nil :accessor current-suite)
-   (output-file :initarg :output-file :accessor output-file :initform "TEST-results.xml")))
+  ((output-file :initarg :output-file :accessor output-file :initform "TEST-results.xml")))
 
-(defmethod suite:event ((formatter junit-report) (event-type (eql :start)) event-data)
-  (setf (test-suites formatter) map:+empty+))
+(defmethod suite:event ((report junit-report) (event-type (eql :end)) run)
+  (emit-junit-xml report run))
 
-(defmethod suite:event ((formatter junit-report) (event-type (eql :start-group)) group)
-  (let ((suite-name (first group)))
-    (setf (current-suite formatter) suite-name)
-    (setf (test-suites formatter)
-          (map:assoc (test-suites formatter) suite-name '()))))
-
-(defmethod suite:event ((formatter junit-report) (event-type (eql :end-test)) result)
-  (when (current-suite formatter)
-    (let ((current-tests (map:get (test-suites formatter) (current-suite formatter))))
-      (setf (test-suites formatter)
-            (map:assoc (test-suites formatter) 
-                       (current-suite formatter)
-                       (cons result current-tests))))))
-
-(defmethod suite:event ((formatter junit-report) (event-type (eql :end)) run)
-  (emit-junit-xml formatter run))
-
-(defun emit-junit-xml (formatter run)
+(defun emit-junit-xml (report run)
   "Emit JUnit XML format test results to file"
-  (with-open-file (stream (output-file formatter)
+  (with-open-file (stream (output-file report)
                           :direction :output 
                           :if-exists :supersede
                           :if-does-not-exist :create)
     (format stream "<?xml version=\"1.0\" encoding=\"UTF-8\"?>~%")
-    (xml:emit (make-junit-testsuites formatter run) stream)))
+    (xml:emit (make-junit-testsuites report run) stream)))
 
-(defun make-junit-testsuites (formatter run)
+(defun make-junit-report (run)
   "Create JUnit XML testsuites element"
   (let* ((all-tests (map:vals (suite::tests run)))
-         (total-tests (length all-tests))
-         (total-failures (length (suite:failures run)))
-         (total-errors (length (suite:errors run)))
-         (total-skipped (length (suite:skipped run)))
+         (total-tests (seq:count all-tests))
+         (grouped-tests (seq:group-by #'suite:status all-tests))
+         (total-failures (seq:count (map:get grouped-tests :failure)))
+         (total-errors (seq:count (map:get grouped-tests :error)))
+         (total-skipped (seq:count (map:get grouped-tests :skip)))
          (total-time (/ (- (suite::end-time run) (suite::start-time run)) 
                         internal-time-units-per-second)))
     (xml:element "testsuites"
@@ -155,7 +135,7 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
 
 (defun make-junit-testsuite (suite-name tests)
   "Create JUnit XML testsuite element for a package"
-  (let* ((test-count (length tests))
+  (let* ((test-count (seq:count tests))
          (failures (count-if (lambda (r) (eq :failure (suite:status r))) tests))
          (errors (count-if (lambda (r) (eq :error (suite:status r))) tests))
          (skipped (count-if (lambda (r) (eq :skip (suite:status r))) tests))
@@ -212,8 +192,12 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
                                    "time" (format nil "~,3F" test-time))
                  :children (reverse children))))
 
-(defvar *report-formats*
-  (map:make-map :shell 'shell-report
+(defclass no-report ()
+  ())
+
+(defparameter *report-formats*
+  (map:make-map :none 'no-report
+                :shell 'shell-report
                 :junit 'junit-report))
 
 (defun to-keyword (value)
@@ -223,5 +207,5 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
 
 (defun make (&key format file)
   (make-instance (or (map:get *report-formats* (to-keyword format))
-                     (error "unknown test formatter type ~s: want one of ~A" type
+                     (error "unknown test report type ~s: want one of ~A" format
                             (map:keys *report-formats*)))))

@@ -181,8 +181,8 @@
 
 (defmethod build-order ((project project))
   (seq:map (fn:partial #'%make-build-input project)
-           (seq:seq (append (project-sources project)
-                            (project-tests project)))))
+           (seq:from-list (append (project-sources project)
+                                  (project-tests project)))))
 
 (defun read-first-form (uri)
   (with-open-file (stream (uri::path uri))
@@ -235,7 +235,7 @@
                  (setf visiting (map:dissoc visiting hash))
                  (push hash sorted)
                  t)))
-      (dolist (source-info (map:vals nodes))
+      (dolist (source-info (seq:realize (map:vals nodes))) ;FIXME (seq:doseq
         (visit (hash source-info) nil))
       (values
        (mapcar (lambda (hash)
@@ -358,16 +358,16 @@
 
 (defun %build (project &key force)
   "Build the given build-inputs, optionally forcing compilation of all steps"
-  (let ((results (seq:seq (seq:realize (seq:map (lambda (build-input)
-                                                  (if force
-                                                      (compile-source build-input)
-                                                      (case (build-input-status build-input)
-                                                        ((:target-missing
-                                                          :source-newer)
-                                                         (compile-source build-input))
-                                                        (t
-                                                         (load-source build-input)))))
-                                                (build-order project))))))
+  (let ((results (seq:map (lambda (build-input)
+                            (if force
+                                (compile-source build-input)
+                                (case (build-input-status build-input)
+                                  ((:target-missing
+                                    :source-newer)
+                                   (compile-source build-input))
+                                  (t
+                                   (load-source build-input)))))
+                          (build-order project))))
     (make-instance 'project-build
                    :project project
                    :results results)))

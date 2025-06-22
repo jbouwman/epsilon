@@ -4,22 +4,24 @@
    epsilon.lib.syntax)
   (:shadow
    cons
+   count
    first
    rest
    reduce
    seq
    map
    filter)
-  (:local-nicknames
-   (map epsilon.lib.map))
   (:export
    *empty*
    empty-p
    sequence-p
    filter
+   from-generator
    from-list
    map
+   mapcat
    cons
+   count
    first
    reduce
    rest
@@ -71,18 +73,6 @@
   (or (cons-p obj)
       (eq obj *empty*)))
 
-;; TODO -- update all useages then remove
-
-(defun seq (list)
-  (labels ((convert (remaining)
-             (if (null remaining)
-                 *empty*
-                 (cons (car remaining)
-                       (convert (cdr remaining))))))
-    (if (listp list)
-        (convert list)
-        (convert (coerce list 'list)))))
-
 (defun from-list (list)
   (labels ((convert (remaining)
              (if (null remaining)
@@ -92,6 +82,17 @@
     (if (listp list)
         (convert list)
         (convert (coerce list 'list)))))
+
+(defun from-generator (generator-fn)
+  "Create a lazy sequence from a generator function.
+   Generator should return (values item has-more-p) on each call."
+  (labels ((generate ()
+             (multiple-value-bind (item has-more-p)
+                 (funcall generator-fn)
+               (if has-more-p
+                   (cons item (generate))
+                   *empty*))))
+    (generate)))
 
 (defun first (seq)
   (if (empty-p seq)
@@ -107,6 +108,13 @@
   (loop for current = seq then (rest current)
         while (not (empty-p current))
         collect (first current)))
+
+(defun count (seq)
+  (loop with i = 0
+        for current = seq then (rest current)
+        while (not (empty-p current))
+        do (incf i)
+        finally (return i)))
 
 (defmethod print-object ((seq cons) stream)
   "Print a lazy sequence in a readable format, respecting *print-length*"
@@ -168,6 +176,24 @@ accept as many arguments as there are sequences."
                     (next-match (rest s))))))
     (next-match seq)))
 
+(defun mapcat (function sequence)
+  "Map function over sequence and lazily concatenate the results.
+   Function should return a sequence for each element."
+  (labels ((concat-seqs (seq)
+             (cond
+               ((empty-p seq) *empty*)
+               (t
+                (let ((result (funcall function (first seq))))
+                  (concat-two result (concat-seqs (rest seq))))))))
+    (concat-seqs sequence)))
+
+(defun concat-two (seq1 seq2)
+  "Lazily concatenate two sequences"
+  (cond
+    ((empty-p seq1) seq2)
+    (t (cons (first seq1)
+             (concat-two (rest seq1) seq2)))))
+
 (defun reduce (function seq &key (initial-value nil initial-value-p))
   "Reduces a sequence using function. If initial-value is provided, it is used
 as the first value, otherwise the first element of the sequence is used."
@@ -224,15 +250,3 @@ The element that matches the predicate starts a new partition."
              (cons current
                    (iterate-seq (funcall function current)))))
     (iterate-seq initial-value)))
-
-(defun group-by (key-fn sequence)
-  "Group elements of sequence by the result of applying key-fn to each element.
-Returns a map where keys are the group keys and values are lists of elements."
-  (reduce (lambda (groups element)
-            (let ((key (funcall key-fn element)))
-              (map:assoc groups key
-                         (cons element
-                               (map:get groups key *empty*)))))
-          sequence
-          :initial-value map:+empty+))
-

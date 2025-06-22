@@ -9,6 +9,8 @@
    intersection
    remove
    union)
+  (:local-nicknames
+   (seq epsilon.lib.sequence))
   (:export
    +empty+
    add
@@ -110,21 +112,34 @@
                    not-found)))
         nil)))
 
+(defun make-generator (set)
+  "Create a generator for set values"
+  (let ((stack (list (hamt-set-root set)))
+        (current-collision nil))
+    (lambda ()
+      (loop
+        (cond (current-collision
+               (let ((value (pop current-collision)))
+                 (when value
+                   (return (values value t)))))
+              ((null stack)
+               (return (values nil nil)))
+              (t
+               (let ((node (pop stack)))
+                 (etypecase node
+                   (null nil)
+                   (leaf-node
+                    (return (values (leaf-node-value node)
+                                    t)))
+                   (collision-node
+                    (setf current-collision (collision-node-values node)))
+                   (bitmap-node
+                    (loop for child across (bitmap-node-array node)
+                          do (push child stack)))))))))))
+
 (defun seq (set)
-  "Return a sequence of values from the set"
-  (let ((result nil))
-    (labels ((collect (node)
-               (etypecase node
-                 (null nil)
-                 (leaf-node
-                  (push (leaf-node-value node) result))
-                 (bitmap-node
-                  (loop for child across (bitmap-node-array node)
-                        do (collect child)))
-                 (collision-node
-                  (setf result (append (collision-node-values node) result))))))
-      (collect (hamt-set-root set))
-      (nreverse result))))
+  "Return a lazy sequence of values from the set"
+  (seq:from-generator (make-generator set)))
 
 (defun set= (set1 set2)
   "Return true if sets are equal"
