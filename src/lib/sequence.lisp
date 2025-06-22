@@ -1,35 +1,38 @@
 (defpackage :epsilon.lib.sequence
   (:use
-   :cl
-   :epsilon.lib.syntax)
+   cl
+   epsilon.lib.syntax)
   (:shadow
-   :cons
-   :first
-   :rest
-   :reduce
-   :seq
-   :map
-   :filter)
+   cons
+   first
+   rest
+   reduce
+   seq
+   map
+   filter)
+  (:local-nicknames
+   (map epsilon.lib.map))
   (:export
-   :*empty*
-   :empty-p
-   :sequence-p
-   :filter
-   :from-list
-   :map
-   :cons
-   :first
-   :reduce
-   :rest
-   :realize
-   :seq
-   :drop
-   :iterate
-   :partition-when
-   :take
-   :each))
+   *empty*
+   empty-p
+   sequence-p
+   filter
+   from-list
+   map
+   cons
+   first
+   reduce
+   rest
+   realize
+   seq
+   drop
+   iterate
+   group-by
+   partition-when
+   take
+   each))
 
-(in-package :epsilon.lib.sequence)
+(in-package epsilon.lib.sequence)
 
 ;; A represention of a delayed computation
 
@@ -221,3 +224,15 @@ The element that matches the predicate starts a new partition."
              (cons current
                    (iterate-seq (funcall function current)))))
     (iterate-seq initial-value)))
+
+(defun group-by (key-fn sequence)
+  "Group elements of sequence by the result of applying key-fn to each element.
+Returns a map where keys are the group keys and values are lists of elements."
+  (reduce (lambda (groups element)
+            (let ((key (funcall key-fn element)))
+              (map:assoc groups key
+                         (cons element
+                               (map:get groups key *empty*)))))
+          sequence
+          :initial-value map:+empty+))
+

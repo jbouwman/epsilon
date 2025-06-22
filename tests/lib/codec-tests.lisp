@@ -41,20 +41,20 @@
                             (format nil "tests/lib/~a" original))))
     (roundtrip codec path)))
 
-(deftest deflate ()
+(deftest deflate
   (test-roundtrip :deflate "shilling.txt"))
 
-(deftest zlib ()
+(deftest zlib
   (test-roundtrip :zlib "shilling.txt"))
 
-(deftest gzip ()
+(deftest gzip
   (test-roundtrip :gzip "shilling.txt"))
 
-(deftest gzip-1 ()
+(deftest gzip-1
   (test-decompress :gzip "shilling.txt.gz1" "shilling.txt"))
 
-(deftest gzip-9 ()
+(deftest gzip-9
   (test-decompress :gzip "shilling.txt.gz9" "shilling.txt"))
 
-(deftest bzip2 ()
+(deftest bzip2
   (test-decompress :bzip2 "shilling.txt.bz2" "shilling.txt"))
