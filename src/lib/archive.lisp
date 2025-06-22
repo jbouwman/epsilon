@@ -4,6 +4,8 @@
    :epsilon.lib.type)
   (:local-nicknames
    (:char :epsilon.lib.char)
+   (:codec :epsilon.lib.codec)
+   (:crc-32 :epsilon.lib.checksum.crc-32)
    (:stream :epsilon.lib.stream)
    (:struct :epsilon.lib.struct))
   (:export
@@ -406,7 +408,7 @@
 
 (defmethod call-with-decompressed-buffer (function input start end (state deflate-state-2))
   (with-slots (output-buffer) state
-    (epsilon.lib.codec::decompress output-buffer (epsilon.lib.codec::make-dstate :deflate) input
+    (codec::decompress output-buffer (codec::make-dstate :deflate) input
                            :input-state start
                            :input-end end)
     (let ((result (stream:buffer output-buffer)))
@@ -429,15 +431,15 @@
 
 (defmethod make-compression-state ((format (eql :deflate)) &key buffer)
   (declare (ignore buffer))
-  (make-instance 'epsilon.lib.codec::deflate-compressor))
+  (make-instance 'codec::deflate-compressor))
 
-(defmethod call-with-compressed-buffer (function vector start end (state epsilon.lib.codec::deflate-compressor))
-  (setf (epsilon.lib.codec::callback state) (lambda (buffer end) (funcall function buffer 0 end)))
-  (epsilon.lib.codec::compress-u8-vector vector state :start start :end end))
+(defmethod call-with-compressed-buffer (function vector start end (state codec::deflate-compressor))
+  (setf (codec::callback state) (lambda (buffer end) (funcall function buffer 0 end)))
+  (codec::compress-u8-vector vector state :start start :end end))
 
-(defmethod call-with-completed-compressed-buffer (function (state epsilon.lib.codec::deflate-compressor))
-  (setf (epsilon.lib.codec::callback state) (lambda (buffer end) (funcall function buffer 0 end)))
-  (epsilon.lib.codec::finish-compression state))
+(defmethod call-with-completed-compressed-buffer (function (state codec::deflate-compressor))
+  (setf (codec::callback state) (lambda (buffer end) (funcall function buffer 0 end)))
+  (codec::finish-compression state))
 
 (defgeneric make-decryption-state (format input password &key buffer &allow-other-keys))
 (defgeneric call-with-decrypted-buffer (function input length state))
@@ -522,8 +524,8 @@
   (k2 878082192 :type (unsigned-byte 32)))
 
 (defun crc-nth (n)
-  (logior (ash (aref epsilon.lib.checksum.crc-32::*crc-32-table* (* 2 n)) 16)
-          (aref epsilon.lib.checksum.crc-32::*crc-32-table* (1+ (* 2 n)))))
+  (logior (ash (aref crc-32::*crc-32-table* (* 2 n)) 16)
+          (aref crc-32::*crc-32-table* (1+ (* 2 n)))))
 
 (defun crc32-rotate (crc byte)
   (logxor (ldb (byte 24 8) crc)

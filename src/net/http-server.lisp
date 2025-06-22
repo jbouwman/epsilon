@@ -7,6 +7,7 @@
    (:seq :epsilon.lib.sequence)
    (:str :epsilon.lib.string)
    (:time :epsilon.lib.time)
+   (:thread :epsilon.sys.thread)
    (:uuid :epsilon.lib.uuid)
    (:uri :epsilon.lib.uri))
   (:export
@@ -856,7 +857,7 @@
                (let ((connection (net:socket-accept 
                                   (server-listener server))))
                  ;; Handle in a new thread
-                 (epsilon.sys.thread:make-thread
+                 (thread:make-thread
                   (lambda () 
                     (unwind-protect
                          (handle-client-connection connection server)
@@ -883,7 +884,7 @@
   
   ;; Start accept thread
   (setf (server-threads server)
-        (list (epsilon.sys.thread:make-thread
+        (list (thread:make-thread
                (lambda () (accept-connections server))
                :name "http-server-accept-thread")))
   
@@ -903,7 +904,7 @@
   
   ;; Wait for threads to finish
   (dolist (thread (server-threads server))
-    (epsilon.sys.thread:join-thread thread))
+    (thread:join-thread thread))
   
   (setf (server-threads server) nil)
   (setf (server-listener server) nil)
