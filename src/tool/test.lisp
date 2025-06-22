@@ -73,11 +73,8 @@ If FILE is provided, write the report to the named file."
                                      ,(when message-p
                                         `(format nil ,message ,@message-args)))))))))
 
-(defun not-null (x)
-  (not (null x)))
-
 (defmacro is (actual &rest optargs)
-  `(is-p #'eq (not-null ,actual) t ,@optargs))
+  `(is-p #'eq (not (null ,actual)) t ,@optargs))
 
 (defmacro is-= (actual expected &rest optargs)
   `(is-p #'= ,actual ,expected ,@optargs))

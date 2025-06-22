@@ -4,6 +4,7 @@
    :epsilon.tool.test
    :epsilon.lib.syntax)
   (:local-nicknames
+   (:array :epsilon.lib.array)
    (:stream :epsilon.lib.stream)))
 
 (in-package :epsilon.lib.stream-tests)
@@ -15,6 +16,6 @@
   (let ((s (stream:make-output-stream)))
     (loop :for c :across "hello world"
           :do (write-byte (char-code c) s))
-    (is (epsilon.lib.array:array-elts-eql
+    (is (array:array-elts-eql
          +hello->u8+
          (stream:buffer s)))))

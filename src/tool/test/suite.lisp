@@ -265,7 +265,7 @@ Returns the leaf node for package-name."
 (define-condition test-error (error)
   ((original-error :initarg :error :reader original-error)))
 
-(define-condition test-skip (cl:condition)
+(define-condition skip (cl:condition)
   ((message :initarg :message :reader skip-message :initform "Test skipped")))
 
 (defmacro def-map-setter (name slot-name)
@@ -286,10 +286,10 @@ Returns the test-result instance."
          (*test* result))
     (unwind-protect
          (handler-bind
-             ((test-skip (lambda (c)
-                           (setf (status result) :skip
-                                 (condition result) c)
-                           (return-from run-testable result)))
+             ((skip (lambda (c)
+                      (setf (status result) :skip
+                            (condition result) c)
+                      (return-from run-testable result)))
               (test-failure (lambda (c)
                               (setf (status result) :failure
                                     (condition result) c)
