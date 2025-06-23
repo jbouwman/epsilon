@@ -18,4 +18,5 @@ jobs:
       run: |
         chmod +x run.sh
         ./run.sh build
-        ./run.sh test
+        ./run.sh test --format junit
+
