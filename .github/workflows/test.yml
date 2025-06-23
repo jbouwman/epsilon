@@ -20,3 +20,8 @@ jobs:
         ./run.sh build
         ./run.sh test --format junit
 
+    - name: Publish Test Report
+      uses: mikepenz/action-junit-report@v5
+      if: success() || failure()
+      with:
+        report_paths: ./target/TEST-epsilon.xml'
