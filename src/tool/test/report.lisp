@@ -1,8 +1,8 @@
 (defpackage epsilon.tool.test.report
   (:use
-   cl)
+   cl
+   epsilon.tool.common)
   (:local-nicknames
-   (common epsilon.tool.common)
    (suite epsilon.tool.test.suite)
    (map epsilon.lib.map)
    (xml epsilon.lib.xml))
@@ -19,10 +19,10 @@
   ((failure-count :initform 0)
    (max-failures :initform 10)))
 
-(defmethod common:event ((formatter shell-report) (event-type (eql :start)) event-data)
+(defmethod event ((formatter shell-report) (event-type (eql :start)) event-data)
   (format t "~&Running tests:~%~%"))
 
-(defmethod common:event ((formatter shell-report) (event-type (eql :start-group)) group)
+(defmethod event ((formatter shell-report) (event-type (eql :start-group)) group)
   (format-package-header (first group)))
 
 (defun format-package-header (package-name)
@@ -72,7 +72,7 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
        (format nil "~&;;       Skipped: ~A~%"
                (suite::skip-message (suite:condition result)))))))
 
-(defmethod common:event ((formatter shell-report) (event-type (eql :end-test)) result)
+(defmethod event ((formatter shell-report) (event-type (eql :end-test)) result)
   (with-slots (failure-count max-failures) formatter
     (let ((test (suite:test result)))
       (format-test-entry (symbol-name test) 60 result)
@@ -81,7 +81,7 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
           (format t "~A" (format-condition-details result))
           (incf failure-count))))))
 
-(defmethod common:event ((formatter shell-report) (event-type (eql :end)) run)
+(defmethod event ((formatter shell-report) (event-type (eql :end)) run)
   (let ((total-failures (+ (length (suite:failures run)) (length (suite:errors run)))))
     (with-slots (failure-count max-failures) formatter
       (format t "~&~%Test Run Complete:~%")
@@ -104,7 +104,7 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
   ((output-file :initform "target/TEST-epsilon.xml"
                 :reader output-file)))
 
-(defmethod common:event ((formatter junit-report) (event-type (eql :end)) run)
+(defmethod event ((formatter junit-report) (event-type (eql :end)) run)
   (emit-junit-xml formatter run))
 
 (defun emit-junit-xml (report run)

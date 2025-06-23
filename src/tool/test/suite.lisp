@@ -1,11 +1,11 @@
 (defpackage epsilon.tool.test.suite
   (:use
    cl
-   epsilon.lib.syntax)
+   epsilon.lib.syntax
+   epsilon.tool.common)
   (:shadow
    condition)
   (:local-nicknames
-   (common epsilon.tool.common)
    (f epsilon.lib.function)
    (map epsilon.lib.map)
    (set epsilon.lib.set)
@@ -143,8 +143,8 @@ Returns the leaf node for package-name."
                      :accessor abort-on-failure
                      :initarg :abort-on-failure)))
 
-(defmethod common:event ((run test-run) type data)
-  (common:event (reporter run) type data))
+(defmethod event ((run test-run) type data)
+  (event (reporter run) type data))
 
 (defun failures (run)
   "Return list of failed test results"
