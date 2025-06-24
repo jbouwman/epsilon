@@ -1,7 +1,0 @@
-name: epsilon
-version: 1.0.0
-author: Jesse Bouwman
-sources:
-  - src
-tests:
-  - tests

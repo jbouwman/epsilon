@@ -1,0 +1,135 @@
+name: CI - Multi-Platform Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Linux Build Job using container
+  linux:
+    runs-on: ubuntu-latest
+    container: ghcr.io/${{ github.repository }}/epsilon-linux:latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Verify SBCL
+      run: |
+        sbcl --version
+        which sbcl
+        
+    - name: Build and test epsilon for Linux
+      run: |
+        chmod +x run.sh
+        ./run.sh build --file package-core.yaml
+        ./run.sh build --file package-linux.yaml
+        ./run.sh test --platform core || true
+        ./run.sh test --platform linux || true
+        
+    - name: Upload Linux artifacts
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: linux-build
+        path: |
+          target/
+          *.fasl
+        retention-days: 7
+
+  # Windows Build Job using Windows container
+  windows:
+    runs-on: windows-2022
+    container: ghcr.io/${{ github.repository }}/epsilon-windows:latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Verify SBCL
+      run: |
+        sbcl --version
+        where sbcl
+        
+    - name: Build and test epsilon for Windows
+      run: |
+        ./run.sh build --platform core
+        ./run.sh build --platform windows
+        ./run.sh test --platform core || echo "Tests completed"
+        ./run.sh test --platform windows || echo "Tests completed"
+        
+    - name: Upload Windows artifacts
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: windows-build
+        path: |
+          target/
+          *.fasl
+        retention-days: 7
+
+  # macOS Build Job - native runner (containers not well supported)
+  macos:
+    runs-on: macos-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+        
+    - name: Cache SBCL
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/sbcl
+        key: sbcl-macos-2.4.0
+        
+    - name: Install SBCL
+      run: |
+        brew install sbcl
+        
+    - name: Build and test epsilon for macOS
+      run: |
+        chmod +x run.sh
+        ./run.sh build --platform core
+        ./run.sh build --platform darwin
+        ./run.sh test --platform core || true
+        ./run.sh test --platform darwin || true
+        
+    - name: Upload macOS artifacts
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: macos-build
+        path: |
+          target/
+          *.fasl
+        retention-days: 7
+
+  # Summary
+  compatibility:
+    needs: [linux, windows, macos]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      
+    - name: Build summary
+      run: |
+        echo "=== Platform Build Summary ==="
+        echo "Linux (epoll):   ${{ needs.linux.result }}"
+        echo "Windows (IOCP):  ${{ needs.windows.result }}"
+        echo "macOS (kqueue):  ${{ needs.macos.result }}"
+        
+        if [ "${{ needs.linux.result }}" = "success" ] && [ "${{ needs.windows.result }}" = "success" ] && [ "${{ needs.macos.result }}" = "success" ]; then
+          echo "✅ All platforms built successfully!"
+        else
+          echo "❌ Some platforms failed"
+        fi

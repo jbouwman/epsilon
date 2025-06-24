@@ -1,13 +1,13 @@
-name: Build Docker Image
+name: Build Platform Containers
 
 on:
   push:
     branches: [ main ]
-    paths: [ 'Dockerfile' ]
+    paths: [ '.docker/**' ]
   workflow_dispatch:
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
@@ -20,13 +20,30 @@ jobs:
       with:
         registry: ghcr.io
         username: ${{ github.actor }}
-        password: ${{ secrets.GHCR_TOKEN }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: Build and push
+    - name: Build and push Linux container
       uses: docker/build-push-action@v5
       with:
         context: .
+        file: .docker/linux/Dockerfile
         push: true
-        tags: ghcr.io/${{ github.repository }}/epsilon-ci:latest
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        tags: ghcr.io/${{ github.repository }}/epsilon-linux:latest
+        platforms: linux/amd64
+
+  build-windows:
+    runs-on: windows-2022
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Login to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Build and push Windows container
+      run: |
+        docker build -f .docker/windows/Dockerfile -t ghcr.io/${{ github.repository }}/epsilon-windows:latest .
+        docker push ghcr.io/${{ github.repository }}/epsilon-windows:latest

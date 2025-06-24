@@ -1,0 +1,246 @@
+(defpackage :epsilon.sys.libcrypto.tests
+  (:use
+   :cl
+   :epsilon.lib.syntax
+   :epsilon.tool.test)
+  (:local-nicknames
+   (#:lib #:epsilon.sys.lib)
+   (#:hex #:epsilon.lib.hex)))
+
+(in-package :epsilon.sys.libcrypto.tests)
+
+;; OpenSSL libcrypto function bindings for testing
+
+;; EVP (Envelope) API for hash functions
+(lib:defshared evp-md-ctx-new "EVP_MD_CTX_new" "libcrypto" :pointer ()
+  :documentation "Create new EVP message digest context")
+
+(lib:defshared evp-md-ctx-free "EVP_MD_CTX_free" "libcrypto" :void (ctx :pointer)
+  :documentation "Free EVP message digest context")
+
+(lib:defshared evp-sha256 "EVP_sha256" "libcrypto" :pointer ()
+  :documentation "Get SHA256 digest algorithm")
+
+(lib:defshared evp-digest-init-ex "EVP_DigestInit_ex" "libcrypto" :int 
+  (ctx :pointer) (type :pointer) (impl :pointer)
+  :documentation "Initialize digest context")
+
+(lib:defshared evp-digest-update "EVP_DigestUpdate" "libcrypto" :int
+  (ctx :pointer) (data :pointer) (count :unsigned-long)
+  :documentation "Add data to digest")
+
+(lib:defshared evp-digest-final-ex "EVP_DigestFinal_ex" "libcrypto" :int
+  (ctx :pointer) (md :pointer) (size :pointer)
+  :documentation "Finalize digest and get result")
+
+;; Random number generation
+(lib:defshared rand-bytes "RAND_bytes" "libcrypto" :int
+  (buf :pointer) (num :int)
+  :documentation "Generate cryptographically secure random bytes")
+
+;; Version information
+(lib:defshared openssl-version "OpenSSL_version" "libcrypto" :string
+  (type :int)
+  :documentation "Get OpenSSL version string")
+
+;; Helper functions for testing
+
+(defun string-to-bytes (string)
+  "Convert string to byte array"
+  (map 'vector #'char-code string))
+
+(defun bytes-to-hex (bytes length)
+  "Convert byte array to hex string"
+  (with-output-to-string (s)
+    (loop for i from 0 below length
+          do (format s "~2,'0x" (sb-alien:deref bytes i)))))
+
+;;;; Basic library loading tests
+
+(deftest test-libcrypto-load
+  "Test that libcrypto can be loaded"
+  (let ((handle (lib:lib-open "libcrypto")))
+    (is (not (null handle)))
+    (is (lib:lib-close handle))))
+
+(deftest test-openssl-version
+  "Test getting OpenSSL version"
+  (let ((version (openssl-version 0))) ; OPENSSL_VERSION = 0
+    (is (stringp version))
+    (is (> (length version) 0))
+    (is (search "OpenSSL" version))))
+
+;;;; Random number generation tests
+
+(deftest test-rand-bytes
+  "Test random byte generation"
+  (lib:with-foreign-memory ((buffer :char :count 32))
+    (let ((result (rand-bytes buffer 32)))
+      (is (= result 1)) ; Success
+      ;; Check that we got some non-zero bytes (very unlikely to be all zero)
+      (let ((has-nonzero nil))
+        (loop for i from 0 below 32
+              when (/= (sb-alien:deref buffer i) 0)
+                do (setf has-nonzero t))
+        (is has-nonzero "Random bytes should contain some non-zero values")))))
+
+;;;; SHA256 hash tests
+
+(deftest test-sha256-empty
+  "Test SHA256 of empty string"
+  (let ((ctx (evp-md-ctx-new)))
+    (unwind-protect
+         (lib:with-foreign-memory ((digest :char :count 32)
+                                   (digest-len :unsigned-int :count 1))
+           ;; Initialize
+           (is (= 1 (evp-digest-init-ex ctx (evp-sha256) (sb-alien:null-alien))))
+           
+           ;; No data to update (empty string)
+           
+           ;; Finalize
+           (is (= 1 (evp-digest-final-ex ctx digest digest-len)))
+           
+           ;; Check result length
+           (is (= 32 (sb-alien:deref digest-len 0)))
+           
+           ;; Check known SHA256 of empty string
+           (let ((hex-result (bytes-to-hex digest 32)))
+             (is (string-equal hex-result
+                               "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"))))
+      (evp-md-ctx-free ctx))))
+
+(deftest test-sha256-hello-world
+  "Test SHA256 of 'Hello, World!'"
+  (let ((ctx (evp-md-ctx-new))
+        (test-string "Hello, World!"))
+    (unwind-protect
+         (lib:with-foreign-memory ((digest :char :count 32)
+                                   (digest-len :unsigned-int :count 1))
+           ;; Initialize
+           (is (= 1 (evp-digest-init-ex ctx (evp-sha256) (sb-alien:null-alien))))
+           
+           ;; Update with data
+           (let ((string-bytes (string-to-bytes test-string)))
+             (lib:with-foreign-memory ((data :char :count (length string-bytes)))
+               (loop for i from 0 below (length string-bytes)
+                     do (setf (sb-alien:deref data i) (aref string-bytes i)))
+               (is (= 1 (evp-digest-update ctx data (length string-bytes))))))
+           
+           ;; Finalize
+           (is (= 1 (evp-digest-final-ex ctx digest digest-len)))
+           
+           ;; Check result length
+           (is (= 32 (sb-alien:deref digest-len 0)))
+           
+           ;; Check known SHA256 of "Hello, World!"
+           (let ((hex-result (bytes-to-hex digest 32)))
+             (is (string-equal hex-result
+                               "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"))))
+      (evp-md-ctx-free ctx))))
+
+(deftest test-sha256-large-data
+  "Test SHA256 with larger data (1000 'a' characters)"
+  (let ((ctx (evp-md-ctx-new))
+        (test-data (make-string 1000 :initial-element #\a)))
+    (unwind-protect
+         (lib:with-foreign-memory ((digest :char :count 32)
+                                   (digest-len :unsigned-int :count 1))
+           ;; Initialize
+           (is (= 1 (evp-digest-init-ex ctx (evp-sha256) (sb-alien:null-alien))))
+           
+           ;; Update with data
+           (let ((string-bytes (string-to-bytes test-data)))
+             (lib:with-foreign-memory ((data :char :count (length string-bytes)))
+               (loop for i from 0 below (length string-bytes)
+                     do (setf (sb-alien:deref data i) (aref string-bytes i)))
+               (is (= 1 (evp-digest-update ctx data (length string-bytes))))))
+           
+           ;; Finalize
+           (is (= 1 (evp-digest-final-ex ctx digest digest-len)))
+           
+           ;; Check result length
+           (is (= 32 (sb-alien:deref digest-len 0)))
+           
+           ;; Just verify we get a valid hex result (32 bytes = 64 hex chars)
+           (let ((hex-result (bytes-to-hex digest 32)))
+             (is (= 64 (length hex-result)))
+             (is (every (lambda (c) (or (digit-char-p c) 
+                                        (member c '(#\a #\b #\c #\d #\e #\f) :test #'char-equal)))
+                        hex-result))))
+      (evp-md-ctx-free ctx))))
+
+;;;; Error handling tests
+
+(deftest test-null-context-handling
+  "Test that functions handle null contexts appropriately"
+  ;; This should fail gracefully
+  (is-thrown (error) (evp-digest-init-ex (sb-alien:null-alien) (evp-sha256) (sb-alien:null-alien))))
+
+;;;; Integration tests
+
+(deftest test-multiple-contexts
+  "Test using multiple digest contexts simultaneously"
+  (let ((ctx1 (evp-md-ctx-new))
+        (ctx2 (evp-md-ctx-new)))
+    (unwind-protect
+         (lib:with-foreign-memory ((digest1 :char :count 32)
+                                   (digest2 :char :count 32)
+                                   (len1 :unsigned-int :count 1)
+                                   (len2 :unsigned-int :count 1))
+           ;; Initialize both contexts
+           (is (= 1 (evp-digest-init-ex ctx1 (evp-sha256) (sb-alien:null-alien))))
+           (is (= 1 (evp-digest-init-ex ctx2 (evp-sha256) (sb-alien:null-alien))))
+           
+           ;; Update with different data
+           (let ((data1 (string-to-bytes "test1"))
+                 (data2 (string-to-bytes "test2")))
+             (lib:with-foreign-memory ((buf1 :char :count (length data1))
+                                       (buf2 :char :count (length data2)))
+               (loop for i from 0 below (length data1)
+                     do (setf (sb-alien:deref buf1 i) (aref data1 i)))
+               (loop for i from 0 below (length data2)
+                     do (setf (sb-alien:deref buf2 i) (aref data2 i)))
+               
+               (is (= 1 (evp-digest-update ctx1 buf1 (length data1))))
+               (is (= 1 (evp-digest-update ctx2 buf2 (length data2))))))
+           
+           ;; Finalize both
+           (is (= 1 (evp-digest-final-ex ctx1 digest1 len1)))
+           (is (= 1 (evp-digest-final-ex ctx2 digest2 len2)))
+           
+           ;; Results should be different
+           (let ((hex1 (bytes-to-hex digest1 32))
+                 (hex2 (bytes-to-hex digest2 32)))
+             (is (not (string-equal hex1 hex2)))))
+      (evp-md-ctx-free ctx1)
+      (evp-md-ctx-free ctx2))))
+
+(deftest test-reuse-context
+  "Test reusing a context for multiple hashes"
+  (let ((ctx (evp-md-ctx-new)))
+    (unwind-protect
+         (lib:with-foreign-memory ((digest :char :count 32)
+                                   (digest-len :unsigned-int :count 1))
+           ;; First hash
+           (is (= 1 (evp-digest-init-ex ctx (evp-sha256) (sb-alien:null-alien))))
+           (let ((data1 (string-to-bytes "first")))
+             (lib:with-foreign-memory ((buf :char :count (length data1)))
+               (loop for i from 0 below (length data1)
+                     do (setf (sb-alien:deref buf i) (aref data1 i)))
+               (is (= 1 (evp-digest-update ctx buf (length data1))))))
+           (is (= 1 (evp-digest-final-ex ctx digest digest-len)))
+           (let ((first-hash (bytes-to-hex digest 32)))
+             
+             ;; Second hash with same context
+             (is (= 1 (evp-digest-init-ex ctx (evp-sha256) (sb-alien:null-alien))))
+             (let ((data2 (string-to-bytes "second")))
+               (lib:with-foreign-memory ((buf :char :count (length data2)))
+                 (loop for i from 0 below (length data2)
+                       do (setf (sb-alien:deref buf i) (aref data2 i)))
+                 (is (= 1 (evp-digest-update ctx buf (length data2))))))
+             (is (= 1 (evp-digest-final-ex ctx digest digest-len)))
+             (let ((second-hash (bytes-to-hex digest 32)))
+               
+               ;; Hashes should be different
+               (is (not (string-equal first-hash second-hash))))))
+      (evp-md-ctx-free ctx))))

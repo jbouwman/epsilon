@@ -1,0 +1,17 @@
+name: http
+version: 1.0.0
+author: Jesse Bouwman
+description: HTTP client and server implementation
+
+sources:
+  - src
+
+tests:
+  - tests
+
+requires:
+  - epsilon.core
+  - epsilon.net
+
+provides:
+  - http
