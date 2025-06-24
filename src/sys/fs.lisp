@@ -3,6 +3,7 @@
    :cl
    :epsilon.lib.type)
   (:local-nicknames
+   (:env :epsilon.sys.env)
    (:seq :epsilon.lib.sequence)
    (:str :epsilon.lib.string)
    (:uri :epsilon.lib.uri))
@@ -58,7 +59,7 @@
 
 (defun temp-dir ()
   "Return a default directory to use for temporary files"
-  (epsilon.sys.env:getenv "TMPDIR"))
+  (env:getenv "TMPDIR"))
 
 (defun home-dir ()
   (sb-unix:uid-homedir (sb-unix:unix-getuid)))

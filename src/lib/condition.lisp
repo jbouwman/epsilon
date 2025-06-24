@@ -1,10 +1,10 @@
-(defpackage #:epsilon.lib.condition
+(defpackage epsilon.lib.condition
   (:use
-   #:cl)
+   cl)
   (:export
-   #:ignore-some-conditions
-   #:simple-style-warning
-   #:unwind-protect-case))
+   ignore-some-conditions
+   simple-style-warning
+   unwind-protect-case))
 
 (in-package :epsilon.lib.condition)
 

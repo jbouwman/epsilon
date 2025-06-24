@@ -1,7 +1,8 @@
 (defpackage epsilon.tool.test.suite
   (:use
    cl
-   epsilon.lib.syntax)
+   epsilon.lib.syntax
+   epsilon.tool.common)
   (:shadow
    condition)
   (:local-nicknames
@@ -22,7 +23,6 @@
    assertions
    condition
    status
-   event
    select
    run
    pass
@@ -30,14 +30,14 @@
    skip
    errors
    failures
-   skipped))
+   skipped
+   list-suites
+   suite-tests))
 
 (in-package epsilon.tool.test.suite)
 
 (defvar *test* nil
   "Dynamically bound to current test result during execution")
-
-(defgeneric event (reporter event-type event-data))
 
 (defclass test-node ()
   ((children :initform map:+empty+
@@ -257,6 +257,23 @@ Returns the leaf node for package-name."
 (defun run-success-p (run)
   (zerop (+ (length (failures run))
             (length (errors run)))))
+
+(defun list-suites (test-run)
+  "Return a sorted sequence of package names that have at least one test result"
+  (sort (remove-duplicates 
+         (map:vals (map:map (lambda (result)
+                              (package-name (symbol-package (test result))))
+                            (tests test-run)))
+         :test #'string=)
+        #'string<))
+
+(defun suite-tests (test-run suite-name)
+  "Return all test results for the given suite (package) name, sorted by test name"
+  (sort (map:vals (map:filter (lambda (name result)
+                                (string= suite-name 
+                                         (package-name (symbol-package (test result)))))
+                              (tests test-run)))
+        #'string< :key (lambda (result) (symbol-name (test result)))))
 
 (define-condition test-failure (error)
   ((message :initarg :message :reader failure-message)
