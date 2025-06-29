@@ -1,5 +1,7 @@
 # Epsilon
 
+![Under Construction](construction.gif)
+
 [![CI - Multi-Platform Build](https://github.com/USER/epsilon/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/epsilon/actions/workflows/ci.yml)
 [![Validate - Quick Build Check](https://github.com/USER/epsilon/actions/workflows/validate.yml/badge.svg)](https://github.com/USER/epsilon/actions/workflows/validate.yml)
 
