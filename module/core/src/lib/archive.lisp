@@ -1,18 +1,19 @@
-(defpackage :epsilon.lib.archive
+(defpackage epsilon.lib.archive
   (:use
-   :cl
-   :epsilon.lib.type)
+   cl
+   epsilon.lib.type)
   (:local-nicknames
-   (:char :epsilon.lib.char)
-   (:codec :epsilon.lib.codec)
-   (:crc-32 :epsilon.lib.checksum.crc-32)
-   (:stream :epsilon.lib.stream)
-   (:struct :epsilon.lib.struct))
+   (char epsilon.lib.char)
+   (codec epsilon.lib.codec)
+   (crc-32 epsilon.lib.checksum.crc-32)
+   (stream epsilon.lib.stream)
+   (struct epsilon.lib.struct)
+   (fs epsilon.sys.fs))
   (:export
-   :with-zip-file
-   :entries
-   :attributes
-   :decode-entry))
+   with-zip-file
+   entries
+   attributes
+   decode-entry))
 
 (in-package #:epsilon.lib.archive)
 
