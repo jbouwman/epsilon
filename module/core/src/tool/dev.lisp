@@ -32,7 +32,7 @@
     ;; Build first
     (build:build module)
     ;; Then run tests
-    (let ((result (test:run)))
+    (let ((result (apply #'test:run test-args)))
       (unless (test:success-p result)
         (sb-posix:exit 1)))))
 
