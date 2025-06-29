@@ -3,7 +3,19 @@
     "allow": [
       "Bash(find:*)",
       "Bash(grep:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(./run.sh test:*)",
+      "Bash(./run.sh build:*)",
+      "Bash(mv:*)",
+      "Bash(timeout 30 ./run.sh test:*)",
+      "Bash(gtimeout:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(true)",
+      "Bash(rm:*)",
+      "Bash(tree:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)"
     ],
     "deny": []
   }

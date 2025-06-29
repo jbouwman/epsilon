@@ -17,8 +17,8 @@ jobs:
     - name: Run Unit Tests
       run: |
         chmod +x run.sh
-        ./run.sh build
-        ./run.sh test --format junit
+        ./run.sh build epsilon.core
+        ./run.sh test epsilon.core --format junit
 
     - name: Publish Test Report
       uses: mikepenz/action-junit-report@v5

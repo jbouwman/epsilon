@@ -73,6 +73,7 @@ Epsilon diverges from conventional Common Lisp patterns in several key areas:
 **Path Handling**: Logical pathnames are superseded by URIs throughout the system. File and resource references use URI syntax and are handled by the URI utilities in `epsilon.lib.uri`.
 
 **Data Structures**: Built-in hash tables are superseded by `epsilon.lib.map`, which provides immutable, functional maps with better performance characteristics and a more consistent API.
+- Never use Lisp hashtables: use `epsilon.lib.map`
 
 ## Development Notes
 

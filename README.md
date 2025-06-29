@@ -1,15 +1,34 @@
 # Epsilon
 
-Epsilon is a library for SBCL that provides commonplace application
-libraries, like functional types, compression, cryptography, data
-encoding formats, and network protocols.
+![Under Construction](construction.gif)
 
-To that extent, it was originally based on parts of number of open
-source packages, such as dexador, cl+ssl, cffi, ironclad, zippy and so
-on.
+[![CI - Multi-Platform Build](https://github.com/USER/epsilon/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/epsilon/actions/workflows/ci.yml)
+[![Validate - Quick Build Check](https://github.com/USER/epsilon/actions/workflows/validate.yml/badge.svg)](https://github.com/USER/epsilon/actions/workflows/validate.yml)
 
-Tun tests with:
+Epsilon is a library for SBCL that provides data structures, data formats, compression, cryptography and networking.
+
+## Quick Start
+
+```bash
+./run.sh build
+```
+
+Run tests:
+
+```bash
+./run.sh test
+```
+
+## Pacakges
 
 ```
-./run.sh test
+epsilon (platform-specific)
+├── epsilon.core (shared)
+│   ├── epsilon.lib.*     # Functional data structures, codecs, crypto
+│   ├── epsilon.sys.*     # System utilities, FFI, threading
+│   └── epsilon.tool.*    # Build system, testing, formatting
+└── Platform-specific networking:
+    ├── Linux:   epsilon.sys.epoll  → epsilon.net
+    ├── Darwin:  epsilon.sys.kqueue → epsilon.net
+    └── Windows: epsilon.sys.iocp   → epsilon.net
 ```
