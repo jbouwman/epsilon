@@ -104,6 +104,24 @@
   ;; Test fixarray
   (is (equalp (msgp:encode #(1 2 3)) #(147 1 2 3)))
   
+  ;; Test array with 15 elements (still fixarray)
+  (let ((array15 (make-array 15 :initial-contents (loop for i from 0 below 15 collect i))))
+    (let ((encoded (msgp:encode array15))
+          (decoded (msgp:decode (msgp:encode array15))))
+      (is (equalp decoded array15))))
+  
+  ;; Test array with 16 elements (should use array16 format)
+  (let ((array16 (make-array 16 :initial-contents (loop for i from 0 below 16 collect i))))
+    (let ((encoded (msgp:encode array16))
+          (decoded (msgp:decode (msgp:encode array16))))
+      (is (equalp decoded array16))))
+  
+  ;; Test array with 100 elements (should use array16 format)
+  (let ((array100 (make-array 100 :initial-contents (loop for i from 0 below 100 collect i))))
+    (let ((encoded (msgp:encode array100))
+          (decoded (msgp:decode (msgp:encode array100))))
+      (is (equalp decoded array100))))
+  
   ;; Test with mixed types
   (let ((array #("string" 42 3.14d0 nil t)))
     (is (equalp (msgp:decode (msgp:encode array)) array))))

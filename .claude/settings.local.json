@@ -15,7 +15,12 @@
       "Bash(rm:*)",
       "Bash(tree:*)",
       "Bash(ls:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "WebFetch(domain:doc.rust-lang.org)",
+      "WebFetch(domain:docs.rs)",
+      "Bash(sbcl --noinform --quit --eval \"(progn (require :sb-alien) (prin1 (sb-alien:load-shared-object \\\"libc.dylib\\\")))\")",
+      "Bash(sbcl:*)",
+      "Bash(./run.sh:*)"
     ],
     "deny": []
   }

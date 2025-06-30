@@ -192,9 +192,7 @@
                                     :tests tests
                                     :dependencies (or dependencies '())
                                     :modules (or modules map:+empty+))))
-        (setf *modules* (map:assoc *modules* 
-                                          (map:get defs "name")
-                                          uri))
+        (map:assoc! *modules* (map:get defs "name") uri)
         project))))
 
 (defun find-source-info (uri)
@@ -314,7 +312,7 @@
                (let ((node (map:get nodes hash)))
                  (unless node
                    (return-from visit t))
-                 (setf visiting (map:assoc visiting hash t))
+                 (map:assoc! visiting hash t)
                  (let ((source (map:get nodes hash)))
                    (dolist (dep (dep-hashes source))
                      (visit dep (cons hash path))))
@@ -644,7 +642,7 @@
             (let* ((defs (map:from-pairs (yaml:parse-file (uri:path package-file))))
                    (module-name (map:get defs "name")))
               (when module-name
-                (setf *modules* (map:assoc *modules* module-name module-dir))
+                (map:assoc! *modules* module-name module-dir)
                 (format t ";;   Registered module: ~a -> ~a~%" 
                         module-name 
                         (uri:path module-dir))))))))

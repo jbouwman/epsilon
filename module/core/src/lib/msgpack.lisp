@@ -78,6 +78,8 @@
      (encode-float stream object))
     ((stringp object)
      (encode-string stream object))
+    ((symbolp object)
+     (encode-string stream (symbol-name object)))
     ((typep object 'map::hamt)
      (encode-map stream object))
     ((typep object 'time:timestamp)
@@ -159,13 +161,29 @@
 
 (defun encode-array (stream array)
   (let ((length (length array)))
-    (write-size stream length nil +array16+ +array32+ 15 +fixarray+)
+    (cond
+      ((<= length 15)
+       (write-byte (logior +fixarray+ length) stream))
+      ((<= length 65535)
+       (write-byte +array16+ stream)
+       (write-uint stream length 2))
+      (t
+       (write-byte +array32+ stream)
+       (write-uint stream length 4)))
     (loop for element across array
           do (encode-object stream element))))
 
 (defun encode-map (stream map)
   (let ((length (map:size map)))
-    (write-size stream length nil +map16+ +map32+ 15 +fixmap+)
+    (cond
+      ((<= length 15)
+       (write-byte (logior +fixmap+ length) stream))
+      ((<= length 65535)
+       (write-byte +map16+ stream)
+       (write-uint stream length 2))
+      (t
+       (write-byte +map32+ stream)
+       (write-uint stream length 4)))
     (loop for (key . value) in (map:seq map)
           do (encode-object stream key)
              (encode-object stream value))))
@@ -380,7 +398,7 @@
     (dotimes (i length result)
       (let ((key (decode-object stream))
             (value (decode-object stream)))
-        (setf result (map:assoc result key value))))))
+        (map:assoc! result key value)))))
 
 (defun decode-ext (stream length)
   "Decode an extension type of LENGTH bytes from STREAM."
