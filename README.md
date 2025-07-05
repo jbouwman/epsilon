@@ -2,8 +2,8 @@
 
 ![Under Construction](construction.gif)
 
-[![CI - Multi-Platform Build](https://github.com/USER/epsilon/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/epsilon/actions/workflows/ci.yml)
-[![Validate - Quick Build Check](https://github.com/USER/epsilon/actions/workflows/validate.yml/badge.svg)](https://github.com/USER/epsilon/actions/workflows/validate.yml)
+[![CI - Multi-Platform Build](https://github.com/jbouwman/epsilon/actions/workflows/ci.yml/badge.svg)](https://github.com/jbouwman/epsilon/actions/workflows/ci.yml)
+[![Validate - Quick Build Check](https://github.com/jbouwman/epsilon/actions/workflows/validate.yml/badge.svg)](https://github.com/jbouwman/epsilon/actions/workflows/validate.yml)
 
 Epsilon is a library for SBCL that provides data structures, data formats, compression, cryptography and networking.
 
@@ -19,7 +19,7 @@ Run tests:
 ./run.sh test
 ```
 
-## Pacakges
+## Packages
 
 ```
 epsilon (platform-specific)
