@@ -26,7 +26,8 @@
       "Bash(tar:*)",
       "Bash(./epsilon --eval \"(format t \"\"~%Epsilon runtime test successful!~%\"\")\" --eval \"(sb-ext:quit)\")",
       "Bash(./epsilon --eval \"(format t \"\"Map test: ~A~%\"\" (epsilon.lib.map:get (epsilon.lib.map:make-map :a 1 :b 2) :a))\" --eval \"(sb-ext:quit)\")",
-      "Bash(./epsilon:*)"
+      "Bash(./epsilon:*)",
+      "Bash(gh run view:*)"
     ],
     "deny": []
   }

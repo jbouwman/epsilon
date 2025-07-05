@@ -4,7 +4,8 @@
 #
 # This script builds a complete Epsilon runtime package that includes:
 # - SBCL core image with Epsilon preloaded
-# - Wrapper script for running Epsilon
+# - Standalone SBCL runtime (no build-time dependencies)
+# - Complete source code for navigation
 # - Platform-specific packaging
 #
 
@@ -21,24 +22,19 @@ ARCH=$(uname -m)
 case "$PLATFORM" in
     darwin)
         PLATFORM_NAME="macos"
-        SBCL_EXECUTABLE="$(which sbcl)"
-        EPSILON_WRAPPER="epsilon"
         ;;
     linux)
         PLATFORM_NAME="linux"
-        SBCL_EXECUTABLE="$(which sbcl)"
-        EPSILON_WRAPPER="epsilon"
         ;;
     *)
         echo "Unsupported platform: $PLATFORM"
-        echo "Use build-runtime-windows.sh for Windows builds"
+        echo "For Windows builds, use: powershell scripts/build-runtime-windows.ps1"
         exit 1
         ;;
 esac
 
 echo "Building Epsilon runtime for $PLATFORM_NAME-$ARCH..."
 echo "Platform detected: $PLATFORM"
-echo "SBCL executable: $SBCL_EXECUTABLE"
 echo "Working directory: $(pwd)"
 
 # Create distribution directory
@@ -51,15 +47,11 @@ cd "$EPSILON_DIR"
 # Create target directory first
 mkdir -p "$TARGET_DIR"
 
-# Build core image - use relative paths that work across all platforms
 echo "Building SBCL core image..."
 echo "Current directory: $(pwd)"
 echo "Target directory: $TARGET_DIR"
 
-# Ensure we're in the right directory
-cd "$EPSILON_DIR"
-
-# Use a simpler approach - let SBCL handle the path resolution
+# Build the core image
 sbcl --noinform \
      --non-interactive \
      --no-sysinit \
@@ -89,8 +81,15 @@ SBCL_ROOT="$(dirname "$SBCL_BIN_DIR")"
 
 echo "SBCL installation root: $SBCL_ROOT"
 
-# Copy SBCL runtime components (Unix only)
-cp "$SBCL_PATH" "$DIST_DIR/sbcl"
+# Copy standalone SBCL binary (not the wrapper script)
+SBCL_ACTUAL_BINARY="$SBCL_ROOT/libexec/bin/sbcl"
+if [ -f "$SBCL_ACTUAL_BINARY" ]; then
+    echo "Copying standalone SBCL binary from: $SBCL_ACTUAL_BINARY"
+    cp "$SBCL_ACTUAL_BINARY" "$DIST_DIR/sbcl"
+else
+    echo "Warning: Standalone SBCL binary not found, copying wrapper script"
+    cp "$SBCL_PATH" "$DIST_DIR/sbcl"
+fi
 chmod +x "$DIST_DIR/sbcl"
 
 # Copy SBCL core and runtime files
@@ -100,15 +99,14 @@ if [ -f "$SBCL_ROOT/lib/sbcl/sbcl.core" ]; then
     if [ -f "$SBCL_ROOT/lib/sbcl/sbclrc" ]; then
         cp "$SBCL_ROOT/lib/sbcl/sbclrc" "$DIST_DIR/lib/sbcl/"
     fi
+    
+    # Also copy any contrib modules
+    if [ -d "$SBCL_ROOT/lib/sbcl/contrib" ]; then
+        cp -r "$SBCL_ROOT/lib/sbcl/contrib" "$DIST_DIR/lib/sbcl/"
+    fi
 fi
 
-# For homebrew installations, also copy the runtime
-if [ -f "$SBCL_ROOT/share/sbcl/src/runtime/sbcl" ]; then
-    mkdir -p "$DIST_DIR/share/sbcl/src/runtime"
-    cp "$SBCL_ROOT/share/sbcl/src/runtime/sbcl" "$DIST_DIR/share/sbcl/src/runtime/"
-fi
-
-# Create epsilon wrapper script (Unix only)
+# Create epsilon wrapper script
 cat > "$DIST_DIR/epsilon" << 'EOF'
 #!/bin/bash
 #
