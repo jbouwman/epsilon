@@ -62,44 +62,22 @@ cd "$EPSILON_DIR"
 # Create target directory first
 mkdir -p "$TARGET_DIR"
 
-if [ "$PLATFORM_NAME" = "windows" ]; then
-    # On Windows, convert path to Windows format for SBCL
-    echo "Building core image for Windows..."
-    
-    # Try to convert to Windows path format
-    if command -v cygpath >/dev/null 2>&1; then
-        CORE_OUTPUT_PATH="$(cygpath -w "$TARGET_DIR/epsilon-core")"
-        BOOT_LOAD_PATH="$(cygpath -w "$EPSILON_DIR/module/core/src/tool/boot.lisp")"
-        echo "Using cygpath - Core output: $CORE_OUTPUT_PATH"
-        echo "Boot script: $BOOT_LOAD_PATH"
-        
-        sbcl --noinform \
-             --non-interactive \
-             --no-sysinit \
-             --no-userinit \
-             --load "$BOOT_LOAD_PATH" \
-             --eval "(epsilon.tool.boot:boot)" \
-             --eval "(sb-ext:save-lisp-and-die \"$CORE_OUTPUT_PATH\" :executable nil :save-runtime-options t :compression t)"
-    else
-        # Fallback: use Unix-style paths with forward slashes
-        echo "No cygpath available, using Unix-style paths"
-        sbcl --noinform \
-             --non-interactive \
-             --no-sysinit \
-             --no-userinit \
-             --load "module/core/src/tool/boot.lisp" \
-             --eval "(epsilon.tool.boot:boot)" \
-             --eval "(sb-ext:save-lisp-and-die \"target/epsilon-core\" :executable nil :save-runtime-options t :compression t)"
-    fi
-else
-    sbcl --noinform \
-         --non-interactive \
-         --no-sysinit \
-         --no-userinit \
-         --load "module/core/src/tool/boot.lisp" \
-         --eval "(epsilon.tool.boot:boot)" \
-         --eval "(sb-ext:save-lisp-and-die \"target/epsilon-core\" :executable nil :save-runtime-options t :compression t)"
-fi
+# Build core image - use relative paths that work across all platforms
+echo "Building SBCL core image..."
+echo "Current directory: $(pwd)"
+echo "Target directory: $TARGET_DIR"
+
+# Ensure we're in the right directory
+cd "$EPSILON_DIR"
+
+# Use a simpler approach - let SBCL handle the path resolution
+sbcl --noinform \
+     --non-interactive \
+     --no-sysinit \
+     --no-userinit \
+     --load "module/core/src/tool/boot.lisp" \
+     --eval "(epsilon.tool.boot:boot)" \
+     --eval "(sb-ext:save-lisp-and-die \"target/epsilon-core\" :executable nil :save-runtime-options t :compression t)"
 
 # Copy SBCL executable
 echo "Copying SBCL runtime..."
@@ -185,10 +163,16 @@ fi
 echo "Checking for core image at: $TARGET_DIR/epsilon-core"
 if [ -f "$TARGET_DIR/epsilon-core" ]; then
     echo "Core image found, copying to distribution..."
-    mv "$TARGET_DIR/epsilon-core" "$DIST_DIR/"
+    cp "$TARGET_DIR/epsilon-core" "$DIST_DIR/"
+    rm -f "$TARGET_DIR/epsilon-core"
 else
     echo "ERROR: Core image not found at $TARGET_DIR/epsilon-core"
-    ls -la "$TARGET_DIR/" || echo "Target directory does not exist"
+    echo "Listing target directory contents:"
+    ls -la "$TARGET_DIR/" 2>/dev/null || echo "Target directory does not exist or cannot be listed"
+    echo "Listing current directory contents:"
+    ls -la . 2>/dev/null
+    echo "Checking if core image exists in current directory:"
+    ls -la epsilon-core 2>/dev/null || echo "No epsilon-core in current directory"
     exit 1
 fi
 
