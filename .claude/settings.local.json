@@ -20,7 +20,13 @@
       "WebFetch(domain:docs.rs)",
       "Bash(sbcl --noinform --quit --eval \"(progn (require :sb-alien) (prin1 (sb-alien:load-shared-object \\\"libc.dylib\\\")))\")",
       "Bash(sbcl:*)",
-      "Bash(./run.sh:*)"
+      "Bash(./run.sh:*)",
+      "Bash(chmod:*)",
+      "Bash(./scripts/build-runtime.sh:*)",
+      "Bash(tar:*)",
+      "Bash(./epsilon --eval \"(format t \"\"~%Epsilon runtime test successful!~%\"\")\" --eval \"(sb-ext:quit)\")",
+      "Bash(./epsilon --eval \"(format t \"\"Map test: ~A~%\"\" (epsilon.lib.map:get (epsilon.lib.map:make-map :a 1 :b 2) :a))\" --eval \"(sb-ext:quit)\")",
+      "Bash(./epsilon:*)"
     ],
     "deny": []
   }

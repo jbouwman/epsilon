@@ -1,0 +1,109 @@
+name: Build and Release Epsilon Runtime
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x86_64
+          - os: macos-latest
+            platform: macos
+            arch: arm64
+          - os: macos-13
+            platform: macos
+            arch: x86_64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install SBCL (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y sbcl
+
+    - name: Install SBCL (macOS)
+      if: startsWith(matrix.os, 'macos')
+      run: |
+        brew install sbcl
+
+    - name: Build Epsilon runtime
+      run: |
+        chmod +x scripts/build-runtime.sh
+        ./scripts/build-runtime.sh
+
+    - name: Upload runtime artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: epsilon-${{ matrix.platform }}-${{ matrix.arch }}
+        path: target/epsilon-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: artifacts
+
+    - name: Create release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: artifacts/*/*.tar.gz
+        generate_release_notes: true
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  test:
+    needs: build
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch: x86_64
+          - os: macos-latest
+            platform: macos
+            arch: arm64
+          - os: macos-13
+            platform: macos
+            arch: x86_64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download runtime artifact
+      uses: actions/download-artifact@v3
+      with:
+        name: epsilon-${{ matrix.platform }}-${{ matrix.arch }}
+        path: .
+
+    - name: Test runtime
+      run: |
+        mkdir -p test-runtime
+        cd test-runtime
+        tar -xzf ../epsilon-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
+        ./epsilon --eval "(format t \"~%Epsilon runtime test successful on ${{ matrix.os }}!~%\")" --eval "(sb-ext:quit)"
+        ./epsilon --eval "(format t \"Map test: ~A~%\" (epsilon.lib.map:get (epsilon.lib.map:make-map :a 1 :b 2) :a))" --eval "(sb-ext:quit)"
