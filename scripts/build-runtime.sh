@@ -63,15 +63,34 @@ cd "$EPSILON_DIR"
 mkdir -p "$TARGET_DIR"
 
 if [ "$PLATFORM_NAME" = "windows" ]; then
-    # On Windows, use forward slashes which SBCL understands
+    # On Windows, convert path to Windows format for SBCL
     echo "Building core image for Windows..."
-    sbcl --noinform \
-         --non-interactive \
-         --no-sysinit \
-         --no-userinit \
-         --load "module/core/src/tool/boot.lisp" \
-         --eval "(epsilon.tool.boot:boot)" \
-         --eval "(sb-ext:save-lisp-and-die \"target/epsilon-core\" :executable nil :save-runtime-options t :compression t)"
+    
+    # Try to convert to Windows path format
+    if command -v cygpath >/dev/null 2>&1; then
+        CORE_OUTPUT_PATH="$(cygpath -w "$TARGET_DIR/epsilon-core")"
+        BOOT_LOAD_PATH="$(cygpath -w "$EPSILON_DIR/module/core/src/tool/boot.lisp")"
+        echo "Using cygpath - Core output: $CORE_OUTPUT_PATH"
+        echo "Boot script: $BOOT_LOAD_PATH"
+        
+        sbcl --noinform \
+             --non-interactive \
+             --no-sysinit \
+             --no-userinit \
+             --load "$BOOT_LOAD_PATH" \
+             --eval "(epsilon.tool.boot:boot)" \
+             --eval "(sb-ext:save-lisp-and-die \"$CORE_OUTPUT_PATH\" :executable nil :save-runtime-options t :compression t)"
+    else
+        # Fallback: use Unix-style paths with forward slashes
+        echo "No cygpath available, using Unix-style paths"
+        sbcl --noinform \
+             --non-interactive \
+             --no-sysinit \
+             --no-userinit \
+             --load "module/core/src/tool/boot.lisp" \
+             --eval "(epsilon.tool.boot:boot)" \
+             --eval "(sb-ext:save-lisp-and-die \"target/epsilon-core\" :executable nil :save-runtime-options t :compression t)"
+    fi
 else
     sbcl --noinform \
          --non-interactive \
