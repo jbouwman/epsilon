@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install SBCL (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y sbcl
+
+    - name: Install SBCL (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install sbcl
+
+    - name: Run tests
+      run: |
+        ./run.sh test core
+
+    - name: Test runtime build
+      run: |
+        chmod +x scripts/build-runtime.sh
+        ./scripts/build-runtime.sh
+        
+        # Test the built runtime
+        mkdir -p test-runtime
+        cd test-runtime
+        tar -xzf ../target/epsilon-*.tar.gz
+        ./epsilon --eval "(format t \"~%CI test successful!~%\")" --eval "(sb-ext:quit)"
