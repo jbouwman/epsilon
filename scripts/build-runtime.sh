@@ -115,9 +115,15 @@ cat > "$DIST_DIR/epsilon" << 'EOF'
 # This script provides a convenient way to run Epsilon with the preloaded core
 #
 
-EPSILON_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Handle both direct execution and symlinked execution
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+if [ -L "$SCRIPT_PATH" ]; then
+    # If this is a symlink, follow it to find the real installation
+    SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+fi
+
+EPSILON_HOME="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 CORE_IMAGE="$EPSILON_HOME/epsilon-core"
-SBCL_CORE="$EPSILON_HOME/lib/sbcl/sbcl.core"
 
 # Check if core image exists
 if [ ! -f "$CORE_IMAGE" ]; then

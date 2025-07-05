@@ -27,7 +27,9 @@
       "Bash(./epsilon --eval \"(format t \"\"~%Epsilon runtime test successful!~%\"\")\" --eval \"(sb-ext:quit)\")",
       "Bash(./epsilon --eval \"(format t \"\"Map test: ~A~%\"\" (epsilon.lib.map:get (epsilon.lib.map:make-map :a 1 :b 2) :a))\" --eval \"(sb-ext:quit)\")",
       "Bash(./epsilon:*)",
-      "Bash(gh run view:*)"
+      "Bash(gh run view:*)",
+      "Bash(ln:*)",
+      "Bash(../fake-bin/epsilon --eval \"(format t \"\"Symlink test: ~A~%\"\" (epsilon.lib.map:make-map :symlink-works t))\" --eval \"(sb-ext:quit)\")"
     ],
     "deny": []
   }
