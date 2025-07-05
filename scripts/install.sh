@@ -32,6 +32,9 @@ detect_platform() {
         linux)
             platform="linux"
             ;;
+        mingw*|msys*|cygwin*)
+            platform="windows"
+            ;;
         *)
             echo -e "${RED}Error: Unsupported platform: $platform${NC}"
             exit 1
@@ -108,7 +111,14 @@ download_and_extract() {
     tar -xzf "$temp_file" -C "$INSTALL_DIR"
     
     # Create symlink
-    ln -sf "$INSTALL_DIR/epsilon" "$BINARY_DIR/epsilon"
+    if [ "$platform_arch" != "${platform_arch#*windows}" ]; then
+        # Windows: create batch file wrapper
+        ln -sf "$INSTALL_DIR/epsilon.exe" "$BINARY_DIR/epsilon.exe" 2>/dev/null || \
+        cp "$INSTALL_DIR/epsilon.exe" "$BINARY_DIR/epsilon.exe"
+    else
+        # Unix: create symlink
+        ln -sf "$INSTALL_DIR/epsilon" "$BINARY_DIR/epsilon"
+    fi
     
     # Cleanup
     rm -f "$temp_file"
@@ -120,7 +130,12 @@ download_and_extract() {
 verify_installation() {
     echo -e "${YELLOW}Verifying installation...${NC}"
     
-    if "$BINARY_DIR/epsilon" --eval "(format t \"Epsilon ~A installed successfully!~%\" (lisp-implementation-version))" --eval "(sb-ext:quit)" 2>/dev/null; then
+    local epsilon_cmd="$BINARY_DIR/epsilon"
+    if [ "$platform_arch" != "${platform_arch#*windows}" ]; then
+        epsilon_cmd="$BINARY_DIR/epsilon.exe"
+    fi
+    
+    if "$epsilon_cmd" --eval "(format t \"Epsilon ~A installed successfully!~%\" (lisp-implementation-version))" --eval "(sb-ext:quit)" 2>/dev/null; then
         echo -e "${GREEN}Installation verified!${NC}"
     else
         echo -e "${RED}Installation verification failed${NC}"

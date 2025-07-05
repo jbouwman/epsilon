@@ -22,10 +22,17 @@ case "$PLATFORM" in
     darwin)
         PLATFORM_NAME="macos"
         SBCL_EXECUTABLE="$(which sbcl)"
+        EPSILON_WRAPPER="epsilon"
         ;;
     linux)
         PLATFORM_NAME="linux"
         SBCL_EXECUTABLE="$(which sbcl)"
+        EPSILON_WRAPPER="epsilon"
+        ;;
+    mingw* | msys* | cygwin*)
+        PLATFORM_NAME="windows"
+        SBCL_EXECUTABLE="$(which sbcl).exe"
+        EPSILON_WRAPPER="epsilon.exe"
         ;;
     *)
         echo "Unsupported platform: $PLATFORM"
@@ -51,10 +58,53 @@ sbcl --noinform \
 
 # Copy SBCL executable
 echo "Copying SBCL runtime..."
-cp "$SBCL_EXECUTABLE" "$DIST_DIR/sbcl"
+if [ "$PLATFORM_NAME" = "windows" ]; then
+    cp "$SBCL_EXECUTABLE" "$DIST_DIR/sbcl.exe"
+else
+    cp "$SBCL_EXECUTABLE" "$DIST_DIR/sbcl"
+fi
 
 # Create epsilon wrapper script
-cat > "$DIST_DIR/epsilon" << 'EOF'
+if [ "$PLATFORM_NAME" = "windows" ]; then
+    # Windows batch script
+    cat > "$DIST_DIR/epsilon.bat" << 'EOF'
+@echo off
+rem Epsilon runtime wrapper for Windows
+rem
+rem This script provides a convenient way to run Epsilon with the preloaded core
+
+set EPSILON_HOME=%~dp0
+set CORE_IMAGE=%EPSILON_HOME%epsilon-core
+
+if not exist "%CORE_IMAGE%" (
+    echo Error: Epsilon core image not found at %CORE_IMAGE%
+    exit /b 1
+)
+
+rem Run SBCL with Epsilon core
+"%EPSILON_HOME%sbcl.exe" --core "%CORE_IMAGE%" %*
+EOF
+    
+    # Also create a PowerShell wrapper
+    cat > "$DIST_DIR/epsilon.exe" << 'EOF'
+#!/bin/bash
+# Temporary Unix-style wrapper for Windows build in CI
+# This will be replaced with proper Windows executable in production
+
+EPSILON_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CORE_IMAGE="$EPSILON_HOME/epsilon-core"
+
+if [ ! -f "$CORE_IMAGE" ]; then
+    echo "Error: Epsilon core image not found at $CORE_IMAGE"
+    exit 1
+fi
+
+exec "$EPSILON_HOME/sbcl.exe" --core "$CORE_IMAGE" "$@"
+EOF
+    chmod +x "$DIST_DIR/epsilon.exe"
+else
+    # Unix shell script
+    cat > "$DIST_DIR/epsilon" << 'EOF'
 #!/bin/bash
 #
 # Epsilon runtime wrapper
@@ -74,8 +124,8 @@ fi
 # Run SBCL with Epsilon core
 exec "$EPSILON_HOME/sbcl" --core "$CORE_IMAGE" "$@"
 EOF
-
-chmod +x "$DIST_DIR/epsilon"
+    chmod +x "$DIST_DIR/epsilon"
+fi
 
 # Copy core image to distribution
 mv "$TARGET_DIR/epsilon-core" "$DIST_DIR/"
