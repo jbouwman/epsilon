@@ -3,8 +3,7 @@ sh# Epsilon
 ![Under Construction](construction.gif)
 
 [![CI - Multi-Platform Build](https://github.com/jbouwman/epsilon/actions/workflows/ci.yml/badge.svg)](https://github.com/jbouwman/epsilon/actions/workflows/ci.yml)
-[![Release - Release Build](https://github.com/jbouwman/epsilon/actions/workflows/release.yml/badge.svg)](https://github.com/jbouwman/epsilon/actions/workflows/release.yml)
-!
+
 Epsilon is a library for SBCL that provides data structures, data formats, compression, cryptography and networking.
 
 ## Installation
@@ -17,6 +16,8 @@ Install Epsilon as a value-added SBCL runtime:
 curl -sSL https://raw.githubusercontent.com/jbouwman/epsilon/main/scripts/install.sh | bash
 ```
 
+Run tests:
+
 This installs a complete SBCL runtime with Epsilon preloaded, providing fast startup and zero external dependencies.
 
 ### Manual Installation
@@ -25,7 +26,6 @@ Download the appropriate release for your platform from [GitHub Releases](https:
 - `epsilon-macos-arm64.tar.gz` - macOS Apple Silicon
 - `epsilon-macos-x86_64.tar.gz` - macOS Intel  
 - `epsilon-linux-x86_64.tar.gz` - Linux x86_64
-- `epsilon-windows-x86_64.zip` - Windows x86_64
 
 ### Usage
 

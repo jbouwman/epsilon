@@ -20,9 +20,10 @@ jobs:
           - os: macos-13
             platform: macos
             arch: x86_64
-          - os: windows-latest
-            platform: windows
-            arch: x86_64
+          # Windows temporarily disabled until local testing machine available
+          # - os: windows-latest
+          #   platform: windows
+          #   arch: x86_64
 
     runs-on: ${{ matrix.os }}
 
@@ -102,9 +103,10 @@ jobs:
           - os: macos-13
             platform: macos
             arch: x86_64
-          - os: windows-latest
-            platform: windows
-            arch: x86_64
+          # Windows temporarily disabled until local testing machine available
+          # - os: windows-latest
+          #   platform: windows
+          #   arch: x86_64
 
     runs-on: ${{ matrix.os }}
 

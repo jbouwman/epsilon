@@ -29,21 +29,10 @@ case "$PLATFORM" in
         SBCL_EXECUTABLE="$(which sbcl)"
         EPSILON_WRAPPER="epsilon"
         ;;
-    mingw*|msys*|cygwin*|windows*)
-        PLATFORM_NAME="windows"
-        SBCL_EXECUTABLE="$(which sbcl)"
-        EPSILON_WRAPPER="epsilon.exe"
-        ;;
     *)
-        # Check for Windows environment variables as fallback
-        if [ -n "$WINDIR" ] || [ -n "$SYSTEMROOT" ]; then
-            PLATFORM_NAME="windows"
-            SBCL_EXECUTABLE="$(which sbcl)"
-            EPSILON_WRAPPER="epsilon.exe"
-        else
-            echo "Unsupported platform: $PLATFORM"
-            exit 1
-        fi
+        echo "Unsupported platform: $PLATFORM"
+        echo "Use build-runtime-windows.sh for Windows builds"
+        exit 1
         ;;
 esac
 
@@ -79,64 +68,48 @@ sbcl --noinform \
      --eval "(epsilon.tool.boot:boot)" \
      --eval "(sb-ext:save-lisp-and-die \"target/epsilon-core\" :executable nil :save-runtime-options t :compression t)"
 
-# Copy SBCL executable
-echo "Copying SBCL runtime..."
-if [ "$PLATFORM_NAME" = "windows" ]; then
-    # Find SBCL executable on Windows
-    SBCL_PATH="$(which sbcl 2>/dev/null)"
-    if [ -n "$SBCL_PATH" ]; then
-        echo "Found SBCL at: $SBCL_PATH"
-        cp "$SBCL_PATH" "$DIST_DIR/sbcl.exe"
-    else
-        echo "Error: Could not find SBCL executable"
-        which sbcl || echo "sbcl not found in PATH"
-        exit 1
+# Create standalone SBCL runtime
+echo "Creating standalone SBCL runtime..."
+
+# Detect SBCL installation directory
+SBCL_PATH="$(which sbcl)"
+if [ -L "$SBCL_PATH" ]; then
+    # Follow symlink to find actual SBCL installation
+    SBCL_REAL_PATH="$(readlink "$SBCL_PATH")"
+    if [[ "$SBCL_REAL_PATH" != /* ]]; then
+        # Relative symlink
+        SBCL_REAL_PATH="$(dirname "$SBCL_PATH")/$SBCL_REAL_PATH"
     fi
-else
-    cp "$SBCL_EXECUTABLE" "$DIST_DIR/sbcl"
+    SBCL_PATH="$SBCL_REAL_PATH"
 fi
 
-# Create epsilon wrapper script
-if [ "$PLATFORM_NAME" = "windows" ]; then
-    # Windows batch script
-    cat > "$DIST_DIR/epsilon.bat" << 'EOF'
-@echo off
-rem Epsilon runtime wrapper for Windows
-rem
-rem This script provides a convenient way to run Epsilon with the preloaded core
+# Find SBCL installation root
+SBCL_BIN_DIR="$(dirname "$SBCL_PATH")"
+SBCL_ROOT="$(dirname "$SBCL_BIN_DIR")"
 
-set EPSILON_HOME=%~dp0
-set CORE_IMAGE=%EPSILON_HOME%epsilon-core
+echo "SBCL installation root: $SBCL_ROOT"
 
-if not exist "%CORE_IMAGE%" (
-    echo Error: Epsilon core image not found at %CORE_IMAGE%
-    exit /b 1
-)
+# Copy SBCL runtime components (Unix only)
+cp "$SBCL_PATH" "$DIST_DIR/sbcl"
+chmod +x "$DIST_DIR/sbcl"
 
-rem Run SBCL with Epsilon core
-"%EPSILON_HOME%sbcl.exe" --core "%CORE_IMAGE%" %*
-EOF
-    
-    # Also create a PowerShell wrapper
-    cat > "$DIST_DIR/epsilon.exe" << 'EOF'
-#!/bin/bash
-# Temporary Unix-style wrapper for Windows build in CI
-# This will be replaced with proper Windows executable in production
-
-EPSILON_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CORE_IMAGE="$EPSILON_HOME/epsilon-core"
-
-if [ ! -f "$CORE_IMAGE" ]; then
-    echo "Error: Epsilon core image not found at $CORE_IMAGE"
-    exit 1
+# Copy SBCL core and runtime files
+if [ -f "$SBCL_ROOT/lib/sbcl/sbcl.core" ]; then
+    mkdir -p "$DIST_DIR/lib/sbcl"
+    cp "$SBCL_ROOT/lib/sbcl/sbcl.core" "$DIST_DIR/lib/sbcl/"
+    if [ -f "$SBCL_ROOT/lib/sbcl/sbclrc" ]; then
+        cp "$SBCL_ROOT/lib/sbcl/sbclrc" "$DIST_DIR/lib/sbcl/"
+    fi
 fi
 
-exec "$EPSILON_HOME/sbcl.exe" --core "$CORE_IMAGE" "$@"
-EOF
-    chmod +x "$DIST_DIR/epsilon.exe"
-else
-    # Unix shell script
-    cat > "$DIST_DIR/epsilon" << 'EOF'
+# For homebrew installations, also copy the runtime
+if [ -f "$SBCL_ROOT/share/sbcl/src/runtime/sbcl" ]; then
+    mkdir -p "$DIST_DIR/share/sbcl/src/runtime"
+    cp "$SBCL_ROOT/share/sbcl/src/runtime/sbcl" "$DIST_DIR/share/sbcl/src/runtime/"
+fi
+
+# Create epsilon wrapper script (Unix only)
+cat > "$DIST_DIR/epsilon" << 'EOF'
 #!/bin/bash
 #
 # Epsilon runtime wrapper
@@ -146,6 +119,7 @@ else
 
 EPSILON_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_IMAGE="$EPSILON_HOME/epsilon-core"
+SBCL_CORE="$EPSILON_HOME/lib/sbcl/sbcl.core"
 
 # Check if core image exists
 if [ ! -f "$CORE_IMAGE" ]; then
@@ -153,13 +127,15 @@ if [ ! -f "$CORE_IMAGE" ]; then
     exit 1
 fi
 
-# Run SBCL with Epsilon core
+# Set SBCL_HOME to use embedded runtime
+export SBCL_HOME="$EPSILON_HOME/lib/sbcl"
+
+# Run embedded SBCL with Epsilon core
 exec "$EPSILON_HOME/sbcl" --core "$CORE_IMAGE" "$@"
 EOF
-    chmod +x "$DIST_DIR/epsilon"
-fi
+chmod +x "$DIST_DIR/epsilon"
 
-# Copy core image to distribution
+# Copy core image and source code to distribution
 echo "Checking for core image at: $TARGET_DIR/epsilon-core"
 if [ -f "$TARGET_DIR/epsilon-core" ]; then
     echo "Core image found, copying to distribution..."
@@ -176,29 +152,32 @@ else
     exit 1
 fi
 
+# Include source code for navigation
+echo "Including source code for navigation..."
+cp -r "$EPSILON_DIR/module/" "$DIST_DIR/module/"
+
+# Copy essential project files
+if [ -f "$EPSILON_DIR/CLAUDE.md" ]; then
+    cp "$EPSILON_DIR/CLAUDE.md" "$DIST_DIR/"
+fi
+if [ -f "$EPSILON_DIR/README.md" ]; then
+    cp "$EPSILON_DIR/README.md" "$DIST_DIR/"
+fi
+if [ -f "$EPSILON_DIR/run.sh" ]; then
+    cp "$EPSILON_DIR/run.sh" "$DIST_DIR/"
+    chmod +x "$DIST_DIR/run.sh"
+fi
+
 # Verify distribution contents
 echo "Distribution directory contents:"
 ls -la "$DIST_DIR/"
 
 # Create package archive
 PACKAGE_NAME="epsilon-$PLATFORM_NAME-$ARCH"
-
-if [ "$PLATFORM_NAME" = "windows" ]; then
-    # Use ZIP for Windows
-    PACKAGE_FILE="$TARGET_DIR/$PACKAGE_NAME.zip"
-    echo "Creating package: $PACKAGE_FILE"
-    cd "$DIST_DIR"
-    zip -r "../$PACKAGE_NAME.zip" .
-    echo "Epsilon runtime package created: $PACKAGE_FILE"
-    echo "Package contents:"
-    unzip -l "$PACKAGE_FILE"
-else
-    # Use tar.gz for Unix
-    PACKAGE_FILE="$TARGET_DIR/$PACKAGE_NAME.tar.gz"
-    echo "Creating package: $PACKAGE_FILE"
-    cd "$TARGET_DIR"
-    tar -czf "$PACKAGE_NAME.tar.gz" -C dist .
-    echo "Epsilon runtime package created: $PACKAGE_FILE"
-    echo "Package contents:"
-    tar -tzf "$PACKAGE_NAME.tar.gz"
-fi
+PACKAGE_FILE="$TARGET_DIR/$PACKAGE_NAME.tar.gz"
+echo "Creating package: $PACKAGE_FILE"
+cd "$TARGET_DIR"
+tar -czf "$PACKAGE_NAME.tar.gz" -C dist .
+echo "Epsilon runtime package created: $PACKAGE_FILE"
+echo "Package contents:"
+tar -tzf "$PACKAGE_NAME.tar.gz"
