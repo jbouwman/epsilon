@@ -31,7 +31,7 @@ jobs:
 
     - name: Run tests
       run: |
-        ./run.sh test core
+        ./run.sh test epsilon.core
 
     - name: Test runtime build
       run: |
