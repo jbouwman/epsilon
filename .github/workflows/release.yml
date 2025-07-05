@@ -20,6 +20,9 @@ jobs:
           - os: macos-13
             platform: macos
             arch: x86_64
+          - os: windows-latest
+            platform: windows
+            arch: x86_64
 
     runs-on: ${{ matrix.os }}
 
@@ -38,16 +41,27 @@ jobs:
       run: |
         brew install sbcl
 
-    - name: Build Epsilon runtime
+    - name: Install SBCL (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        choco install sbcl
+
+    - name: Build Epsilon runtime (Unix)
+      if: runner.os != 'Windows'
       run: |
         chmod +x scripts/build-runtime.sh
         ./scripts/build-runtime.sh
+
+    - name: Build Epsilon runtime (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        scripts/build-runtime.sh
 
     - name: Upload runtime artifact
       uses: actions/upload-artifact@v4
       with:
         name: epsilon-${{ matrix.platform }}-${{ matrix.arch }}
-        path: target/epsilon-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
+        path: target/epsilon-${{ matrix.platform }}-${{ matrix.arch }}.*
 
   release:
     needs: build
@@ -66,7 +80,8 @@ jobs:
     - name: Create release
       uses: softprops/action-gh-release@v1
       with:
-        files: artifacts/*/*.tar.gz
+        files: |
+          artifacts/*/*.*
         generate_release_notes: true
         draft: false
         prerelease: false
@@ -87,6 +102,9 @@ jobs:
           - os: macos-13
             platform: macos
             arch: x86_64
+          - os: windows-latest
+            platform: windows
+            arch: x86_64
 
     runs-on: ${{ matrix.os }}
 
@@ -100,10 +118,20 @@ jobs:
         name: epsilon-${{ matrix.platform }}-${{ matrix.arch }}
         path: .
 
-    - name: Test runtime
+    - name: Test runtime (Unix)
+      if: runner.os != 'Windows'
       run: |
         mkdir -p test-runtime
         cd test-runtime
         tar -xzf ../epsilon-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
         ./epsilon --eval "(format t \"~%Epsilon runtime test successful on ${{ matrix.os }}!~%\")" --eval "(sb-ext:quit)"
         ./epsilon --eval "(format t \"Map test: ~A~%\" (epsilon.lib.map:get (epsilon.lib.map:make-map :a 1 :b 2) :a))" --eval "(sb-ext:quit)"
+
+    - name: Test runtime (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        mkdir test-runtime
+        cd test-runtime
+        unzip ../epsilon-${{ matrix.platform }}-${{ matrix.arch }}.zip
+        ./epsilon.exe --eval "(format t \"~%Epsilon runtime test successful on ${{ matrix.os }}!~%\")" --eval "(sb-ext:quit)"
+        ./epsilon.exe --eval "(format t \"Map test: ~A~%\" (epsilon.lib.map:get (epsilon.lib.map:make-map :a 1 :b 2) :a))" --eval "(sb-ext:quit)"
