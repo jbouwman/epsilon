@@ -29,14 +29,21 @@ case "$PLATFORM" in
         SBCL_EXECUTABLE="$(which sbcl)"
         EPSILON_WRAPPER="epsilon"
         ;;
-    mingw* | msys* | cygwin*)
+    mingw*|msys*|cygwin*|windows*)
         PLATFORM_NAME="windows"
-        SBCL_EXECUTABLE="$(which sbcl).exe"
+        SBCL_EXECUTABLE="$(which sbcl)"
         EPSILON_WRAPPER="epsilon.exe"
         ;;
     *)
-        echo "Unsupported platform: $PLATFORM"
-        exit 1
+        # Check for Windows environment variables as fallback
+        if [ -n "$WINDIR" ] || [ -n "$SYSTEMROOT" ]; then
+            PLATFORM_NAME="windows"
+            SBCL_EXECUTABLE="$(which sbcl)"
+            EPSILON_WRAPPER="epsilon.exe"
+        else
+            echo "Unsupported platform: $PLATFORM"
+            exit 1
+        fi
         ;;
 esac
 
@@ -48,6 +55,8 @@ mkdir -p "$DIST_DIR"
 # Build core image
 echo "Building SBCL core image with Epsilon..."
 cd "$EPSILON_DIR"
+
+# Use relative paths that work across platforms
 sbcl --noinform \
      --non-interactive \
      --no-sysinit \
@@ -59,7 +68,15 @@ sbcl --noinform \
 # Copy SBCL executable
 echo "Copying SBCL runtime..."
 if [ "$PLATFORM_NAME" = "windows" ]; then
-    cp "$SBCL_EXECUTABLE" "$DIST_DIR/sbcl.exe"
+    # On Windows, SBCL might be sbcl.exe already
+    if [ -f "$(which sbcl).exe" ]; then
+        cp "$(which sbcl).exe" "$DIST_DIR/sbcl.exe"
+    elif [ -f "$(which sbcl)" ]; then
+        cp "$(which sbcl)" "$DIST_DIR/sbcl.exe"
+    else
+        echo "Error: Could not find SBCL executable"
+        exit 1
+    fi
 else
     cp "$SBCL_EXECUTABLE" "$DIST_DIR/sbcl"
 fi
