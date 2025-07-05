@@ -37,10 +37,7 @@
 
 ;;;; Core FFI Functions
 
-;;; shared-call: Main entry point for efficient FFI calls
-;;; Makes direct FFI calls with minimal overhead
-;;; Uses type information to optimize call paths
-;;; Performs direct LLVM-level integration where possible
+;;; shared-call: Main entry point for FFI calls
 ;;; 
 ;;; Parameters:
 ;;;   function-designator - Either a symbol or (symbol library-name)
@@ -151,8 +148,8 @@
       (error "Could not find function ~A" function-designator))
     
     ;; Direct alien funcall approach for simplicity
-    (let ((alien-return-type (lisp-type-to-alien return-type))
-          (alien-arg-types (mapcar #'lisp-type-to-alien arg-types))
+    (let (;(alien-return-type (lisp-type-to-alien return-type))
+          ;(alien-arg-types (mapcar #'lisp-type-to-alien arg-types))
           (converted-args (mapcar #'convert-to-foreign args arg-types)))
       (apply #'sb-alien:alien-funcall
              (sb-alien:cast function-pointer

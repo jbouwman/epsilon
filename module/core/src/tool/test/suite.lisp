@@ -54,18 +54,27 @@
 
 (defvar *test-root* (make-instance 'test-root))
 
+(defclass test-metadata ()
+  ((symbol :initarg :symbol
+           :reader test-symbol
+           :documentation "The test function symbol")
+   (docstring :initarg :docstring
+              :initform nil
+              :reader test-docstring
+              :documentation "The test's documentation string")))
+
 (defclass test-suite (test-node)
   ((name :accessor name-of
          :initarg :name
          :type string
          :documentation "Single segment of hierarchical package name")
-   (tests :initform set:+empty+
+   (tests :initform map:+empty+
           :accessor tests-of
-          :documentation "Set containing bound function symbols of test cases")))
+          :documentation "Map from test symbol to test-metadata")))
 
 (defmethod collect ((suite test-suite))
   "Recursively collect all tests from test-suite and its children"
-  (append (set:seq (tests-of suite))
+  (append (mapcar #'test-symbol (map:vals (tests-of suite)))
           (call-next-method)))
 
 (defun register-suite (package-name)
@@ -75,9 +84,7 @@ Returns the leaf node for package-name."
                 (let ((existing (map:get (children-of current-node) name)))
                   (unless existing
                     (setf existing (make-instance 'test-suite :name name))
-                    (setf (children-of current-node)
-                          (map:assoc (children-of current-node)
-                                     name existing)))
+                    (map:assoc! (children-of current-node) name existing))
                   existing))
               (pkg:parse package-name)
               :initial-value *test-root*))
@@ -300,7 +307,7 @@ Returns the leaf node for package-name."
    SLOT-NAME is the slot containing the map to be modified."
   `(defun ,name (object key value)
      (with-slots (,slot-name) object
-       (setf ,slot-name (map:assoc ,slot-name key value)))))
+       (map:assoc! ,slot-name key value))))
 
 (def-map-setter set-result! tests)
 
@@ -333,14 +340,16 @@ Returns the test-result instance."
       (set-result! run test result))
     result))
 
-(defun register-test (symbol)
+(defun register-test (symbol &optional docstring)
   "Find or create a test named by SYMBOL. If test exists, reinitialize it with ARGS.
 The test's package hierarchy position is derived from the symbol's package."
   (check-type symbol symbol)
   (let* ((pkg-name (package-name (symbol-package symbol))) ; FIXME this is repated all over
-         (suite (register-suite pkg-name)))
-    (setf (tests-of suite)
-          (set:add (tests-of suite) symbol))))
+         (suite (register-suite pkg-name))
+         (metadata (make-instance 'test-metadata 
+                                  :symbol symbol
+                                  :docstring docstring)))
+    (map:assoc! (tests-of suite) symbol metadata)))
 
 (defun record-assertion (test-fn report-fn)
   (let ((result (funcall test-fn)))

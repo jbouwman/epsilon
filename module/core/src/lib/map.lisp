@@ -50,11 +50,13 @@
   (:export
    :+empty+
    :assoc
+   :assoc!
    :assoc-in
    :contains-p
    :count
    :difference
    :dissoc
+   :dissoc!
    :enable-syntax
    :filter
    :from-pairs
@@ -72,6 +74,7 @@
    :size
    :subset-p
    :update
+   :update!
    :update-in
    :vals))
 
@@ -624,3 +627,17 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
   "Enable {} reader syntax for maps"
   (set-macro-character #\{ #'read-map)
   (set-macro-character #\} (get-macro-character #\))))
+
+;; Destructive update macros
+
+(defmacro assoc! (place key value)
+  "Destructively associate KEY with VALUE in the map at PLACE"
+  `(setf ,place (assoc ,place ,key ,value)))
+
+(defmacro dissoc! (place key)
+  "Destructively remove KEY from the map at PLACE"
+  `(setf ,place (dissoc ,place ,key)))
+
+(defmacro update! (place key function &rest args)
+  "Destructively update the value at KEY in the map at PLACE using FUNCTION"
+  `(setf ,place (update ,place ,key ,function ,@args)))

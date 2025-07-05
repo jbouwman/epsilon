@@ -11,10 +11,15 @@
    (suite epsilon.tool.test.suite)
    (uri epsilon.lib.uri))
   (:export
+
+   ;; defining tests
    deftest
+   with-label
+   project-file
+
+   ;; executing tests
    skip
    run
-   project-file
    success-p
 
    ;; assertions
@@ -25,6 +30,7 @@
    is-eql
    is-equal
    is-equalp
+   is-not
    is-not-null
    is-thrown))
 
@@ -36,9 +42,18 @@
                        relative-path)))
 
 (defmacro deftest (name &body body)
-  `(progn
-     (defun ,name () ,@body)
-     (suite:register-test ',name)))
+  (let ((docstring (when (and (stringp (first body))
+                              (rest body))
+                     (first body)))
+        (real-body (if (and (stringp (first body))
+                            (rest body))
+                       (rest body)
+                       body)))
+    `(progn
+       (defun ,name () 
+         ,@(when docstring (list docstring))
+         ,@real-body)
+       (suite:register-test ',name ,docstring))))
 
 (defun run (&key package name module (format :shell) (file nil))
   "Run tests, optionally filtered by name, package, or module.
@@ -66,6 +81,19 @@ If FILE is provided, write the report to the named file."
 (defun skip (&optional (message "Test skipped"))
   "Skip the current test with an optional message"
   (signal 'suite:skip :message message))
+
+(defmacro with-label (label &body body)
+  "Execute BODY with a descriptive label for grouping assertions.
+   The label is recorded with test results for better reporting."
+  `(let ((label-start-time (get-internal-real-time)))
+     (when suite:*test*
+       (push (list :label-start ,label label-start-time) 
+             (suite:assertions suite:*test*)))
+     (unwind-protect
+          (progn ,@body)
+       (when suite:*test*
+         (push (list :label-end ,label (get-internal-real-time)) 
+               (suite:assertions suite:*test*))))))
 
 (defmacro is-p (predicate actual expected &optional (message nil message-p) &rest message-args)
   "Test that (PREDICATE ACTUAL EXPECTED) is true."
@@ -100,11 +128,15 @@ If FILE is provided, write the report to the named file."
 (defmacro is-equalp (actual expected &rest optargs)
   `(is-p #'equalp ,actual ,expected ,@optargs))
 
+(defmacro is-not (form &rest optargs)
+  `(is-p #'eq (not ,form) t ,@optargs))
+
 (defmacro is-thrown ((condition-class &optional regex) &body body)
   "Test that BODY throws a condition of type CONDITION-CLASS.
 If REGEX is provided, the condition's printed representation must match it."
   (with-gensyms (condition-var caught-var)
     `(let ((,caught-var nil))
+       (declare (ignorable ,caught-var))
        (handler-case
            (progn
              ,@body
@@ -115,6 +147,7 @@ If REGEX is provided, the condition's printed representation must match it."
                               `(format nil "Expected ~S but no condition was thrown" 
                                        ',condition-class))))
          (,condition-class (,condition-var)
+           (declare (ignorable ,condition-var))
            (setf ,caught-var t)
            ,(if regex
                 `(let ((condition-string (format nil "~A" ,condition-var)))

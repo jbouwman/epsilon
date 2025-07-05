@@ -9,6 +9,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `./run.sh test` - Run all tests and exit with appropriate code (0 for success, 1 for failure)
 - `./run.sh test --package epsilon.lib.json.tests --name parse-empty-structures` - Run a single, specific test
 
+### Benchmarking
+- `./run.sh benchmark` - List available benchmarks (if any are registered)
+- `./run.sh benchmark --suite msgpack` - Run MessagePack performance benchmarks
+- `./run.sh benchmark --suite all` - Run all available benchmark suites
+- `./run.sh benchmark arithmetic string-concat` - Compare specific benchmarks
+- `./run.sh bench` - Short alias for benchmark command
+
+Available benchmark suites:
+- `msgpack` - Compare original MessagePack vs binary structure implementation
+- `all` - Run complete benchmark suite with validation and memory analysis
+
 ## Architecture Overview
 
 Epsilon is a utility library for SBCL that provides functional data structures, compression, cryptography, data encoding, and network protocols.
@@ -41,6 +52,7 @@ The codebase is organized into several major modules:
 **Tools (`src/tool/`)**
 - Build system with dependency tracking and hashing
 - Test framework with metrics collection and reporting
+- Benchmark framework with performance measurement and comparison
 - Code formatting utilities
 
 ### Key Design Patterns
@@ -95,3 +107,6 @@ Packages follow the pattern `epsilon.{module}.{submodule}` with hierarchical org
   
 ## Project Resources
 - The file `docs/wishlist.md` contains a structured list of desired future capabilities of various degrees of difficulty
+
+## Documentation Workflow
+- Write little summaries of the things I ask for in docs/transcript.md
