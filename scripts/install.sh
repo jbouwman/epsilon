@@ -75,7 +75,15 @@ get_latest_release() {
     
     # Extract download URL for the platform
     local download_url
-    download_url=$(echo "$release_info" | grep -o "\"browser_download_url\":[[:space:]]*\"[^\"]*epsilon-${platform_arch}\.tar\.gz\"" | sed 's/.*"browser_download_url":[[:space:]]*"\([^"]*\)".*/\1/')
+    local file_extension
+    
+    if [ "$platform_arch" != "${platform_arch#*windows}" ]; then
+        file_extension="zip"
+    else
+        file_extension="tar.gz"
+    fi
+    
+    download_url=$(echo "$release_info" | grep -o "\"browser_download_url\":[[:space:]]*\"[^\"]*epsilon-${platform_arch}\.${file_extension}\"" | sed 's/.*"browser_download_url":[[:space:]]*"\([^"]*\)".*/\1/')
     
     if [ -z "$download_url" ]; then
         echo -e "${RED}Error: Could not find release for platform: $platform_arch${NC}"
@@ -99,7 +107,14 @@ download_and_extract() {
     mkdir -p "$BINARY_DIR"
     
     # Download
-    local temp_file="/tmp/epsilon-${platform_arch}.tar.gz"
+    local file_extension
+    if [ "$platform_arch" != "${platform_arch#*windows}" ]; then
+        file_extension="zip"
+    else
+        file_extension="tar.gz"
+    fi
+    
+    local temp_file="/tmp/epsilon-${platform_arch}.${file_extension}"
     if command -v curl >/dev/null 2>&1; then
         curl -L "$download_url" -o "$temp_file"
     else
@@ -108,7 +123,11 @@ download_and_extract() {
     
     # Extract
     echo -e "${YELLOW}Installing to $INSTALL_DIR...${NC}"
-    tar -xzf "$temp_file" -C "$INSTALL_DIR"
+    if [ "$file_extension" = "zip" ]; then
+        unzip "$temp_file" -d "$INSTALL_DIR"
+    else
+        tar -xzf "$temp_file" -C "$INSTALL_DIR"
+    fi
     
     # Create symlink
     if [ "$platform_arch" != "${platform_arch#*windows}" ]; then

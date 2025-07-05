@@ -25,7 +25,7 @@ Download the appropriate release for your platform from [GitHub Releases](https:
 - `epsilon-macos-arm64.tar.gz` - macOS Apple Silicon
 - `epsilon-macos-x86_64.tar.gz` - macOS Intel  
 - `epsilon-linux-x86_64.tar.gz` - Linux x86_64
-- `epsilon-windows-x86_64.tar.gz` - Windows x86_64
+- `epsilon-windows-x86_64.zip` - Windows x86_64
 
 ### Usage
 

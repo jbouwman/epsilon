@@ -58,5 +58,5 @@ jobs:
         # Test the built runtime
         mkdir test-runtime
         cd test-runtime
-        tar -xzf ../target/epsilon-*.tar.gz
+        unzip ../target/epsilon-*.zip
         ./epsilon.exe --eval "(format t \"~%CI test successful!~%\")" --eval "(sb-ext:quit)"

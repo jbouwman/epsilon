@@ -179,12 +179,23 @@ ls -la "$DIST_DIR/"
 
 # Create package archive
 PACKAGE_NAME="epsilon-$PLATFORM_NAME-$ARCH"
-PACKAGE_FILE="$TARGET_DIR/$PACKAGE_NAME.tar.gz"
 
-echo "Creating package: $PACKAGE_FILE"
-cd "$TARGET_DIR"
-tar -czf "$PACKAGE_NAME.tar.gz" -C dist .
-
-echo "Epsilon runtime package created: $PACKAGE_FILE"
-echo "Package contents:"
-tar -tzf "$PACKAGE_NAME.tar.gz"
+if [ "$PLATFORM_NAME" = "windows" ]; then
+    # Use ZIP for Windows
+    PACKAGE_FILE="$TARGET_DIR/$PACKAGE_NAME.zip"
+    echo "Creating package: $PACKAGE_FILE"
+    cd "$DIST_DIR"
+    zip -r "../$PACKAGE_NAME.zip" .
+    echo "Epsilon runtime package created: $PACKAGE_FILE"
+    echo "Package contents:"
+    unzip -l "$PACKAGE_FILE"
+else
+    # Use tar.gz for Unix
+    PACKAGE_FILE="$TARGET_DIR/$PACKAGE_NAME.tar.gz"
+    echo "Creating package: $PACKAGE_FILE"
+    cd "$TARGET_DIR"
+    tar -czf "$PACKAGE_NAME.tar.gz" -C dist .
+    echo "Epsilon runtime package created: $PACKAGE_FILE"
+    echo "Package contents:"
+    tar -tzf "$PACKAGE_NAME.tar.gz"
+fi
