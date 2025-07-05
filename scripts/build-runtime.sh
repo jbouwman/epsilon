@@ -48,6 +48,9 @@ case "$PLATFORM" in
 esac
 
 echo "Building Epsilon runtime for $PLATFORM_NAME-$ARCH..."
+echo "Platform detected: $PLATFORM"
+echo "SBCL executable: $SBCL_EXECUTABLE"
+echo "Working directory: $(pwd)"
 
 # Create distribution directory
 mkdir -p "$DIST_DIR"
@@ -56,25 +59,40 @@ mkdir -p "$DIST_DIR"
 echo "Building SBCL core image with Epsilon..."
 cd "$EPSILON_DIR"
 
-# Use relative paths that work across platforms
-sbcl --noinform \
-     --non-interactive \
-     --no-sysinit \
-     --no-userinit \
-     --load "module/core/src/tool/boot.lisp" \
-     --eval "(epsilon.tool.boot:boot)" \
-     --eval "(sb-ext:save-lisp-and-die \"target/epsilon-core\" :executable nil :save-runtime-options t :compression t)"
+# Create target directory first
+mkdir -p "$TARGET_DIR"
+
+if [ "$PLATFORM_NAME" = "windows" ]; then
+    # On Windows, use forward slashes which SBCL understands
+    echo "Building core image for Windows..."
+    sbcl --noinform \
+         --non-interactive \
+         --no-sysinit \
+         --no-userinit \
+         --load "module/core/src/tool/boot.lisp" \
+         --eval "(epsilon.tool.boot:boot)" \
+         --eval "(sb-ext:save-lisp-and-die \"target/epsilon-core\" :executable nil :save-runtime-options t :compression t)"
+else
+    sbcl --noinform \
+         --non-interactive \
+         --no-sysinit \
+         --no-userinit \
+         --load "module/core/src/tool/boot.lisp" \
+         --eval "(epsilon.tool.boot:boot)" \
+         --eval "(sb-ext:save-lisp-and-die \"target/epsilon-core\" :executable nil :save-runtime-options t :compression t)"
+fi
 
 # Copy SBCL executable
 echo "Copying SBCL runtime..."
 if [ "$PLATFORM_NAME" = "windows" ]; then
-    # On Windows, SBCL might be sbcl.exe already
-    if [ -f "$(which sbcl).exe" ]; then
-        cp "$(which sbcl).exe" "$DIST_DIR/sbcl.exe"
-    elif [ -f "$(which sbcl)" ]; then
-        cp "$(which sbcl)" "$DIST_DIR/sbcl.exe"
+    # Find SBCL executable on Windows
+    SBCL_PATH="$(which sbcl 2>/dev/null)"
+    if [ -n "$SBCL_PATH" ]; then
+        echo "Found SBCL at: $SBCL_PATH"
+        cp "$SBCL_PATH" "$DIST_DIR/sbcl.exe"
     else
         echo "Error: Could not find SBCL executable"
+        which sbcl || echo "sbcl not found in PATH"
         exit 1
     fi
 else
@@ -145,7 +163,19 @@ EOF
 fi
 
 # Copy core image to distribution
-mv "$TARGET_DIR/epsilon-core" "$DIST_DIR/"
+echo "Checking for core image at: $TARGET_DIR/epsilon-core"
+if [ -f "$TARGET_DIR/epsilon-core" ]; then
+    echo "Core image found, copying to distribution..."
+    mv "$TARGET_DIR/epsilon-core" "$DIST_DIR/"
+else
+    echo "ERROR: Core image not found at $TARGET_DIR/epsilon-core"
+    ls -la "$TARGET_DIR/" || echo "Target directory does not exist"
+    exit 1
+fi
+
+# Verify distribution contents
+echo "Distribution directory contents:"
+ls -la "$DIST_DIR/"
 
 # Create package archive
 PACKAGE_NAME="epsilon-$PLATFORM_NAME-$ARCH"
