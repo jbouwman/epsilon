@@ -62,7 +62,6 @@ get_latest_release() {
     local platform_arch="$1"
     local release_info
     
-    echo -e "${YELLOW}Fetching latest release information...${NC}"
     
     if command -v curl >/dev/null 2>&1; then
         release_info=$(curl -s "$GITHUB_API_URL")
