@@ -1,0 +1,17 @@
+name: update
+version: 0.1.0
+author: Jesse Bouwman
+description: Self-update functionality for epsilon using GitHub API and HTTP client
+
+sources:
+  - src
+
+tests:
+  - tests
+
+requires:
+  - epsilon.core
+  - epsilon.http
+
+provides:
+  - epsilon.update
