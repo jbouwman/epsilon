@@ -30,21 +30,6 @@ jobs:
         run: |
           pip install mkdocs-material
 
-      - name: Install SBCL
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y sbcl
-
-      - name: Generate API documentation
-        run: |
-          # Generate fresh API documentation from source
-          sbcl --noinform --non-interactive --no-sysinit --no-userinit \
-               --load "scripts/epsilon.lisp" \
-               --eval "(load \"scripts/gen-docs.lisp\")" \
-               --eval "(generate-package-docs \"EPSILON.LIB.MAP\" :output-file \"docs/docs/reference/api/map.md\")" \
-               --eval "(generate-package-docs \"EPSILON.LIB.SEQUENCE\" :output-file \"docs/docs/reference/api/sequence.md\")" \
-               --eval "(generate-package-docs \"EPSILON.LIB.SET\" :output-file \"docs/docs/reference/api/set.md\")" \
-               --eval "(sb-ext:quit)"
 
       - name: Setup Pages
         uses: actions/configure-pages@v3
