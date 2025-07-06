@@ -20,6 +20,19 @@ Build module sources and optionally tests.
 
 ---
 
+### REGISTER-MODULE
+
+**Type**: Function
+
+**Signature**: `(REGISTER-MODULE MODULE-SPEC)`
+
+Register a single module for building.
+   
+MODULE-SPEC can be:
+- A string pathname to a directory containing package.yaml
+
+---
+
 ### REGISTER-MODULES
 
 **Type**: Function
