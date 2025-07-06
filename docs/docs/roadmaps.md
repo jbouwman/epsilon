@@ -32,6 +32,18 @@ Modern module syntax to replace verbose `defpackage` forms with cleaner import/e
 
 **Key Benefits**: Simplified syntax, better dependency tracking, enhanced developer experience.
 
+### [005 - Per-Platform Async Network Stacks](roadmaps/005_async_networking.md)
+**Status**: Planning | **Timeline**: 12-16 weeks
+
+High-performance async networking with platform-specific event loops for optimal performance. Foundation for scalable server applications and real-time communication.
+
+**Platform Implementations**:
+- **Linux**: epoll-based async I/O
+- **macOS**: kqueue-based async I/O  
+- **Windows**: IOCP-based async I/O
+
+**Key Features**: Non-blocking I/O, connection pooling, WebSocket support, HTTP/2, TLS integration.
+
 ## Implementation Priority
 
 ### High Priority (Active Development)

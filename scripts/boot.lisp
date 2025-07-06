@@ -6,6 +6,8 @@
 
 #+(or linux darwin)
 (require :sb-posix)
+#+(or linux darwin)
+(require :sb-bsd-sockets)
 (require :sb-rotate-byte)
 
 (defun %list-dir (dirpath)
