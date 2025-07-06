@@ -56,7 +56,8 @@
       "Bash(./test-http-server.lisp)",
       "Bash(timeout:*)",
       "Bash(./test-full-http.lisp)",
-      "Bash(./test-tls.lisp)"
+      "Bash(./test-tls.lisp)",
+      "Bash(./demo-update.lisp:*)"
     ],
     "deny": []
   }

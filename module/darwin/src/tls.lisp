@@ -27,6 +27,13 @@
    tls-get-peer-certificate
    tls-get-cipher
    
+   ;; TLS/SSL
+   secure-context make-secure-context
+   secure-connection secure-listener
+   
+   ;; Secure socket operations
+   socket-connect-secure socket-accept-secure socket-listen-secure
+   
    ;; Constants
    +tls-verify-none+
    +tls-verify-peer+
@@ -368,3 +375,75 @@
       (when (connection-connected-p conn)
         (%ssl-shutdown (connection-ssl conn))
         (%ssl-free (connection-ssl conn))))))
+
+
+;;; TLS/SSL Support
+
+(defclass secure-context ()
+  ((tls-context :initarg :tls-context :reader secure-context-tls)
+   (cert-file :initarg :cert-file :reader secure-context-cert-file)
+   (key-file :initarg :key-file :reader secure-context-key-file)
+   (verify :initarg :verify :reader secure-context-verify :initform t)))
+
+(defun make-secure-context (&key cert-file key-file (verify t) (client-p t))
+  "Create TLS/SSL context using epsilon.tls"
+  (let ((verify-mode (if verify tls:+tls-verify-peer+ tls:+tls-verify-none+)))
+    (let ((tls-ctx (tls:make-tls-context :client-p client-p
+                                         :cert-file cert-file
+                                         :key-file key-file
+                                         :verify-mode verify-mode)))
+      (make-instance 'secure-context
+                     :tls-context tls-ctx
+                     :cert-file cert-file
+                     :key-file key-file
+                     :verify verify))))
+
+(defclass secure-connection (connection)
+  ((context :initarg :context :reader connection-context)
+   (tls-connection :initarg :tls-connection :reader connection-tls)))
+
+(defclass secure-listener (listener)
+  ((context :initarg :context :reader listener-context)))
+
+;;; Secure Connection Functions
+
+(defun socket-connect-secure (host port context)
+  "Create secure TLS connection to host:port"
+  (let* ((plain-socket (socket-connect host port))
+         (tls-conn (tls-connect (secure-context-tls context) plain-socket)))
+    (make-instance 'secure-connection
+                   :handle (socket-handle plain-socket)
+                   :remote-address host
+                   :remote-port port
+                   :context context
+                   :tls-connection tls-conn)))
+
+(defun socket-accept-secure (secure-listener)
+  "Accept secure TLS connection from listener"
+  (let ((plain-connection (socket-accept secure-listener)))
+    (when plain-connection
+      (let ((tls-conn (tls-accept 
+                       (secure-context-tls (listener-context secure-listener))
+                       plain-connection)))
+        (make-instance 'secure-connection
+                       :handle (socket-handle plain-connection)
+                       :remote-address "unknown" ; TODO: extract from connection
+                       :remote-port 0
+                       :context (listener-context secure-listener)
+                       :tls-connection tls-conn)))))
+
+(defun socket-listen-secure (address port context &key (backlog 5))
+  "Create secure TLS listening socket"
+  (let ((plain-listener (socket-listen address port :backlog backlog)))
+    (make-instance 'secure-listener
+                   :handle (socket-handle plain-listener)
+                   :backlog backlog
+                   :address address
+                   :port port
+                   :kqueue (listener-kqueue plain-listener)
+                   :context context)))
+
+;;; Override socket-stream for secure connections
+(defmethod socket-stream ((socket secure-connection))
+  "Get TLS stream for secure connection"
+  (tls-stream (connection-tls socket)))

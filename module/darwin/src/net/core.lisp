@@ -1,45 +1,40 @@
-(defpackage #:epsilon.net
-  (:use #:cl)
+(defpackage epsilon.net
+  (:use cl)
   (:local-nicknames
-   (#:kqueue #:epsilon.kqueue)
-   (#:lib #:epsilon.sys.lib)
-   (#:tls #:epsilon.tls))
-  (:shadow #:listen #:close)
+   (kqueue epsilon.kqueue)
+   (lib epsilon.sys.lib))
+  (:shadow
+   listen
+   close)
   (:export
+
    ;; Core types & conditions
-   #:socket #:listener #:connection
-   #:network-error #:connection-error #:timeout-error
+   socket listener connection
+   network-error connection-error timeout-error
    
    ;; High-level operations
-   #:with-connection #:with-listener #:with-timeout
+   with-connection with-listener with-timeout
    
    ;; Async
-   #:async-connect #:async-accept #:async-read #:async-write
-   #:future #:await #:select
+   async-connect async-accept async-read async-write
+   future await select
    
    ;; Address handling
-   #:address #:resolve #:parse-address
-   #:ipv4 #:ipv6 #:hostname
+   address resolve parse-address
+   ipv4 ipv6 hostname
    
    ;; Options & configuration
-   #:socket-option #:set-socket-option #:get-socket-option
-   #:keep-alive #:no-delay #:reuse-addr #:recv-buffer #:send-buffer
+   socket-option set-socket-option get-socket-option
+   keep-alive no-delay reuse-addr recv-buffer send-buffer
    
    ;; Socket stream access
-   #:socket-stream #:socket-from-stream
-   #:socket-peer-address
-   
-   ;; TLS/SSL
-   #:secure-context #:make-secure-context
-   #:secure-connection #:secure-listener
+   socket-stream socket-from-stream
+   socket-peer-address
    
    ;; Socket operations
-   #:socket-listen #:socket-connect #:socket-accept #:socket-close
-   
-   ;; Secure socket operations
-   #:socket-connect-secure #:socket-accept-secure #:socket-listen-secure))
+   socket-listen socket-connect socket-accept socket-close))
 
-(in-package :epsilon.net)
+(in-package epsilon.net)
 
 ;;; Conditions
 
@@ -375,77 +370,6 @@
                    (parse-integer (subseq string (1+ colon-pos)))
                    80)))
     (make-instance 'address :host host :port port)))
-
-;;; TLS/SSL Support
-
-(defclass secure-context ()
-  ((tls-context :initarg :tls-context :reader secure-context-tls)
-   (cert-file :initarg :cert-file :reader secure-context-cert-file)
-   (key-file :initarg :key-file :reader secure-context-key-file)
-   (verify :initarg :verify :reader secure-context-verify :initform t)))
-
-(defun make-secure-context (&key cert-file key-file (verify t) (client-p t))
-  "Create TLS/SSL context using epsilon.tls"
-  (let ((verify-mode (if verify tls:+tls-verify-peer+ tls:+tls-verify-none+)))
-    (let ((tls-ctx (tls:make-tls-context :client-p client-p
-                                         :cert-file cert-file
-                                         :key-file key-file
-                                         :verify-mode verify-mode)))
-      (make-instance 'secure-context
-                     :tls-context tls-ctx
-                     :cert-file cert-file
-                     :key-file key-file
-                     :verify verify))))
-
-(defclass secure-connection (connection)
-  ((context :initarg :context :reader connection-context)
-   (tls-connection :initarg :tls-connection :reader connection-tls)))
-
-(defclass secure-listener (listener)
-  ((context :initarg :context :reader listener-context)))
-
-;;; Secure Connection Functions
-
-(defun socket-connect-secure (host port context)
-  "Create secure TLS connection to host:port"
-  (let* ((plain-socket (socket-connect host port))
-         (tls-conn (tls:tls-connect (secure-context-tls context) plain-socket)))
-    (make-instance 'secure-connection
-                   :handle (socket-handle plain-socket)
-                   :remote-address host
-                   :remote-port port
-                   :context context
-                   :tls-connection tls-conn)))
-
-(defun socket-accept-secure (secure-listener)
-  "Accept secure TLS connection from listener"
-  (let ((plain-connection (socket-accept secure-listener)))
-    (when plain-connection
-      (let ((tls-conn (tls:tls-accept 
-                       (secure-context-tls (listener-context secure-listener))
-                       plain-connection)))
-        (make-instance 'secure-connection
-                       :handle (socket-handle plain-connection)
-                       :remote-address "unknown" ; TODO: extract from connection
-                       :remote-port 0
-                       :context (listener-context secure-listener)
-                       :tls-connection tls-conn)))))
-
-(defun socket-listen-secure (address port context &key (backlog 5))
-  "Create secure TLS listening socket"
-  (let ((plain-listener (socket-listen address port :backlog backlog)))
-    (make-instance 'secure-listener
-                   :handle (socket-handle plain-listener)
-                   :backlog backlog
-                   :address address
-                   :port port
-                   :kqueue (listener-kqueue plain-listener)
-                   :context context)))
-
-;;; Override socket-stream for secure connections
-(defmethod socket-stream ((socket secure-connection))
-  "Get TLS stream for secure connection"
-  (tls:tls-stream (connection-tls socket)))
 
 ;;; Async Operations (stubs for now)
 

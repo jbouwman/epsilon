@@ -103,11 +103,72 @@
                (bench:format-comparison (apply #'bench:compare-benchmarks valid-results)))
              (format t "No valid benchmarks found.~%")))))))
 
+(defun run-check-updates (&rest args)
+  "Check for available updates"
+  (declare (ignore args))
+  (format t "Checking for epsilon updates...~%")
+  ;; Simplified version check using system curl command
+  (handler-case
+      (let* ((curl-cmd (format nil "curl -s 'https://api.github.com/repos/jbouwman/epsilon/releases/latest'"))
+             (current-version "0.1.0"))  ; Current version
+        ;; Try to run curl command and capture output
+        (with-open-stream (stream (sb-ext:process-output 
+                                   (sb-ext:run-program "/bin/sh" 
+                                                       (list "-c" curl-cmd)
+                                                       :output :stream
+                                                       :wait nil)))
+          (let ((response (with-output-to-string (s)
+                            (loop for line = (read-line stream nil nil)
+                                  while line do (write-line line s)))))
+            (let ((tag-start (search "\"tag_name\":" response)))
+              (if tag-start
+                  (let* ((value-start (+ tag-start 12))
+                         (quote-start (position #\" response :start value-start))
+                         (quote-end (position #\" response :start (1+ quote-start)))
+                         (latest-version (subseq response (1+ quote-start) quote-end)))
+                    (setf latest-version (if (str:starts-with-p latest-version "v")
+                                            (subseq latest-version 1)
+                                            latest-version))
+                    (format t "Current version: ~A~%" current-version)
+                    (format t "Latest version: ~A~%" latest-version)
+                    (if (string= current-version latest-version)
+                        (progn
+                          (format t "Epsilon is up to date~%")
+                          (sb-posix:exit 0))
+                        (progn
+                          (format t "Update available: ~A -> ~A~%" current-version latest-version)
+                          (sb-posix:exit 1))))
+                  (progn
+                    (format t "Failed to parse update information~%")
+                    (sb-posix:exit 1)))))))
+    (error (e)
+      (format t "Error checking for updates: ~A~%" e)
+      (format t "Please check your internet connection and try again.~%")
+      (sb-posix:exit 1))))
+
+(defun run-version-info (&rest args)
+  "Show version and installation information"
+  (declare (ignore args))
+  (format t "Current version: 0.1.0~%")
+  (format t "Installation path: ~A~%" (first sb-ext:*posix-argv*))
+  (format t "Update channel: stable~%")
+  (format t "Auto-check updates: false~%"))
+
+(defun run-update (&rest args)
+  "Update epsilon to latest version"
+  (declare (ignore args))
+  (format t "Epsilon self-update is not yet implemented.~%")
+  (format t "Please visit https://github.com/jbouwman/epsilon/releases for manual updates.~%")
+  (sb-posix:exit 1))
+
 (defvar *commands*
   (map:make-map "build" #'run-build
                 "test" #'run-test
                 "benchmark" #'run-benchmark
-                "bench" #'run-benchmark))
+                "bench" #'run-benchmark
+                "check-updates" #'run-check-updates
+                "version-info" #'run-version-info
+                "update" #'run-update))
 
 (defun as-keys (list)
   (mapcar (lambda (element)
@@ -121,12 +182,43 @@
                    element)))
           list))
 
+(defun show-help ()
+  "Show available commands and usage"
+  (format t "epsilon - Common Lisp utility library and development tools~%~%")
+  (format t "Usage: epsilon <command> [options]~%~%")
+  (format t "Available commands:~%")
+  (format t "  build <module>      Build the specified module~%")
+  (format t "  test <module>       Run tests for the specified module~%")
+  (format t "  benchmark           List available benchmarks~%")
+  (format t "  benchmark <name>    Run specific benchmark~%")
+  (format t "  bench               Alias for benchmark~%")
+  (format t "  check-updates       Check for available updates~%")
+  (format t "  version-info        Show version and installation information~%")
+  (format t "  update              Update epsilon to latest version~%")
+  (format t "~%"))
+
 (defun main ()
   (let ((argv (cdr sb-ext:*posix-argv*)))
-    (unless argv
-      (error "No argument provided, must be one of ~A" (map:keys *commands*)))
-    (let ((command (map:get *commands* (car argv))))
-      (unless command
-        (error "Unknown command ~A, must be one of ~A" command (map:keys *commands*)))
-      (apply command (as-keys (cdr argv))))))
+    (cond
+      ;; No arguments or help requested
+      ((or (null argv) 
+           (member (first argv) '("help" "--help" "-h") :test #'string=))
+       (show-help))
+      ;; Check for version flags
+      ((member (first argv) '("--version" "-v") :test #'string=)
+       (run-version-info))
+      ;; Check for update flags  
+      ((member (first argv) '("--check-updates") :test #'string=)
+       (run-check-updates))
+      ;; Check for update command
+      ((member (first argv) '("--update") :test #'string=)
+       (run-update))
+      ;; Regular command processing
+      (t
+       (let ((command (map:get *commands* (car argv))))
+         (unless command
+           (format t "Unknown command: ~A~%~%" (car argv))
+           (show-help)
+           (sb-posix:exit 1))
+         (apply command (as-keys (cdr argv))))))))
       
