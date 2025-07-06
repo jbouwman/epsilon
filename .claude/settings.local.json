@@ -34,7 +34,16 @@
       "Bash(touch:*)",
       "Bash(gh run list:*)",
       "Bash(gh api:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(for:*)",
+      "Bash(do)",
+      "Bash(echo \"=== $file ===\")",
+      "Bash(done)",
+      "Bash(if [ ! -f \"docs/$link\" ])",
+      "Bash(then)",
+      "Bash(echo:*)",
+      "Bash(else)",
+      "Bash(fi)"
     ],
     "deny": []
   }
