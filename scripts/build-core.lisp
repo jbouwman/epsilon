@@ -20,7 +20,7 @@
   ;; Boot Epsilon first
   (when verbose
     (format t "Loading Epsilon...~%"))
-  (load "module/core/src/tool/boot.lisp")
+  (load "scripts/boot.lisp")
   (funcall (find-symbol "BOOT" "EPSILON.TOOL.BOOT"))
   
   ;; Create core image
