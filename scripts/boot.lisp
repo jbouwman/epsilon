@@ -10,8 +10,16 @@
 (require :sb-bsd-sockets)
 (require :sb-rotate-byte)
 
+#+win32
 (defun %list-dir (dirpath)
-  #+(or linux darwin)
+  (let ((pattern (if (and (> (length dirpath) 0)
+                          (char= (char dirpath (1- (length dirpath))) #\\))
+                     (concatenate 'string dirpath "*.*")
+                     (concatenate 'string dirpath "\\*.*"))))
+    (mapcar #'namestring (directory pattern))))
+
+#-win32
+(defun %list-dir (dirpath)
   (let (dir entries)
     (unwind-protect
          (progn
@@ -25,39 +33,18 @@
                      do (push (format nil "~a/~a" dirpath name) entries))))
       (when dir
         (sb-unix:unix-closedir dir nil)))
-    (nreverse entries))
-  #+(or windows win32)
-  ;; Windows implementation using directory()
-  (let ((pattern (if (and (> (length dirpath) 0)
-                          (char= (char dirpath (1- (length dirpath))) #\\))
-                     (concatenate 'string dirpath "*.*")
-                     (concatenate 'string dirpath "\\*.*"))))
-    (handler-case
-        (mapcar #'namestring (directory pattern))
-      (error () nil))))
+    (nreverse entries)))
+
+(defun dir-p (filespec)
+  (null (pathname-type (pathname filespec))))
 
 (defun list-dir (dir)
   (let (entries)
     (dolist (entry (%list-dir dir))
-      (handler-case
-          #+(or linux darwin)
-          (let ((mode (sb-posix:stat-mode (sb-posix:stat entry))))
-            (cond ((sb-posix:s-isdir mode)
-                   (setf entries (append entries (list-dir entry))))
-                  ((sb-posix:s-isreg mode)
-                   (push entry entries))))
-          #+(or windows win32)
-          (let ((path (pathname entry)))
-            (cond ((null (pathname-type path))  ; directory (no extension)
-                   (setf entries (append entries (list-dir entry))))
-                  (t  ; file
-                   (push entry entries))))
-        #+(or linux darwin)
-        (sb-posix:syscall-error ()
-          nil)
-        #+(or windows win32)
-        (error ()
-          nil)))
+      (cond ((dir-p entry)
+             (setf entries (append entries (list-dir entry))))
+            (t  ; file
+             (push entry entries))))
     entries))
 
 (defun ends-with-p (seq suffix &key (test #'char-equal))
@@ -167,5 +154,3 @@
         (push fasl-path fasls)))
     (concatenate-fasls (reverse fasls) cache)
     :built))
-
-  

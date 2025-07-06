@@ -27,6 +27,9 @@ keywords explicitly."
   "Query the environment, as in C getenv.
 Beware: may return empty string if a variable is present but empty;
 use getenvp to return NIL in such a case."
+  #+win32
+  (sb-ext:getenv x)
+  #-win32
   (sb-ext:posix-getenv x))
 
 (defun getenvp (x)
