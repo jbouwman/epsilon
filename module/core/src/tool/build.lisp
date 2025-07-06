@@ -17,6 +17,7 @@
    (yaml epsilon.lib.yaml))
   (:export
    build
+   register-module
    register-modules))
 
 (in-package :epsilon.tool.build)
@@ -649,3 +650,39 @@
     
     ;; Return count of registered modules
     (map:count *modules*)))
+
+(defun register-module (module-spec)
+  "Register a single module for building.
+   
+   MODULE-SPEC can be:
+   - A string pathname to a directory containing package.yaml"
+  (let* ((module-dir-path (cond
+                           ((stringp module-spec)
+                            (namestring (merge-pathnames module-spec)))
+                           (t 
+                            (error "Unsupported module-spec type: ~A" module-spec))))
+         (module-dir (uri:file-uri module-dir-path))
+         (package-file (uri:merge module-dir "package.yaml")))
+    
+    ;; Validate package file exists
+    (unless (fs:exists-p package-file)
+      (error "Package file not found: ~A" (uri:path package-file)))
+    
+    ;; Check if module is applicable to current platform
+    (unless (module-applicable-p module-dir)
+      (error "Module not applicable to current platform: ~A" (uri:path module-dir)))
+    
+    ;; Parse package.yaml and register module
+    (let* ((defs (map:from-pairs (yaml:parse-file (uri:path package-file))))
+           (module-name (map:get defs "name")))
+      (unless module-name
+        (error "Module name not found in package file: ~A" (uri:path package-file)))
+      
+      ;; Register the module
+      (map:assoc! *modules* module-name module-dir)
+      (format t ";;   Registered module: ~a -> ~a~%" 
+              module-name 
+              (uri:path module-dir))
+      
+      ;; Return the module name
+      module-name)))

@@ -43,7 +43,9 @@
       "Bash(then)",
       "Bash(echo:*)",
       "Bash(else)",
-      "Bash(fi)"
+      "Bash(fi)",
+      "Bash(gh issue view:*)",
+      "Bash(--eval \"(compile-file \"\"module/core/src/tool/build.lisp\"\")\")"
     ],
     "deny": []
   }
