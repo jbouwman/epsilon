@@ -24,7 +24,7 @@
       (when dir
         (sb-unix:unix-closedir dir nil)))
     (nreverse entries))
-  #+windows
+  #+(or windows win32)
   ;; Windows implementation using directory()
   (mapcar #'namestring
           (directory (pathname (format nil "~a/*.*" dirpath)))))
@@ -39,7 +39,7 @@
                    (setf entries (append entries (list-dir entry))))
                   ((sb-posix:s-isreg mode)
                    (push entry entries))))
-          #+windows
+          #+(or windows win32)
           (let ((path (pathname entry)))
             (cond ((not (pathname-name path))  ; directory
                    (setf entries (append entries (list-dir entry))))
@@ -48,7 +48,7 @@
         #+(or linux darwin)
         (sb-posix:syscall-error ()
           nil)
-        #+windows
+        #+(or windows win32)
         (error ()
           nil)))
     entries))

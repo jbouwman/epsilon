@@ -36,8 +36,8 @@
   "Detect current platform"
   #+darwin :darwin
   #+linux :linux
-  #+windows :windows
-  #-(or darwin linux windows) :unknown)
+  #+(or windows win32) :windows
+  #-(or darwin linux windows win32) :unknown)
 
 (defun platform-package-file (platform)
   "Get package file name for platform"

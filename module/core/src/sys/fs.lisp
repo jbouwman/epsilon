@@ -64,7 +64,7 @@
 (defun home-dir ()
   #+(or linux darwin)
   (sb-unix:uid-homedir (sb-unix:unix-getuid))
-  #+windows
+  #+(or windows win32)
   (or (env:getenv "USERPROFILE") 
       (str:concat (env:getenv "HOMEDRIVE") (env:getenv "HOMEPATH"))))
 
@@ -137,7 +137,7 @@
                                                 :path (format nil "~a/~a" dirpath name))))))
       (when dir
         (sb-unix:unix-closedir dir nil))))
-  #+windows
+  #+(or windows win32)
   ;; Windows implementation using directory()
   (dolist (entry (directory (pathname (format nil "~a/*.*" dirpath))))
     (let ((name (file-namestring entry)))
@@ -183,7 +183,7 @@
             (unless (probe-file path)
               #+(or linux darwin)
               (sb-unix:unix-mkdir path #o775)
-              #+windows
+              #+(or windows win32)
               (ensure-directories-exist (pathname path)))))
   
 (defun list-files (uri extension)
@@ -218,7 +218,7 @@
                      :collect name)))
       (when dir
         (sb-unix:unix-closedir dir nil))))
-  #+windows
+  #+(or windows win32)
   ;; Windows implementation using directory()
   (mapcar #'file-namestring
           (remove-if (lambda (path)
