@@ -1,0 +1,3 @@
+#!/usr/bin/env sbcl --script
+
+(load "scripts/epsilon.lisp")

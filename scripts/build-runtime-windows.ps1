@@ -47,7 +47,7 @@ Write-Host "Target directory: $TARGET_DIR"
        --non-interactive `
        --no-sysinit `
        --no-userinit `
-       --load "module/core/src/tool/boot.lisp" `
+       --load "scripts/boot.lisp" `
        --eval "(epsilon.tool.boot:boot)" `
        --eval "(sb-ext:save-lisp-and-die `"target/epsilon-core`" :executable nil :save-runtime-options t :compression t)"
 
