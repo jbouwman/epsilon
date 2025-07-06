@@ -12,7 +12,7 @@ Epsilon is a Lisp programming environment built on top of SBCL that provides fun
 - **Cryptography** - SHA-2 family hashing, CRC-32, and Adler-32 checksums
 - **Network Programming** - HTTP client/server with TLS support
 - **Development Tools** - Build system, test framework, and benchmarking utilities
-- **Zero Dependencies** - Uses only SBCL built-in modules for maximum portability
+- **Few Dependencies** - Depends only upon SBCL built-in modules
 
 ## Installation
 
