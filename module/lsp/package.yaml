@@ -15,15 +15,3 @@ dependencies:
 
 provides:
   - epsilon.lsp
-  - epsilon.lsp.protocol
-  - epsilon.lsp.protocol.jsonrpc
-  - epsilon.lsp.protocol.msgpackrpc
-  - epsilon.lsp.server
-  - epsilon.lsp.analysis
-  - epsilon.lsp.workspace
-
-main-packages:
-  - epsilon.lsp
-
-entry-points:
-  lsp-server: epsilon.lsp.server:main
