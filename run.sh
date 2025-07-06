@@ -9,7 +9,6 @@ sbcl --noinform \
      --non-interactive \
      --no-sysinit \
      --no-userinit \
-     --load "module/core/src/tool/boot.lisp" \
-     --eval "(epsilon.tool.boot:boot)" \
+     --load "scripts/epsilon.lisp" \
      --eval "(epsilon.tool.dev:main)" \
      "$@"
