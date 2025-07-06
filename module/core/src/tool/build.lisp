@@ -606,17 +606,18 @@
 
 (defun find-module-directories (base-dir)
   "Find all directories containing package.yaml files under base-dir/module/
-   Returns a list of directory URIs"
+   Returns a list of directory path strings suitable for register-module"
   (let ((module-base (uri:merge base-dir "module/"))
         (module-dirs '()))
     (when (fs:exists-p module-base)
       ;; List all entries in the module directory
       (dolist (entry-name (fs:list-dir (uri:path module-base)))
-        (let* ((entry-uri (uri:merge module-base (format nil "~A/" entry-name)))
+        (let* ((entry-path (uri:path-join "module" entry-name))
+               (entry-uri (uri:merge base-dir entry-path))
                (package-file (uri:merge entry-uri "package.yaml")))
           (when (and (fs:dir-p (uri:path entry-uri))
                      (fs:exists-p package-file))
-            (push entry-uri module-dirs)))))
+            (push entry-path module-dirs)))))
     (nreverse module-dirs)))
 
 (defun module-applicable-p (module-dir)
@@ -633,23 +634,21 @@
 
 (defun register-modules (&key (base-dir (uri:file-uri (namestring *default-pathname-defaults*))))
   "Discover and register all applicable modules found under base-dir/module/"
-  (let ((module-dirs (find-module-directories base-dir)))
+  (let ((module-paths (find-module-directories base-dir))
+        (registered-count 0))
     
-    ;; Register each applicable module directory in *modules*
-    (dolist (module-dir module-dirs)
-      (when (module-applicable-p module-dir)
-        (let ((package-file (uri:merge module-dir "package.yaml")))
-          (when (fs:exists-p package-file)
-            (let* ((defs (map:from-pairs (yaml:parse-file (uri:path package-file))))
-                   (module-name (map:get defs "name")))
-              (when module-name
-                (map:assoc! *modules* module-name module-dir)
-                (format t ";;   Registered module: ~a -> ~a~%" 
-                        module-name 
-                        (uri:path module-dir))))))))
+    ;; Register each module using register-module
+    (dolist (module-path module-paths)
+      (handler-case 
+          (progn
+            (register-module module-path)
+            (incf registered-count))
+        (error (e)
+          ;; Skip modules that can't be registered (e.g., platform incompatible)
+          (format t ";;   Skipping module ~a: ~a~%" module-path e))))
     
-    ;; Return count of registered modules
-    (map:count *modules*)))
+    ;; Return count of successfully registered modules
+    registered-count))
 
 (defun register-module (module-spec)
   "Register a single module for building.
