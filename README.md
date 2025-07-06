@@ -1,10 +1,20 @@
-sh# Epsilon
-
-![Under Construction](construction.gif)
+# Epsilon
 
 [![CI - Multi-Platform Build](https://github.com/jbouwman/epsilon/actions/workflows/ci.yml/badge.svg)](https://github.com/jbouwman/epsilon/actions/workflows/ci.yml)
+[![Documentation](https://img.shields.io/badge/docs-github%20pages-blue)](https://jbouwman.github.io/epsilon/)
 
-Epsilon is a library for SBCL that provides data structures, data formats, compression, cryptography and networking.
+Epsilon is a modern utility library for SBCL that provides functional data structures, data encoding, cryptography, and network programming. Built with performance and developer experience in mind, Epsilon offers immutable collections, lazy sequences, and a rich set of tools for building robust Common Lisp applications.
+
+## Key Features
+
+- **Functional Data Structures** - Immutable maps, sets, and sequences with efficient structural sharing
+- **Data Encoding** - JSON, YAML, MessagePack, Base64, and binary format support  
+- **Cryptography** - SHA-2 family hashing, CRC-32, and Adler-32 checksums
+- **Network Programming** - HTTP client/server with TLS support
+- **Development Tools** - Build system, test framework, and benchmarking utilities
+- **Zero Dependencies** - Uses only SBCL built-in modules for maximum portability
+
+📖 **[Complete Documentation](https://jbouwman.github.io/epsilon/)**
 
 ## Installation
 
