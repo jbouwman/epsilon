@@ -21,11 +21,27 @@ jobs:
         ./run.sh build epsilon.core
         ./run.sh test epsilon.core --format junit
 
-    - name: Publish Test Report
+    - name: Rename test results for platform identification
+      if: success() || failure()
+      run: |
+        if [ -f target/TEST-epsilon.xml ]; then
+          mv target/TEST-epsilon.xml target/TEST-epsilon-linux.xml
+        fi
+
+    - name: Publish Test Report (Linux)
       uses: mikepenz/action-junit-report@v5
       if: success() || failure()
       with:
-        report_paths: '**/TEST-epsilon.xml'
+        report_paths: '**/TEST-epsilon-linux.xml'
+        check_name: 'Test Results (Linux)'
+        job_summary: true
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: success() || failure()
+      with:
+        name: test-results-linux
+        path: target/TEST-epsilon-linux.xml
 
     - name: Test runtime build
       run: |
@@ -63,7 +79,29 @@ jobs:
       run: |
         chmod +x run.sh
         ./run.sh build epsilon.core
-        ./run.sh test epsilon.core
+        ./run.sh test epsilon.core --format junit
+
+    - name: Rename test results for platform identification
+      if: success() || failure()
+      run: |
+        if [ -f target/TEST-epsilon.xml ]; then
+          mv target/TEST-epsilon.xml target/TEST-epsilon-macos.xml
+        fi
+
+    - name: Publish Test Report (macOS)
+      uses: mikepenz/action-junit-report@v5
+      if: success() || failure()
+      with:
+        report_paths: '**/TEST-epsilon-macos.xml'
+        check_name: 'Test Results (macOS)'
+        job_summary: true
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: success() || failure()
+      with:
+        name: test-results-macos
+        path: target/TEST-epsilon-macos.xml
 
     - name: Test runtime build
       run: |
@@ -100,7 +138,30 @@ jobs:
     - name: Build and run tests
       run: |
         ./run.sh build epsilon.core
-        ./run.sh test epsilon.core
+        ./run.sh test epsilon.core --format junit
+
+    - name: Rename test results for platform identification
+      if: success() || failure()
+      shell: bash
+      run: |
+        if [ -f target/TEST-epsilon.xml ]; then
+          mv target/TEST-epsilon.xml target/TEST-epsilon-windows.xml
+        fi
+
+    - name: Publish Test Report (Windows)
+      uses: mikepenz/action-junit-report@v5
+      if: success() || failure()
+      with:
+        report_paths: '**/TEST-epsilon-windows.xml'
+        check_name: 'Test Results (Windows)'
+        job_summary: true
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: success() || failure()
+      with:
+        name: test-results-windows
+        path: target/TEST-epsilon-windows.xml
 
     - name: Test runtime build
       run: |
