@@ -1,0 +1,29 @@
+name: lsp
+description: Language Server Protocol implementation for Epsilon
+version: 0.1.0
+author: Epsilon Project
+license: MIT
+
+sources:
+  - src
+
+tests:
+  - tests
+
+dependencies:
+  - core
+
+provides:
+  - epsilon.lsp
+  - epsilon.lsp.protocol
+  - epsilon.lsp.protocol.jsonrpc
+  - epsilon.lsp.protocol.msgpackrpc
+  - epsilon.lsp.server
+  - epsilon.lsp.analysis
+  - epsilon.lsp.workspace
+
+main-packages:
+  - epsilon.lsp
+
+entry-points:
+  lsp-server: epsilon.lsp.server:main
