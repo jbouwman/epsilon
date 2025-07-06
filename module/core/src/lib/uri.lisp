@@ -45,6 +45,10 @@
   (query nil :type (or string null))
   (fragment nil :type (or string null)))
 
+(defmethod print-object ((self uri) stream)
+  (print-unreadable-object (self stream :type t)
+    (format stream (to-string self))))
+
 ;; Constants
 (defvar +scheme-ports+
   (map:make-map "ssh" 22

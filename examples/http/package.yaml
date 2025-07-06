@@ -1,4 +1,4 @@
-name: epsilon.http-test
+name: epsilon.example.http
 version: 1.0.0
 author: Jesse Bouwman
 description: HTTP test application serving hello world
@@ -12,6 +12,3 @@ tests:
 requires:
   - epsilon.core
   - http
-
-provides:
-  - epsilon.http-test

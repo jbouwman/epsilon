@@ -1,48 +1,48 @@
-
-(defpackage :epsilon.lib.map
+(defpackage epsilon.lib.map
   (:use
-   :cl
-   :epsilon.lib.syntax)
+   cl
+   epsilon.lib.syntax)
   (:shadow
-   :assoc
-   :count
-   :dissoc
-   :filter
-   :get
-   :map
-   :merge
-   :reduce
-   :seq)
+   assoc
+   count
+   dissoc
+   filter
+   get
+   map
+   merge
+   reduce
+   seq)
   (:export
-   :+empty+
-   :assoc
-   :assoc!
-   :assoc-in
-   :contains-p
-   :count
-   :difference
-   :dissoc
-   :dissoc!
-   :enable-syntax
-   :filter
-   :from-pairs
-   :get
-   :get-in
-   :invert
-   :keys
-   :make-map
-   :map
-   :map=
-   :merge
-   :reduce
-   :select-keys
-   :seq
-   :size
-   :subset-p
-   :update
-   :update!
-   :update-in
-   :vals))
+   +empty+
+   assoc
+   assoc!
+   assoc-in
+   contains-p
+   count
+   difference
+   dissoc
+   dissoc!
+   empty-p
+   enable-syntax
+   filter
+   from-pairs
+   get
+   get-in
+   invert
+   keys
+   make-map
+   map
+   map=
+   merge
+   reduce
+   select-keys
+   seq
+   size
+   subset-p
+   update
+   update!
+   update-in
+   vals))
 
 (in-package :epsilon.lib.map)
 
@@ -77,6 +77,10 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
 
 (defun size (hamt)
   (hamt-count hamt))
+
+(defun empty-p (map)
+  "EMPTY-P returns T if a map contains no entries, otherwise NIL."
+  (eq map +empty+))
 
 (defun count (hamt)
   "Get the number of key-value pairs in the map"
@@ -175,6 +179,8 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
       (print-unreadable-object (map stream :type t)
         (print-map-pairs map stream :format-fn 
                          (lambda (obj s) (format s "~S" obj))))))
+
+
 
 ;;; leaf-node operations
 

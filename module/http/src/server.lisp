@@ -1,20 +1,21 @@
-(defpackage :epsilon.http.server
-  (:use :cl)
+(defpackage epsilon.http.server
+  (:use
+   cl)
   (:local-nicknames
-   (#:net #:epsilon.net)
-   (#:uri #:epsilon.lib.uri)
-   (#:str #:epsilon.lib.string)
-   (#:map #:epsilon.lib.map)
-   (#:time #:epsilon.lib.time)
-   (#:thread #:epsilon.sys.thread)
-   (#:request #:epsilon.http.request)
-   (#:response #:epsilon.http.response))
+   (net epsilon.net)
+   (uri epsilon.lib.uri)
+   (str epsilon.lib.string)
+   (map epsilon.lib.map)
+   (time epsilon.lib.time)
+   (thread epsilon.sys.thread)
+   (request epsilon.http.request)
+   (response epsilon.http.response))
   (:export
-   #:start-server
-   #:stop-server
-   #:define-handler
-   #:with-server
-   #:*default-port*))
+   start-server
+   stop-server
+   define-handler
+   with-server
+   *default-port*))
 
 (in-package :epsilon.http.server)
 

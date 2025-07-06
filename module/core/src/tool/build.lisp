@@ -17,6 +17,7 @@
    (yaml epsilon.lib.yaml))
   (:export
    build
+   list-modules
    register-module
    register-modules))
 
@@ -481,8 +482,10 @@
   ERROR-BEHAVIOR - How to handle compilation errors: :halt (default), :ignore, :print
   WARNING-BEHAVIOR - How to handle compilation warnings: :ignore (default), :halt, :print
   REPORTER - Reporter instance for build progress"
-  ;; Register modules first to populate *modules*
-  (register-modules)
+
+  (when (map:empty-p *modules*)
+    (register-modules))
+
   (let* ((module-dir (map:get *modules* module))
          (project (progn
                     (unless module-dir
@@ -685,3 +688,7 @@
       
       ;; Return the module name
       module-name)))
+
+(defun list-modules ()
+  "List known modules."
+  *modules*)

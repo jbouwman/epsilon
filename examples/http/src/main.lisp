@@ -1,15 +1,15 @@
-(defpackage :epsilon.http-test
-  (:use :cl)
+(defpackage epsilon.example.http
+  (:use cl)
   (:local-nicknames
-   (#:server #:epsilon.http.server)
-   (#:request #:epsilon.http.request)
-   (#:response #:epsilon.http.response))
+   (server epsilon.http.server)
+   (request epsilon.http.request)
+   (response epsilon.http.response))
   (:export
-   #:main
-   #:start-test-server
-   #:stop-test-server))
+   main
+   start-test-server
+   stop-test-server))
 
-(in-package :epsilon.http-test)
+(in-package epsilon.example.http)
 
 (defvar *test-server* nil)
 
