@@ -30,20 +30,34 @@ This installs a complete SBCL runtime with Epsilon preloaded.
 
 Download the appropriate release for your platform from [GitHub Releases](https://github.com/jbouwman/epsilon/releases):
 - `epsilon-macos-arm64.tar.gz` - macOS Apple Silicon
-- `epsilon-macos-x86_64.tar.gz` - macOS Intel
+- `epsilon-macos-x86_64.tar.gz` - macOS Intel  
 - `epsilon-linux-x86_64.tar.gz` - Linux x86_64
+- `epsilon-windows-x86_64.zip` - Windows x86_64
 
 ### Usage
 
+#### Unix (Linux/macOS)
 ```bash
 # Interactive REPL with Epsilon loaded
 epsilon
 
-# Evaluate expressions
+# Evaluate expressions  
 epsilon --eval "(format t \"Hello, Epsilon!\")" --eval "(sb-ext:quit)"
 
 # Use Epsilon libraries
 epsilon --eval "(epsilon.lib.map:make-map :a 1 :b 2)" --eval "(sb-ext:quit)"
+```
+
+#### Windows
+```powershell
+# Interactive REPL with Epsilon loaded
+.\epsilon.exe
+
+# Evaluate expressions
+.\epsilon.exe --eval "(format t \"Hello, Epsilon!\")" --eval "(sb-ext:quit)"
+
+# Use Epsilon libraries  
+.\epsilon.exe --eval "(epsilon.lib.map:make-map :a 1 :b 2)" --eval "(sb-ext:quit)"
 ```
 
 ## Documentation

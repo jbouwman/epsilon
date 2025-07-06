@@ -136,17 +136,19 @@ jobs:
         choco install sbcl
 
     - name: Build and run tests
+      shell: powershell
       run: |
-        ./run.sh build epsilon.core
-        ./run.sh test epsilon.core --format junit
+        Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+        .\run.ps1 build epsilon.core
+        .\run.ps1 test epsilon.core --format junit
 
     - name: Rename test results for platform identification
       if: success() || failure()
-      shell: bash
+      shell: powershell
       run: |
-        if [ -f target/TEST-epsilon.xml ]; then
-          mv target/TEST-epsilon.xml target/TEST-epsilon-windows.xml
-        fi
+        if (Test-Path target\TEST-epsilon.xml) {
+          Move-Item target\TEST-epsilon.xml target\TEST-epsilon-windows.xml
+        }
 
     - name: Publish Test Report (Windows)
       uses: mikepenz/action-junit-report@v5
@@ -164,11 +166,13 @@ jobs:
         path: target/TEST-epsilon-windows.xml
 
     - name: Test runtime build
+      shell: powershell
       run: |
-        scripts/build-runtime.sh
+        Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+        .\scripts\build-runtime-windows.ps1
         
         # Test the built runtime
         mkdir test-runtime
         cd test-runtime
-        unzip ../target/epsilon-*.zip
-        ./epsilon.exe --eval "(format t \"~%CI test successful!~%\")" --eval "(sb-ext:quit)"
+        Expand-Archive -Path ..\target\epsilon-*.zip -DestinationPath .
+        .\epsilon.exe --eval "(format t \"~%CI test successful!~%\")" --eval "(sb-ext:quit)"

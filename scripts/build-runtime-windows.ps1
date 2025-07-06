@@ -177,7 +177,7 @@ $MODULE_DEST = Join-Path $DIST_DIR "module"
 Copy-Item $MODULE_SRC $MODULE_DEST -Recurse
 
 # Copy essential project files
-$FILES_TO_COPY = @("CLAUDE.md", "README.md", "run.sh")
+$FILES_TO_COPY = @("CLAUDE.md", "README.md", "run.sh", "run.ps1")
 foreach ($file in $FILES_TO_COPY) {
     $src = Join-Path $EPSILON_DIR $file
     if (Test-Path $src) {
