@@ -1,0 +1,10 @@
+# Epsilon Documentation Dependencies
+# Technical documentation theme requirements
+
+mkdocs>=1.5.0
+mkdocs-material>=9.0.0
+mkdocs-mermaid2-plugin>=1.0.0
+
+# Enhanced functionality
+pymdown-extensions>=10.0.0
+pillow>=9.0.0  # For image processing
