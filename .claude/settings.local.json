@@ -45,7 +45,18 @@
       "Bash(else)",
       "Bash(fi)",
       "Bash(gh issue view:*)",
-      "Bash(--eval \"(compile-file \"\"module/core/src/tool/build.lisp\"\")\")"
+      "Bash(--eval \"(compile-file \"\"module/core/src/tool/build.lisp\"\")\")",
+      "Bash(./test-kqueue.lisp)",
+      "Bash(otool:*)",
+      "Bash(../../run.sh:*)",
+      "Bash(./test-kqueue-simple.lisp)",
+      "Bash(./test-darwin.lisp)",
+      "Bash(./http-demo.lisp)",
+      "Bash(./test-net.lisp)",
+      "Bash(./test-http-server.lisp)",
+      "Bash(timeout:*)",
+      "Bash(./test-full-http.lisp)",
+      "Bash(./test-tls.lisp)"
     ],
     "deny": []
   }

@@ -1,7 +1,7 @@
 name: darwin
-version: 1.0.0
+version: 0.1.0
 author: Jesse Bouwman
-description: Darwin/macOS specific functions
+description: Darwin/macOS platform services including kqueue event system, async networking, and TLS/SSL support via LibreSSL
 platform: darwin
 
 sources:
@@ -14,5 +14,6 @@ requires:
   - epsilon.core
 
 provides:
-  - darwin
+  - epsilon.kqueue
   - epsilon.net
+  - epsilon.tls

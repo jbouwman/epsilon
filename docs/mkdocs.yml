@@ -33,7 +33,6 @@ theme:
   features:
     - navigation.tabs
     - navigation.sections
-    - navigation.expand
     - navigation.indexes
     - navigation.top
     - toc.integrate
@@ -91,40 +90,71 @@ markdown_extensions:
       toc_depth: 3
 
 nav:
-  - Overview:
+  - Introduction:
     - Home: index.md
-    - Architecture: architecture.md
     - Getting Started: getting-started.md
     - Installation: installation.md
-  - Core Library:
+  - Libraries:
+    - Overview: library/index.md
     - Data Structures: core/data-structures.md
-    - Sequences & Maps: core/sequences-maps.md
     - JSON & YAML: core/json-yaml.md
     - Cryptography: core/cryptography.md
     - String Processing: core/strings.md
-  - System Layer:
+    - Networking: network/http.md
     - Threading: system/threading.md
     - Filesystem: system/filesystem.md
-    - Environment: system/environment.md
-    - Error Handling: system/errors.md
-  - Network:
-    - HTTP Client/Server: network/http.md
-    - TLS Support: network/tls.md
-    - Network Primitives: network/primitives.md
-  - Development Tools:
+  - Tools:
+    - Overview: tools/index.md
     - Build System: tools/build.md
     - Test Framework: tools/testing.md
     - Benchmarks: tools/benchmarks.md
-    - Code Formatting: tools/formatting.md
   - Roadmaps:
     - Overview: roadmaps.md
-    - LSP Implementation: roadmaps/001_lsp.md
-    - Testing Framework: roadmaps/002_testing_framework.md
-    - Interactive Development: roadmaps/003_interactive_development.md
+    - LSP: roadmaps/001_lsp.md
+    - Testing: roadmaps/002_testing_framework.md
+    - Interactive Dev: roadmaps/003_interactive_development.md
     - Module System: roadmaps/004_module_system.md
-  - Reference:
-    - API Documentation: reference/api.md
-    - Package Index: reference/packages.md
+    - Async Networking: roadmaps/005_async_networking.md
+  - API Reference:
+    - Overview: reference/index.md
+    - epsilon.core:
+      - Overview: reference/core/index.md
+      - Data Structures:
+        - epsilon.lib.map: reference/core/data-structures/map.md
+        - epsilon.lib.sequence: reference/core/data-structures/sequence.md
+        - epsilon.lib.vector: reference/core/data-structures/vector.md
+        - epsilon.lib.set: reference/core/data-structures/set.md
+        - epsilon.lib.list: reference/core/data-structures/list.md
+      - Data Encoding:
+        - epsilon.lib.json: reference/core/encoding/json.md
+        - epsilon.lib.yaml: reference/core/encoding/yaml.md
+        - epsilon.lib.msgpack: reference/core/encoding/msgpack.md
+        - epsilon.lib.base64: reference/core/encoding/base64.md
+        - epsilon.lib.hex: reference/core/encoding/hex.md
+      - Cryptography:
+        - epsilon.lib.digest: reference/core/crypto/digest.md
+        - epsilon.lib.checksum: reference/core/crypto/checksum.md
+      - String Processing:
+        - epsilon.lib.string: reference/core/strings/string.md
+        - epsilon.lib.char: reference/core/strings/char.md
+        - epsilon.lib.regex: reference/core/strings/regex.md
+      - System:
+        - epsilon.sys.fs: reference/core/system/fs.md
+        - epsilon.sys.thread: reference/core/system/thread.md
+        - epsilon.sys.env: reference/core/system/env.md
+      - Networking:
+        - epsilon.lib.net: reference/core/networking/net.md
+      - Tools:
+        - epsilon.tool.build: reference/core/tools/build.md
+        - epsilon.tool.test: reference/core/tools/test.md
+        - epsilon.tool.benchmark: reference/core/tools/benchmark.md
+    - epsilon.net:
+      - Overview: reference/net/index.md
+      - epsilon.net: reference/net/core.md
+    - epsilon.http:
+      - Overview: reference/http/index.md
+      - epsilon.http.client: reference/http/client.md
+      - epsilon.http.server: reference/http/server.md
     - Examples: reference/examples.md
 
 extra:

@@ -212,9 +212,9 @@ Process data concurrently using threading primitives:
       :workers 8)))
 ```
 
-## Caching Layer
+## Caching System
 
-Implement a caching layer with TTL and eviction policies:
+Implement a caching system with TTL and eviction policies:
 
 ```lisp
 (defpackage #:example.cache

@@ -46,7 +46,7 @@ epsilon
 - **`epsilon.lib.uri`** - URI parsing, construction, and manipulation
 - **`epsilon.lib.reader`** - Enhanced reader macros and syntax
 
-## System Layer (`epsilon.sys.*`)
+## System Utilities (`epsilon.sys.*`)
 
 ### Threading & Concurrency
 - **`epsilon.sys.thread`** - Threading primitives and thread pools
@@ -68,7 +68,7 @@ epsilon
 - **`epsilon.sys.package`** - Package utilities and introspection
 - **`epsilon.sys.asdf`** - ASDF integration (when available)
 
-## Network Layer (`epsilon.net.*`)
+## Network Protocols (`epsilon.net.*`)
 
 ### Core Networking
 - **`epsilon.net.core`** - Low-level networking primitives
