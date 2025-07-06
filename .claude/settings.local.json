@@ -32,7 +32,9 @@
       "Bash(../fake-bin/epsilon --eval \"(format t \"\"Symlink test: ~A~%\"\" (epsilon.lib.map:make-map :symlink-works t))\" --eval \"(sb-ext:quit)\")",
       "Bash(./scripts/generate-api-docs.sh:*)",
       "Bash(touch:*)",
-      "Bash(gh run list:*)"
+      "Bash(gh run list:*)",
+      "Bash(gh api:*)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": []
   }
