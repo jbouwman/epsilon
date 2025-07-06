@@ -26,8 +26,13 @@
     (nreverse entries))
   #+(or windows win32)
   ;; Windows implementation using directory()
-  (mapcar #'namestring
-          (directory (pathname (format nil "~a/*.*" dirpath)))))
+  (let ((pattern (if (and (> (length dirpath) 0)
+                          (char= (char dirpath (1- (length dirpath))) #\\))
+                     (concatenate 'string dirpath "*.*")
+                     (concatenate 'string dirpath "\\*.*"))))
+    (handler-case
+        (mapcar #'namestring (directory pattern))
+      (error () nil))))
 
 (defun list-dir (dir)
   (let (entries)
@@ -41,7 +46,7 @@
                    (push entry entries))))
           #+(or windows win32)
           (let ((path (pathname entry)))
-            (cond ((not (pathname-name path))  ; directory
+            (cond ((null (pathname-type path))  ; directory (no extension)
                    (setf entries (append entries (list-dir entry))))
                   (t  ; file
                    (push entry entries))))

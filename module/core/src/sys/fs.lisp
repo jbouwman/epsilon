@@ -139,13 +139,19 @@
         (sb-unix:unix-closedir dir nil))))
   #+(or windows win32)
   ;; Windows implementation using directory()
-  (dolist (entry (directory (pathname (format nil "~a/*.*" dirpath))))
-    (let ((name (file-namestring entry)))
-      (when (and (not (string= name "."))
-                 (not (string= name "..")))
-        (funcall f
-                 (uri:make-uri :scheme "file"
-                               :path (namestring entry)))))))
+  (let ((pattern (if (and (> (length dirpath) 0)
+                          (char= (char dirpath (1- (length dirpath))) #\\))
+                     (concatenate 'string dirpath "*.*")
+                     (concatenate 'string dirpath "\\*.*"))))
+    (handler-case
+        (dolist (entry (directory pattern))
+          (let ((name (file-namestring entry)))
+            (when (and (not (string= name "."))
+                       (not (string= name "..")))
+              (funcall f
+                       (uri:make-uri :scheme "file"
+                                     :path (namestring entry))))))
+      (error () nil))))
 
 (defun walk-uri (uri f &key (recursive t) (test (constantly t)))
   (%walk-dir (uri:path uri)
@@ -220,11 +226,17 @@
         (sb-unix:unix-closedir dir nil))))
   #+(or windows win32)
   ;; Windows implementation using directory()
-  (mapcar #'file-namestring
-          (remove-if (lambda (path)
-                       (let ((name (file-namestring path)))
-                         (or (string= name ".") (string= name ".."))))
-                     (directory (pathname (format nil "~a/*.*" directory))))))
+  (let ((pattern (if (and (> (length directory) 0)
+                          (char= (char directory (1- (length directory))) #\\))
+                     (concatenate 'string directory "*.*")
+                     (concatenate 'string directory "\\*.*"))))
+    (handler-case
+        (mapcar #'file-namestring
+                (remove-if (lambda (path)
+                             (let ((name (file-namestring path)))
+                               (or (string= name ".") (string= name ".."))))
+                           (directory pattern)))
+      (error () nil))))
 
 (defun symbolic-link-p (file)
   (eql :symlink (sb-impl::native-file-kind file)))
