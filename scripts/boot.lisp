@@ -98,12 +98,27 @@
 
 (defun ensure-target-dir (epsilon-dir source-path)
   "Simple core-only target directory creation"
-  (let* ((core-src-dir (concatenate 'string epsilon-dir "/module/core/src/"))
-         (relative-path (if (search core-src-dir source-path)
-                            (subseq source-path (length core-src-dir))
-                            (error "Source path ~A not under core module src" source-path)))
-         (fasl-path (format nil "~a/target/core/~a.fasl" 
-                            epsilon-dir
+  (let* ((abs-epsilon-dir (if (or (null epsilon-dir) (string= epsilon-dir "."))
+                              #+win32
+                              (namestring (truename "."))
+                              #-win32
+                              (namestring (truename "."))
+                              epsilon-dir))
+         (path-sep #+win32 "\\" #-win32 "/")
+         (core-src-dir (concatenate 'string abs-epsilon-dir path-sep "module" path-sep "core" path-sep "src" path-sep))
+         (normalized-source-path #+win32 
+                                 (substitute #\\ #\/ source-path)
+                                 #-win32
+                                 source-path)
+         (normalized-core-src-dir #+win32
+                                  (substitute #\\ #\/ core-src-dir)
+                                  #-win32
+                                  core-src-dir)
+         (relative-path (if (search normalized-core-src-dir normalized-source-path)
+                            (subseq normalized-source-path (length normalized-core-src-dir))
+                            (error "Source path ~A not under core module src ~A" normalized-source-path normalized-core-src-dir)))
+         (fasl-path (format nil "~a~atarget~acore~a~a.fasl" 
+                            abs-epsilon-dir path-sep path-sep path-sep
                             (subseq relative-path 0 (- (length relative-path) 5))))
          (dir-path (directory-namestring fasl-path)))
     (ensure-directories-exist dir-path)
@@ -134,9 +149,13 @@
 
 (defun boot (&key (epsilon-dir ".") (force nil))
   "Bootstrap core module only - standalone dependency resolution"
-  (let* ((core-src-dir (concatenate 'string epsilon-dir "/module/core/src"))
+  (let* ((abs-epsilon-dir (if (string= epsilon-dir ".")
+                              (namestring (truename "."))
+                              epsilon-dir))
+         (path-sep #+win32 "\\" #-win32 "/")
+         (core-src-dir (concatenate 'string abs-epsilon-dir path-sep "module" path-sep "core" path-sep "src"))
          (fasls '())
-         (cache (concatenate 'string epsilon-dir "/target/epsilon.fasl"))
+         (cache (concatenate 'string abs-epsilon-dir path-sep "target" path-sep "epsilon.fasl"))
          (sources (sort-dependent (remove-if #'null
                                             (mapcar #'get-source-info
                                                     (lisp-files core-src-dir))))))
@@ -147,7 +166,7 @@
       (return-from boot :cached))
     (dolist (source sources)
       (let* ((source-path (source-info-path source))
-             (fasl-path (ensure-target-dir epsilon-dir source-path)))
+             (fasl-path (ensure-target-dir abs-epsilon-dir source-path)))
         (compile-file source-path :output-file fasl-path
                                   :verbose t)
         (load fasl-path :verbose t)
