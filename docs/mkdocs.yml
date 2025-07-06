@@ -10,7 +10,6 @@ edit_uri: edit/main/docs/
 docs_dir: docs
 theme:
   name: material
-  custom_dir: overrides
   font:
     text: 'IBM Plex Mono'
     code: 'IBM Plex Mono'
