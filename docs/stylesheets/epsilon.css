@@ -1,0 +1,335 @@
+/* 
+ * Epsilon Documentation - Functional Programming Theme
+ * Inspired by technical documentation with Lisp-focused aesthetics
+ */
+
+:root {
+  /* Technical color palette - functional programming inspired */
+  --epsilon-grid-color: rgba(120, 144, 156, 0.08);
+  --epsilon-accent-orange: #ff6f00;
+  --epsilon-accent-blue: #1976d2;
+  --epsilon-accent-purple: #7b1fa2;
+  --epsilon-technical-gray: #37474f;
+  --epsilon-light-gray: #eceff1;
+  --epsilon-code-bg: #f8f9fa;
+  --epsilon-lisp-green: #2e7d32;
+  --epsilon-border: #cfd8dc;
+  
+  /* Precise spacing based on 8px grid */
+  --epsilon-unit: 8px;
+  --epsilon-unit-2: 16px;
+  --epsilon-unit-3: 24px;
+  --epsilon-unit-4: 32px;
+  --epsilon-unit-6: 48px;
+}
+
+/* Global typography - monospace for technical precision */
+.md-typeset {
+  font-family: 'IBM Plex Mono', 'Consolas', 'Monaco', monospace;
+  font-size: 14px;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
+}
+
+/* Subtle background grid - less prominent than aerospace theme */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: 
+    linear-gradient(var(--epsilon-grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--epsilon-grid-color) 1px, transparent 1px);
+  background-size: var(--epsilon-unit-3) var(--epsilon-unit-3);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Header - functional programming aesthetic */
+.md-header {
+  background: linear-gradient(135deg, #1a237e 0%, #283593 100%);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  border-bottom: 2px solid var(--epsilon-accent-purple);
+}
+
+.md-header__title {
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  font-size: 13px;
+}
+
+/* Navigation - clean functional style */
+.md-tabs {
+  background: transparent;
+  border-bottom: 1px solid var(--epsilon-border);
+}
+
+.md-tabs__item {
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+}
+
+.md-tabs__link--active {
+  border-bottom: 3px solid var(--epsilon-accent-purple);
+}
+
+/* Sidebar - technical documentation style */
+.md-sidebar {
+  background: var(--epsilon-light-gray);
+  border-right: 1px solid var(--epsilon-border);
+}
+
+.md-nav__title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--epsilon-technical-gray);
+  border-bottom: 1px solid var(--epsilon-border);
+  padding: var(--epsilon-unit-2);
+  margin: 0;
+  font-weight: 600;
+}
+
+.md-nav__link {
+  font-size: 12px;
+  padding: var(--epsilon-unit) var(--epsilon-unit-2);
+  border-radius: 0;
+}
+
+.md-nav__link--active {
+  background: linear-gradient(90deg, var(--epsilon-accent-purple) 3px, rgba(123, 31, 162, 0.1) 3px);
+  color: var(--epsilon-technical-gray);
+  font-weight: 500;
+}
+
+/* Content area - functional programming manual styling */
+.md-content {
+  margin: 0;
+}
+
+.md-content__inner {
+  margin: var(--epsilon-unit-3) var(--epsilon-unit-6);
+  max-width: none;
+}
+
+/* Headings - clean functional hierarchy */
+.md-typeset h1 {
+  font-size: 28px;
+  font-weight: 300;
+  letter-spacing: 0.02em;
+  border-bottom: 3px solid var(--epsilon-accent-purple);
+  padding-bottom: var(--epsilon-unit);
+  margin-bottom: var(--epsilon-unit-4);
+  color: var(--epsilon-technical-gray);
+}
+
+.md-typeset h2 {
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  color: var(--epsilon-technical-gray);
+  border-left: 4px solid var(--epsilon-accent-blue);
+  padding-left: var(--epsilon-unit-2);
+  margin-top: var(--epsilon-unit-6);
+  margin-bottom: var(--epsilon-unit-3);
+}
+
+.md-typeset h3 {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--epsilon-lisp-green);
+  margin-top: var(--epsilon-unit-4);
+  margin-bottom: var(--epsilon-unit-2);
+}
+
+.md-typeset h4, .md-typeset h5, .md-typeset h6 {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--epsilon-technical-gray);
+}
+
+/* Code blocks - Lisp-focused styling */
+.md-typeset pre {
+  background: var(--epsilon-code-bg);
+  border: 1px solid var(--epsilon-border);
+  border-left: 4px solid var(--epsilon-lisp-green);
+  margin: var(--epsilon-unit-3) 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.md-typeset code {
+  background: var(--epsilon-code-bg);
+  border: 1px solid var(--epsilon-border);
+  padding: 2px 6px;
+  font-size: 11px;
+  border-radius: 2px;
+  color: var(--epsilon-lisp-green);
+  font-weight: 500;
+}
+
+/* Special styling for Lisp code blocks */
+.md-typeset .language-lisp,
+.md-typeset .language-commonlisp {
+  border-left-color: var(--epsilon-lisp-green);
+  background: linear-gradient(to right, rgba(46, 125, 50, 0.02) 0%, var(--epsilon-code-bg) 4px);
+}
+
+/* Function signatures and special forms */
+.md-typeset code:has-text("defun"),
+.md-typeset code:has-text("defmacro"),
+.md-typeset code:has-text("defclass") {
+  color: var(--epsilon-accent-purple);
+  font-weight: 600;
+}
+
+/* Tables - data sheet styling */
+.md-typeset table {
+  border: 2px solid var(--epsilon-border);
+  font-size: 11px;
+  margin: var(--epsilon-unit-3) 0;
+}
+
+.md-typeset th {
+  background: var(--epsilon-technical-gray);
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+  padding: var(--epsilon-unit) var(--epsilon-unit-2);
+  border-bottom: 2px solid var(--epsilon-accent-purple);
+}
+
+.md-typeset td {
+  padding: var(--epsilon-unit) var(--epsilon-unit-2);
+  border-bottom: 1px solid var(--epsilon-border);
+}
+
+.md-typeset tr:nth-child(even) {
+  background: rgba(236, 239, 241, 0.3);
+}
+
+/* Admonitions - functional programming callouts */
+.md-typeset .admonition {
+  border: 1px solid var(--epsilon-border);
+  border-left: 4px solid var(--epsilon-accent-orange);
+  border-radius: 0;
+  margin: var(--epsilon-unit-3) 0;
+}
+
+.md-typeset .admonition.info {
+  border-left-color: var(--epsilon-accent-blue);
+}
+
+.md-typeset .admonition.tip {
+  border-left-color: var(--epsilon-lisp-green);
+}
+
+.md-typeset .admonition.warning {
+  border-left-color: var(--epsilon-accent-orange);
+}
+
+.md-typeset .admonition-title {
+  background: rgba(123, 31, 162, 0.05);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 600;
+  padding: var(--epsilon-unit) var(--epsilon-unit-2);
+  margin: 0;
+}
+
+/* Links - functional emphasis */
+.md-typeset a {
+  color: var(--epsilon-accent-blue);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s ease;
+}
+
+.md-typeset a:hover {
+  border-bottom-color: var(--epsilon-accent-blue);
+}
+
+/* Search - technical interface */
+.md-search__form {
+  background: var(--epsilon-light-gray);
+  border: 1px solid var(--epsilon-border);
+  border-radius: 0;
+}
+
+.md-search__input {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+}
+
+/* Footer - minimal technical */
+.md-footer {
+  background: var(--epsilon-technical-gray);
+  border-top: 2px solid var(--epsilon-accent-purple);
+  margin-top: var(--epsilon-unit-6);
+}
+
+.md-footer-meta {
+  background: #1a237e;
+}
+
+/* Special styling for package names and symbols */
+.md-typeset .package-name {
+  color: var(--epsilon-accent-purple);
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.md-typeset .symbol-name {
+  color: var(--epsilon-lisp-green);
+  font-weight: 500;
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.md-typeset .function-signature {
+  background: rgba(46, 125, 50, 0.05);
+  border-left: 3px solid var(--epsilon-lisp-green);
+  padding: var(--epsilon-unit-2);
+  margin: var(--epsilon-unit-2) 0;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+}
+
+/* Responsive adjustments */
+@media screen and (max-width: 76.1875em) {
+  .md-content__inner {
+    margin: var(--epsilon-unit-2) var(--epsilon-unit-3);
+  }
+  
+  body::before {
+    background-size: var(--epsilon-unit-2) var(--epsilon-unit-2);
+  }
+}
+
+/* Print styles - technical documentation */
+@media print {
+  body::before {
+    display: none;
+  }
+  
+  .md-typeset {
+    font-size: 10px;
+  }
+  
+  .md-typeset h1 {
+    font-size: 16px;
+    page-break-after: avoid;
+  }
+  
+  .md-typeset h2 {
+    font-size: 14px;
+    page-break-after: avoid;
+  }
+}

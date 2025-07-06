@@ -1,0 +1,142 @@
+site_name: Epsilon
+site_description: Epsilon Environment - Technical Documentation
+site_author: Jesse Bouwman
+site_url: https://jbouwman.github.io/epsilon/
+
+repo_name: epsilon
+repo_url: https://github.com/jbouwman/epsilon
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+theme:
+  name: material
+  custom_dir: overrides
+  font:
+    text: 'IBM Plex Mono'
+    code: 'IBM Plex Mono'
+  palette:
+    # Light mode - technical documentation
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue grey
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode - terminal aesthetic
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue grey
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - toc.integrate
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - content.tabs.link
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+extra_css:
+  - stylesheets/epsilon.css
+
+extra_javascript:
+  - javascripts/lisp.js
+
+plugins:
+  - search:
+      lang: en
+  - mermaid2:
+      version: 10.4.0
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      use_pygments: true
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid
+  - pymdownx.tabbed:
+      alternate_style: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+  - pymdownx.details
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.tilde
+  - admonition
+  - tables
+  - attr_list
+  - md_in_html
+  - def_list
+  - footnotes
+  - toc:
+      permalink: "¶"
+      toc_depth: 3
+
+nav:
+  - Overview:
+    - Home: index.md
+    - Architecture: architecture.md
+    - Getting Started: getting-started.md
+    - Installation: installation.md
+  - Core Library:
+    - Data Structures: core/data-structures.md
+    - Sequences & Maps: core/sequences-maps.md
+    - JSON & YAML: core/json-yaml.md
+    - Cryptography: core/cryptography.md
+    - String Processing: core/strings.md
+  - System Layer:
+    - Threading: system/threading.md
+    - Filesystem: system/filesystem.md
+    - Environment: system/environment.md
+    - Error Handling: system/errors.md
+  - Network:
+    - HTTP Client/Server: network/http.md
+    - TLS Support: network/tls.md
+    - Network Primitives: network/primitives.md
+  - Development Tools:
+    - Build System: tools/build.md
+    - Test Framework: tools/testing.md
+    - Benchmarks: tools/benchmarks.md
+    - Code Formatting: tools/formatting.md
+  - Roadmaps:
+    - Overview: roadmaps.md
+    - LSP Implementation: roadmaps/001_lsp.md
+    - Testing Framework: roadmaps/002_testing_framework.md
+    - Interactive Development: roadmaps/003_interactive_development.md
+    - Module System: roadmaps/004_module_system.md
+  - Reference:
+    - API Documentation: reference/api.md
+    - Package Index: reference/packages.md
+    - Examples: reference/examples.md
+
+extra:
+  version:
+    provider: mike
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/jbouwman/epsilon
+      name: Epsilon on GitHub
+  generator: false
+
+copyright: >
+  Copyright &copy; 2025 Jesse Bouwman –
+  <a href="#__consent">Change cookie settings</a>
