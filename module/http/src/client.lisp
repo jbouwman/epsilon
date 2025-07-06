@@ -26,7 +26,7 @@
 
 (defun make-http-connection (host port &key ssl-p)
   "Create an HTTP connection using platform-specific epsilon.net"
-  (let ((socket (net:connect host port)))
+  (let ((socket (net:socket-connect host port)))
     (make-instance 'http-connection
                    :socket socket
                    :host host
@@ -39,7 +39,7 @@
      (unwind-protect
           (progn ,@body)
        (when (connection-socket ,conn)
-         (net:close (connection-socket ,conn))))))
+         (net:socket-close (connection-socket ,conn))))))
 
 (defun parse-url (url-string)
   "Parse URL into components"
@@ -62,8 +62,18 @@
   "Format HTTP headers"
   (with-output-to-string (s)
     (map:each (lambda (k v)
-                (format s "~A: ~A~%" k v))
+                (format s "~A: ~A~C~C" k v #\Return #\Linefeed))
               headers)))
+
+(defun extract-content-length (headers-text)
+  "Extract Content-Length from headers text"
+  (let ((start (search "Content-Length:" headers-text :test #'char-equal)))
+    (when start
+      (let* ((line-start (+ start 15)) ; length of "Content-Length:"
+             (line-end (or (position #\Linefeed headers-text :start line-start)
+                           (length headers-text)))
+             (length-str (str:trim (subseq headers-text line-start line-end))))
+        (ignore-errors (parse-integer length-str))))))
 
 (defun send-request (connection method path &key headers body query)
   "Send HTTP request over connection"
@@ -78,21 +88,36 @@
                                        "Content-Length" 
                                        (length body))
                             all-headers))
-         (request (format nil "~A~%~A~%~@[~A~]"
-                          request-line
-                          (format-headers final-headers)
+         (request (format nil "~A~C~C~A~C~C~@[~A~]"
+                          request-line #\Return #\Linefeed
+                          (format-headers final-headers) #\Return #\Linefeed
                           body)))
-    (net:write (connection-socket connection) 
-               (str:to-octets request))))
+    (let ((stream (net:socket-stream (connection-socket connection))))
+      (write-string request stream)
+      (force-output stream))))
 
 (defun read-response (connection)
   "Read HTTP response from connection"
-  (let ((response-data (net:read-all (connection-socket connection))))
-    (parse-response (str:from-octets response-data))))
+  (let* ((stream (net:socket-stream (connection-socket connection)))
+         (response-lines '())
+         (line nil))
+    ;; Read status line and headers
+    (loop while (setf line (read-line stream nil nil))
+          do (push line response-lines)
+          when (string= line "") do (return))
+    ;; Try to read body based on Content-Length header
+    (let* ((headers-text (str:join (reverse response-lines) (string #\Linefeed)))
+           (content-length (extract-content-length headers-text))
+           (body (when (and content-length (> content-length 0))
+                   (let ((buffer (make-string content-length)))
+                     (read-sequence buffer stream)
+                     buffer)))
+           (response-text (format nil "~A~@[~A~]" headers-text body)))
+      (parse-response response-text))))
 
 (defun parse-response (response-string)
   "Parse HTTP response into status, headers, and body"
-  (let* ((lines (str:split response-string #\Newline))
+  (let* ((lines (str:split response-string #\Linefeed))
          (status-line (first lines))
          (status-parts (str:split status-line #\Space))
          (status-code (parse-integer (second status-parts)))
@@ -103,7 +128,7 @@
     (loop for i from 1 below (length lines)
           for line = (nth i lines)
           do (cond
-               ((string= line "")
+               ((or (string= line "") (string= line (string #\Return)))
                 (setf body-start (1+ i))
                 (return))
                (t
@@ -116,7 +141,7 @@
     ;; Extract body
     (let ((body (when body-start
                   (str:join (subseq lines body-start) 
-                            (string #\Newline)))))
+                            (string #\Linefeed)))))
       (values status-code headers body))))
 
 (defun request (url &key (method "GET") headers body)

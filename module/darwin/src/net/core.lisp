@@ -1,7 +1,7 @@
 (defpackage #:epsilon.net
   (:use #:cl)
   (:local-nicknames
-   (#:kqueue #:epsilon.sys.kqueue)
+   (#:kqueue #:epsilon.kqueue)
    (#:lib #:epsilon.sys.lib))
   (:shadow #:listen #:close)
   (:export
@@ -269,7 +269,7 @@
         
         ;; Close kqueue if it's a listener
         (when (and (typep socket 'listener) (listener-kqueue socket))
-          (kqueue:close-kqueue (listener-kqueue socket)))
+          (kqueue:kqueue-close (listener-kqueue socket)))
         
         ;; Close the socket
         (close-socket (socket-handle socket)))
