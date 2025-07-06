@@ -65,8 +65,12 @@ jobs:
       id: cache-sbcl
       uses: actions/cache@v4
       with:
-        path: /opt/homebrew/bin/sbcl
-        key: ${{ runner.os }}-sbcl-${{ hashFiles('**/Brewfile', '**/package.json') }}
+        path: |
+          /opt/homebrew/bin/sbcl
+          /opt/homebrew/lib/sbcl
+          /usr/local/bin/sbcl
+          /usr/local/lib/sbcl
+        key: ${{ runner.os }}-sbcl-${{ hashFiles('.github/workflows/ci.yml') }}
         restore-keys: |
           ${{ runner.os }}-sbcl-
 
