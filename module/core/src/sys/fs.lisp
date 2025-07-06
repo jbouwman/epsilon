@@ -52,6 +52,9 @@
 (in-package :epsilon.sys.fs)
 
 (defun parent (file)
+  #+win32
+  (str:join #\\ (butlast (str:split #\\ file)))
+  #-win32
   (str:join #\/ (butlast (str:split #\/ file))))
 
 (defun runtime-dir ()
@@ -59,14 +62,22 @@
 
 (defun temp-dir ()
   "Return a default directory to use for temporary files"
+  #+win32
+  (or (env:getenv "TEMP")
+      (env:getenv "TMP")
+      "C:\\Windows\\Temp")
+  #-win32
   (env:getenv "TMPDIR"))
 
 (defun home-dir ()
-  #+(or linux darwin)
-  (sb-unix:uid-homedir (sb-unix:unix-getuid))
-  #+(or windows win32)
-  (or (env:getenv "USERPROFILE") 
-      (str:concat (env:getenv "HOMEDRIVE") (env:getenv "HOMEPATH"))))
+  #+win32
+  (or (env:getenv "USERPROFILE")
+      (let ((homedrive (env:getenv "HOMEDRIVE"))
+            (homepath (env:getenv "HOMEPATH")))
+        (when (and homedrive homepath)
+          (concatenate 'string homedrive homepath))))
+  #-win32
+  (sb-unix:uid-homedir (sb-unix:unix-getuid)))
 
 (defmacro with-temp-file ((name) &body body)
   `(let ((,name (str:concat
@@ -80,44 +91,90 @@
          (delete-file* ,name)))))
 
 (defun file-info (path)
+  #+win32
+  ;; On Windows, use probe-file for basic info
+  (when (probe-file path)
+    ;; Return a minimal structure that mimics posix stat
+    ;; This is a simplified approach - a full implementation would use Win32 API
+    path)
+  #-win32
   (sb-posix:stat path))
 
 (defun dir-p (path)
+  #+win32
+  (let ((truename (probe-file path)))
+    (and truename
+         (null (pathname-name truename))
+         (null (pathname-type truename))))
+  #-win32
   (handler-case
       (sb-posix:s-isdir (sb-posix:stat-mode (sb-posix:stat path)))
     (sb-posix:syscall-error ()
       nil)))
 
 (defun file-p (path)
+  #+win32
+  (let ((truename (probe-file path)))
+    (and truename
+         (or (pathname-name truename)
+             (pathname-type truename))))
+  #-win32
   (handler-case
       (sb-posix:s-isreg (sb-posix:stat-mode (sb-posix:stat path)))
     (sb-posix:syscall-error ()
       nil)))
 
 (defun file-info-type (stat)
+  #+win32
+  (cond ((dir-p stat) :directory)
+        ((file-p stat) :file)
+        (t nil))
+  #-win32
   (cond ((sb-posix:s-isreg (sb-posix:stat-mode stat)) :file)
         ((sb-posix:s-isdir (sb-posix:stat-mode stat)) :directory)
         ((sb-posix:s-islnk (sb-posix:stat-mode stat)) :link)))
 
 (defun file-info-size (stat)
+  #+win32
+  (with-open-file (stream stat :element-type '(unsigned-byte 8))
+    (file-length stream))
+  #-win32
   (sb-posix:stat-size stat))
 
 (defun file-info-mtime (stat)
+  #+win32
+  (file-write-date stat)
+  #-win32
   (sb-posix:stat-mtime stat))
 
 (defun file-info-atime (stat)
+  #+win32
+  (file-write-date stat)  ; Windows doesn't easily expose access time
+  #-win32
   (sb-posix:stat-atime stat))
 
 (defun file-info-ctime (stat)
+  #+win32
+  (file-write-date stat)  ; Windows doesn't have ctime in the same way
+  #-win32
   (sb-posix:stat-ctime stat))
 
 (defun file-info-mode (stat)
+  #+win32
+  #o644  ; Default permissions on Windows
+  #-win32
   (sb-posix:stat-mode stat))
 
 (defun file-info-uid (stat)
+  #+win32
+  0  ; No UID concept on Windows
+  #-win32
   (sb-posix:stat-uid stat))
 
 (defun file-info-gid (stat)
+  #+win32
+  0  ; No GID concept on Windows
+  #-win32
   (sb-posix:stat-gid stat))
 
 (defun %walk-dir (dirpath f)
@@ -137,7 +194,7 @@
                                                 :path (format nil "~a/~a" dirpath name))))))
       (when dir
         (sb-unix:unix-closedir dir nil))))
-  #+(or windows win32)
+  #+win32
   ;; Windows implementation using directory()
   (let ((pattern (if (and (> (length dirpath) 0)
                           (char= (char dirpath (1- (length dirpath))) #\\))
@@ -189,7 +246,7 @@
             (unless (probe-file path)
               #+(or linux darwin)
               (sb-unix:unix-mkdir path #o775)
-              #+(or windows win32)
+              #+win32
               (ensure-directories-exist (pathname path)))))
   
 (defun list-files (uri extension)
@@ -224,7 +281,7 @@
                      :collect name)))
       (when dir
         (sb-unix:unix-closedir dir nil))))
-  #+(or windows win32)
+  #+win32
   ;; Windows implementation using directory()
   (let ((pattern (if (and (> (length directory) 0)
                           (char= (char directory (1- (length directory))) #\\))
@@ -239,9 +296,15 @@
       (error () nil))))
 
 (defun symbolic-link-p (file)
+  #+win32
+  nil  ; Windows symbolic links need special handling
+  #-win32
   (eql :symlink (sb-impl::native-file-kind file)))
 
 (defun create-symbolic-link (link-file destination-file)
+  #+win32
+  (error "Symbolic links not yet implemented on Windows")
+  #-win32
   (sb-posix:symlink destination-file link-file))
 
 (defun delete-directory (file)
@@ -283,6 +346,9 @@
 
 (defun modification-time (path)
   "Return the modification time of the file at PATH as a universal time."
+  #+win32
+  (file-write-date path)
+  #-win32
   (handler-case
       (file-info-mtime (sb-posix:stat path))
     (sb-posix:syscall-error ()

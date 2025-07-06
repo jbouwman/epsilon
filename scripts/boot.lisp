@@ -10,8 +10,16 @@
 (require :sb-bsd-sockets)
 (require :sb-rotate-byte)
 
+#+win32
 (defun %list-dir (dirpath)
-  #+(or linux darwin)
+  (let ((pattern (if (and (> (length dirpath) 0)
+                          (char= (char dirpath (1- (length dirpath))) #\\))
+                     (concatenate 'string dirpath "*.*")
+                     (concatenate 'string dirpath "\\*.*"))))
+    (mapcar #'namestring (directory pattern))))
+
+#-win32
+(defun %list-dir (dirpath)
   (let (dir entries)
     (unwind-protect
          (progn
@@ -25,39 +33,18 @@
                      do (push (format nil "~a/~a" dirpath name) entries))))
       (when dir
         (sb-unix:unix-closedir dir nil)))
-    (nreverse entries))
-  #+(or windows win32)
-  ;; Windows implementation using directory()
-  (let ((pattern (if (and (> (length dirpath) 0)
-                          (char= (char dirpath (1- (length dirpath))) #\\))
-                     (concatenate 'string dirpath "*.*")
-                     (concatenate 'string dirpath "\\*.*"))))
-    (handler-case
-        (mapcar #'namestring (directory pattern))
-      (error () nil))))
+    (nreverse entries)))
+
+(defun dir-p (filespec)
+  (null (pathname-type (pathname filespec))))
 
 (defun list-dir (dir)
   (let (entries)
     (dolist (entry (%list-dir dir))
-      (handler-case
-          #+(or linux darwin)
-          (let ((mode (sb-posix:stat-mode (sb-posix:stat entry))))
-            (cond ((sb-posix:s-isdir mode)
-                   (setf entries (append entries (list-dir entry))))
-                  ((sb-posix:s-isreg mode)
-                   (push entry entries))))
-          #+(or windows win32)
-          (let ((path (pathname entry)))
-            (cond ((null (pathname-type path))  ; directory (no extension)
-                   (setf entries (append entries (list-dir entry))))
-                  (t  ; file
-                   (push entry entries))))
-        #+(or linux darwin)
-        (sb-posix:syscall-error ()
-          nil)
-        #+(or windows win32)
-        (error ()
-          nil)))
+      (cond ((dir-p entry)
+             (setf entries (append entries (list-dir entry))))
+            (t  ; file
+             (push entry entries))))
     entries))
 
 (defun ends-with-p (seq suffix &key (test #'char-equal))
@@ -111,12 +98,29 @@
 
 (defun ensure-target-dir (epsilon-dir source-path)
   "Simple core-only target directory creation"
-  (let* ((core-src-dir (concatenate 'string epsilon-dir "/module/core/src/"))
-         (relative-path (if (search core-src-dir source-path)
-                            (subseq source-path (length core-src-dir))
-                            (error "Source path ~A not under core module src" source-path)))
-         (fasl-path (format nil "~a/target/core/~a.fasl" 
-                            epsilon-dir
+  (let* ((abs-epsilon-dir (if (or (null epsilon-dir) (string= epsilon-dir "."))
+                              #+win32
+                              (directory-namestring (truename "."))
+                              #-win32
+                              (directory-namestring (truename "."))
+                              (if (ends-with-p epsilon-dir #+win32 "\\" #-win32 "/")
+                                  epsilon-dir
+                                  (concatenate 'string epsilon-dir #+win32 "\\" #-win32 "/"))))
+         (path-sep #+win32 "\\" #-win32 "/")
+         (core-src-dir (concatenate 'string abs-epsilon-dir "module" path-sep "core" path-sep "src" path-sep))
+         (normalized-source-path #+win32 
+                                 (substitute #\\ #\/ source-path)
+                                 #-win32
+                                 source-path)
+         (normalized-core-src-dir #+win32
+                                  (substitute #\\ #\/ core-src-dir)
+                                  #-win32
+                                  core-src-dir)
+         (relative-path (if (search normalized-core-src-dir normalized-source-path)
+                            (subseq normalized-source-path (length normalized-core-src-dir))
+                            (error "Source path ~A not under core module src ~A" normalized-source-path normalized-core-src-dir)))
+         (fasl-path (format nil "~atarget~acore~a~a.fasl" 
+                            abs-epsilon-dir path-sep path-sep
                             (subseq relative-path 0 (- (length relative-path) 5))))
          (dir-path (directory-namestring fasl-path)))
     (ensure-directories-exist dir-path)
@@ -147,9 +151,15 @@
 
 (defun boot (&key (epsilon-dir ".") (force nil))
   "Bootstrap core module only - standalone dependency resolution"
-  (let* ((core-src-dir (concatenate 'string epsilon-dir "/module/core/src"))
+  (let* ((abs-epsilon-dir (if (string= epsilon-dir ".")
+                              (directory-namestring (truename "."))
+                              (if (ends-with-p epsilon-dir #+win32 "\\" #-win32 "/")
+                                  epsilon-dir
+                                  (concatenate 'string epsilon-dir #+win32 "\\" #-win32 "/"))))
+         (path-sep #+win32 "\\" #-win32 "/")
+         (core-src-dir (concatenate 'string abs-epsilon-dir "module" path-sep "core" path-sep "src"))
          (fasls '())
-         (cache (concatenate 'string epsilon-dir "/target/epsilon.fasl"))
+         (cache (concatenate 'string abs-epsilon-dir "target" path-sep "epsilon.fasl"))
          (sources (sort-dependent (remove-if #'null
                                             (mapcar #'get-source-info
                                                     (lisp-files core-src-dir))))))
@@ -160,12 +170,10 @@
       (return-from boot :cached))
     (dolist (source sources)
       (let* ((source-path (source-info-path source))
-             (fasl-path (ensure-target-dir epsilon-dir source-path)))
+             (fasl-path (ensure-target-dir abs-epsilon-dir source-path)))
         (compile-file source-path :output-file fasl-path
                                   :verbose t)
         (load fasl-path :verbose t)
         (push fasl-path fasls)))
     (concatenate-fasls (reverse fasls) cache)
     :built))
-
-  

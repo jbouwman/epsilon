@@ -35,6 +35,9 @@
     ;; Then run tests
     (let ((result (apply #'test:run test-args)))
       (unless (test:success-p result)
+        #+win32
+        (sb-ext:exit :code 1)
+        #-win32
         (sb-posix:exit 1)))))
 
 (defun run-benchmark (&rest args)
