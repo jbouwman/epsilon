@@ -1,5 +1,15 @@
 # Development Transcript
 
+## 2025-07-06: Documentation Cleanup and Async Networking Roadmap
+
+- Renamed `architecture.md` to `introduction.md` and simplified content
+- Removed promotional language and repetitive content from documentation
+- Consolidated navigation structure to have fewer major sections
+- Created proper `installation.md` file consolidating all installation info
+- Updated `getting-started.md` to focus on usage after installation
+- Created roadmap 005 for async networking with platform-specific implementations
+- Simplified documentation to use factual, technical language
+
 ## Binary I/O Modernization Proposal
 
 **Date**: 2025-07-01

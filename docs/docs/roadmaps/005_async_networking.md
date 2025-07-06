@@ -1,27 +1,27 @@
 # Roadmap 005: Per-Platform Async Network Stacks
 
-**Status**: Planning | **Timeline**: 12-16 weeks | **Priority**: Medium
+**Status**: Planning | **Timeline**: 12-16 weeks
 
 ## Overview
 
-Implementation of high-performance async networking with platform-specific event loops optimized for each operating system. This initiative provides the foundation for building simple, reliable, and scalable network servers in Common Lisp.
+Platform-specific async networking implementation using native event loops (kqueue, epoll, IOCP).
 
-**Platform Development Order**: macOS → Linux → Windows
+**Development Order**: macOS → Linux → Windows
 
 ## Goals
 
-### Primary Objectives
-- **Performance**: Sub-millisecond latency for local connections
-- **Scalability**: Support 10,000+ concurrent connections per server
-- **Reliability**: Robust error handling and graceful degradation
-- **Simplicity**: Clean APIs that make network programming approachable
+- Sub-millisecond latency for local connections
+- Support 10,000+ concurrent connections
+- Error handling and connection management
+- Clean API design
 
-### Technical Scope
-- Async TCP/UDP sockets with platform-optimized event loops
-- HTTP/1.1 and HTTP/2 client and server implementations
-- TLS/SSL encryption with modern cipher suites
-- WebSocket support for real-time communication
-- Connection pooling and resource management
+## Technical Scope
+
+- Async TCP/UDP sockets with platform event loops
+- HTTP/1.1 and HTTP/2 client and server
+- TLS/SSL encryption
+- WebSocket support
+- Connection pooling
 
 ## Platform Implementations
 
@@ -29,7 +29,7 @@ Implementation of high-performance async networking with platform-specific event
 **Event Loop**: kqueue-based async I/O
 
 **Core Components**:
-- `epsilon.net.darwin` - macOS-specific networking layer
+- `epsilon.net.darwin` - macOS-specific networking implementation
 - kqueue integration for efficient event monitoring
 - TCP/UDP socket abstractions
 - Non-blocking I/O primitives
@@ -44,7 +44,7 @@ Implementation of high-performance async networking with platform-specific event
 **Event Loop**: epoll-based async I/O
 
 **Core Components**:
-- `epsilon.net.linux` - Linux-specific networking layer
+- `epsilon.net.linux` - Linux-specific networking implementation
 - epoll integration for high-performance event handling
 - Advanced socket options (SO_REUSEPORT, TCP_NODELAY)
 - Edge-triggered and level-triggered modes
@@ -59,7 +59,7 @@ Implementation of high-performance async networking with platform-specific event
 **Event Loop**: IOCP-based async I/O
 
 **Core Components**:
-- `epsilon.net.windows` - Windows-specific networking layer
+- `epsilon.net.windows` - Windows-specific networking implementation
 - I/O Completion Port integration
 - Windows-specific socket handling
 - Overlapped I/O for maximum throughput
@@ -188,7 +188,7 @@ Implementation of high-performance async networking with platform-specific event
    (body :accessor response-body)))
 ```
 
-### Platform Abstraction Layer
+### Platform Abstraction
 - Common API across all platforms
 - Platform-specific optimizations hidden behind abstractions
 - Graceful fallback to blocking I/O when async unavailable
@@ -240,7 +240,7 @@ Implementation of high-performance async networking with platform-specific event
 ## Migration Path
 
 ### From sb-bsd-sockets
-- Gradual API migration with compatibility layer
+- Gradual API migration with compatibility interface
 - Performance comparison and optimization
 - Documentation for porting existing code
 - Examples showing before/after implementations
@@ -253,23 +253,11 @@ Implementation of high-performance async networking with platform-specific event
 
 ## Success Metrics
 
-### Technical Excellence
-- **Benchmark Performance**: Top 10% vs other Lisp HTTP servers
-- **Test Coverage**: >95% for core networking functionality
-- **Documentation**: Complete API documentation with examples
-- **Stability**: 99.9% uptime in production scenarios
-
-### Developer Experience
-- **Getting Started**: Working HTTP server in <10 lines of code
-- **Learning Curve**: Familiar patterns for existing Lisp developers
-- **Debugging**: Clear error messages and diagnostic tools
-- **Community**: Active adoption and positive feedback
-
-### Real-world Usage
-- **Production Deployments**: At least 3 organizations using in production
-- **Performance**: Demonstrable improvement over existing solutions
-- **Ecosystem**: Integration with common Lisp web frameworks
-- **Maintenance**: Sustainable development and support model
+- Benchmark performance in top 10% of Lisp HTTP servers
+- Test coverage >95% for core networking
+- Complete API documentation
+- HTTP server in <10 lines of code
+- Production deployments at 3+ organizations
 
 ## Implementation Phases
 
@@ -313,7 +301,7 @@ Implementation of high-performance async networking with platform-specific event
 ## Risk Mitigation
 
 ### Technical Risks
-- **Platform Differences**: Extensive testing and abstraction layers
+- **Platform Differences**: Extensive testing and abstraction interfaces
 - **Performance Bottlenecks**: Continuous profiling and optimization
 - **TLS Complexity**: Leverage existing proven libraries
 - **HTTP/2 Complexity**: Incremental implementation with thorough testing
