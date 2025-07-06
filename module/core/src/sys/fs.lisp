@@ -62,7 +62,11 @@
   (env:getenv "TMPDIR"))
 
 (defun home-dir ()
-  (sb-unix:uid-homedir (sb-unix:unix-getuid)))
+  #+(or linux darwin)
+  (sb-unix:uid-homedir (sb-unix:unix-getuid))
+  #+(or windows win32)
+  (or (env:getenv "USERPROFILE") 
+      (str:concat (env:getenv "HOMEDRIVE") (env:getenv "HOMEPATH"))))
 
 (defmacro with-temp-file ((name) &body body)
   `(let ((,name (str:concat
@@ -117,6 +121,7 @@
   (sb-posix:stat-gid stat))
 
 (defun %walk-dir (dirpath f)
+  #+(or linux darwin)
   (let (dir)
     (unwind-protect
          (progn
@@ -131,7 +136,22 @@
                                   (uri:make-uri :scheme "file"
                                                 :path (format nil "~a/~a" dirpath name))))))
       (when dir
-        (sb-unix:unix-closedir dir nil)))))
+        (sb-unix:unix-closedir dir nil))))
+  #+(or windows win32)
+  ;; Windows implementation using directory()
+  (let ((pattern (if (and (> (length dirpath) 0)
+                          (char= (char dirpath (1- (length dirpath))) #\\))
+                     (concatenate 'string dirpath "*.*")
+                     (concatenate 'string dirpath "\\*.*"))))
+    (handler-case
+        (dolist (entry (directory pattern))
+          (let ((name (file-namestring entry)))
+            (when (and (not (string= name "."))
+                       (not (string= name "..")))
+              (funcall f
+                       (uri:make-uri :scheme "file"
+                                     :path (namestring entry))))))
+      (error () nil))))
 
 (defun walk-uri (uri f &key (recursive t) (test (constantly t)))
   (%walk-dir (uri:path uri)
@@ -167,7 +187,10 @@
                                                    (uri:path uri))))
         :do (setf path (format nil "~a/~a" path component))
             (unless (probe-file path)
-              (sb-unix:unix-mkdir path #o775))))
+              #+(or linux darwin)
+              (sb-unix:unix-mkdir path #o775)
+              #+(or windows win32)
+              (ensure-directories-exist (pathname path)))))
   
 (defun list-files (uri extension)
   (let (files)
@@ -187,6 +210,7 @@
   (apply #'directory directory :resolve-symlinks NIL args))
 
 (defun list-dir (directory)
+  #+(or linux darwin)
   (let (dir)
     (unwind-protect
          (progn
@@ -199,7 +223,20 @@
                               (not (string= name "..")))
                      :collect name)))
       (when dir
-        (sb-unix:unix-closedir dir nil)))))
+        (sb-unix:unix-closedir dir nil))))
+  #+(or windows win32)
+  ;; Windows implementation using directory()
+  (let ((pattern (if (and (> (length directory) 0)
+                          (char= (char directory (1- (length directory))) #\\))
+                     (concatenate 'string directory "*.*")
+                     (concatenate 'string directory "\\*.*"))))
+    (handler-case
+        (mapcar #'file-namestring
+                (remove-if (lambda (path)
+                             (let ((name (file-namestring path)))
+                               (or (string= name ".") (string= name ".."))))
+                           (directory pattern)))
+      (error () nil))))
 
 (defun symbolic-link-p (file)
   (eql :symlink (sb-impl::native-file-kind file)))
