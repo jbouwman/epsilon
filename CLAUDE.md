@@ -110,3 +110,69 @@ Packages follow the pattern `epsilon.{module}.{submodule}` with hierarchical org
 
 ## Documentation Workflow
 - Write little summaries of the things I ask for in docs/transcript.md
+
+## Build System Improvements
+- The boot process now logs compilation output to `target/boot.log` with progress reporting
+- Build system shows progress as `[current/total]` for all compilation steps  
+- Test registry properly initializes on demand to avoid stale metadata issues
+- Build process is fully idempotent - can run `git clean -dxf` and rebuild from scratch
+
+## Logging System (`epsilon.lib.log`)
+- Powerful hierarchical logging facility with level-based filtering
+- Support for structured logging with key-value context
+- Multiple appenders: console, file with different formatters (simple, detailed, JSON)
+- Wildcard pattern matching for logger configuration
+- Thread-safe with proper inheritance from parent loggers
+- Performance-optimized macros that avoid evaluation when logging is disabled
+
+### Logging Configuration
+Configure logging via command line:
+```bash
+./run.sh --log 'debug:epsilon.lib.*,trace:epsilon.lib.yaml,info:epsilon.tool.*' test --module epsilon.core
+```
+
+## Advanced Argument Parsing
+The development tool now supports sophisticated argument parsing:
+
+### Global Options (before command)
+- `--log SPEC` - Configure logging with wildcard patterns
+- `--verbose` - Enable debug logging  
+- `--quiet` - Only show warnings and errors
+
+### Enhanced Commands
+
+**Build Command:**
+```bash
+./run.sh build --module epsilon.core
+```
+
+**Test Command (with powerful filtering):**
+```bash
+# Test multiple modules
+./run.sh test --module 'epsilon.core,lsp,http'
+
+# Filter tests by name pattern (supports wildcards)
+./run.sh test --module epsilon.core --test 'parse-*'
+
+# Filter by package pattern  
+./run.sh test --module epsilon.core --package 'epsilon.lib.yaml*'
+
+# Multiple output formats
+./run.sh test --module epsilon.core --format junit --file results.xml
+```
+
+**Benchmark Command:**
+```bash
+# Run specific benchmark suite
+./run.sh benchmark --suite msgpack
+
+# Run multiple specific benchmarks
+./run.sh benchmark --benchmarks 'string-concat,arithmetic'
+```
+
+### Combined Example
+```bash
+./run.sh --log 'debug:epsilon.lib.*,trace:epsilon.tool.test' test --module 'epsilon.core,lsp' --test 'parse-yaml-*' --format detailed
+```
+
+This provides extremely precise diagnostic capabilities for troubleshooting issues.

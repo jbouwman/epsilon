@@ -19,6 +19,8 @@
    :strip
    :strip-left
    :strip-right
+   :contains-p
+   :trim
    ;; Character classification
    :digit-char-p
    :word-char-p
@@ -193,3 +195,11 @@ match [\\s] in Perl."
         (replace result-string string :start1 curr-pos)
         (incf curr-pos (length string)))
       result-string)))
+
+(defun contains-p (haystack needle &key (test #'char=))
+  "Returns true if HAYSTACK contains NEEDLE."
+  (and (search needle haystack :test test) t))
+
+(defun trim (string &optional (char-bag +whitespace-char-string+))
+  "Remove whitespace (or CHAR-BAG characters) from both ends of STRING."
+  (string-trim char-bag string))

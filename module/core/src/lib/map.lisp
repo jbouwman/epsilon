@@ -23,6 +23,7 @@
    :difference
    :dissoc
    :dissoc!
+   :each
    :enable-syntax
    :filter
    :from-pairs
@@ -452,6 +453,16 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
             (assoc result k (funcall fn v)))
           map
           +empty+))
+
+(defun each (fn map)
+  "Apply FN to each key-value pair in MAP for side effects. 
+   FN should take two arguments: key and value. Returns nil."
+  (reduce (lambda (acc k v)
+            (declare (ignore acc))
+            (funcall fn k v)
+            nil)
+          map
+          nil))
 
 (defun select-keys (map keys)
   "Return a new map containing only the specified keys"

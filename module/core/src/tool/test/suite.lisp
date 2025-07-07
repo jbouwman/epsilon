@@ -32,7 +32,10 @@
    failures
    skipped
    list-suites
-   suite-tests))
+   suite-tests
+   ensure-test-root
+   clear-tests
+   list-available-packages))
 
 (in-package epsilon.tool.test.suite)
 
@@ -52,7 +55,19 @@
 (defclass test-root (test-node)
   ())
 
-(defvar *test-root* (make-instance 'test-root))
+(defvar *test-root* nil
+  "Global test root. Initialized on first use.")
+
+(defun ensure-test-root ()
+  "Ensure *test-root* is properly initialized"
+  (unless *test-root*
+    (setf *test-root* (make-instance 'test-root)))
+  *test-root*)
+
+(defun clear-tests ()
+  "Clear all registered tests. Useful for testing or reloading."
+  (setf *test-root* nil)
+  (ensure-test-root))
 
 (defclass test-metadata ()
   ((symbol :initarg :symbol
@@ -87,7 +102,7 @@ Returns the leaf node for package-name."
                     (map:assoc! (children-of current-node) name existing))
                   existing))
               (pkg:parse package-name)
-              :initial-value *test-root*))
+              :initial-value (ensure-test-root)))
 
 ;;; Metric collection
 
@@ -141,8 +156,8 @@ Returns the leaf node for package-name."
    (tests :initform map:+empty+
           :accessor tests)
    (reporter :initarg :reporter
-              :initform (error "specify test reporter")
-              :reader reporter)
+             :initform (error "specify test reporter")
+             :reader reporter)
    (max-failures :initform 10
                  :accessor max-failures
                  :initarg :max-failures)
@@ -244,16 +259,64 @@ Returns the leaf node for package-name."
         #'string< :key (f:compose #'package-name #'symbol-package #'car)))
 
 (defun select (&key package name)
-  (->> (collect *test-root*)
+  (->> (collect (ensure-test-root))
        seq:from-list
        (seq:filter (lambda (test)
                      (and (or (null package)
-                              (str:starts-with-p (string-downcase (package-name (symbol-package test)))
-                                                 (string-downcase package)))
-                       (or (null name)
-                           (str:starts-with-p (string-downcase (symbol-name test))
-                                              (string-downcase name))))))
+                              (pattern-match-p (string-downcase package)
+                                               (string-downcase (package-name (symbol-package test)))))
+                          (or (null name)
+                              (pattern-match-p (string-downcase name)
+                                               (string-downcase (symbol-name test)))))))
        seq:realize))
+
+(defun pattern-match-p (pattern string)
+  "Match pattern against string, supporting wildcards (*)"
+  (if (str:contains-p pattern "*")
+      (wildcard-match-p pattern string)
+      (str:starts-with-p string pattern)))
+
+(defun wildcard-match-p (pattern string)
+  "Simple wildcard matching - supports * as any characters"
+  (if (not (str:contains-p pattern "*"))
+      (string= pattern string)
+      (let ((parts (seq:realize (str:split #\* pattern))))
+        (cond
+          ((= (length parts) 1)
+           (string= pattern string))
+          ((= (length parts) 2)
+           (let ((prefix (first parts))
+                 (suffix (second parts)))
+             (and (str:starts-with-p string prefix)
+                  (str:ends-with-p string suffix)
+                  (>= (length string) (+ (length prefix) (length suffix))))))
+          (t
+           ;; Multiple wildcards - more complex matching
+           (wildcard-match-complex pattern string))))))
+
+(defun wildcard-match-complex (pattern string)
+  "Handle patterns with multiple wildcards"
+  (let ((parts (seq:realize (str:split #\* pattern)))
+        (pos 0))
+    (loop for i from 0 below (length parts)
+          for part = (nth i parts)
+          do (cond
+               ;; First part - must match from beginning
+               ((= i 0)
+                (unless (str:starts-with-p string part)
+                  (return-from wildcard-match-complex nil))
+                (setf pos (length part)))
+               ;; Last part - must match at end
+               ((= i (1- (length parts)))
+                (unless (str:ends-with-p string part)
+                  (return-from wildcard-match-complex nil)))
+               ;; Middle part - must exist after current position
+               (t
+                (let ((found-pos (search part string :start2 pos)))
+                  (unless found-pos
+                    (return-from wildcard-match-complex nil))
+                  (setf pos (+ found-pos (length part)))))))
+    t))
 
 (defun run (tests reporter)
   (let ((grouped-tests (group-by-package tests))
@@ -273,6 +336,20 @@ Returns the leaf node for package-name."
 (defun run-success-p (run)
   (zerop (+ (length (failures run))
             (length (errors run)))))
+
+(defun list-available-packages ()
+  "Return a sorted list of package names that have registered tests"
+  (let ((packages '()))
+    (labels ((collect-packages (node)
+               (when (typep node 'test-suite)
+                 (when (> (map:count (tests-of node)) 0)
+                   (push (name-of node) packages)))
+               (map:each (lambda (name child)
+                           (declare (ignore name))
+                           (collect-packages child))
+                         (children-of node))))
+      (collect-packages (ensure-test-root))
+      (sort packages #'string<))))
 
 (defun list-suites (test-run)
   "Return a sorted sequence of package names that have at least one test result"

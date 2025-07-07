@@ -4,168 +4,73 @@
 
 (in-package :epsilon.tool.boot)
 
-#+(or linux darwin)
+#-win32
 (require :sb-posix)
-#+(or linux darwin)
+#-win32
 (require :sb-bsd-sockets)
 (require :sb-rotate-byte)
 
-(defun %list-dir (dirpath)
-  #+(or linux darwin)
-  (let (dir entries)
-    (unwind-protect
-         (progn
-           (setf dir (sb-unix:unix-opendir dirpath))
-           (when dir
-             (loop for ent = (sb-unix:unix-readdir dir nil)
-                   while ent
-                   for name = (sb-unix:unix-dirent-name ent)
-                   when (and (not (string= name "."))
-                          (not (string= name "..")))
-                     do (push (format nil "~a/~a" dirpath name) entries))))
-      (when dir
-        (sb-unix:unix-closedir dir nil)))
-    (nreverse entries))
-  #+(or windows win32)
-  ;; Windows implementation using directory()
-  (let ((pattern (if (and (> (length dirpath) 0)
-                          (char= (char dirpath (1- (length dirpath))) #\\))
-                     (concatenate 'string dirpath "*.*")
-                     (concatenate 'string dirpath "\\*.*"))))
-    (handler-case
-        (mapcar #'namestring (directory pattern))
-      (error () nil))))
 
-(defun list-dir (dir)
-  (let (entries)
-    (dolist (entry (%list-dir dir))
-      (handler-case
-          #+(or linux darwin)
-          (let ((mode (sb-posix:stat-mode (sb-posix:stat entry))))
-            (cond ((sb-posix:s-isdir mode)
-                   (setf entries (append entries (list-dir entry))))
-                  ((sb-posix:s-isreg mode)
-                   (push entry entries))))
-          #+(or windows win32)
-          (let ((path (pathname entry)))
-            (cond ((null (pathname-type path))  ; directory (no extension)
-                   (setf entries (append entries (list-dir entry))))
-                  (t  ; file
-                   (push entry entries))))
-        #+(or linux darwin)
-        (sb-posix:syscall-error ()
-          nil)
-        #+(or windows win32)
-        (error ()
-          nil)))
-    entries))
+(defparameter *module-core*
+  #-win32 "module/core/src/"
+  #+win32 "module\\core\\src\\")
 
-(defun ends-with-p (seq suffix &key (test #'char-equal))
-  (let ((mismatch (mismatch seq suffix :from-end t :test test)))
-    (or (null mismatch)
-        (= mismatch (- (length seq) (length suffix))))))
+(defparameter *files*
+  '("lib/syntax"
+    "lib/map"
+    "lib/sequence"
+    "lib/string"
+    "sys/pkg"
+    "lib/symbol"
+    "lib/type"
+    "sys/env"
+    "lib/uri"
+    "sys/fs"
+    "tool/common"
+    "lib/vector"
+    "lib/char"
+    "lib/function"
+    "lib/list"
+    "lib/edn"
+    "lib/digest/common"
+    "lib/digest/reader"
+    "lib/digest/generic"
+    "lib/digest/sha-2"
+    "lib/digest/public"                 ; rename
+    "lib/hex"
+    "tool/build"))
 
-(defun lisp-files (dir)
-  (remove-if-not (lambda (filename)
-                   (ends-with-p filename ".lisp"))
-                 (list-dir dir)))
+(defparameter *boot-log* (merge-pathnames "target/boot.log"))
 
-(defstruct source-info
-  path
-  defines
-  requires)
+(defun ensure-target-dir ()
+  (let ((target-dir (merge-pathnames "target/")))
+    (unless (probe-file target-dir)
+      (ensure-directories-exist target-dir))))
 
-(defun get-source-info (path)
-  (with-open-file (stream path)
-    (let ((form (read stream)))
-      (when (string-equal 'defpackage (first form))
-        (make-source-info :path path
-                          :defines (second form)
-                          :requires (append (cdr (assoc :use (cddr form)))
-                                            (mapcar #'second
-                                                    (cdr (assoc :local-nicknames (cddr form))))))))))
-
-(defun sort-dependent (sources)
-  (let ((sorted '())
-        (visited (make-hash-table :test 'equal))
-        (visiting (make-hash-table :test 'equal)))
-    (labels ((visit (source)
-               (let ((name (string (source-info-defines source))))
-                 (when (gethash name visiting)
-                   (error "Circular dependency detected: ~A" name))
-                 (unless (gethash name visited)
-                   (setf (gethash name visiting) t)
-                   (dolist (dep (source-info-requires source))
-                     (let ((dep-source (find-if (lambda (s)
-                                                  (string-equal (string (source-info-defines s))
-                                                                (string dep)))
-                                                sources)))
-                       (when dep-source
-                         (visit dep-source))))
-                   (remhash name visiting)
-                   (setf (gethash name visited) t)
-                   (push source sorted)))))
-      (dolist (source sources)
-        (visit source))
-      (nreverse sorted))))
-
-(defun ensure-target-dir (epsilon-dir source-path)
-  "Simple core-only target directory creation"
-  (let* ((core-src-dir (concatenate 'string epsilon-dir "/module/core/src/"))
-         (relative-path (if (search core-src-dir source-path)
-                            (subseq source-path (length core-src-dir))
-                            (error "Source path ~A not under core module src" source-path)))
-         (fasl-path (format nil "~a/target/core/~a.fasl" 
-                            epsilon-dir
-                            (subseq relative-path 0 (- (length relative-path) 5))))
-         (dir-path (directory-namestring fasl-path)))
-    (ensure-directories-exist dir-path)
-    fasl-path))
-
-(defun concatenate-fasls (fasl-files output-file)
-  "Concatenate compiled FASL files into a single boot file"
-  (with-open-file (output output-file
-                          :direction :output
-                          :element-type '(unsigned-byte 8)
-                          :if-exists :supersede)
-    (dolist (fasl fasl-files)
-      (when (probe-file fasl)
-        (with-open-file (input fasl
-                               :direction :input
-                               :element-type '(unsigned-byte 8))
-          (loop for byte = (read-byte input nil)
-                while byte
-                do (write-byte byte output)))))))
-
-(defun cache-up-to-date-p (cache-file sources)
-  "Check if cache file is newer than all source files"
-  (let ((cache-time (file-write-date cache-file)))
-    (every (lambda (source)
-             (let ((source-time (file-write-date (source-info-path source))))
-               (and source-time cache-time (>= cache-time source-time))))
-           sources)))
-
-(defun boot (&key (epsilon-dir ".") (force nil))
-  "Bootstrap core module only - standalone dependency resolution"
-  (let* ((core-src-dir (concatenate 'string epsilon-dir "/module/core/src"))
-         (fasls '())
-         (cache (concatenate 'string epsilon-dir "/target/epsilon.fasl"))
-         (sources (sort-dependent (remove-if #'null
-                                            (mapcar #'get-source-info
-                                                    (lisp-files core-src-dir))))))
-    (when (and (not force)
-            (probe-file cache)
-            (cache-up-to-date-p cache sources))
-      (load cache)
-      (return-from boot :cached))
-    (dolist (source sources)
-      (let* ((source-path (source-info-path source))
-             (fasl-path (ensure-target-dir epsilon-dir source-path)))
-        (compile-file source-path :output-file fasl-path
-                                  :verbose t)
-        (load fasl-path :verbose t)
-        (push fasl-path fasls)))
-    (concatenate-fasls (reverse fasls) cache)
-    :built))
-
-  
+(defun boot ()
+  (ensure-target-dir)
+  (let ((total (length *files*))
+        (current 0))
+    (with-open-file (log *boot-log* :direction :output 
+                                    :if-exists :supersede
+                                    :if-does-not-exist :create)
+      (format t "~&;;; Bootstrapping epsilon (~D files)...~%" total)
+      (dolist (file *files*)
+        (incf current)
+        (let ((source-path (concatenate 'string *module-core* file ".lisp")))
+          (format t "~C[2K~C;;; [~3D/~3D] ~A~C" 
+                  #\Escape #\Return current total file #\Return)
+          (force-output)
+          (handler-case
+              (let ((fasl-path 
+                     (let ((*standard-output* log)
+                           (*error-output* log))
+                       (compile-file source-path :print nil :verbose nil))))
+                (unless fasl-path
+                  (error "compile-file returned NIL for ~A" source-path))
+                (load fasl-path))
+            (error (e)
+              (format t "~%;;; ERROR compiling ~A: ~A~%" file e)
+              (error e))))))
+    (format t "~C[2K~C;;; Bootstrap complete (~D files compiled)~%" 
+            #\Escape #\Return total)))

@@ -9,16 +9,20 @@
    (fs epsilon.sys.fs)
    (digest epsilon.lib.digest)
    (fn epsilon.lib.function)
+   (edn epsilon.lib.edn)
    (hex epsilon.lib.hex)
    (map epsilon.lib.map)
    (seq epsilon.lib.sequence)
    (str epsilon.lib.string)
-   (uri epsilon.lib.uri)
-   (yaml epsilon.lib.yaml))
+   (uri epsilon.lib.uri))
   (:export
    build
    register-module
-   register-modules))
+   register-modules
+   dump-build-state
+   *build-timeout*
+   *error-behavior*
+   *warning-behavior*))
 
 (in-package :epsilon.tool.build)
 
@@ -36,17 +40,8 @@
   "Detect current platform"
   #+darwin :darwin
   #+linux :linux
-  #+(or windows win32) :windows
-  #-(or darwin linux windows win32) :unknown)
-
-(defun platform-package-file (platform)
-  "Get package file name for platform"
-  (case platform
-    (:core "package-core.yaml")
-    (:darwin "package-darwin.yaml")
-    (:linux "package-linux.yaml")
-    (:windows "package-windows.yaml")
-    (t "package.yaml")))
+  #+win32 :windows
+  #-(or darwin linux win32) :unknown)
 
 (defclass locatable ()
   ((uri :initarg :uri :accessor uri)))
@@ -159,17 +154,13 @@
                      :requires (mapcar #'pkg:normalize requires)))))
 
 (defun load-project (uri)
-  "Parse module definition from package.yaml in directory URI"
-  (let* ((package-file "package.yaml")
-         (path (uri:path (uri:merge uri package-file))))
-    
-    (unless (probe-file path)
-      (error "No package file found: ~A" path))
-    
-    (let* ((yaml-value (yaml:parse-file path))
-           (_ (format t "~&;;   DEBUG: Loading YAML from ~A~%" path))
-           (_ (format t "~&;;   DEBUG: YAML has ~A top-level entries~%" (length yaml-value)))
-           (defs (map:from-pairs yaml-value))
+  "Parse module definition from package.edn in directory URI"
+  (let* ((edn-file "package.edn")
+         (edn-path (uri:path (uri:merge uri edn-file)))
+         (path (cond ((probe-file edn-path) edn-path)
+                     (t (error "No package file found: ~A" edn-path)))))
+    (let* ((parsed-value (edn:read-edn-from-string (fs:read-file path)))
+           (defs parsed-value)
            (sources (when (map:get defs "sources")
                       (sort-sources (mapcan (lambda (source-path)
                                               (find-source-info (uri:merge uri source-path)))
@@ -339,10 +330,36 @@
 
 (defun print-build-output (result)
   "Print stdout and stderr output from build result"
+  (format *error-output* "~%=== BUILD FAILURE DUMP ===~%")
+  (format *error-output* "File: ~A~%" (uri:path (source-uri (build-input result))))
+  (format *error-output* "Operation: ~A~%" (compilation-status (build-input result)))
+  
   (when (stdout-output result)
-    (format *error-output* "~%--- Build Output ---~%~A~%" (stdout-output result)))
+    (let ((output (stdout-output result)))
+      (format *error-output* "~%--- Captured STDOUT (~D chars) ---~%" (length output))
+      (format *error-output* "~A~%" output)))
+  
   (when (stderr-output result)
-    (format *error-output* "~%--- Error Output ---~%~A~%" (stderr-output result))))
+    (let ((output (stderr-output result)))
+      (format *error-output* "~%--- Captured STDERR (~D chars) ---~%" (length output))
+      (format *error-output* "~A~%" output)))
+  
+  (when (compilation-warnings result)
+    (format *error-output* "~%--- Warnings (~D) ---~%" (length (compilation-warnings result)))
+    (dolist (warning (compilation-warnings result))
+      (format *error-output* "  ~A~%" warning)))
+  
+  (when (compilation-errors result)
+    (format *error-output* "~%--- Errors (~D) ---~%" (length (compilation-errors result)))
+    (dolist (error (compilation-errors result))
+      (format *error-output* "  ~A~%" error)))
+  
+  (when (stack-trace result)
+    (format *error-output* "~%--- Stack Trace ---~%")
+    (dolist (frame (stack-trace result))
+      (format *error-output* "  ~A~%" frame)))
+  
+  (format *error-output* "~%=== END BUILD FAILURE DUMP ===~%"))
 
 (defun redefinition-warning-p (warning)
   "Check if warning is about redefinition (which we want to suppress)"
@@ -384,20 +401,37 @@
      ;; Force output to be flushed before halting
      (force-output *standard-output*)
      (force-output *error-output*)
-     (format t "~%BUILD HALTED: Error encountered~%")
-     (format t "Error: ~A~%" error)
+     (format *error-output* "~%========================================~%")
+     (format *error-output* "BUILD HALTED: Error in ~A~%" (uri:path (source-uri (build-input result))))
+     (format *error-output* "Error: ~A~%" error)
+     (format *error-output* "========================================~%")
      (print-build-output result)
+     (force-output *error-output*)
      (error error))
     (:print 
      ;; Print error but continue
-     (format t "Error: ~A~%" error))
+     (format *error-output* "~%Build Error in ~A: ~A~%" (uri:path (source-uri (build-input result))) error)
+     (print-build-output result))
     (:ignore nil)))
+
+(defvar *build-timeout* 60
+  "Timeout in seconds for individual file operations")
+
+(defun dump-build-state ()
+  "Force dump current build state - useful for debugging hangs"
+  (format *error-output* "~%=== BUILD STATE DUMP (MANUAL) ===~%")
+  (format *error-output* "Build timeout: ~D seconds~%" *build-timeout*)
+  (format *error-output* "Error behavior: ~A~%" *error-behavior*)
+  (format *error-output* "Warning behavior: ~A~%" *warning-behavior*)
+  (format *error-output* "=== END BUILD STATE DUMP ===~%")
+  (force-output *error-output*))
 
 (defun watch-operation (build-input fn)
   (let ((result (make-instance 'build-result
                                :build-input build-input))
         (stdout-stream (make-string-output-stream))
-        (stderr-stream (make-string-output-stream)))
+        (stderr-stream (make-string-output-stream))
+        (completed nil))
     (unwind-protect
          (progn
            (setf (start-time result) (get-internal-real-time))
@@ -414,7 +448,25 @@
                                            (stderr-output result) (get-output-stream-string stderr-stream)
                                            (stack-trace result) (sb-debug:list-backtrace))
                                      (handle-error e result))))
-               (funcall fn))))
+               ;; Try to run with timeout
+               (let ((thread (sb-thread:make-thread 
+                             (lambda () 
+                               (funcall fn)
+                               (setf completed t))
+                             :name "build-operation")))
+                 (sleep 0.1) ; Give thread a moment to start
+                 (let ((timeout-count 0))
+                   (loop while (and (sb-thread:thread-alive-p thread) 
+                                    (< timeout-count (* *build-timeout* 10)))
+                         do (sleep 0.1)
+                            (incf timeout-count))
+                   (when (sb-thread:thread-alive-p thread)
+                     ;; Timeout occurred - capture output and terminate
+                     (setf (stdout-output result) (get-output-stream-string stdout-stream)
+                           (stderr-output result) (get-output-stream-string stderr-stream))
+                     (sb-thread:terminate-thread thread)
+                     (error "Build operation timed out after ~D seconds" *build-timeout*))
+                   (sb-thread:join-thread thread))))))
       (setf (end-time result) (get-internal-real-time))
       ;; Always capture final output
       (unless (stdout-output result)
@@ -428,13 +480,15 @@
   (watch-operation build-input
                    (lambda ()
                      (fs:make-dirs (uri:parent (target-uri build-input)))
-                     ;; Set compiler policy to ensure warnings are visible
-                     (let ((*compile-verbose* t)
-                           (*compile-print* t))
+                     ;; Suppress verbose output - will be shown only on build abort
+                     (let ((*compile-verbose* nil)
+                           (*compile-print* nil))
                        (compile-file (uri:path (source-uri build-input))
                                      :output-file (uri:path (target-uri build-input))
-                                     :verbose t
-                                     :print t)))))
+                                     :verbose nil
+                                     :print nil)
+                       ;; Load the compiled file immediately
+                       (load (uri:path (target-uri build-input)))))))
 
 (defun load-source (build-input)
   (watch-operation build-input
@@ -450,21 +504,30 @@
                                :project project
                                :reporter reporter
                                :results '()))
-         (build-inputs (build-order project)))
+         (build-inputs (build-order project))
+         (total-count (seq:count build-inputs)))
+    ;; Set total files in reporter
+    (when reporter
+      (setf (total-files reporter) total-count))
     (event build :start build)
-    (let ((results (seq:seq (seq:realize (seq:map (lambda (build-input)
-                                                    (event build :start-compile build-input)
-                                                    (let ((result (if force
-                                                                      (compile-source build-input)
-                                                                      (case (build-input-status build-input)
-                                                                        ((:target-missing
-                                                                          :source-newer)
-                                                                         (compile-source build-input))
-                                                                        (t
-                                                                         (load-source build-input))))))
-                                                      (event build :end-compile result)
-                                                      result))
-                                                  build-inputs)))))
+    (let ((results (seq:seq (seq:realize 
+                           (let ((index 0))
+                             (seq:map (lambda (build-input)
+                                       (incf index)
+                                       (when reporter
+                                         (setf (current-index reporter) index))
+                                       (event build :start-compile build-input)
+                                       (let ((result (if force
+                                                        (compile-source build-input)
+                                                        (case (build-input-status build-input)
+                                                          ((:target-missing
+                                                            :source-newer)
+                                                           (compile-source build-input))
+                                                          (t
+                                                           (load-source build-input))))))
+                                         (event build :end-compile result)
+                                         result))
+                                     build-inputs))))))
       (setf (slot-value build 'results) results)
       (setf (end-time build) (get-internal-real-time))
       (event build :end build)
@@ -539,7 +602,9 @@
 
 (defclass shell-build-report ()
   ((failure-count :initform 0)
-   (max-failures :initform 10)))
+   (max-failures :initform 10)
+   (total-files :initform 0 :accessor total-files)
+   (current-index :initform 0 :accessor current-index)))
 
 (defmethod event ((formatter shell-build-report) (event-type (eql :start)) build)
   (format t "~&Building project: ~a~%~%" (uri:path (uri (slot-value build 'project)))))
@@ -548,9 +613,13 @@
   (let* ((source-path (path (source-info build-input)))
          (status (build-input-status build-input))
          (action (case status
-                   ((:target-missing :source-newer) "COMPILING")
+                   ((:target-missing :source-newer) "COMPILE+LOAD")
                    (t "LOADING"))))
-    (format t ";;   ~a ~a~%" action source-path)))
+    (format t ";;   [~3D/~3D] ~a ~a~%" 
+            (current-index formatter)
+            (total-files formatter)
+            action 
+            source-path)))
 
 (defmethod event ((formatter shell-build-report) (event-type (eql :end-compile)) result)
   (let* ((build-input (build-input result))
@@ -605,7 +674,7 @@
 ;;; Module Registration System
 
 (defun find-module-directories (base-dir)
-  "Find all directories containing package.yaml files under base-dir/module/
+  "Find all directories containing package.edn files under base-dir/module/
    Returns a list of directory path strings suitable for register-module"
   (let ((module-base (uri:merge base-dir "module/"))
         (module-dirs '()))
@@ -614,17 +683,19 @@
       (dolist (entry-name (fs:list-dir (uri:path module-base)))
         (let* ((entry-path (uri:path-join "module" entry-name))
                (entry-uri (uri:merge base-dir entry-path))
-               (package-file (uri:merge entry-uri "package.yaml")))
+               (edn-file (uri:merge entry-uri "package.edn")))
           (when (and (fs:dir-p (uri:path entry-uri))
-                     (fs:exists-p package-file))
+                     (fs:exists-p edn-file))
             (push entry-path module-dirs)))))
     (nreverse module-dirs)))
 
 (defun module-applicable-p (module-dir)
   "Check if module is applicable to current platform"
-  (let ((package-file (uri:merge module-dir "package.yaml")))
-    (when (fs:exists-p package-file)
-      (let* ((defs (map:from-pairs (yaml:parse-file (uri:path package-file))))
+  (let* ((edn-file (uri:merge module-dir "package.edn"))
+         (package-file (cond ((fs:exists-p edn-file) edn-file)
+                             (t nil))))
+    (when package-file
+      (let* ((defs (edn:read-edn-from-string (fs:read-file (uri:path package-file))))
              (platform (map:get defs "platform")))
         ;; Module is applicable if:
         ;; 1. No platform specified (platform-agnostic)
@@ -654,25 +725,27 @@
   "Register a single module for building.
    
    MODULE-SPEC can be:
-   - A string pathname to a directory containing package.yaml"
+   - A string pathname to a directory containing package.edn"
   (let* ((module-dir-path (cond
                            ((stringp module-spec)
                             (namestring (merge-pathnames module-spec)))
                            (t 
                             (error "Unsupported module-spec type: ~A" module-spec))))
          (module-dir (uri:file-uri module-dir-path))
-         (package-file (uri:merge module-dir "package.yaml")))
+         (edn-file (uri:merge module-dir "package.edn"))
+         (package-file (cond ((fs:exists-p edn-file) edn-file)
+                             (t nil))))
     
     ;; Validate package file exists
-    (unless (fs:exists-p package-file)
-      (error "Package file not found: ~A" (uri:path package-file)))
+    (unless package-file
+      (error "Package file not found: ~A" (uri:path edn-file)))
     
     ;; Check if module is applicable to current platform
     (unless (module-applicable-p module-dir)
       (error "Module not applicable to current platform: ~A" (uri:path module-dir)))
     
-    ;; Parse package.yaml and register module
-    (let* ((defs (map:from-pairs (yaml:parse-file (uri:path package-file))))
+    ;; Parse package file and register module
+    (let* ((defs (edn:read-edn-from-string (fs:read-file (uri:path package-file))))
            (module-name (map:get defs "name")))
       (unless module-name
         (error "Module name not found in package file: ~A" (uri:path package-file)))

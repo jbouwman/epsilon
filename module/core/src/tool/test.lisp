@@ -68,11 +68,21 @@ If FILE is provided, write the report to the named file."
                             (when module
                               ;; Convert module name to package pattern
                               ;; e.g., "epsilon.core" -> filter packages starting with "epsilon."
-                              (format nil "~A.*" module)))))
-    (suite:run (suite:select :package target-package
-                             :name name)
-               (report:make :format format
-                            :file file))))
+                              (if (string= module "epsilon.core")
+                                  "epsilon."
+                                  module)))))
+    (let ((selected-tests (suite:select :package target-package
+                                        :name name)))
+      (format t "~&;;; Selected ~D tests~@[ for package pattern '~A'~]~%" 
+              (length selected-tests) target-package)
+      (when (zerop (length selected-tests))
+        (format t "~&;;; Warning: No tests found!~%")
+        (let ((available (suite:list-available-packages)))
+          (when available
+            (format t "~&;;; Available test packages: ~{~A~^, ~}~%" available))))
+      (suite:run selected-tests
+                 (report:make :format format
+                              :file file)))))
 
 (defun success-p (run)
   (zerop (+ (length (suite:failures run))
