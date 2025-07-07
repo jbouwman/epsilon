@@ -11,9 +11,7 @@
 (require :sb-rotate-byte)
 
 
-(defparameter *module-core*
-  #-win32 "module/core/src/"
-  #+win32 "module\\core\\src\\")
+(defparameter *module-core* "module/core/src/")
 
 (defparameter *files*
   '("lib/syntax"
@@ -40,10 +38,12 @@
     "lib/hex"
     "tool/build"))
 
-(defparameter *boot-log* (merge-pathnames "target/boot.log"))
+(defparameter *boot-log* 
+  #+win32 "target\\boot.log"
+  #-win32 "target/boot.log")
 
 (defun ensure-target-dir ()
-  (let ((target-dir (merge-pathnames "target/")))
+  (let ((target-dir #+win32 "target\\" #-win32 "target/"))
     (unless (probe-file target-dir)
       (ensure-directories-exist target-dir))))
 
@@ -57,7 +57,10 @@
       (format t "~&;;; Bootstrapping epsilon (~D files)...~%" total)
       (dolist (file *files*)
         (incf current)
-        (let ((source-path (concatenate 'string *module-core* file ".lisp")))
+        (let ((source-path (concatenate 'string *module-core* 
+                                        #+win32 (substitute #\\ #\/ file)
+                                        #-win32 file
+                                        ".lisp")))
           (format t "~C[2K~C;;; [~3D/~3D] ~A~C" 
                   #\Escape #\Return current total file #\Return)
           (force-output)

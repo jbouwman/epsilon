@@ -134,7 +134,7 @@
                               (not (string= name "..")))
                      :do (funcall f
                                   (uri:make-uri :scheme "file"
-                                                :path (format nil "~a/~a" dirpath name))))))
+                                                :path (uri:path-join dirpath name))))))
       (when dir
         (sb-unix:unix-closedir dir nil))))
   #+(or windows win32)
@@ -180,17 +180,20 @@
       contents)))
 
 (defun make-dirs (uri)
-  (loop :with path := ""
-        :for component :in (seq:realize
-                            (seq:filter (complement #'str:empty-p)
-                                        (str:split #\/
-                                                   (uri:path uri))))
-        :do (setf path (format nil "~a/~a" path component))
-            (unless (probe-file path)
-              #+(or linux darwin)
-              (sb-unix:unix-mkdir path #o775)
-              #+(or windows win32)
-              (ensure-directories-exist (pathname path)))))
+  (let ((full-path (uri:path uri)))
+    (when (and full-path (> (length full-path) 0))
+      (let ((is-absolute (char= (char full-path 0) #\/))
+            (components (seq:realize
+                         (seq:filter (complement #'str:empty-p)
+                                     (str:split #\/ full-path)))))
+        (loop :with path := (if is-absolute "/" "")
+              :for component :in components
+              :do (setf path (uri:path-join path component))
+                  (unless (probe-file path)
+                    #+(or linux darwin)
+                    (sb-unix:unix-mkdir path #o775)
+                    #+(or windows win32)
+                    (ensure-directories-exist (pathname path))))))))
   
 (defun list-files (uri extension)
   (let (files)

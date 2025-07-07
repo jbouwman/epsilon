@@ -24,7 +24,7 @@
 
 (defun get-test-relative-path (name)
   (project-file "epsilon.core"
-                (format nil "tests/lib/~a" name)))
+                (uri:path-join "tests/lib" name)))
 
 (defun test-decompress (codec compressed original)
   (decompress codec                     ; FIXME native URL
@@ -38,7 +38,7 @@
 
 (defun test-roundtrip (codec original)
   (let ((path (project-file "epsilon.core"
-                            (format nil "tests/lib/~a" original))))
+                            (uri:path-join "tests/lib" original))))
     (roundtrip codec path)))
 
 (deftest deflate

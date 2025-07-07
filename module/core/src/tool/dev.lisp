@@ -203,10 +203,12 @@
        (format t ";;; Running benchmark suite: ~A~%" suite)
        (cond
          ((string= suite "msgpack")
-          (load "module/core/tests/lib/msgpack-binary-benchmark.lisp")
+          (load (uri:path (uri:merge (uri:file-uri (sb-unix:posix-getcwd)) 
+                                     "module/core/tests/lib/msgpack-binary-benchmark.lisp")))
           (funcall (find-symbol "RUN-MSGPACK-BENCHMARKS" "EPSILON.LIB.MSGPACK.BINARY.BENCHMARK")))
          ((string= suite "all")
-          (load "module/core/tests/lib/msgpack-binary-benchmark.lisp")
+          (load (uri:path (uri:merge (uri:file-uri (sb-unix:posix-getcwd)) 
+                                     "module/core/tests/lib/msgpack-binary-benchmark.lisp")))
           (funcall (find-symbol "RUN-COMPLETE-BENCHMARK-SUITE" "EPSILON.LIB.MSGPACK.BINARY.BENCHMARK")))
          (t
           (error "Unknown benchmark suite: ~A. Available: msgpack, all" suite))))

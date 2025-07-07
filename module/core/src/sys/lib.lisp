@@ -2,7 +2,8 @@
   (:use cl)
   (:local-nicknames
    (map epsilon.lib.map)
-   (seq epsilon.lib.sequence))
+   (seq epsilon.lib.sequence)
+   (uri epsilon.lib.uri))
   (:export
    ;; Core FFI
    shared-call
@@ -93,9 +94,9 @@
                           (or paths '("."))
                           (append (or paths '()) *library-search-paths*))))
     (loop for path in search-paths
-          for full-path = (merge-pathnames lib-name path)
+          for full-path = (uri:path-join path lib-name)
           when (probe-file full-path)
-            return (namestring full-path)
+            return full-path
           finally (return lib-name)))) ; Return name if not found
 
 (defun lib-open (library-name &key local paths)

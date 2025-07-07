@@ -29,7 +29,8 @@
    ;; Path utilities
    #:ensure-directory-path
    #:ensure-file-path
-   #:path-join))
+   #:path-join
+   #:join-file-uri))
 
 (in-package #:epsilon.lib.uri)
 
@@ -359,3 +360,11 @@
                                       (if needs-separator "/" "")
                                       component)))))
       result)))
+
+(defun join-file-uri (base-uri &rest path-components)
+  "Join path components to a base file URI, creating a new file URI.
+   
+   Example: (join-file-uri base-uri \"src\" \"lib\" \"file.lisp\")"
+  (let ((base-path (if (uri-p base-uri) (path base-uri) base-uri))
+        (joined-path (apply #'path-join path-components)))
+    (file-uri (path-join base-path joined-path))))

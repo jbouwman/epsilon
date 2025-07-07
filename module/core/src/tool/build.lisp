@@ -238,9 +238,14 @@
    - Clean, readable path construction"
   (let* ((project (project build-input))
          (project-path (path project))
-         (source-rel-path (subseq (path (source-info build-input))
-                                  (length project-path)))
-         (target-rel-path (fs:replace-extension source-rel-path "fasl"))
+         (source-full-path (path (source-info build-input)))
+         (source-rel-path (subseq source-full-path (length project-path)))
+         ;; Strip "src/" from the beginning if present
+         (clean-rel-path (if (and (> (length source-rel-path) 4)
+                                  (string= (subseq source-rel-path 0 4) "src/"))
+                             (subseq source-rel-path 4)
+                             source-rel-path))
+         (target-rel-path (fs:replace-extension clean-rel-path "fasl"))
          (target-path (uri:path-join "target" "lisp" target-rel-path))
          (target-uri (uri:merge (uri project) target-path)))
     (make-instance 'target-info
@@ -703,7 +708,7 @@
         (or (not platform)
             (string= platform (string-downcase (detect-platform))))))))
 
-(defun register-modules (&key (base-dir (uri:file-uri (namestring *default-pathname-defaults*))))
+(defun register-modules (&key (base-dir (uri:file-uri (sb-unix:posix-getcwd))))
   "Discover and register all applicable modules found under base-dir/module/"
   (let ((module-paths (find-module-directories base-dir))
         (registered-count 0))
@@ -728,7 +733,9 @@
    - A string pathname to a directory containing package.edn"
   (let* ((module-dir-path (cond
                            ((stringp module-spec)
-                            (namestring (merge-pathnames module-spec)))
+                            (if (char= (char module-spec 0) #\/)
+                                module-spec  ; absolute path
+                                (uri:path-join (sb-unix:posix-getcwd) module-spec))) ; relative path
                            (t 
                             (error "Unsupported module-spec type: ~A" module-spec))))
          (module-dir (uri:file-uri module-dir-path))
