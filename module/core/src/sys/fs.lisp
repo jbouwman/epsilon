@@ -12,7 +12,6 @@
   (:export
    :dir-p
    :file-p
-   :home-dir
    :list-dir
    :list-dirs
    :make-dirs
@@ -65,13 +64,6 @@
 (defun temp-dir ()
   "Return a default directory to use for temporary files"
   (env:getenv "TMPDIR"))
-
-(defun home-dir ()
-  #+(or linux darwin)
-  (sb-unix:uid-homedir (sb-unix:unix-getuid))
-  #+(or windows win32)
-  (or (env:getenv "USERPROFILE") 
-      (str:concat (env:getenv "HOMEDRIVE") (env:getenv "HOMEPATH"))))
 
 (defmacro with-temp-file ((name) &body body)
   `(let ((,name (str:concat

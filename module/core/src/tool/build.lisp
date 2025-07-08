@@ -20,6 +20,7 @@
    register-module
    register-modules
    dump-build-state
+   repo-root
    *build-timeout*
    *error-behavior*
    *warning-behavior*))
@@ -42,6 +43,13 @@
   #+linux :linux
   #+win32 :windows
   #-(or darwin linux win32) :unknown)
+
+(defun repo-root ()
+  "Get the repository root directory, preferring EPSILON environment variable"
+  (let ((epsilon-env #+sbcl (sb-posix:getenv "EPSILON") #-sbcl nil))
+    (if epsilon-env
+        (substitute #\/ #\\ epsilon-env)  ; normalize path separators
+        (fs:runtime-dir))))
 
 (defclass locatable ()
   ((uri :initarg :uri :accessor uri)))
@@ -742,8 +750,7 @@
                                          (member (char module-spec 2) '(#\/ #\\))))
                                 (substitute #\/ #\\ module-spec)  ; absolute path - normalize separators
                                 (uri:path-join 
-                                 #+win32 (substitute #\/ #\\ (sb-ext:native-namestring (truename ".")))
-                                 #-win32 (sb-unix:posix-getcwd)
+                                 (repo-root)
                                  (substitute #\/ #\\ module-spec)))) ; relative path - normalize separators
                            (t 
                             (error "Unsupported module-spec type: ~A" module-spec))))
