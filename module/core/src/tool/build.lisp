@@ -735,12 +735,16 @@
    - A string pathname to a directory containing package.edn"
   (let* ((module-dir-path (cond
                            ((stringp module-spec)
-                            (if (char= (char module-spec 0) #\/)
-                                module-spec  ; absolute path
+                            (if (or (char= (char module-spec 0) #\/)
+                                    #+(or windows win32)
+                                    (and (>= (length module-spec) 3)
+                                         (char= (char module-spec 1) #\:)
+                                         (member (char module-spec 2) '(#\/ #\\))))
+                                (substitute #\/ #\\ module-spec)  ; absolute path - normalize separators
                                 (uri:path-join 
-                                 #+win32 (sb-ext:native-namestring (truename "."))
+                                 #+win32 (substitute #\/ #\\ (sb-ext:native-namestring (truename ".")))
                                  #-win32 (sb-unix:posix-getcwd)
-                                 module-spec))) ; relative path
+                                 (substitute #\/ #\\ module-spec)))) ; relative path - normalize separators
                            (t 
                             (error "Unsupported module-spec type: ~A" module-spec))))
          (module-dir (uri:file-uri module-dir-path))

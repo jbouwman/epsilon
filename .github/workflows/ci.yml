@@ -102,16 +102,39 @@ jobs:
         tar -xzf ../target/epsilon-*.tar.gz
         ./epsilon --eval "(format t \"~%CI test successful!~%\")" --eval "(sb-ext:quit)"
 
-  # test-windows:
-  #   runs-on: windows-latest
-  #   steps:
-  #   - name: Checkout code
-  #     uses: actions/checkout@v4
-  #   - name: Install SBCL
-  #     run: choco install sbcl
-  #   - name: Build and run tests
-  #     shell: cmd
-  #     run: |
-  #       sbcl --noinform --non-interactive --no-sysinit --no-userinit --load "scripts/epsilon.lisp" --eval "(epsilon.tool.dev:main)" build epsilon.core
-  #       sbcl --noinform --non-interactive --no-sysinit --no-userinit --load "scripts/epsilon.lisp" --eval "(epsilon.tool.dev:main)" test epsilon.core --format junit
-  #   # TODO: Re-enable Windows build after fixing remaining path issues
+  test-windows:
+    runs-on: windows-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install SBCL
+      run: choco install sbcl
+
+    - name: Build and run tests
+      shell: cmd
+      run: |
+        .\run.ps1 test --format junit
+
+    - name: Rename test results for platform identification
+      if: success() || failure()
+      run: |
+        if [ -f target/TEST-epsilon.xml ]; then
+          mv target/TEST-epsilon.xml target/TEST-epsilon-macos.xml
+        fi
+
+    - name: Publish Test Report (macOS)
+      uses: mikepenz/action-junit-report@v5
+      if: success() || failure()
+      with:
+        report_paths: '**/TEST-epsilon-macos.xml'
+        check_name: 'Test Results (macOS)'
+        job_summary: true
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: success() || failure()
+      with:
+        name: test-results-macos
+        path: target/TEST-epsilon-macos.xml
+
