@@ -173,7 +173,7 @@
                (setf all-success nil))))
          
          (unless all-success
-           (sb-posix:exit 1))))
+           (sb-ext:exit :code 1))))
       
       (t
        ;; No module specified - run all available tests
@@ -189,7 +189,7 @@
                               :format format
                               :file file)))
          (unless (test:success-p result)
-           (sb-posix:exit 1)))))))
+           (sb-ext:exit :code 1)))))))
 
 (defun run-benchmark (parsed-args)
   "Handle benchmark command"
@@ -203,11 +203,15 @@
        (format t ";;; Running benchmark suite: ~A~%" suite)
        (cond
          ((string= suite "msgpack")
-          (load (uri:path (uri:merge (uri:file-uri (sb-unix:posix-getcwd)) 
+          (load (uri:path (uri:merge (uri:file-uri 
+                                      #+win32 (sb-ext:native-namestring (truename "."))
+                                      #-win32 (sb-unix:posix-getcwd)) 
                                      "module/core/tests/lib/msgpack-binary-benchmark.lisp")))
           (funcall (find-symbol "RUN-MSGPACK-BENCHMARKS" "EPSILON.LIB.MSGPACK.BINARY.BENCHMARK")))
          ((string= suite "all")
-          (load (uri:path (uri:merge (uri:file-uri (sb-unix:posix-getcwd)) 
+          (load (uri:path (uri:merge (uri:file-uri 
+                                      #+win32 (sb-ext:native-namestring (truename "."))
+                                      #-win32 (sb-unix:posix-getcwd)) 
                                      "module/core/tests/lib/msgpack-binary-benchmark.lisp")))
           (funcall (find-symbol "RUN-COMPLETE-BENCHMARK-SUITE" "EPSILON.LIB.MSGPACK.BINARY.BENCHMARK")))
          (t
@@ -298,5 +302,5 @@
                 (funcall command-fn parsed))))
       (error (e)
         (format t "Error: ~A~%" e)
-        (sb-posix:exit 1)))))
+        (sb-ext:exit :code 1)))))
       

@@ -74,7 +74,6 @@ The codebase is organized into several major modules:
 The system depends only on SBCL built-in modules:
 - `sb-posix` for POSIX system calls
 - `sb-rotate-byte` for bit manipulation
-- `sb-bsd-sockets` for networking
 
 ## Major Differences from Standard Common Lisp Practices
 

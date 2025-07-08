@@ -142,8 +142,6 @@ nav:
         - epsilon.sys.fs: reference/core/system/fs.md
         - epsilon.sys.thread: reference/core/system/thread.md
         - epsilon.sys.env: reference/core/system/env.md
-      - Networking:
-        - epsilon.lib.net: reference/core/networking/net.md
       - Tools:
         - epsilon.tool.build: reference/core/tools/build.md
         - epsilon.tool.test: reference/core/tools/test.md

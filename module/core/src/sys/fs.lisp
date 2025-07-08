@@ -80,45 +80,63 @@
          (delete-file* ,name)))))
 
 (defun file-info (path)
-  (sb-posix:stat path))
+  #-win32 (sb-posix:stat path)
+  #+win32 (let ((truepath (probe-file path)))
+            (when truepath
+              (list :path (namestring truepath)
+                    :type (if (directory-pathname-p truepath) :directory :file)))))
 
 (defun dir-p (path)
   (handler-case
-      (sb-posix:s-isdir (sb-posix:stat-mode (sb-posix:stat path)))
-    (sb-posix:syscall-error ()
-      nil)))
+      #-win32 (sb-posix:s-isdir (sb-posix:stat-mode (sb-posix:stat path)))
+      #+win32 (let ((truepath (probe-file path)))
+                (and truepath (directory-pathname-p truepath)))
+    #-win32 (sb-posix:syscall-error () nil)
+    #+win32 (error () nil)))
 
 (defun file-p (path)
   (handler-case
-      (sb-posix:s-isreg (sb-posix:stat-mode (sb-posix:stat path)))
-    (sb-posix:syscall-error ()
-      nil)))
+      #-win32 (sb-posix:s-isreg (sb-posix:stat-mode (sb-posix:stat path)))
+      #+win32 (let ((truepath (probe-file path)))
+                (and truepath (not (directory-pathname-p truepath))))
+    #-win32 (sb-posix:syscall-error () nil)
+    #+win32 (error () nil)))
 
 (defun file-info-type (stat)
-  (cond ((sb-posix:s-isreg (sb-posix:stat-mode stat)) :file)
-        ((sb-posix:s-isdir (sb-posix:stat-mode stat)) :directory)
-        ((sb-posix:s-islnk (sb-posix:stat-mode stat)) :link)))
+  #-win32 (cond ((sb-posix:s-isreg (sb-posix:stat-mode stat)) :file)
+                ((sb-posix:s-isdir (sb-posix:stat-mode stat)) :directory)
+                ((sb-posix:s-islnk (sb-posix:stat-mode stat)) :link))
+  #+win32 (if (listp stat) 
+              (getf stat :type)
+              :file))
 
 (defun file-info-size (stat)
-  (sb-posix:stat-size stat))
+  #-win32 (sb-posix:stat-size stat)
+  #+win32 (if (listp stat) 0 0)) ; Windows implementation would need file size lookup
 
 (defun file-info-mtime (stat)
-  (sb-posix:stat-mtime stat))
+  #-win32 (sb-posix:stat-mtime stat)
+  #+win32 (if (listp stat) 0 0)) ; Windows implementation would need mtime lookup
 
 (defun file-info-atime (stat)
-  (sb-posix:stat-atime stat))
+  #-win32 (sb-posix:stat-atime stat)
+  #+win32 (if (listp stat) 0 0)) ; Windows implementation would need atime lookup
 
 (defun file-info-ctime (stat)
-  (sb-posix:stat-ctime stat))
+  #-win32 (sb-posix:stat-ctime stat)
+  #+win32 (if (listp stat) 0 0)) ; Windows implementation would need ctime lookup
 
 (defun file-info-mode (stat)
-  (sb-posix:stat-mode stat))
+  #-win32 (sb-posix:stat-mode stat)
+  #+win32 (if (listp stat) 0 0)) ; Windows implementation would need mode lookup
 
 (defun file-info-uid (stat)
-  (sb-posix:stat-uid stat))
+  #-win32 (sb-posix:stat-uid stat)
+  #+win32 (if (listp stat) 0 0)) ; Windows implementation would need uid lookup
 
 (defun file-info-gid (stat)
-  (sb-posix:stat-gid stat))
+  #-win32 (sb-posix:stat-gid stat)
+  #+win32 (if (listp stat) 0 0)) ; Windows implementation would need gid lookup
 
 (defun %walk-dir (dirpath f)
   #+(or linux darwin)
@@ -245,7 +263,8 @@
   (eql :symlink (sb-impl::native-file-kind file)))
 
 (defun create-symbolic-link (link-file destination-file)
-  (sb-posix:symlink destination-file link-file))
+  #-win32 (sb-posix:symlink destination-file link-file)
+  #+win32 (error "Symbolic links not supported on Windows in this implementation"))
 
 (defun delete-directory (file)
   (sb-ext:delete-directory file :recursive T))
@@ -287,6 +306,9 @@
 (defun modification-time (path)
   "Return the modification time of the file at PATH as a universal time."
   (handler-case
-      (file-info-mtime (sb-posix:stat path))
-    (sb-posix:syscall-error ()
-      nil)))
+      #-win32 (file-info-mtime (sb-posix:stat path))
+      #+win32 (let ((truepath (probe-file path)))
+                (when truepath
+                  (file-write-date truepath)))
+    #-win32 (sb-posix:syscall-error () nil)
+    #+win32 (error () nil)))

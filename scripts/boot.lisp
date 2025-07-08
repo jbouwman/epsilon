@@ -10,7 +10,6 @@
 (require :sb-bsd-sockets)
 (require :sb-rotate-byte)
 
-
 (defparameter *module-core* "module/core/src/")
 
 (defparameter *files*

@@ -708,7 +708,9 @@
         (or (not platform)
             (string= platform (string-downcase (detect-platform))))))))
 
-(defun register-modules (&key (base-dir (uri:file-uri (sb-unix:posix-getcwd))))
+(defun register-modules (&key (base-dir (uri:file-uri 
+                                         #+win32 (sb-ext:native-namestring (truename "."))
+                                         #-win32 (sb-unix:posix-getcwd))))
   "Discover and register all applicable modules found under base-dir/module/"
   (let ((module-paths (find-module-directories base-dir))
         (registered-count 0))
@@ -735,7 +737,10 @@
                            ((stringp module-spec)
                             (if (char= (char module-spec 0) #\/)
                                 module-spec  ; absolute path
-                                (uri:path-join (sb-unix:posix-getcwd) module-spec))) ; relative path
+                                (uri:path-join 
+                                 #+win32 (sb-ext:native-namestring (truename "."))
+                                 #-win32 (sb-unix:posix-getcwd)
+                                 module-spec))) ; relative path
                            (t 
                             (error "Unsupported module-spec type: ~A" module-spec))))
          (module-dir (uri:file-uri module-dir-path))
