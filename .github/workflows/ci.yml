@@ -18,7 +18,6 @@ jobs:
     - name: Build and run tests
       run: |
         chmod +x run.sh
-        ./run.sh build epsilon.core
         ./run.sh test --format junit
 
     - name: Rename test results for platform identification
@@ -68,7 +67,6 @@ jobs:
     - name: Build and run tests
       run: |
         chmod +x run.sh
-        ./run.sh build epsilon.core
         ./run.sh test --format junit
 
     - name: Rename test results for platform identification
