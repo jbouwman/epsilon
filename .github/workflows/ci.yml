@@ -112,29 +112,30 @@ jobs:
       run: choco install sbcl
 
     - name: Build and run tests
-      shell: cmd
+      shell: pwsh
       run: |
         .\run.ps1 test --format junit
 
     - name: Rename test results for platform identification
       if: success() || failure()
+      shell: pwsh
       run: |
-        if [ -f target/TEST-epsilon.xml ]; then
-          mv target/TEST-epsilon.xml target/TEST-epsilon-macos.xml
-        fi
+        if (Test-Path "target/TEST-epsilon.xml") {
+          Move-Item "target/TEST-epsilon.xml" "target/TEST-epsilon-windows.xml"
+        }
 
-    - name: Publish Test Report (macOS)
+    - name: Publish Test Report (windows)
       uses: mikepenz/action-junit-report@v5
       if: success() || failure()
       with:
-        report_paths: '**/TEST-epsilon-macos.xml'
-        check_name: 'Test Results (macOS)'
+        report_paths: '**/TEST-epsilon-windows.xml'
+        check_name: 'Test Results (Windows)'
         job_summary: true
 
     - name: Upload test results
       uses: actions/upload-artifact@v4
       if: success() || failure()
       with:
-        name: test-results-macos
-        path: target/TEST-epsilon-macos.xml
+        name: test-results-windows
+        path: target/TEST-epsilon-windows.xml
 
