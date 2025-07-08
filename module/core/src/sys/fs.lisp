@@ -12,7 +12,6 @@
   (:export
    :dir-p
    :file-p
-   :home-dir
    :list-dir
    :list-dirs
    :make-dirs
@@ -51,22 +50,20 @@
 
 (in-package :epsilon.sys.fs)
 
+(defun normalize-path-separators (path)
+  "Normalize path separators to forward slashes on all platforms"
+  (substitute #\/ #\\ path))
+
 (defun parent (file)
-  (str:join #\/ (butlast (str:split #\/ file))))
+  (let ((normalized (normalize-path-separators file)))
+    (str:join #\/ (butlast (str:split #\/ normalized)))))
 
 (defun runtime-dir ()
-  (parent  (first sb-ext:*posix-argv*)))
+  (parent (normalize-path-separators (first sb-ext:*posix-argv*))))
 
 (defun temp-dir ()
   "Return a default directory to use for temporary files"
   (env:getenv "TMPDIR"))
-
-(defun home-dir ()
-  #+(or linux darwin)
-  (sb-unix:uid-homedir (sb-unix:unix-getuid))
-  #+(or windows win32)
-  (or (env:getenv "USERPROFILE") 
-      (str:concat (env:getenv "HOMEDRIVE") (env:getenv "HOMEPATH"))))
 
 (defmacro with-temp-file ((name) &body body)
   `(let ((,name (str:concat
@@ -198,7 +195,7 @@
       contents)))
 
 (defun make-dirs (uri)
-  (let ((full-path (uri:path uri)))
+  (let ((full-path (normalize-path-separators (uri:path uri))))
     (when (and full-path (> (length full-path) 0))
       (let ((is-absolute (char= (char full-path 0) #\/))
             (components (seq:realize
@@ -247,10 +244,11 @@
         (sb-unix:unix-closedir dir nil))))
   #+(or windows win32)
   ;; Windows implementation using directory()
-  (let ((pattern (if (and (> (length directory) 0)
-                          (char= (char directory (1- (length directory))) #\\))
-                     (concatenate 'string directory "*.*")
-                     (concatenate 'string directory "\\*.*"))))
+  (let* ((normalized-dir (normalize-path-separators directory))
+         (pattern (if (and (> (length normalized-dir) 0)
+                           (char= (char normalized-dir (1- (length normalized-dir))) #\/))
+                      (concatenate 'string directory "*.*")
+                      (concatenate 'string directory "\\*.*"))))
     (handler-case
         (mapcar #'file-namestring
                 (remove-if (lambda (path)

@@ -59,7 +59,8 @@
       "Bash(./test-tls.lisp)",
       "Bash(/dev/null)",
       "Bash(pkill:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(EPSILON=/Users/jbouwman/git/epsilon ./run.sh test --format simple)"
     ],
     "deny": []
   }
