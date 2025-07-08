@@ -7,7 +7,7 @@
    (#:fs #:epsilon.sys.fs)
    (#:json #:epsilon.lib.json)
    (#:p #:epsilon.lib.parser)
-   (#:uri #:epsilon.lib.uri)))
+   (#:path #:epsilon.lib.path)))
 
 (in-package :epsilon.lib.json.tests)
 
@@ -18,7 +18,7 @@
 (defun load-test-json (filename)
   "Load a JSON test file from tests/lib/json/"
   (->> filename
-       (uri:path-join "tests/lib/json")
+       (path:string-path-join "tests/lib/json")
        (project-file "epsilon.core")
        fs:read-file))
 

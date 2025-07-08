@@ -1,3 +1,19 @@
+;;;; Threading Primitives and Management
+;;;;
+;;;; This module provides cross-platform threading operations including
+;;;; thread creation, management, and synchronization primitives. Built
+;;;; on top of SBCL's threading support with proper error handling.
+;;;;
+;;;; Key Features:
+;;;; - Thread creation and lifecycle management
+;;;; - Thread introspection and listing
+;;;; - Thread-safe error handling and propagation
+;;;; - Integration with epsilon's error handling system
+;;;; - Thread naming and identification
+;;;;
+;;;; Dependencies: epsilon.lib.function, epsilon.sys.error
+;;;; Platform: SBCL with threading support
+
 (defpackage #:epsilon.sys.thread
   (:use
    #:cl

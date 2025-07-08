@@ -1,7 +1,11 @@
+;;;; Character Encoding Tests
+;;;;
+;;;; Tests for the simplified character encoding interface that uses
+;;;; SBCL's built-in encoding support. Focuses on the core functionality
+;;;; that's actually used by other modules.
+
 (defpackage :epsilon.lib.char-tests
-  (:use
-   :cl
-   :epsilon.tool.test)
+  (:use :cl :epsilon.tool.test)
   (:local-nicknames
    (:char :epsilon.lib.char)))
 
@@ -14,10 +18,6 @@
 (defparameter *latin1*
   "Gödel"
   "Latin-1 accented characters")
-
-(defparameter *cp437*
-  "½ + ¼ = ¾"
-  "CP437 fractions")
 
 (defparameter *utf8*
   "∀x∈ℕ, x² ≥ 0 ∧ π ≈ 3.14159…"
@@ -95,41 +95,6 @@
                      (char:bytes-to-string all-bytes :encoding :iso-8859-1)
                      "ISO-8859-1 full byte range round-trip")))
 
-;;;; CP437 Tests
-
-(deftest cp437
-  
-  (round-trip-test :cp437 *ascii*
-                   "CP437 round-trip: ASCII subset")
-  
-  (is-equalp
-      (char:string-to-bytes "½" :encoding :cp437)
-      #(144)
-      "CP437 encoding of fraction character")
-
-  #++
-  (is-equalp
-      (char:bytes-to-string #(144) :encoding :cp437)
-      "½"
-      "CP437 decoding of fraction character")
-  
-  ;; Test some CP437-specific characters
-  #++
-  (is-equalp
-      (char:string-to-bytes "☺☻♥♦" :encoding :cp437)
-      #(1 2 3 4)
-      "CP437 encoding of smiley faces and card suits")
-  
-  (encoding-error-test :cp437 "€"
-                       "CP437 encoding error on Euro symbol (not in CP437)")
-  
-  ;; Test box drawing characters
-  #++
-  (is-equalp
-      (char:string-to-bytes "┌─┐│└┘" :encoding :cp437)
-      #(218 196 191 179 192 217)
-      "CP437 encoding of box drawing characters"))
-
 ;;;; UTF-8 Tests
 
 (deftest utf-8
@@ -187,20 +152,6 @@
   (decoding-error-test :utf-8 #(224 128 128)
                        "UTF-8 decoding error on overlong 3-byte sequence"))
 
-;;;; BOM Tests
-
-(deftest byte-order-mark
-  
-  (is-equalp
-      (char:string-to-bytes "Hello" :encoding :utf-8 :use-bom t)
-      #(239 187 191 72 101 108 108 111)
-      "UTF-8 with BOM encoding")
-  
-  (is-equalp
-      (char:string-to-bytes "Hello" :encoding :utf-8 :use-bom nil)
-      #(72 101 108 108 111)
-      "UTF-8 without BOM encoding"))
-
 ;;;; Error Suppression Tests
 
 (deftest error-suppression
@@ -226,29 +177,33 @@
   (round-trip-test :utf-8 (make-string 1000 :initial-element #\λ)
                    "UTF-8 performance test: 1000 lambda characters"))
 
-;;;; Utility Function Tests
+;;;; Character Encoding Interface Tests
 
-(deftest utility-functions
+(deftest character-encoding-interface
   
-  (is-equalp
-      (char:string-size-in-bytes "Hello" :encoding :ascii)
-      5
-      "ASCII string size calculation")
+  ;; Test get-character-encoding function
+  (is
+      (char:get-character-encoding :utf-8)
+      "get-character-encoding for UTF-8")
   
-  (is-equalp
-      (char:string-size-in-bytes "λλλ" :encoding :utf-8)
-      6
-      "UTF-8 string size calculation (3 chars = 6 bytes)")
+  (is
+      (char:get-character-encoding :ascii)
+      "get-character-encoding for ASCII")
   
-  (is-equalp
-      (char:vector-size-in-chars #(72 101 108 108 111) :encoding :ascii)
-      5
-      "ASCII vector size calculation")
+  (is-thrown (error)
+    (char:get-character-encoding :unknown-encoding)
+    "get-character-encoding error for unknown encoding")
   
-  (is-equalp
-      (char:vector-size-in-chars #(206 187 206 187 206 187) :encoding :utf-8)
-      3
-      "UTF-8 vector size calculation (6 bytes = 3 chars)"))
+  ;; Test enc-max-units-per-char function
+  (is-equal
+      (char:enc-max-units-per-char :utf-8)
+      4
+      "UTF-8 max units per character")
+  
+  (is-equal
+      (char:enc-max-units-per-char :ascii)
+      1
+      "ASCII max units per character"))
 
 ;;;; Integration Tests
 

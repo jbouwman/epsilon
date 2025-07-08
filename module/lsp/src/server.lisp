@@ -1,3 +1,21 @@
+;;;; Language Server Protocol (LSP) Server Implementation
+;;;;
+;;;; This module provides a complete LSP server implementation for Common Lisp
+;;;; development environments. Supports standard LSP features including
+;;;; completion, diagnostics, hover, and workspace management.
+;;;;
+;;;; Key Features:
+;;;; - LSP 3.17 protocol compliance
+;;;; - Real-time code completion and diagnostics
+;;;; - Hover information and signature help
+;;;; - Workspace symbol navigation
+;;;; - Multi-threaded request handling
+;;;; - Integration with epsilon's JSON-RPC implementation
+;;;;
+;;;; Dependencies: epsilon.lib.map, epsilon.lib.json, epsilon.lsp.protocol,
+;;;;               epsilon.lsp.protocol.jsonrpc, epsilon.sys.thread
+;;;; Standards: Language Server Protocol 3.17
+
 (defpackage #:epsilon.lsp.server
   (:use #:common-lisp)
   (:local-nicknames

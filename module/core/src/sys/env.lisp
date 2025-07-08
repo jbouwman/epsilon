@@ -1,3 +1,19 @@
+;;;; Environment Variable and Feature Detection
+;;;;
+;;;; This module provides cross-platform environment variable access and
+;;;; feature detection capabilities. Handles system environment queries
+;;;; and Common Lisp feature expression evaluation.
+;;;;
+;;;; Key Features:
+;;;; - Cross-platform environment variable access
+;;;; - Feature expression evaluation with custom feature sets
+;;;; - Environment variable existence checking
+;;;; - Safe environment variable retrieval with defaults
+;;;; - Integration with build-time feature detection
+;;;;
+;;;; Dependencies: None (uses only Common Lisp standard library)
+;;;; Platform: All supported Common Lisp implementations
+
 (defpackage #:epsilon.sys.env
   (:use #:cl)
   (:export #:featurep

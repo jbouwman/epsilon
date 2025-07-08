@@ -1,4 +1,20 @@
 
+;;;; Hash Array Mapped Trie (HAMT) Implementation
+;;;;
+;;;; This module provides immutable, persistent hash maps using the Hash Array
+;;;; Mapped Trie data structure. HAMT offers O(log32 n) operations for get, assoc,
+;;;; and dissoc with structural sharing for memory efficiency.
+;;;;
+;;;; Key Features:
+;;;; - Immutable operations that return new maps
+;;;; - Structural sharing for memory efficiency
+;;;; - Hash collision handling with linear probing
+;;;; - Functional programming interface with reduce, filter, map operations
+;;;; - Syntax support for map literals via epsilon.lib.syntax
+;;;;
+;;;; Dependencies: epsilon.lib.syntax for reader macros
+;;;; Performance: O(log32 n) for basic operations, excellent cache locality
+
 (defpackage :epsilon.lib.map
   (:use
    :cl

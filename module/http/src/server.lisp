@@ -2,7 +2,6 @@
   (:use :cl)
   (:local-nicknames
    (#:net #:epsilon.net)
-   (#:uri #:epsilon.lib.uri)
    (#:str #:epsilon.lib.string)
    (#:map #:epsilon.lib.map)
    (#:time #:epsilon.lib.time)

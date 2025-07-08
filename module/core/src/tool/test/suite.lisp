@@ -14,7 +14,6 @@
    (pkg epsilon.sys.pkg)
    (build epsilon.tool.build)
    (re epsilon.lib.regex)
-   (uri epsilon.lib.uri)
    (xml epsilon.lib.xml))
   (:export
    *test*

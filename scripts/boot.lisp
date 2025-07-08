@@ -21,7 +21,7 @@
     "lib/symbol"
     "lib/type"
     "sys/env"
-    "lib/uri"
+    "lib/path"
     "sys/fs"
     "tool/common"
     "lib/vector"

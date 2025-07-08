@@ -10,7 +10,7 @@
    (#:test #:epsilon.tool.test)
    (#:bench #:epsilon.tool.benchmark)
    (#:re #:epsilon.lib.regex)
-   (#:uri #:epsilon.lib.uri))
+   (#:path #:epsilon.lib.path))
   ;; Try to use logging, but don't fail if not available
   #+nil (:local-nicknames (#:log #:epsilon.lib.log))
   (:export
@@ -81,7 +81,7 @@
 (defun split-comma-list (value)
   "Split comma-separated values and trim whitespace"
   (when value
-    (mapcar #'str:trim (str:split #\, value))))
+    (seq:realize (seq:map #'str:trim (str:split #\, value)))))
 
 (defun try-log (level format-string &rest args)
   "Try to log, fall back to format if logging not available"
@@ -203,16 +203,16 @@
        (format t ";;; Running benchmark suite: ~A~%" suite)
        (cond
          ((string= suite "msgpack")
-          (load (uri:path (uri:merge (uri:file-uri 
-                                      #+win32 (sb-ext:native-namestring (truename "."))
-                                      #-win32 (sb-unix:posix-getcwd)) 
-                                     "module/core/tests/lib/msgpack-binary-benchmark.lisp")))
+          (load (path:string-path-join
+                  #+win32 (sb-ext:native-namestring (truename "."))
+                  #-win32 (sb-unix:posix-getcwd)
+                  "module/core/tests/lib/msgpack-binary-benchmark.lisp"))
           (funcall (find-symbol "RUN-MSGPACK-BENCHMARKS" "EPSILON.LIB.MSGPACK.BINARY.BENCHMARK")))
          ((string= suite "all")
-          (load (uri:path (uri:merge (uri:file-uri 
-                                      #+win32 (sb-ext:native-namestring (truename "."))
-                                      #-win32 (sb-unix:posix-getcwd)) 
-                                     "module/core/tests/lib/msgpack-binary-benchmark.lisp")))
+          (load (path:string-path-join
+                  #+win32 (sb-ext:native-namestring (truename "."))
+                  #-win32 (sb-unix:posix-getcwd)
+                  "module/core/tests/lib/msgpack-binary-benchmark.lisp"))
           (funcall (find-symbol "RUN-COMPLETE-BENCHMARK-SUITE" "EPSILON.LIB.MSGPACK.BINARY.BENCHMARK")))
          (t
           (error "Unknown benchmark suite: ~A. Available: msgpack, all" suite))))

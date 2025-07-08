@@ -1,8 +1,26 @@
+;;;; HTTP Client Implementation
+;;;;
+;;;; This module provides a comprehensive HTTP client with support for
+;;;; common HTTP methods, authentication, and connection management.
+;;;; Built on top of epsilon's networking layer for cross-platform support.
+;;;;
+;;;; Key Features:
+;;;; - HTTP/1.1 client with persistent connections
+;;;; - Support for GET, POST, PUT, DELETE, HEAD, OPTIONS methods
+;;;; - Basic and custom authentication support
+;;;; - Request/response header management
+;;;; - Connection pooling and keep-alive
+;;;; - Integration with epsilon's URI and networking systems
+;;;;
+;;;; Dependencies: epsilon.net, epsilon.lib.url, epsilon.lib.string,
+;;;;               epsilon.lib.map, epsilon.lib.base64
+;;;; Standards: HTTP/1.1 (RFC 7230-7235)
+
 (defpackage :epsilon.http.client
   (:use :cl)
   (:local-nicknames
    (#:net #:epsilon.net)
-   (#:uri #:epsilon.lib.uri)
+   (#:url #:epsilon.lib.url)
    (#:str #:epsilon.lib.string)
    (#:map #:epsilon.lib.map)
    (#:base64 #:epsilon.lib.base64))
@@ -43,13 +61,13 @@
 
 (defun parse-url (url-string)
   "Parse URL into components"
-  (let ((uri-obj (uri:parse url-string)))
-    (values (uri:scheme uri-obj)
-            (uri:host uri-obj)
-            (or (uri:port uri-obj)
-                (if (string= (uri:scheme uri-obj) "https") 443 80))
-            (or (uri:path uri-obj) "/")
-            (uri:query uri-obj))))
+  (let ((url-obj (url:parse url-string)))
+    (values (url:scheme url-obj)
+            (url:host url-obj)
+            (or (url:port url-obj)
+                (if (string= (url:scheme url-obj) "https") 443 80))
+            (or (url:path url-obj) "/")
+            (url:query url-obj))))
 
 (defun format-request-line (method path query)
   "Format HTTP request line"

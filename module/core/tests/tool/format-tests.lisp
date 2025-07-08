@@ -9,7 +9,7 @@
    (#:seq #:epsilon.lib.sequence)
    (#:str #:epsilon.lib.string)
    (#:test #:epsilon.tool.test)
-   (#:uri #:epsilon.lib.uri)))
+   (#:path #:epsilon.lib.path)))
 
 (in-package :epsilon.tool.format.tests)
 
@@ -81,7 +81,7 @@
 
 (defun load-test-resource (filename)
   "Load the contents of a test resource file"
-  (let ((path (project-file "epsilon.core" (uri:path-join "tests/tool/format" filename))))
+  (let ((path (project-file "epsilon.core" (path:string-path-join "tests/tool/format" filename))))
     (fs:read-file path)))
 
 (defun find-string-difference (str1 str2)

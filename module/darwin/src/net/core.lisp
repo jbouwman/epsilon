@@ -1,3 +1,21 @@
+;;;; Darwin Network Core - Kqueue-based Implementation
+;;;;
+;;;; This module provides high-performance networking primitives for macOS
+;;;; and BSD systems using kqueue for event notification. Supports both TCP
+;;;; and UDP sockets with TLS integration and efficient event handling.
+;;;;
+;;;; Key Features:
+;;;; - Kqueue-based event notification for high concurrency
+;;;; - Non-blocking socket operations with proper error handling
+;;;; - TCP and UDP socket support with TLS integration
+;;;; - Connection management and lifecycle handling
+;;;; - Timeout and error condition management
+;;;; - Integration with epsilon's system libraries
+;;;;
+;;;; Dependencies: epsilon.kqueue, epsilon.sys.lib, epsilon.tls
+;;;; Platform: macOS and BSD systems with kqueue support
+;;;; Performance: Optimized for high-concurrency server applications
+
 (defpackage #:epsilon.net
   (:use #:cl)
   (:local-nicknames
