@@ -6,7 +6,8 @@
   (:local-nicknames
    (#:fs #:epsilon.sys.fs)
    (#:json #:epsilon.lib.json)
-   (#:p #:epsilon.lib.parser)))
+   (#:p #:epsilon.lib.parser)
+   (#:uri #:epsilon.lib.uri)))
 
 (in-package :epsilon.lib.json.tests)
 
@@ -17,7 +18,7 @@
 (defun load-test-json (filename)
   "Load a JSON test file from tests/lib/json/"
   (->> filename
-       (format nil "tests/lib/json/~a")
+       (uri:path-join "tests/lib/json")
        (project-file "epsilon.core")
        fs:read-file))
 

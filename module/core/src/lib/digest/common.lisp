@@ -1,3 +1,5 @@
+(require :sb-rotate-byte)
+
 (defpackage :epsilon.lib.digest.common
   (:use
    :cl

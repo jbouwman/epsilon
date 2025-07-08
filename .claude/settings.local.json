@@ -56,7 +56,10 @@
       "Bash(./test-http-server.lisp)",
       "Bash(timeout:*)",
       "Bash(./test-full-http.lisp)",
-      "Bash(./test-tls.lisp)"
+      "Bash(./test-tls.lisp)",
+      "Bash(/dev/null)",
+      "Bash(pkill:*)",
+      "Bash(sed:*)"
     ],
     "deny": []
   }

@@ -147,6 +147,108 @@
         (- value (ash 1 (* size 8)))
         value)))
 
+;;; Forward declarations and utility functions
+
+;;; Forward declare binary stream classes
+(defclass binary-input-stream ()
+  ((data :initarg :data :reader stream-data)
+   (position :initarg :position :initform 0 :accessor stream-position)))
+
+(defclass binary-output-stream ()
+  ((data :initform (make-array 0 :element-type '(unsigned-byte 8) 
+                               :adjustable t :fill-pointer 0)
+         :accessor stream-data)))
+
+;;; Stream method declarations
+(defgeneric stream-read-byte (stream &optional eof-error-p eof-value))
+(defgeneric stream-write-byte (stream byte))
+(defgeneric stream-read-sequence (stream sequence &key start end))
+(defgeneric stream-write-sequence (stream sequence &key start end))
+
+;;; Stream method implementations
+(defmethod stream-read-byte ((stream binary-input-stream) &optional eof-error-p eof-value)
+  (declare (ignore eof-error-p))
+  (with-slots (data position) stream
+    (if (< position (length data))
+        (prog1 (aref data position)
+          (incf position))
+        eof-value)))
+
+(defmethod stream-write-byte ((stream binary-output-stream) byte)
+  (vector-push-extend byte (stream-data stream)))
+
+(defmethod stream-read-sequence ((stream binary-input-stream) sequence &key start end)
+  (let ((start (or start 0))
+        (end (or end (length sequence))))
+    (with-slots (data position) stream
+      (loop for i from start below end
+            while (< position (length data))
+            do (setf (elt sequence i) (aref data position))
+               (incf position)
+            finally (return i)))))
+
+(defmethod stream-write-sequence ((stream binary-output-stream) sequence &key start end)
+  (let ((start (or start 0))
+        (end (or end (length sequence))))
+    (loop for i from start below end
+          do (vector-push-extend (elt sequence i) (stream-data stream)))
+    sequence))
+
+(defun infer-type (value)
+  "Attempt to infer binary type from value"
+  (typecase value
+    ((unsigned-byte 8) :u8)
+    ((signed-byte 8) :s8)
+    ((unsigned-byte 16) :u16)
+    ((signed-byte 16) :s16)
+    ((unsigned-byte 32) :u32)
+    ((signed-byte 32) :s32)
+    ((unsigned-byte 64) :u64)
+    ((signed-byte 64) :s64)
+    (single-float :f32)
+    (double-float :f64)
+    (t (error "Cannot infer binary type for ~A" value))))
+
+(defun binary-read-byte (stream)
+  "Read a byte from stream, using appropriate method"
+  (etypecase stream
+    (binary-input-stream (stream-read-byte stream))
+    (stream (cl:read-byte stream))))
+
+(defun binary-write-byte (stream byte)
+  "Write a byte to stream, using appropriate method"
+  (etypecase stream
+    (binary-output-stream (stream-write-byte stream byte))
+    (stream (cl:write-byte byte stream))))
+
+(defun binary-read-sequence (stream sequence &key start end)
+  "Read a sequence from stream, using appropriate method"
+  (etypecase stream
+    (binary-input-stream (stream-read-sequence stream sequence :start start :end end))
+    (stream (if (and start end)
+                (cl:read-sequence sequence stream :start start :end end)
+                (if start
+                    (cl:read-sequence sequence stream :start start)
+                    (if end
+                        (cl:read-sequence sequence stream :end end)
+                        (cl:read-sequence sequence stream)))))))
+
+(defun binary-write-sequence (stream sequence &key start end)
+  "Write a sequence to stream, using appropriate method"
+  (etypecase stream
+    (binary-output-stream (stream-write-sequence stream sequence :start start :end end))
+    (stream (if (and start end)
+                (cl:write-sequence sequence stream :start start :end end)
+                (if start
+                    (cl:write-sequence sequence stream :start start)
+                    (if end
+                        (cl:write-sequence sequence stream :end end)
+                        (cl:write-sequence sequence stream)))))))
+
+(defun get-output-stream-bytes (stream)
+  "Get the bytes written to a binary output stream"
+  (stream-data stream))
+
 ;;; Main API
 
 (defun read (stream type &optional (endian *default-endian*))
@@ -407,24 +509,11 @@
    (error "f64 decoder not implemented")))
 
 ;;; Type inference
-
-(defun infer-type (value)
-  "Attempt to infer binary type from value"
-  (typecase value
-    ((unsigned-byte 8) :u8)
-    ((signed-byte 8) :s8)
-    ((unsigned-byte 16) :u16)
-    ((signed-byte 16) :s16)
-    ((unsigned-byte 32) :u32)
-    ((signed-byte 32) :s32)
-    ((unsigned-byte 64) :u64)
-    ((signed-byte 64) :s64)
-    (single-float :f32)
-    (double-float :f64)
-    (t (error "Cannot infer binary type for ~A" value))))
+;;; (moved earlier in file)
 
 ;;; Binary structure support
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
 (defstruct binary-struct-field
   name
   type
@@ -436,14 +525,15 @@
   reader    ; custom reader function
   writer)   ; custom writer function
 
-(defvar *binary-struct-registry* (map:make-map)
-  "Registry of defined binary structures")
-
 (defstruct binary-struct-type
   name
   fields
   size      ; total size if fixed, nil if variable
   options)
+) ; end eval-when
+
+(defvar *binary-struct-registry* (map:make-map)
+  "Registry of defined binary structures")
 
 (defun register-binary-struct (name struct-type)
   "Register a binary structure type"
@@ -454,6 +544,115 @@
   "Get a registered binary structure type"
   (or (map:get *binary-struct-registry* name)
       (error "Unknown binary struct type: ~A" name)))
+
+;;; Helper functions for define-binary-struct macro
+(eval-when (:compile-toplevel :load-toplevel :execute)
+(defun parse-struct-fields (fields)
+  "Parse field definitions into binary-struct-field objects"
+  (let ((offset 0)
+        (result '()))
+    (dolist (field fields (nreverse result))
+      (let* ((parsed (parse-field-definition field))
+             (field-obj (apply #'make-binary-struct-field parsed)))
+        (setf (binary-struct-field-offset field-obj) offset)
+        (when (integerp (binary-struct-field-size field-obj))
+          (incf offset (binary-struct-field-size field-obj)))
+        (push field-obj result)))))
+
+(defun parse-field-definition (field)
+  "Parse a single field definition"
+  (destructuring-bind (name type &rest options) field
+    (list* :name name :type type options)))
+
+(defun field-to-plist (field)
+  "Convert field object to plist for macro expansion"
+  `(:name ',(binary-struct-field-name field)
+    :type ',(binary-struct-field-type field)
+    ,@(when (binary-struct-field-size field)
+        `(:size ,(if (symbolp (binary-struct-field-size field))
+                     `',(binary-struct-field-size field)
+                     (binary-struct-field-size field))))
+    ,@(when (binary-struct-field-value field)
+        `(:value ,(binary-struct-field-value field)))
+    ,@(when (binary-struct-field-endian field)
+        `(:endian ,(binary-struct-field-endian field)))
+    ,@(when (binary-struct-field-condition field)
+        `(:condition ,(binary-struct-field-condition field)))))
+
+(defun compute-struct-size (fields)
+  "Compute total size of structure if fixed"
+  (let ((total 0))
+    (dolist (field fields)
+      (let ((field-size (binary-struct-field-size field)))
+        (cond
+          ((null field-size)
+           (return-from compute-struct-size nil)) ; Variable size
+          ((integerp field-size)
+           (incf total field-size))
+          (t
+           (return-from compute-struct-size nil))))) ; Variable size
+    total))
+
+(defun resolve-field-size (size struct)
+  "Resolve field size which may reference another field"
+  (cond
+    ((integerp size) size)
+    ((symbolp size) (slot-value struct size))
+    (t (error "Invalid field size: ~A" size))))
+
+(defun field-size (field value)
+  "Calculate the size of a field value"
+  (cond
+    ((binary-struct-field-size field)
+     (if (integerp (binary-struct-field-size field))
+         (binary-struct-field-size field)
+         (length value))) ; For variable-size fields
+    ((member (binary-struct-field-type field) '(:bytes :string))
+     (length value))
+    (t
+     (size (binary-struct-field-type field)))))
+
+(defun write-struct-field (stream field struct endian)
+  "Write a single field to stream"
+  (let ((field-endian (or (binary-struct-field-endian field) endian))
+        (value (slot-value struct (binary-struct-field-name field))))
+    (cond
+      ;; Custom writer
+      ((binary-struct-field-writer field)
+       (funcall (binary-struct-field-writer field) stream value struct field-endian))
+      ;; Bytes type
+      ((eq (binary-struct-field-type field) :bytes)
+       (write-bytes stream value))
+      ;; String type
+      ((eq (binary-struct-field-type field) :string)
+       (let ((bytes (map '(vector (unsigned-byte 8)) #'char-code value)))
+         (write-bytes stream bytes)))
+      ;; Standard type
+      (t
+       (write stream value (binary-struct-field-type field) field-endian)))))
+
+(defun read-struct-field (stream field struct endian)
+  "Read a single field from stream"
+  (let ((field-endian (or (binary-struct-field-endian field) endian)))
+    (cond
+      ;; Custom reader
+      ((binary-struct-field-reader field)
+       (funcall (binary-struct-field-reader field) stream struct field-endian))
+      ;; Bytes type with size
+      ((and (eq (binary-struct-field-type field) :bytes)
+            (binary-struct-field-size field))
+       (let ((size (resolve-field-size (binary-struct-field-size field) struct)))
+         (read-bytes stream size)))
+      ;; String type with size
+      ((and (eq (binary-struct-field-type field) :string)
+            (binary-struct-field-size field))
+       (let* ((size (resolve-field-size (binary-struct-field-size field) struct))
+              (bytes (read-bytes stream size)))
+         (map 'string #'code-char bytes)))
+      ;; Standard type
+      (t
+       (read stream (binary-struct-field-type field) field-endian)))))
+) ; end eval-when
 
 (defmacro define-binary-struct (name options &body fields)
   "Define a binary structure type
@@ -505,57 +704,7 @@
        
        ',struct-name)))
 
-(defun parse-struct-fields (fields)
-  "Parse field definitions into binary-struct-field objects"
-  (let ((offset 0)
-        (result '()))
-    (dolist (field fields (nreverse result))
-      (let* ((parsed (parse-field-definition field))
-             (field-obj (apply #'make-binary-struct-field parsed)))
-        (setf (binary-struct-field-offset field-obj) offset)
-        (when (integerp (binary-struct-field-size field-obj))
-          (incf offset (binary-struct-field-size field-obj)))
-        (push field-obj result)))))
-
-(defun parse-field-definition (field)
-  "Parse a single field definition"
-  (destructuring-bind (name type &rest options) field
-    (list* :name name :type type options)))
-
-(defun field-to-plist (field)
-  "Convert field object to plist for macro expansion"
-  `(:name ',(binary-struct-field-name field)
-    :type ',(binary-struct-field-type field)
-    ,@(when (binary-struct-field-size field)
-        `(:size ,(if (symbolp (binary-struct-field-size field))
-                     `',(binary-struct-field-size field)
-                     (binary-struct-field-size field))))
-    ,@(when (binary-struct-field-value field)
-        `(:value ,(binary-struct-field-value field)))
-    ,@(when (binary-struct-field-endian field)
-        `(:endian ,(binary-struct-field-endian field)))
-    ,@(when (binary-struct-field-condition field)
-        `(:condition ,(binary-struct-field-condition field)))))
-
-(defun compute-struct-size (fields)
-  "Compute total size of structure if fixed"
-  (let ((total 0))
-    (dolist (field fields)
-      (let ((field-size (binary-struct-field-size field)))
-        (cond
-          ((null field-size)
-           (let ((type-info (handler-case (get-binary-type (binary-struct-field-type field))
-                              (error () nil))))
-             (when type-info
-               (let ((type-size (binary-type-size type-info)))
-                 (when (integerp type-size)
-                   (incf total type-size))))))
-          ((integerp field-size)
-           (incf total field-size))
-          ((symbolp field-size)
-           ;; Variable size - structure has no fixed size
-           (return-from compute-struct-size nil)))))
-    (when (plusp total) total)))
+;;; Helper functions (moved earlier in file)
 
 (defun make-struct-reader (struct-name)
   "Create a reader function for a binary structure"
@@ -575,34 +724,9 @@
           (setf (slot-value result (binary-struct-field-name field)) value)))
       result)))
 
-(defun read-struct-field (stream field struct endian)
-  "Read a single field from stream"
-  (let ((field-endian (or (binary-struct-field-endian field) endian)))
-    (cond
-      ;; Custom reader
-      ((binary-struct-field-reader field)
-       (funcall (binary-struct-field-reader field) stream struct field-endian))
-      ;; Bytes type with size
-      ((and (eq (binary-struct-field-type field) :bytes)
-            (binary-struct-field-size field))
-       (let ((size (resolve-field-size (binary-struct-field-size field) struct)))
-         (read-bytes stream size)))
-      ;; String type with size
-      ((and (eq (binary-struct-field-type field) :string)
-            (binary-struct-field-size field))
-       (let* ((size (resolve-field-size (binary-struct-field-size field) struct))
-              (bytes (read-bytes stream size)))
-         (map 'string #'code-char bytes)))
-      ;; Standard type
-      (t
-       (read stream (binary-struct-field-type field) field-endian)))))
+;;; read-struct-field (moved earlier in file)
 
-(defun resolve-field-size (size struct)
-  "Resolve field size which may reference another field"
-  (cond
-    ((integerp size) size)
-    ((symbolp size) (slot-value struct size))
-    (t (error "Invalid field size: ~A" size))))
+;;; resolve-field-size (moved earlier in file)
 
 (defun make-struct-writer (struct-name)
   "Create a writer function for a binary structure"
@@ -611,24 +735,7 @@
       (dolist (field (binary-struct-type-fields struct-type))
         (write-struct-field stream field value endian)))))
 
-(defun write-struct-field (stream field struct endian)
-  "Write a single field to stream"
-  (let ((field-endian (or (binary-struct-field-endian field) endian))
-        (value (slot-value struct (binary-struct-field-name field))))
-    (cond
-      ;; Custom writer
-      ((binary-struct-field-writer field)
-       (funcall (binary-struct-field-writer field) stream value struct field-endian))
-      ;; Bytes type
-      ((eq (binary-struct-field-type field) :bytes)
-       (write-bytes stream value))
-      ;; String type
-      ((eq (binary-struct-field-type field) :string)
-       (let ((bytes (map '(vector (unsigned-byte 8)) #'char-code value)))
-         (write-bytes stream bytes)))
-      ;; Standard type
-      (t
-       (write stream value (binary-struct-field-type field) field-endian)))))
+;;; write-struct-field (moved earlier in file)
 
 (defun make-struct-encoder (struct-name)
   "Create an encoder function for a binary structure"
@@ -652,107 +759,12 @@
         (incf total (field-size field field-value))))
     total))
 
-(defun field-size (field value)
-  "Calculate the size of a field value"
-  (cond
-    ((binary-struct-field-size field)
-     (if (integerp (binary-struct-field-size field))
-         (binary-struct-field-size field)
-         (length value))) ; For variable-size fields
-    ((member (binary-struct-field-type field) '(:bytes :string))
-     (length value))
-    (t
-     (size (binary-struct-field-type field)))))
+;;; field-size (moved earlier in file)
 
 ;;; Binary stream classes for in-memory operations
+;;; (moved earlier in file)
 
-(defclass binary-input-stream ()
-  ((data :initarg :data :reader stream-data)
-   (position :initarg :position :initform 0 :accessor stream-position)))
-
-(defclass binary-output-stream ()
-  ((data :initform (make-array 0 :element-type '(unsigned-byte 8) 
-                               :adjustable t :fill-pointer 0)
-         :accessor stream-data)))
-
-(defgeneric stream-read-byte (stream &optional eof-error-p eof-value)
-  (:documentation "Read a byte from a binary stream"))
-
-(defgeneric stream-write-byte (stream byte)
-  (:documentation "Write a byte to a binary stream"))
-
-(defgeneric stream-read-sequence (stream sequence &key start end)
-  (:documentation "Read a sequence from a binary stream"))
-
-(defgeneric stream-write-sequence (stream sequence &key start end)
-  (:documentation "Write a sequence to a binary stream"))
-
-(defmethod stream-read-byte ((stream binary-input-stream) &optional eof-error-p eof-value)
-  (declare (ignore eof-error-p))
-  (with-slots (data position) stream
-    (if (< position (length data))
-        (prog1 (aref data position)
-          (incf position))
-        eof-value)))
-
-(defmethod stream-write-byte ((stream binary-output-stream) byte)
-  (vector-push-extend byte (stream-data stream)))
-
-(defmethod stream-read-sequence ((stream binary-input-stream) sequence &key start end)
-  (let* ((start (or start 0))
-         (end (or end (length sequence)))
-         (count (min (- end start) 
-                     (- (length (stream-data stream)) (stream-position stream)))))
-    (replace sequence (stream-data stream)
-             :start1 start :end1 (+ start count)
-             :start2 (stream-position stream))
-    (incf (stream-position stream) count)
-    (+ start count)))
-
-(defmethod stream-write-sequence ((stream binary-output-stream) sequence &key start end)
-  (let ((start (or start 0))
-        (end (or end (length sequence))))
-    (loop for i from start below end
-          do (vector-push-extend (elt sequence i) (stream-data stream)))
-    sequence))
+;;; Stream generics and methods (moved earlier in file)
 
 ;; Wrapper functions that use the appropriate stream type
-(defun binary-read-byte (stream)
-  "Read a byte from stream, using appropriate method"
-  (etypecase stream
-    (binary-input-stream (stream-read-byte stream))
-    (stream (cl:read-byte stream))))
-
-(defun binary-write-byte (stream byte)
-  "Write a byte to stream, using appropriate method"
-  (etypecase stream
-    (binary-output-stream (stream-write-byte stream byte))
-    (stream (cl:write-byte byte stream))))
-
-(defun binary-read-sequence (stream sequence &key start end)
-  "Read a sequence from stream, using appropriate method"
-  (etypecase stream
-    (binary-input-stream (stream-read-sequence stream sequence :start start :end end))
-    (stream (if (and start end)
-                (cl:read-sequence sequence stream :start start :end end)
-                (if start
-                    (cl:read-sequence sequence stream :start start)
-                    (if end
-                        (cl:read-sequence sequence stream :end end)
-                        (cl:read-sequence sequence stream)))))))
-
-(defun binary-write-sequence (stream sequence &key start end)
-  "Write a sequence to stream, using appropriate method"
-  (etypecase stream
-    (binary-output-stream (stream-write-sequence stream sequence :start start :end end))
-    (stream (if (and start end)
-                (cl:write-sequence sequence stream :start start :end end)
-                (if start
-                    (cl:write-sequence sequence stream :start start)
-                    (if end
-                        (cl:write-sequence sequence stream :end end)
-                        (cl:write-sequence sequence stream)))))))
-
-(defun get-output-stream-bytes (stream)
-  "Get the bytes written to a binary output stream"
-  (stream-data stream))
+;;; (moved earlier in file)

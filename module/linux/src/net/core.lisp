@@ -37,6 +37,8 @@
 
 (in-package :epsilon.net)
 
+(require :sb-bsd-sockets)
+
 ;;; Conditions
 
 (define-condition network-error (error) 

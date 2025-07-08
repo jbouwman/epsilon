@@ -251,7 +251,7 @@ Process large datasets efficiently with lazy evaluation:
 
 ```lisp
 ;; Memory-efficient processing
-(->> (seq:from-file "large-dataset.txt")
+(->> (fs:file-lines "large-dataset.txt")
      (seq:map #'parse-line)
      (seq:filter #'valid-record-p)
      (seq:take 1000)

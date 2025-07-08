@@ -42,11 +42,6 @@ Platform integration and system services:
 - **[epsilon.sys.thread](system/thread.md)** - Threading primitives and pools
 - **[epsilon.sys.env](system/env.md)** - Environment variable access
 
-### Networking
-Interim networking solution for cross-platform socket programming:
-
-- **[epsilon.lib.net](networking/net.md)** - TCP/UDP sockets based on sb-bsd-sockets
-
 ### Tools
 Development and build utilities:
 

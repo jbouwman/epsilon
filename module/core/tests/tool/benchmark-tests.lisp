@@ -1,13 +1,14 @@
 (defpackage epsilon.tool.benchmark.tests
-  (:use cl epsilon.tool.test)
+  (:use
+   cl
+   epsilon.tool.test)
   (:local-nicknames 
    (bench epsilon.tool.benchmark)))
 
-(in-package :epsilon.tool.benchmark.tests)
+(in-package epsilon.tool.benchmark.tests)
 
 (deftest basic-benchmark ()
   "Test basic benchmark functionality"
-  ;; Test simple benchmark creation and execution
   (let ((result (bench:run-benchmark
                  (lambda () (+ 1 2 3))
                  :name "simple-addition"
@@ -39,4 +40,4 @@
     (+ 1 2 3 4 5))
   
   (let ((fn (bench:get-benchmark 'test-macro-bench)))
-    (is (functionp fn)))))
+    (is (functionp fn))))

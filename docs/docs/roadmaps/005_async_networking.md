@@ -38,7 +38,7 @@ Platform-specific async networking implementation using native event loops (kque
 - Async socket creation and management
 - Event-driven connection handling
 - Basic HTTP server capable of 1000+ concurrent connections
-- Performance benchmarks vs sb-bsd-sockets baseline
+- Performance benchmarks
 
 ### Phase 2: Linux (Weeks 5-8)
 **Event Loop**: epoll-based async I/O
@@ -236,20 +236,6 @@ Platform-specific async networking implementation using native event loops (kque
 - HTTP client library compatibility
 - Reverse proxy integration (nginx, HAProxy)
 - Container deployment scenarios
-
-## Migration Path
-
-### From sb-bsd-sockets
-- Gradual API migration with compatibility interface
-- Performance comparison and optimization
-- Documentation for porting existing code
-- Examples showing before/after implementations
-
-### Integration with Epsilon
-- Build system integration for platform detection
-- Test framework integration for async testing
-- Documentation generation for new APIs
-- Package organization following epsilon conventions
 
 ## Success Metrics
 
