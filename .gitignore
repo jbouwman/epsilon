@@ -1,3 +1,6 @@
 target
 TAGS
 *.fasl
+node_modules
+package.json
+package-lock.json

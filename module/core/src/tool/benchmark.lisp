@@ -1,3 +1,20 @@
+;;;; Performance Benchmarking Framework
+;;;;
+;;;; This module provides a comprehensive benchmarking framework for measuring
+;;;; and comparing performance of code segments. Includes statistical analysis,
+;;;; memory usage tracking, and comparative benchmarking capabilities.
+;;;;
+;;;; Key Features:
+;;;; - Precise timing measurements with statistical analysis
+;;;; - Memory usage tracking and garbage collection metrics
+;;;; - Comparative benchmarking with baseline comparisons
+;;;; - Warmup periods and multiple iteration averaging
+;;;; - Configurable output formats and reporting
+;;;; - Integration with epsilon's build and test systems
+;;;;
+;;;; Dependencies: epsilon.lib.time, epsilon.lib.map
+;;;; Usage: Define benchmarks and run with comparative analysis
+
 (defpackage epsilon.tool.benchmark
   (:use cl)
   (:local-nicknames

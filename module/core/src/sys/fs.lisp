@@ -1,3 +1,21 @@
+;;;; System-Level Filesystem Operations
+;;;;
+;;;; This module provides low-level filesystem operations using POSIX system calls
+;;;; via sb-posix. Handles file I/O, directory operations, permissions, and
+;;;; metadata queries with proper error handling.
+;;;;
+;;;; Key Features:
+;;;; - POSIX-compliant filesystem operations via sb-posix
+;;;; - File and directory creation, deletion, and metadata queries
+;;;; - Permission handling and ownership operations
+;;;; - Temporary file and directory management
+;;;; - Path-based file operations integration
+;;;; - Cross-platform filesystem abstractions
+;;;;
+;;;; Dependencies: epsilon.lib.type, epsilon.sys.env, epsilon.lib.sequence,
+;;;;               epsilon.lib.string, epsilon.lib.path
+;;;; Platform: POSIX systems (Linux, macOS, Unix variants)
+
 (defpackage :epsilon.sys.fs
   (:use
    :cl
@@ -6,7 +24,7 @@
    (:env :epsilon.sys.env)
    (:seq :epsilon.lib.sequence)
    (:str :epsilon.lib.string)
-   (:uri :epsilon.lib.uri))
+   (:path :epsilon.lib.path))
   (:shadow
    :byte)
   (:export
@@ -51,11 +69,16 @@
 
 (in-package :epsilon.sys.fs)
 
+(defun normalize-path-separators (path)
+  "Normalize path separators to forward slashes on all platforms"
+  (substitute #\/ #\\ path))
+
 (defun parent (file)
-  (str:join #\/ (butlast (str:split #\/ file))))
+  (let ((normalized (normalize-path-separators file)))
+    (str:join #\/ (butlast (str:split #\/ normalized)))))
 
 (defun runtime-dir ()
-  (parent  (first sb-ext:*posix-argv*)))
+  (parent (normalize-path-separators (first sb-ext:*posix-argv*))))
 
 (defun temp-dir ()
   "Return a default directory to use for temporary files"
@@ -69,10 +92,9 @@
       (str:concat (env:getenv "HOMEDRIVE") (env:getenv "HOMEPATH"))))
 
 (defmacro with-temp-file ((name) &body body)
-  `(let ((,name (str:concat
+  `(let ((,name (path:string-path-join
                  (temp-dir)
-                 (str:random-string 16)
-                 ".tmp")))
+                 (str:concat (str:random-string 16) ".tmp"))))
      (unwind-protect
           (progn
             ,@body)
@@ -151,8 +173,7 @@
                    :when (and (not (string= name "."))
                               (not (string= name "..")))
                      :do (funcall f
-                                  (uri:make-uri :scheme "file"
-                                                :path (uri:path-join dirpath name))))))
+                                  (path:string-path-join dirpath name)))))
       (when dir
         (sb-unix:unix-closedir dir nil))))
   #+(or windows win32)
@@ -166,18 +187,18 @@
           (let ((name (file-namestring entry)))
             (when (and (not (string= name "."))
                        (not (string= name "..")))
-              (funcall f
-                       (uri:make-uri :scheme "file"
-                                     :path (namestring entry))))))
+              (funcall f (namestring entry)))))
       (error () nil))))
 
-(defun walk-uri (uri f &key (recursive t) (test (constantly t)))
-  (%walk-dir (uri:path uri)
-             (lambda (entry)
-               (when (funcall test entry)
-                 (funcall f entry))
-               (when (and recursive (dir-p (uri:path entry)))
-                 (walk-uri entry f :recursive t :test test)))))
+(defun walk-path (path-string f &key (recursive t) (test (constantly t)))
+  (%walk-dir (if (stringp path-string)
+                 path-string
+                 (path:path-from-uri path-string))
+             (lambda (entry-path)
+               (when (funcall test entry-path)
+                 (funcall f entry-path))
+               (when (and recursive (dir-p entry-path))
+                 (walk-path entry-path f :recursive t :test test)))))
 
 (defun delete-extension (path-string)
   (subseq path-string 0 (position #\. path-string :from-end t)))
@@ -188,8 +209,10 @@
 (defun replace-extension (path-string extension)
   (add-extension (delete-extension path-string) extension))
 
-(defun exists-p (uri)
-  (not (null (probe-file (uri:path uri)))))
+(defun exists-p (path-string)
+  (not (null (probe-file (if (stringp path-string)
+                             path-string
+                             (path:path-from-uri path-string))))))
 
 (defun read-file (filename)
   (with-open-file (stream filename :direction :input)
@@ -197,8 +220,10 @@
       (read-sequence contents stream)
       contents)))
 
-(defun make-dirs (uri)
-  (let ((full-path (uri:path uri)))
+(defun make-dirs (path-string)
+  (let ((full-path (normalize-path-separators (if (stringp path-string)
+                                                  path-string
+                                                  (path:path-from-uri path-string)))))
     (when (and full-path (> (length full-path) 0))
       (let ((is-absolute (char= (char full-path 0) #\/))
             (components (seq:realize
@@ -206,22 +231,22 @@
                                      (str:split #\/ full-path)))))
         (loop :with path := (if is-absolute "/" "")
               :for component :in components
-              :do (setf path (uri:path-join path component))
+              :do (setf path (path:string-path-join path component))
                   (unless (probe-file path)
                     #+(or linux darwin)
                     (sb-unix:unix-mkdir path #o775)
                     #+(or windows win32)
                     (ensure-directories-exist (pathname path))))))))
   
-(defun list-files (uri extension)
+(defun list-files (path-string extension)
   (let (files)
-    (walk-uri uri
-              (lambda (entry)
-                (push entry files))
-              :test (lambda (entry)
-                      (and (file-p (uri:path entry))
-                           (str:ends-with-p (uri:path entry) extension))))
-    (sort files #'string<= :key #'uri:path)))
+    (walk-path path-string
+               (lambda (entry-path)
+                 (push entry-path files))
+               :test (lambda (entry-path)
+                       (and (file-p entry-path)
+                            (str:ends-with-p entry-path extension))))
+    (sort files #'string<=)))
 
 (defun ensure-deleted (pathname)
   (when (file-p pathname)
@@ -247,10 +272,11 @@
         (sb-unix:unix-closedir dir nil))))
   #+(or windows win32)
   ;; Windows implementation using directory()
-  (let ((pattern (if (and (> (length directory) 0)
-                          (char= (char directory (1- (length directory))) #\\))
-                     (concatenate 'string directory "*.*")
-                     (concatenate 'string directory "\\*.*"))))
+  (let* ((normalized-dir (normalize-path-separators directory))
+         (pattern (if (and (> (length normalized-dir) 0)
+                           (char= (char normalized-dir (1- (length normalized-dir))) #\/))
+                      (concatenate 'string directory "*.*")
+                      (concatenate 'string directory "\\*.*"))))
     (handler-case
         (mapcar #'file-namestring
                 (remove-if (lambda (path)

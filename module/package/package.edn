@@ -1,0 +1,12 @@
+{"name" "epsilon.package"
+ "version" "0.2.0"
+ "description" "Package management and distribution system for Epsilon modules with dependency resolution and efficient boot caching"
+ "sources" ("src")
+ "tests" ("tests")
+ "provides" ("epsilon.lib.package"
+             "epsilon.lib.package.repository"
+             "epsilon.lib.package.dependency"
+             "epsilon.lib.package.boot"
+             "epsilon.lib.package.builder"
+             "epsilon.lib.package.system")
+ "dependencies" ()}

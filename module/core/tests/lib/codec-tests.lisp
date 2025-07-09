@@ -7,7 +7,7 @@
   (:local-nicknames
    (:fs :epsilon.sys.fs)
    (:codec :epsilon.lib.codec)
-   (:uri :epsilon.lib.uri)))
+   (:path :epsilon.lib.path)))
 
 (in-package :epsilon.lib.codec-tests)
 
@@ -24,7 +24,7 @@
 
 (defun get-test-relative-path (name)
   (project-file "epsilon.core"
-                (uri:path-join "tests/lib" name)))
+                (path:string-path-join "tests/lib" name)))
 
 (defun test-decompress (codec compressed original)
   (decompress codec                     ; FIXME native URL
@@ -38,7 +38,7 @@
 
 (defun test-roundtrip (codec original)
   (let ((path (project-file "epsilon.core"
-                            (uri:path-join "tests/lib" original))))
+                            (path:string-path-join "tests/lib" original))))
     (roundtrip codec path)))
 
 (deftest deflate

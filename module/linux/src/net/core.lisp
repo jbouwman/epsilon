@@ -1,3 +1,21 @@
+;;;; Linux Network Core - Epoll-based Implementation
+;;;;
+;;;; This module provides high-performance networking primitives for Linux
+;;;; systems using epoll for event notification. Supports both TCP and UDP
+;;;; sockets with non-blocking I/O and efficient event handling.
+;;;;
+;;;; Key Features:
+;;;; - Epoll-based event notification for high concurrency
+;;;; - Non-blocking socket operations with proper error handling
+;;;; - TCP and UDP socket support
+;;;; - Connection management and lifecycle handling
+;;;; - Timeout and error condition management
+;;;; - Integration with epsilon's system libraries
+;;;;
+;;;; Dependencies: epsilon.sys.epoll, epsilon.sys.lib
+;;;; Platform: Linux systems with epoll support
+;;;; Performance: Optimized for high-concurrency server applications
+
 (defpackage #:epsilon.net
   (:use #:cl)
   (:local-nicknames

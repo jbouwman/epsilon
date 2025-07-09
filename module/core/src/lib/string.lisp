@@ -1,3 +1,20 @@
+;;;; String Processing and Manipulation
+;;;;
+;;;; This module provides comprehensive string processing functions including
+;;;; splitting, joining, trimming, case conversion, and Unicode-aware operations.
+;;;; Built on top of epsilon's sequence library for functional operations.
+;;;;
+;;;; Key Features:
+;;;; - Unicode-aware string operations
+;;;; - Functional string processing with sequence integration
+;;;; - Efficient string splitting and joining
+;;;; - Case conversion and trimming operations
+;;;; - Pattern matching and replacement
+;;;; - Integration with epsilon.lib.sequence for lazy operations
+;;;;
+;;;; Dependencies: epsilon.lib.syntax, epsilon.lib.sequence
+;;;; Unicode: Full Unicode support for character operations
+
 (defpackage :epsilon.lib.string
   (:use
    :cl

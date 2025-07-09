@@ -59,7 +59,11 @@
       "Bash(./test-tls.lisp)",
       "Bash(/dev/null)",
       "Bash(pkill:*)",
-      "Bash(sed:*)"
+      "Bash(sed:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(/Users/jbouwman/git/epsilon/run.sh test:*)"
     ],
     "deny": []
   }

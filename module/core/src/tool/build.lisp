@@ -1,3 +1,22 @@
+;;;; Build System with Dependency Tracking
+;;;;
+;;;; This module provides a comprehensive build system with content-based
+;;;; dependency tracking, incremental compilation, and module management.
+;;;; Replaces ASDF with a more efficient and transparent build process.
+;;;;
+;;;; Key Features:
+;;;; - Content-based dependency tracking using SHA-256 hashes
+;;;; - Incremental compilation with change detection
+;;;; - Module dependency resolution and build ordering
+;;;; - Parallel compilation support
+;;;; - Build artifact caching and invalidation
+;;;; - Integration with epsilon's package system
+;;;;
+;;;; Dependencies: epsilon.tool.common, epsilon.sys.pkg, epsilon.sys.fs,
+;;;;               epsilon.lib.digest, epsilon.lib.map, epsilon.lib.string,
+;;;;               epsilon.lib.uri, epsilon.lib.time
+;;;; Replaces: ASDF system definition and build management
+
 (defpackage epsilon.tool.build
   (:use
    cl
@@ -14,7 +33,7 @@
    (map epsilon.lib.map)
    (seq epsilon.lib.sequence)
    (str epsilon.lib.string)
-   (uri epsilon.lib.uri))
+   (path epsilon.lib.path))
   (:export
    build
    register-module
@@ -57,11 +76,11 @@
    (requires :initarg :requires :accessor source-info-requires)))
 
 (defmethod path ((self locatable))
-  (uri:path (uri self)))
+  (path:path-from-uri (uri self)))
 
 (defun calculate-hash (uri)
   (let ((digest (digest:make-digest :sha-256)))
-    (with-open-file (stream (uri:path uri) :element-type 'unsigned-byte)
+    (with-open-file (stream (path:path-from-uri uri) :element-type 'unsigned-byte)
       (digest:digest-stream digest stream))
     (hex:u8-to-hex
      (digest:get-digest digest))))
@@ -156,18 +175,18 @@
 (defun load-project (uri)
   "Parse module definition from package.edn in directory URI"
   (let* ((edn-file "package.edn")
-         (edn-path (uri:path (uri:merge uri edn-file)))
+         (edn-path (path:path-string (path:path-merge (path:path-from-uri uri) edn-file)))
          (path (cond ((probe-file edn-path) edn-path)
                      (t (error "No package file found: ~A" edn-path)))))
     (let* ((parsed-value (edn:read-edn-from-string (fs:read-file path)))
            (defs parsed-value)
            (sources (when (map:get defs "sources")
                       (sort-sources (mapcan (lambda (source-path)
-                                              (find-source-info (uri:merge uri source-path)))
+                                              (find-source-info (path:uri-merge uri source-path)))
                                             (map:get defs "sources")))))
            (tests (when (map:get defs "tests")
                     (sort-sources (mapcan (lambda (test-path)
-                                            (find-source-info (uri:merge uri test-path)))
+                                            (find-source-info (path:uri-merge uri test-path)))
                                           (map:get defs "tests")))))
            (dependencies (map:get defs "dependencies"))
            (modules (map:get defs "modules")))
@@ -209,8 +228,8 @@
         
         ;; Otherwise, try to find it as a subdirectory or skip
         (t
-         (let ((dep-path (uri:merge (uri project) (format nil "~A/" dep-name))))
-           (when (probe-file (uri:path dep-path))
+         (let ((dep-path (path:uri-merge (uri project) (format nil "~A/" dep-name))))
+           (when (probe-file (path:path-from-uri dep-path))
              (let ((dep-project (load-project dep-path)))
                (push dep-project resolved-deps)))))))
     
@@ -246,8 +265,8 @@
                              (subseq source-rel-path 4)
                              source-rel-path))
          (target-rel-path (fs:replace-extension clean-rel-path "fasl"))
-         (target-path (uri:path-join "target" "lisp" target-rel-path))
-         (target-uri (uri:merge (uri project) target-path)))
+         (target-path (path:string-path-join "target" "lisp" target-rel-path))
+         (target-uri (path:uri-merge (uri project) target-path)))
     (make-instance 'target-info
                    :uri target-uri
                    :hash (when (fs:exists-p target-uri)
@@ -266,7 +285,7 @@
              (seq:seq (append all-sources all-tests)))))
 
 (defun read-first-form (uri)
-  (with-open-file (stream (uri::path uri))
+  (with-open-file (stream (path:path-from-uri uri))
     (read stream)))
 
 (defun interpret-package (form)
@@ -327,8 +346,8 @@
 (defun build-input-status (build-input)
   (cond ((not (fs:exists-p (target-uri build-input)))
          :target-missing)
-        ((< (fs:modification-time (uri:path (target-uri build-input)))
-            (fs:modification-time (uri:path (source-uri build-input))))
+        ((< (fs:modification-time (path:path-from-uri (target-uri build-input)))
+            (fs:modification-time (path:path-from-uri (source-uri build-input))))
          :source-newer)
         (t
          :up-to-date)))
@@ -336,7 +355,7 @@
 (defun print-build-output (result)
   "Print stdout and stderr output from build result"
   (format *error-output* "~%=== BUILD FAILURE DUMP ===~%")
-  (format *error-output* "File: ~A~%" (uri:path (source-uri (build-input result))))
+  (format *error-output* "File: ~A~%" (path:path-from-uri (source-uri (build-input result))))
   (format *error-output* "Operation: ~A~%" (compilation-status (build-input result)))
   
   (when (stdout-output result)
@@ -407,7 +426,7 @@
      (force-output *standard-output*)
      (force-output *error-output*)
      (format *error-output* "~%========================================~%")
-     (format *error-output* "BUILD HALTED: Error in ~A~%" (uri:path (source-uri (build-input result))))
+     (format *error-output* "BUILD HALTED: Error in ~A~%" (path:path-from-uri (source-uri (build-input result))))
      (format *error-output* "Error: ~A~%" error)
      (format *error-output* "========================================~%")
      (print-build-output result)
@@ -415,7 +434,7 @@
      (error error))
     (:print 
      ;; Print error but continue
-     (format *error-output* "~%Build Error in ~A: ~A~%" (uri:path (source-uri (build-input result))) error)
+     (format *error-output* "~%Build Error in ~A: ~A~%" (path:path-from-uri (source-uri (build-input result))) error)
      (print-build-output result))
     (:ignore nil)))
 
@@ -484,21 +503,21 @@
 (defun compile-source (build-input)
   (watch-operation build-input
                    (lambda ()
-                     (fs:make-dirs (uri:parent (target-uri build-input)))
+                     (fs:make-dirs (path:make-file-uri (path:path-string (path:path-parent (path:make-path (path:path-from-uri (target-uri build-input)))))))
                      ;; Suppress verbose output - will be shown only on build abort
                      (let ((*compile-verbose* nil)
                            (*compile-print* nil))
-                       (compile-file (uri:path (source-uri build-input))
-                                     :output-file (uri:path (target-uri build-input))
+                       (compile-file (path:path-from-uri (source-uri build-input))
+                                     :output-file (path:path-from-uri (target-uri build-input))
                                      :verbose nil
                                      :print nil)
                        ;; Load the compiled file immediately
-                       (load (uri:path (target-uri build-input)))))))
+                       (load (path:path-from-uri (target-uri build-input)))))))
 
 (defun load-source (build-input)
   (watch-operation build-input
                    (lambda ()
-                     (load (uri:path (target-uri build-input))))))
+                     (load (path:path-from-uri (target-uri build-input))))))
 
 (defmethod event ((build project-build) type data)
   (event (reporter build) type data))
@@ -612,7 +631,7 @@
    (current-index :initform 0 :accessor current-index)))
 
 (defmethod event ((formatter shell-build-report) (event-type (eql :start)) build)
-  (format t "~&Building project: ~a~%~%" (uri:path (uri (slot-value build 'project)))))
+  (format t "~&Building project: ~a~%~%" (path:path-from-uri (uri (slot-value build 'project)))))
 
 (defmethod event ((formatter shell-build-report) (event-type (eql :start-compile)) build-input)
   (let* ((source-path (path (source-info build-input)))
@@ -672,7 +691,7 @@
     (let ((total-time (seq:reduce #'+ (seq:map #'operation-wall-time results)
                                   :initial-value 0)))
       (format t "~&Project: ~a (build time: ~,2fs)~%"
-              (uri:path (uri project))
+              (path:path-from-uri (uri project))
               total-time)
       (seq:each #'report-result results))))
 
@@ -681,26 +700,26 @@
 (defun find-module-directories (base-dir)
   "Find all directories containing package.edn files under base-dir/module/
    Returns a list of directory path strings suitable for register-module"
-  (let ((module-base (uri:merge base-dir "module/"))
+  (let ((module-base (path:uri-merge base-dir "module/"))
         (module-dirs '()))
     (when (fs:exists-p module-base)
       ;; List all entries in the module directory
-      (dolist (entry-name (fs:list-dir (uri:path module-base)))
-        (let* ((entry-path (uri:path-join "module" entry-name))
-               (entry-uri (uri:merge base-dir entry-path))
-               (edn-file (uri:merge entry-uri "package.edn")))
-          (when (and (fs:dir-p (uri:path entry-uri))
+      (dolist (entry-name (fs:list-dir (path:path-from-uri module-base)))
+        (let* ((entry-path (path:string-path-join "module" entry-name))
+               (entry-uri (path:uri-merge base-dir entry-path))
+               (edn-file (path:uri-merge entry-uri "package.edn")))
+          (when (and (fs:dir-p (path:path-from-uri entry-uri))
                      (fs:exists-p edn-file))
             (push entry-path module-dirs)))))
     (nreverse module-dirs)))
 
 (defun module-applicable-p (module-dir)
   "Check if module is applicable to current platform"
-  (let* ((edn-file (uri:merge module-dir "package.edn"))
+  (let* ((edn-file (path:uri-merge module-dir "package.edn"))
          (package-file (cond ((fs:exists-p edn-file) edn-file)
                              (t nil))))
     (when package-file
-      (let* ((defs (edn:read-edn-from-string (fs:read-file (uri:path package-file))))
+      (let* ((defs (edn:read-edn-from-string (fs:read-file (path:path-from-uri package-file))))
              (platform (map:get defs "platform")))
         ;; Module is applicable if:
         ;; 1. No platform specified (platform-agnostic)
@@ -708,7 +727,7 @@
         (or (not platform)
             (string= platform (string-downcase (detect-platform))))))))
 
-(defun register-modules (&key (base-dir (uri:file-uri 
+(defun register-modules (&key (base-dir (path:make-file-uri 
                                          #+win32 (sb-ext:native-namestring (truename "."))
                                          #-win32 (sb-unix:posix-getcwd))))
   "Discover and register all applicable modules found under base-dir/module/"
@@ -735,38 +754,42 @@
    - A string pathname to a directory containing package.edn"
   (let* ((module-dir-path (cond
                            ((stringp module-spec)
-                            (if (char= (char module-spec 0) #\/)
-                                module-spec  ; absolute path
-                                (uri:path-join 
-                                 #+win32 (sb-ext:native-namestring (truename "."))
+                            (if (or (char= (char module-spec 0) #\/)
+                                    #+(or windows win32)
+                                    (and (>= (length module-spec) 3)
+                                         (char= (char module-spec 1) #\:)
+                                         (member (char module-spec 2) '(#\/ #\\))))
+                                (substitute #\/ #\\ module-spec)  ; absolute path - normalize separators
+                                (path:string-path-join 
+                                 #+win32 (substitute #\/ #\\ (sb-ext:native-namestring (truename ".")))
                                  #-win32 (sb-unix:posix-getcwd)
-                                 module-spec))) ; relative path
+                                 (substitute #\/ #\\ module-spec)))) ; relative path - normalize separators
                            (t 
                             (error "Unsupported module-spec type: ~A" module-spec))))
-         (module-dir (uri:file-uri module-dir-path))
-         (edn-file (uri:merge module-dir "package.edn"))
+         (module-dir (path:make-file-uri module-dir-path))
+         (edn-file (path:uri-merge module-dir "package.edn"))
          (package-file (cond ((fs:exists-p edn-file) edn-file)
                              (t nil))))
     
     ;; Validate package file exists
     (unless package-file
-      (error "Package file not found: ~A" (uri:path edn-file)))
+      (error "Package file not found: ~A" (path:path-from-uri edn-file)))
     
     ;; Check if module is applicable to current platform
     (unless (module-applicable-p module-dir)
-      (error "Module not applicable to current platform: ~A" (uri:path module-dir)))
+      (error "Module not applicable to current platform: ~A" (path:path-from-uri module-dir)))
     
     ;; Parse package file and register module
-    (let* ((defs (edn:read-edn-from-string (fs:read-file (uri:path package-file))))
+    (let* ((defs (edn:read-edn-from-string (fs:read-file (path:path-from-uri package-file))))
            (module-name (map:get defs "name")))
       (unless module-name
-        (error "Module name not found in package file: ~A" (uri:path package-file)))
+        (error "Module name not found in package file: ~A" (path:path-from-uri package-file)))
       
       ;; Register the module
       (map:assoc! *modules* module-name module-dir)
       (format t ";;   Registered module: ~a -> ~a~%" 
               module-name 
-              (uri:path module-dir))
+              (path:path-from-uri module-dir))
       
       ;; Return the module name
       module-name)))

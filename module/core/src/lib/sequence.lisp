@@ -1,3 +1,19 @@
+;;;; Lazy Sequence Implementation
+;;;;
+;;;; This module provides lazy, immutable sequences with delayed evaluation.
+;;;; Sequences are computed on-demand and cached for efficiency, enabling
+;;;; processing of potentially infinite data streams.
+;;;;
+;;;; Key Features:
+;;;; - Lazy evaluation with promise-based delay/force mechanism
+;;;; - Immutable sequence operations (map, filter, reduce, take, drop)
+;;;; - Memory efficient through lazy computation
+;;;; - Functional programming interface compatible with epsilon.lib.map
+;;;; - Support for infinite sequences via iterate
+;;;;
+;;;; Dependencies: epsilon.lib.syntax, epsilon.lib.map
+;;;; Performance: O(1) for head operations, O(n) for realization
+
 (defpackage :epsilon.lib.sequence
   (:use
    cl

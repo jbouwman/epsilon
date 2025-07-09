@@ -3,7 +3,7 @@
   (:local-nicknames
    (map epsilon.lib.map)
    (seq epsilon.lib.sequence)
-   (uri epsilon.lib.uri))
+   (path epsilon.lib.path))
   (:export
    ;; Core FFI
    shared-call
@@ -94,7 +94,7 @@
                           (or paths '("."))
                           (append (or paths '()) *library-search-paths*))))
     (loop for path in search-paths
-          for full-path = (uri:path-join path lib-name)
+          for full-path = (path:string-path-join path lib-name)
           when (probe-file full-path)
             return full-path
           finally (return lib-name)))) ; Return name if not found

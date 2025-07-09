@@ -1,3 +1,22 @@
+;;;; Test Framework and Assertion System
+;;;;
+;;;; This module provides a comprehensive test framework with hierarchical
+;;;; test organization, metrics collection, and multiple output formats.
+;;;; Supports both individual test execution and batch test running.
+;;;;
+;;;; Key Features:
+;;;; - Hierarchical test organization by package and name
+;;;; - Rich assertion macros (is, is-equal, is-thrown, etc.)
+;;;; - Test timing and metrics collection
+;;;; - Multiple output formats (detailed, junit, summary)
+;;;; - Test skipping and conditional execution
+;;;; - Integration with epsilon's build system
+;;;;
+;;;; Dependencies: epsilon.lib.symbol, epsilon.tool.build, epsilon.lib.map,
+;;;;               epsilon.sys.pkg, epsilon.lib.regex, epsilon.tool.test.report,
+;;;;               epsilon.tool.test.suite, epsilon.lib.path
+;;;; Usage: Define tests with (deftest name ...) and run with (run)
+
 (defpackage epsilon.tool.test
   (:use
    cl
@@ -9,7 +28,7 @@
    (re epsilon.lib.regex)
    (report epsilon.tool.test.report)
    (suite epsilon.tool.test.suite)
-   (uri epsilon.lib.uri))
+   (path epsilon.lib.path))
   (:export
 
    ;; defining tests
@@ -37,9 +56,9 @@
 (in-package epsilon.tool.test)
 
 (defun project-file (project-name relative-path)
-  (uri:path (uri:merge (or (map:get build::*modules* project-name)
-                           (error "unknown project ~s" project-name))
-                       relative-path)))
+  (let ((module-path (or (map:get build::*modules* project-name)
+                         (error "unknown project ~s" project-name))))
+    (path:string-path-join (path:path-from-uri module-path) relative-path)))
 
 (defmacro deftest (name &body body)
   (let ((docstring (when (and (stringp (first body))

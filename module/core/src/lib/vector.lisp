@@ -1,3 +1,19 @@
+;;;; Vector Operations and Utilities
+;;;;
+;;;; This module provides safe vector operations with bounds checking and
+;;;; typed vector access functions. Focuses on performance-critical vector
+;;;; operations while maintaining safety through runtime checks.
+;;;;
+;;;; Key Features:
+;;;; - Bounds checking for all vector operations
+;;;; - Type-specific vector access (u8, u16, u32, etc.)
+;;;; - Macro-based bounds checking for zero-overhead in release builds
+;;;; - Integration with epsilon's type system
+;;;; - Memory-efficient vector operations
+;;;;
+;;;; Dependencies: epsilon.lib.symbol, epsilon.lib.type
+;;;; Performance: Zero-overhead bounds checking via macros
+
 (defpackage #:epsilon.lib.vector
   (:use
    #:cl

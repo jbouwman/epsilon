@@ -4,8 +4,7 @@
   (:local-nicknames
    (#:map #:epsilon.lib.map)
    (#:str #:epsilon.lib.string)
-   (#:seq #:epsilon.lib.sequence)
-   (#:uri #:epsilon.lib.uri))
+   (#:seq #:epsilon.lib.sequence))
   (:export
    ;; Log levels
    #:trace #:debug #:info #:warn #:error #:fatal
