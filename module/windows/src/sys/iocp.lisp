@@ -330,7 +330,7 @@
 
 (defun async-connect-socket (socket addr overlapped)
   "Initiate asynchronous connect on socket"
-  (let ((result (%wsa-connect socket addr (length addr) 
+  (let ((result (%wsa-connect socket addr 16  ; Fixed sockaddr_in size
                               (sb-alien:null-alien) (sb-alien:null-alien)
                               (sb-alien:null-alien) (sb-alien:null-alien))))
     result))

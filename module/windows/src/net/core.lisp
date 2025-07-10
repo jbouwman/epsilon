@@ -65,6 +65,13 @@
   ((remote-address :initarg :remote-address :accessor connection-remote-address)
    (remote-port :initarg :remote-port :accessor connection-remote-port)))
 
+(defclass socket-stream-wrapper ()
+  ((socket :initarg :socket :reader stream-socket)
+   (read-buffer :initform (make-array 4096 :element-type '(unsigned-byte 8)) 
+                :reader stream-read-buffer)
+   (write-buffer :initform (make-array 4096 :element-type '(unsigned-byte 8)) 
+                 :reader stream-write-buffer)))
+
 ;;; Socket Constants (Windows-specific)
 
 ;; Address families
@@ -350,13 +357,14 @@
   "Get a bidirectional stream for the socket"
   (or (socket-stream-slot socket)
       (setf (socket-stream-slot socket)
-            ;; Windows would need a different stream implementation
-            (error "Windows socket streams not yet implemented"))))
+            ;; Create a basic socket stream wrapper for Windows
+            (make-instance 'socket-stream-wrapper :socket socket))))
 
 (defun socket-from-stream (stream)
   "Get the socket object associated with a stream"
-  (declare (ignore stream))
-  (error "Not implemented - socket-from-stream function"))
+  (if (typep stream 'socket-stream-wrapper)
+      (stream-socket stream)
+      (error "Stream is not a socket stream wrapper")))
 
 (defun socket-peer-address (socket)
   "Get the peer address of a socket"
@@ -425,38 +433,259 @@
 
 (defun async-connect (host port &key callback)
   "Asynchronously connect to host:port using IOCP"
-  (declare (ignore host port callback))
-  (error "Not implemented - async-connect"))
+  (handler-case
+      (let* ((socket-handle (create-tcp-socket))
+             (iocp-handle (iocp:create-io-completion-port))
+             (overlapped (iocp:make-overlapped)))
+        
+        ;; Associate socket with IOCP
+        (iocp:associate-socket iocp-handle socket-handle 
+                               (iocp:completion-key-to-pointer
+                                (iocp:make-completion-key :socket socket-handle 
+                                                          :operation :connect)))
+        
+        ;; Create sockaddr structure for connection
+        (lib:with-foreign-memory ((addr :char :count 16)
+                                  (overlapped-buf :char :count (iocp:overlapped-size)))
+          (let ((sockaddr (make-sockaddr-in host port)))
+            ;; Copy sockaddr
+            (loop for i from 0 to 15
+                  do (setf (sb-alien:deref addr i) (sb-alien:deref sockaddr i)))
+            
+            ;; Pack overlapped structure
+            (iocp:pack-overlapped overlapped overlapped-buf 0)
+            
+            ;; Initiate async connect
+            (let ((result (iocp:async-connect-socket socket-handle addr overlapped-buf)))
+              (if callback
+                  ;; Non-blocking with callback
+                  (progn
+                    (funcall callback 
+                             (if (zerop result)
+                                 (make-instance 'connection
+                                                :handle socket-handle
+                                                :remote-address host
+                                                :remote-port port)
+                                 (error 'network-error :message "Async connect failed")))
+                    nil)
+                  ;; Blocking wait for completion
+                  (multiple-value-bind (wait-result bytes completion-key overlapped-ptr)
+                      (iocp:wait-for-completion iocp-handle 30000) ; 30 second timeout
+                    (if (iocp:completion-success-p wait-result)
+                        (make-instance 'connection
+                                       :handle socket-handle
+                                       :remote-address host
+                                       :remote-port port)
+                        (error 'network-error :message "Connect operation failed or timed out")))))))
+    (error (e)
+      (error 'network-error :message (format nil "Error in async-connect: ~A" e)))))
 
 (defun async-accept (listener &key callback)
   "Asynchronously accept connection using IOCP"
-  (declare (ignore listener callback))
-  (error "Not implemented - async-accept"))
+  (handler-case
+      (let* ((iocp-handle (listener-iocp listener))
+             (overlapped (iocp:make-overlapped)))
+        
+        (lib:with-foreign-memory ((overlapped-buf :char :count (iocp:overlapped-size)))
+          ;; Pack overlapped structure
+          (iocp:pack-overlapped overlapped overlapped-buf 0)
+          
+          ;; Initiate async accept
+          (multiple-value-bind (accept-socket addr)
+              (iocp:async-accept-socket (socket-handle listener) overlapped-buf)
+            (if callback
+                ;; Non-blocking with callback
+                (if accept-socket
+                    (funcall callback 
+                             (make-instance 'connection
+                                            :handle accept-socket
+                                            :remote-address "unknown" ; TODO: extract from addr
+                                            :remote-port 0))         ; TODO: extract from addr
+                    (funcall callback nil))
+                ;; Blocking wait for completion
+                (if accept-socket
+                    (make-instance 'connection
+                                   :handle accept-socket
+                                   :remote-address "unknown" ; TODO: extract from addr
+                                   :remote-port 0)           ; TODO: extract from addr
+                    (multiple-value-bind (wait-result bytes completion-key overlapped-ptr)
+                        (iocp:wait-for-completion iocp-handle 0) ; Non-blocking check
+                      (if (and (iocp:completion-success-p wait-result) accept-socket)
+                          (make-instance 'connection
+                                         :handle accept-socket
+                                         :remote-address "unknown"
+                                         :remote-port 0)
+                          nil)))))))
+    (error (e)
+      (error 'network-error :message (format nil "Error in async-accept: ~A" e)))))
 
 (defun async-read (socket buffer &key callback)
   "Asynchronously read from socket using IOCP"
-  (declare (ignore socket buffer callback))
-  (error "Not implemented - async-read"))
+  (handler-case
+      (let* ((socket-handle (socket-handle socket))
+             (iocp-handle (iocp:create-io-completion-port))
+             (overlapped (iocp:make-overlapped)))
+        
+        ;; Associate socket with IOCP if not already done
+        (iocp:associate-socket iocp-handle socket-handle 
+                               (iocp:completion-key-to-pointer
+                                (iocp:make-completion-key :socket socket-handle 
+                                                          :operation :read)))
+        
+        (lib:with-foreign-memory ((overlapped-buf :char :count (iocp:overlapped-size))
+                                  (read-buffer :char :count (length buffer)))
+          ;; Pack overlapped structure
+          (iocp:pack-overlapped overlapped overlapped-buf 0)
+          
+          ;; Initiate async read
+          (multiple-value-bind (result bytes-read)
+              (iocp:async-read-socket socket-handle read-buffer overlapped-buf)
+            (if callback
+                ;; Non-blocking with callback
+                (if (or (zerop result) (= result iocp:+error-io-pending+))
+                    (progn
+                      ;; Operation is pending or completed immediately
+                      (multiple-value-bind (wait-result bytes completion-key overlapped-ptr)
+                          (iocp:wait-for-completion iocp-handle 0) ; Non-blocking check
+                        (when (iocp:completion-success-p wait-result)
+                          ;; Copy data from foreign buffer to Lisp buffer
+                          (loop for i from 0 below (min bytes (length buffer))
+                                do (setf (aref buffer i) (sb-alien:deref read-buffer i)))
+                          (funcall callback buffer bytes)))
+                      nil)
+                    (error 'network-error :message "Read operation failed"))
+                ;; Blocking wait for completion
+                (if (or (zerop result) (= result iocp:+error-io-pending+))
+                    (multiple-value-bind (wait-result bytes completion-key overlapped-ptr)
+                        (iocp:wait-for-completion iocp-handle 30000) ; 30 second timeout
+                      (if (iocp:completion-success-p wait-result)
+                          (progn
+                            ;; Copy data from foreign buffer to Lisp buffer
+                            (loop for i from 0 below (min bytes (length buffer))
+                                  do (setf (aref buffer i) (sb-alien:deref read-buffer i)))
+                            bytes)
+                          (error 'network-error :message "Read operation failed or timed out")))
+                    (error 'network-error :message "Read operation failed immediately"))))))
+    (error (e)
+      (error 'network-error :message (format nil "Error in async-read: ~A" e)))))
 
 (defun async-write (socket buffer &key callback)
   "Asynchronously write to socket using IOCP"
-  (declare (ignore socket buffer callback))
-  (error "Not implemented - async-write"))
+  (handler-case
+      (let* ((socket-handle (socket-handle socket))
+             (iocp-handle (iocp:create-io-completion-port))
+             (overlapped (iocp:make-overlapped)))
+        
+        ;; Associate socket with IOCP if not already done
+        (iocp:associate-socket iocp-handle socket-handle 
+                               (iocp:completion-key-to-pointer
+                                (iocp:make-completion-key :socket socket-handle 
+                                                          :operation :write)))
+        
+        (lib:with-foreign-memory ((overlapped-buf :char :count (iocp:overlapped-size))
+                                  (write-buffer :char :count (length buffer)))
+          ;; Copy data from Lisp buffer to foreign buffer
+          (loop for i from 0 below (length buffer)
+                do (setf (sb-alien:deref write-buffer i) (aref buffer i)))
+          
+          ;; Pack overlapped structure
+          (iocp:pack-overlapped overlapped overlapped-buf 0)
+          
+          ;; Initiate async write
+          (multiple-value-bind (result bytes-written)
+              (iocp:async-write-socket socket-handle write-buffer overlapped-buf)
+            (if callback
+                ;; Non-blocking with callback
+                (if (or (zerop result) (= result iocp:+error-io-pending+))
+                    (progn
+                      ;; Operation is pending or completed immediately
+                      (multiple-value-bind (wait-result bytes completion-key overlapped-ptr)
+                          (iocp:wait-for-completion iocp-handle 0) ; Non-blocking check
+                        (when (iocp:completion-success-p wait-result)
+                          (funcall callback bytes)))
+                      nil)
+                    (error 'network-error :message "Write operation failed"))
+                ;; Blocking wait for completion
+                (if (or (zerop result) (= result iocp:+error-io-pending+))
+                    (multiple-value-bind (wait-result bytes completion-key overlapped-ptr)
+                        (iocp:wait-for-completion iocp-handle 30000) ; 30 second timeout
+                      (if (iocp:completion-success-p wait-result)
+                          bytes
+                          (error 'network-error :message "Write operation failed or timed out")))
+                    (error 'network-error :message "Write operation failed immediately"))))))
+    (error (e)
+      (error 'network-error :message (format nil "Error in async-write: ~A" e)))))
 
-(defun future (&rest args)
-  "Create a future"
-  (declare (ignore args))
-  (error "Not implemented - future"))
+(defclass future ()
+  ((operation :initarg :operation :reader future-operation)
+   (completed :initform nil :accessor future-completed-p)
+   (result :initform nil :accessor future-result)
+   (error :initform nil :accessor future-error)
+   (iocp :initarg :iocp :reader future-iocp)
+   (completion-key :initarg :completion-key :reader future-completion-key)))
 
-(defun await (future)
-  "Wait for future completion"
-  (declare (ignore future))
-  (error "Not implemented - await"))
+(defun future (operation &key iocp completion-key)
+  "Create a future for an async operation"
+  (make-instance 'future
+                 :operation operation
+                 :iocp iocp
+                 :completion-key completion-key))
+
+(defun await (future &optional (timeout 30000))
+  "Wait for future completion with optional timeout"
+  (if (future-completed-p future)
+      (if (future-error future)
+          (error (future-error future))
+          (future-result future))
+      (handler-case
+          (multiple-value-bind (wait-result bytes completion-key overlapped-ptr)
+              (iocp:wait-for-completion (future-iocp future) timeout)
+            (if (iocp:completion-success-p wait-result)
+                (progn
+                  (setf (future-completed-p future) t)
+                  (setf (future-result future) bytes)
+                  (future-result future))
+                (progn
+                  (setf (future-completed-p future) t)
+                  (setf (future-error future) 
+                        (make-condition 'timeout-error :message "Future timed out"))
+                  (error (future-error future)))))
+        (error (e)
+          (setf (future-completed-p future) t)
+          (setf (future-error future) e)
+          (error e)))))
 
 (defun select (&rest futures)
   "Wait for any future to complete"
-  (declare (ignore futures))
-  (error "Not implemented - select"))
+  (if (null futures)
+      nil
+      (loop for future in futures
+            for i from 0
+            do (when (future-completed-p future)
+                 (return-from select (values future i)))
+            finally
+               ;; None completed, wait for first one
+               (loop for future in futures
+                     for i from 0
+                     do (handler-case
+                            (progn
+                              (await future 0) ; Non-blocking check
+                              (return-from select (values future i)))
+                          (timeout-error ()
+                            ;; Continue to next future
+                            nil))
+                  ;; If none ready immediately, wait for any with small timeout
+                  (loop for future in futures
+                        for i from 0
+                        do (handler-case
+                               (progn
+                                 (await future 100) ; 100ms timeout
+                                 (return-from select (values future i)))
+                             (timeout-error ()
+                               ;; Continue to next future
+                               nil)))
+                  ;; Return nil if none complete within timeout
+                  nil)))
 
 ;;; Cleanup Hook
 

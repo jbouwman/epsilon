@@ -132,12 +132,30 @@
 ;;; Commands
 
 (defun run-build (parsed-args)
-  "Handle build command"
+  "Handle build command with support for multiple modules and force rebuild"
   (let* ((options (command-options parsed-args))
-         (module (or (map:get options "module")
-                     (error "Module name required. Usage: build --module <module-name>"))))
-    (format t ";;; Building module: ~A~%" module)
-    (build:build module)))
+         (modules (split-comma-list (map:get options "module")))
+         (force (map:get options "force"))
+         (all-success t))
+    
+    (unless modules
+      (error "Module name(s) required. Usage: build --module <module1>[,module2,...]"))
+    
+    (when force
+      (format t ";;; Force rebuild requested~%"))
+    
+    (dolist (module modules)
+      (format t ";;; Building module: ~A~%" module)
+      (handler-case
+          (if force
+              (build:build module :force t)
+              (build:build module))
+        (error (e)
+          (format t ";;; Error building ~A: ~A~%" module e)
+          (setf all-success nil))))
+    
+    (unless all-success
+      (sb-ext:exit :code 1))))
 
 (defun run-test (parsed-args)
   "Handle test command with support for multiple modules and name patterns"
@@ -250,11 +268,44 @@
                  (format t "  ~A~%" name)))
              (format t "No benchmarks registered.~%")))))))
 
+(defun run-module (parsed-args)
+  "Handle module command - list available modules"
+  (let* ((options (command-options parsed-args))
+         (list-opt (map:get options "list")))
+    
+    (cond
+      (list-opt
+       ;; List modules in local cache
+       (format t ";;; Available modules:~%")
+       (let ((module-dir "module/")
+             (modules '()))
+         (when (probe-file module-dir)
+           (dolist (entry (directory (merge-pathnames "*/" module-dir)))
+             (when (probe-file (merge-pathnames "package.edn" entry))
+               (push (car (last (pathname-directory entry))) modules)))
+           (setf modules (sort modules #'string<))
+           (dolist (module modules)
+             (let* ((manifest-path (merge-pathnames 
+                                    (format nil "~A/package.edn" module)
+                                    module-dir))
+                    (cache-info (when (probe-file 
+                                       (merge-pathnames 
+                                        (format nil ".epsilon/boot-cache/~A.boot.fasl" module)
+                                        (user-homedir-pathname)))
+                                  " [cached]")))
+               (format t "  ~A~A~%" module (or cache-info ""))))))
+        (format t "~%;;; Boot cache location: ~~/.epsilon/boot-cache/~%")
+        (format t ";;; EPK search paths: ~~/.epsilon/packages/, ./target/packages/, ./packages/~%"))
+      
+      (t
+       (format t "Usage: module --list    # List available modules~%")))))
+
 (defvar *commands*
   (map:make-map "build" #'run-build
                 "test" #'run-test
                 "benchmark" #'run-benchmark
-                "bench" #'run-benchmark))
+                "bench" #'run-benchmark
+                "module" #'run-module))
 
 (defun print-usage ()
   "Print usage information"
@@ -264,7 +315,9 @@
   (format t "  --verbose      Enable debug logging~%")
   (format t "  --quiet        Enable only warning+ logging~%~%")
   (format t "Commands:~%")
-  (format t "  build --module MODULE                     Build the specified module~%")
+  (format t "  build [options]                           Build modules~%")
+  (format t "    --module MODULE1[,MODULE2,...]  Modules to build (required)~%")
+  (format t "    --force                         Force rebuild even if up-to-date~%")
   (format t "  test [options]                            Run tests~%")
   (format t "    --module MODULE1[,MODULE2,...]  Build and test specific modules~%")
   (format t "    --test PATTERN                  Filter tests by name pattern (supports wildcards)~%")
@@ -273,13 +326,18 @@
   (format t "    --file FILE                     Write results to file~%")
   (format t "  benchmark [options]                       Run benchmarks~%")
   (format t "    --suite SUITE      Run benchmark suite (msgpack, all)~%")
-  (format t "    --benchmarks LIST  Run specific benchmarks (comma-separated)~%~%")
+  (format t "    --benchmarks LIST  Run specific benchmarks (comma-separated)~%")
+  (format t "  module [options]                          Module management~%")
+  (format t "    --list             List available modules and cache status~%~%")
   (format t "Examples:~%")
+  (format t "  epsilon build --module epsilon.core       # Build single module~%")
+  (format t "  epsilon build --module epsilon.core,lsp --force  # Force rebuild multiple modules~%")
   (format t "  epsilon test                              # Run all available tests~%")
   (format t "  epsilon test --test 'parse-*'             # Run all tests matching pattern~%")
   (format t "  epsilon --log 'debug:epsilon.lib.*' test --module epsilon.core --test 'parse-*'~%")
   (format t "  epsilon test --module 'epsilon.core,lsp' --format junit --file results.xml~%")
-  (format t "  epsilon benchmark --suite all~%"))
+  (format t "  epsilon benchmark --suite all~%")
+  (format t "  epsilon module --list                     # List available modules~%"))
 
 (defun main ()
   "Main entry point with sophisticated argument parsing"

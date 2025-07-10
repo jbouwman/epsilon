@@ -63,7 +63,10 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git checkout:*)",
-      "Bash(/Users/jbouwman/git/epsilon/run.sh test:*)"
+      "Bash(/Users/jbouwman/git/epsilon/run.sh test:*)",
+      "Bash(do echo \"=== $f ===\")",
+      "Bash(wc:*)",
+      "Bash(du:*)"
     ],
     "deny": []
   }

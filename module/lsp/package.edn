@@ -5,5 +5,5 @@
  "license" "MIT"
  "sources" ("src")
  "tests" ("tests")
- "dependencies" ("core")
+ "dependencies" ("epsilon.core")
  "provides" ("epsilon.lsp")}

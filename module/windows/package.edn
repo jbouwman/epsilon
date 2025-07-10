@@ -5,5 +5,5 @@
  "platform" "windows"
  "sources" ("src")
  "tests" ("tests")
- "requires" ("epsilon.core")
+ "dependencies" ("epsilon.core")
  "provides" ("windows" "epsilon.net")}

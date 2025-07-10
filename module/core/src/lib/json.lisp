@@ -1,227 +1,33 @@
+;;;; JSON Shim for Core Module
+;;;;
+;;;; This file provides backward compatibility for JSON support in core
+;;;; by delegating to the separate parsing module when available.
+
 (defpackage :epsilon.lib.json
   (:use :cl)
-  (:local-nicknames
-   (:p :epsilon.lib.parser)
-   (:seq :epsilon.lib.sequence)
-   (:lexer :epsilon.lib.lexer))
-  (:export
-   :tokenize
-   :parse))
+  (:export #:tokenize
+           #:parse))
 
 (in-package :epsilon.lib.json)
 
-;;;; JSON Parser Using Parser Combinators with Tokenization
+(defun json-available-p ()
+  "Check if the json module is loaded and available."
+  (find-package :epsilon.lib.json.impl))
 
-;;; Tokenizer
-
-(deftype json-token-type ()
-  '(member :string :number :true :false :null
-    :lbrace :rbrace :lbracket :rbracket
-    :comma :colon :eof))
-
-(defun tokenize-string (lexer)
-  "Tokenize a JSON string literal."
-  (multiple-value-bind (start-pos start-line start-column)
-      (lexer:lexer-position lexer)
-    (unless (char= (lexer:next lexer) #\")
-      (lexer:lexer-error lexer "Expected string"))
-    
-    (let ((value (with-output-to-string (s)
-                   (loop for ch = (lexer:next lexer)
-                         do (case ch
-                              ((nil) (lexer:lexer-error lexer "Unterminated string"))
-                              (#\" (return))
-                              (#\\ (let ((next (lexer:next lexer)))
-                                     (case next
-                                       (#\" (write-char #\" s))
-                                       (#\\ (write-char #\\ s))
-                                       (#\/ (write-char #\/ s))
-                                       (#\b (write-char #\Backspace s))
-                                       (#\f (write-char #\Page s))
-                                       (#\n (write-char #\Newline s))
-                                       (#\r (write-char #\Return s))
-                                       (#\t (write-char #\Tab s))
-                                       (#\u (let ((code (parse-integer 
-                                                         (with-output-to-string (hex)
-                                                           (dotimes (i 4)
-                                                             (write-char (or (lexer:next lexer)
-                                                                             (lexer:lexer-error lexer "Invalid unicode escape"))
-                                                                         hex)))
-                                                         :radix 16)))
-                                              (write-char (code-char code) s)))
-                                       (otherwise (lexer:lexer-error lexer "Invalid escape sequence")))))
-                              (otherwise (write-char ch s)))))))
-      (lexer:%make-token :type :string 
-                         :value value 
-                         :position start-pos
-                         :line start-line
-                         :column start-column))))
-
-(defun tokenize-number (lexer)
-  "Tokenize a JSON number."
-  (multiple-value-bind (start-pos start-line start-column)
-      (lexer:lexer-position lexer)
-    (let ((has-decimal nil)
-          (has-exponent nil))
-      
-      (let ((number-str (with-output-to-string (s)
-                          ;; Sign
-                          (let ((ch (lexer:peek lexer)))
-                            (when (and ch (char= ch #\-))
-                              (write-char (lexer:next lexer) s)))
-                          
-                          ;; Integer part
-                          (loop for ch = (lexer:peek lexer)
-                                while (and ch (digit-char-p ch))
-                                do (write-char (lexer:next lexer) s))
-                          
-                          ;; Decimal part
-                          (let ((ch (lexer:peek lexer)))
-                            (when (and ch (char= ch #\.))
-                              (write-char (lexer:next lexer) s)
-                              (setf has-decimal t)
-                              (loop for ch = (lexer:peek lexer)
-                                    while (and ch (digit-char-p ch))
-                                    do (write-char (lexer:next lexer) s))))
-                          
-                          ;; Exponent
-                          (let ((ch (lexer:peek lexer)))
-                            (when (and ch (member ch '(#\e #\E)))
-                              (write-char (lexer:next lexer) s)
-                              (setf has-exponent t)
-                              (let ((ch (lexer:peek lexer)))
-                                (when (and ch (member ch '(#\+ #\-)))
-                                  (write-char (lexer:next lexer) s)))
-                              (loop for ch = (lexer:peek lexer)
-                                    while (and ch (digit-char-p ch))
-                                    do (write-char (lexer:next lexer) s)))))))
-        
-        (let ((value (if (or has-decimal has-exponent)
-                         (read-from-string number-str)
-                         (parse-integer number-str))))
-          (lexer:%make-token :type :number 
-                             :value value 
-                             :position start-pos
-                             :line start-line
-                             :column start-column))))))
-
-(defun tokenize-keyword (lexer keyword token-type)
-  "Tokenize a JSON keyword (true, false, null)."
-  (multiple-value-bind (start-pos start-line start-column)
-      (lexer:lexer-position lexer)
-    (unless (lexer:consume-string lexer keyword)
-      (lexer:lexer-error lexer (format nil "Expected '~A'" keyword)))
-    (lexer:%make-token :type token-type 
-                       :value (case token-type
-                                (:true t)
-                                (:false nil)
-                                (:null nil))
-                       :position start-pos
-                       :line start-line
-                       :column start-column)))
-
-(defun tokenize-syntax (lexer type value)
-  (prog1
-      (lexer:make-token lexer type value)
-    (lexer:next lexer)))
-
-(defun next-token (lexer)
-  "Get the next JSON token from the lexer."
-  (lexer:skip-whitespace lexer)
-  (if (lexer:at-end-p lexer)
-      (lexer:make-token lexer :eof nil)
-      (let ((ch (lexer:peek lexer)))
-        (case ch
-          (#\" (tokenize-string lexer))
-          (#\{ (tokenize-syntax lexer :lbrace #\{))
-          (#\} (tokenize-syntax lexer :rbrace #\}))
-          (#\[ (tokenize-syntax lexer :lbracket #\[))
-          (#\] (tokenize-syntax lexer :rbracket #\]))
-          (#\, (tokenize-syntax lexer :comma #\,))
-          (#\: (tokenize-syntax lexer :colon #\:))
-          (#\t (tokenize-keyword lexer "true" :true))
-          (#\f (tokenize-keyword lexer "false" :false))
-          (#\n (tokenize-keyword lexer "null" :null))
-          ((#\- #\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
-           (tokenize-number lexer))
-          (otherwise
-           (lexer:lexer-error lexer (format nil "Unexpected character: ~A" ch)))))))
+(defun ensure-json-loaded ()
+  "Ensure the json module is loaded, error if not available."
+  (unless (json-available-p)
+    (error "JSON support requires the epsilon.parsing module to be loaded")))
 
 (defun tokenize (input)
-  "Tokenize JSON input into a lazy sequence of tokens."
-  (let ((lexer (if (stringp input)
-                   (lexer:make-lexer (make-string-input-stream input))
-                   (lexer:make-lexer input))))
-    (labels ((token-stream ()
-               (let ((token (next-token lexer)))
-                 (if (eq (lexer:token-type token) :eof)
-                     (seq:cons token seq:*empty*)
-                     (seq:cons token (token-stream))))))
-      (token-stream))))
-
-;;;; Parser
-
-(defun token-p (type)
-  "Parse a token of the expected type."
-  (p:satisfy (lambda (token)
-               (eq (lexer:token-type token) type))
-             (format nil "token ~A" type)))
-
-(defun json-atom (type)
-  (p:bind ((token (token-p type)))
-    (p:return (lexer:token-value token))))
-
-(defun json-array ()
-  "Parse JSON array."
-  (p:bind ((_ (token-p :lbracket)))
-    (p:choice (p:bind ((_ (token-p :rbracket)))
-                (p:return '()))
-              (p:bind ((values (p:sep+ (json-value)
-                                       (token-p :comma)))
-                       (_ (token-p :rbracket)))
-                (p:return values)))))
-
-(defun json-pair ()
-  "Parse JSON key-value pair."
-  (p:bind ((key (json-atom :string))
-           (_ (token-p :colon))
-           (value (json-value)))
-    (p:return (cons key value))))
-
-(defun json-object ()
-  "Parse JSON object."
-  (p:bind ((_ (token-p :lbrace)))
-    (p:choice (p:bind ((_ (token-p :rbrace)))
-                (p:return '()))
-              (p:bind ((pairs (p:sep+ (json-pair)
-                                      (token-p :comma)))
-                       (_ (token-p :rbrace)))
-                (p:return pairs)))))
-
-(defun json-value ()
-  "Parse any JSON value."
-  (p:choice (json-atom :string)
-            (json-atom :number)
-            (json-object)
-            (json-array)
-            (json-atom :true)
-            (json-atom :false)
-            (json-atom :null)))
-
-(defun json-document ()
-  "Parse complete JSON document."
-  (p:bind ((value (json-value))
-           (_ (token-p :eof)))
-    (p:return value)))
-
-;; Public API
+  "Tokenize JSON input."
+  (ensure-json-loaded)
+  (funcall (find-symbol "TOKENIZE" :epsilon.lib.json.impl) input))
 
 (defun parse (input)
-  "Parse JSON from character sequence or string.
-   Returns parsed value or signals error on parse failure."
-  (let* ((tokens (tokenize input))
-         (result (p:parse (json-document) tokens)))
-    (if (p:success-p result)
-        (p:success-value result)
-        (error "JSON parse error: ~A"
-               (p:failure-message result)))))
+  "Parse JSON input into Lisp data structures."
+  (ensure-json-loaded)
+  (funcall (find-symbol "PARSE" :epsilon.lib.json.impl) input))
+
+;;; Export a feature to indicate json shim is loaded
+(pushnew :epsilon-json-shim *features*)

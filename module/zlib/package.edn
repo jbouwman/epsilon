@@ -1,0 +1,8 @@
+{"name" "epsilon.zlib"
+ "version" "0.1.0"
+ "description" "ZLIB compression/decompression module for Epsilon"
+ "author" "Epsilon Development Team"
+ "sources" ("src")
+ "tests" ("tests")
+ "provides" ("epsilon.lib.zlib")
+ "dependencies" ("epsilon.core" "epsilon.inflate")}

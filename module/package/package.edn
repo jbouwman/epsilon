@@ -4,9 +4,9 @@
  "sources" ("src")
  "tests" ("tests")
  "provides" ("epsilon.lib.package"
-             "epsilon.lib.package.repository"
-             "epsilon.lib.package.dependency"
-             "epsilon.lib.package.boot"
-             "epsilon.lib.package.builder"
-             "epsilon.lib.package.system")
+            "epsilon.lib.package.repository"
+            "epsilon.lib.package.dependency"
+            "epsilon.lib.package.boot"
+            "epsilon.lib.package.builder"
+            "epsilon.lib.package.system")
  "dependencies" ()}
