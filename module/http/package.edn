@@ -4,5 +4,5 @@
  "description" "HTTP client and server implementation"
  "sources" ("src")
  "tests" ("tests")
- "requires" ("epsilon.core" "epsilon.net")
+ "dependencies" ("epsilon.core" "epsilon.net")
  "provides" ("http")}

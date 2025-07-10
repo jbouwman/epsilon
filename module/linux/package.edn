@@ -5,5 +5,5 @@
  "platform" "linux"
  "sources" ("src")
  "tests" ("tests")
- "requires" ("epsilon.core")
+ "dependencies" ("epsilon.core")
  "provides" ("linux" "epsilon.net")}

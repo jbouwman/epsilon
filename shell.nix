@@ -5,6 +5,7 @@ pkgs.mkShell {
     sbcl
     nodejs_20
     nodePackages.npm
+    ripgrep
   ];
 
   shellHook = ''

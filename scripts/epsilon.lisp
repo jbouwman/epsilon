@@ -4,3 +4,4 @@
 
 ;; Build epsilon.core if needed
 (epsilon.tool.build:build "epsilon.core")
+(epsilon.tool.build:build "epsilon.regex")

@@ -4,5 +4,5 @@
  "description" "HTTP test application serving hello world"
  "sources" ("src")
  "tests" ("tests")
- "requires" ("epsilon.core" "http")
+ "dependencies" ("epsilon.core" "http")
  "provides" ("epsilon.http-test")}

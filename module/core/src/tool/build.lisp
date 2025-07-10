@@ -631,19 +631,25 @@
    (current-index :initform 0 :accessor current-index)))
 
 (defmethod event ((formatter shell-build-report) (event-type (eql :start)) build)
-  (format t "~&Building project: ~a~%~%" (path:path-from-uri (uri (slot-value build 'project)))))
+  (format t "~&;; ~a~%~%" (path:path-from-uri (uri (slot-value build 'project)))))
 
 (defmethod event ((formatter shell-build-report) (event-type (eql :start-compile)) build-input)
-  (let* ((source-path (path (source-info build-input)))
+  (let* ((project (project build-input))
+         (project-path (path project))
+         (source-path (path (source-info build-input)))
+         (relative-path (if (and (>= (length source-path) (length project-path))
+                                (string= source-path project-path :end1 (length project-path)))
+                           (subseq source-path (length project-path))
+                           source-path))
          (status (build-input-status build-input))
          (action (case status
                    ((:target-missing :source-newer) "COMPILE+LOAD")
                    (t "LOADING"))))
-    (format t ";;   [~3D/~3D] ~a ~a~%" 
+    (format t ";;   [~3D/~3D] ~a ~a " 
             (current-index formatter)
             (total-files formatter)
             action 
-            source-path)))
+            relative-path)))
 
 (defmethod event ((formatter shell-build-report) (event-type (eql :end-compile)) result)
   (let* ((build-input (build-input result))
@@ -652,7 +658,7 @@
          (warning-count (length (compilation-warnings result)))
          (error-count (length (compilation-errors result)))
          (time (operation-wall-time result)))
-    (format t ";;     ~a ~,3fs" 
+    (format t "~a ~,3fs" 
             (if (compilation-errors result) "FAILED" "OK")
             time)
     (when (or (> warning-count 0) (> error-count 0))
@@ -732,26 +738,34 @@
                                          #-win32 (sb-unix:posix-getcwd))))
   "Discover and register all applicable modules found under base-dir/module/"
   (let ((module-paths (find-module-directories base-dir))
-        (registered-count 0))
+        (registered-count 0)
+        (skipped-count 0))
     
     ;; Register each module using register-module
     (dolist (module-path module-paths)
       (handler-case 
           (progn
-            (register-module module-path)
+            (register-module module-path :silent t)
             (incf registered-count))
         (error (e)
           ;; Skip modules that can't be registered (e.g., platform incompatible)
-          (format t ";;   Skipping module ~a: ~a~%" module-path e))))
+          (incf skipped-count))))
+    
+    ;; Print succinct summary like boot progress
+    (format t ";;; Module discovery complete (~d registered~@[, ~d skipped~])~%" 
+            registered-count 
+            (when (> skipped-count 0) skipped-count))
     
     ;; Return count of successfully registered modules
     registered-count))
 
-(defun register-module (module-spec)
+(defun register-module (module-spec &key silent)
   "Register a single module for building.
    
    MODULE-SPEC can be:
-   - A string pathname to a directory containing package.edn"
+   - A string pathname to a directory containing package.edn
+   
+   SILENT suppresses individual registration messages."
   (let* ((module-dir-path (cond
                            ((stringp module-spec)
                             (if (or (char= (char module-spec 0) #\/)
@@ -787,9 +801,10 @@
       
       ;; Register the module
       (map:assoc! *modules* module-name module-dir)
-      (format t ";;   Registered module: ~a -> ~a~%" 
-              module-name 
-              (path:path-from-uri module-dir))
+      (unless silent
+        (format t ";;   Registered module: ~a -> ~a~%" 
+                module-name 
+                (path:path-from-uri module-dir)))
       
       ;; Return the module name
       module-name)))

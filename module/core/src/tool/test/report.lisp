@@ -27,7 +27,7 @@
 
 (defun format-package-header (package-name)
   "Format a package header with standard indentation"
-  (format t "~&;; ~A~%" package-name))
+  (format t "~&;; ~A~%" (string-downcase package-name)))
 
 (defun format-status-field (result)
   "Format the timing and status field, returning its string representation"
@@ -75,9 +75,7 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
 (defmethod event ((formatter shell-report) (event-type (eql :end-test)) result)
   (with-slots (failure-count max-failures) formatter
     (let ((test (suite:test result)))
-      (format-test-entry (format nil "~A::~A" 
-                                          (package-name (symbol-package test))
-                                          (symbol-name test)) 60 result)
+      (format-test-entry (string-downcase (symbol-name test)) 60 result)
       (when (member (suite:status result) '(:failure :error))
         (when (< failure-count max-failures)
           (format t "~A" (format-condition-details result))

@@ -4,7 +4,6 @@
    #:epsilon.tool.test
    #:epsilon.lib.checksum.adler-32
    #:epsilon.lib.checksum.generic
-   #:epsilon.lib.codec
    #:epsilon.lib.type))
 
 (in-package #:epsilon.lib.checksum.tests)
