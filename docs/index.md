@@ -1,52 +1,75 @@
-# Tools Overview
+# Epsilon Environment
 
-Epsilon includes development tools for building, testing, and maintaining Lisp projects.
+Welcome to the Epsilon Environment documentation. Epsilon is a modern Lisp-based programming environment designed for practical software development.
 
-## Available Tools
+## Documentation Structure
 
-- **[Build System](build.md)** - Dependency tracking and incremental compilation
-- **[Test Framework](testing.md)** - Unit testing with metrics and reporting
-- **[Benchmarks](benchmarks.md)** - Performance measurement and comparison
+### 🚀 [Development](development/)
+Get started with Epsilon development, including installation guides, tutorials, and development tools.
 
-## Command Line Interface
+- [Getting Started](development/getting-started.md) - Quick start guide
+- [Installation](development/installation.md) - Installation instructions
+- [Application Development](development/app-development-guide.md) - Building applications
+- [Examples](development/examples.md) - Code examples and tutorials
+- [Tools](development/tools/) - Development tools and utilities
 
-All tools are accessible through the `epsilon` command:
+### 📋 [Planning](planning/)
+Strategic planning documents, roadmaps, and project analysis.
 
-```bash
-# Build your project
-epsilon build
+- [Gap Analysis](planning/gap-analysis.md) - Feature gap analysis
+- [Roadmaps](planning/roadmaps.md) - Project roadmaps
+- [Wishlist](planning/wishlist.md) - Desired features
 
-# Run tests
-epsilon test
+### 📝 [RFCs](rfcs/)
+Request for Comments documents outlining proposed features and designs.
 
-# Run specific test suite
-epsilon test --package my.package.tests
+- [RFC 001: LSP](rfcs/001_lsp.md) - Language Server Protocol
+- [RFC 002: Testing](rfcs/002_testing_framework.md) - Testing framework
+- [RFC 003: Interactive Development](rfcs/003_interactive_development.md) - REPL and interactive features
+- [RFC 004: Module System](rfcs/004_module_system.md) - Module architecture
+- [RFC 005: Async Networking](rfcs/005_async_networking.md) - Networking capabilities
 
-# Run benchmarks
-epsilon benchmark --suite performance
+### 🏗️ [Architecture](architecture/)
+Technical specifications, design documents, and architectural details.
 
-# Get help
-epsilon --help
-```
+- [Data Structures](architecture/data-structures.md) - Core data types
+- [Module Management](architecture/module-management.md) - Module system
+- [Package Format](architecture/package-format.md) - Package specifications
+- [Performance Optimizations](architecture/boot-optimization.md) - System optimizations
 
-## Project Structure
+### ⚙️ [Operations](operations/)
+Build, deployment, and maintenance documentation.
 
-Tools work with projects organized as modules:
+- [Build Guide](operations/build.md) - Building from source
+- [CI/CD Process](operations/ci-release-process.md) - Release management
+- [Distribution](operations/distribution.md) - Package distribution
 
-```
-my-project/
-├── package.yaml          # Module configuration
-├── src/
-│   └── my-package.lisp   # Source code
-└── tests/
-    └── my-package-tests.lisp  # Tests
-```
+### 📚 [API Reference](reference/)
+Complete API documentation for all Epsilon libraries.
 
-## Integration
+- [Core Libraries](reference/core/) - epsilon.core namespace
+- [HTTP](reference/http/) - epsilon.http namespace  
+- [Networking](reference/net/) - epsilon.net namespace
 
-The tools integrate with:
+## Quick Links
 
-- **CI/CD systems** - JUnit XML output for test results
-- **IDEs** - Language Server Protocol support
-- **Package managers** - Standard project layouts
-- **Version control** - Git-aware build system
+- **New to Epsilon?** Start with the [Getting Started Guide](development/getting-started.md)
+- **Building an app?** See the [Application Development Guide](development/app-development-guide.md)
+- **Contributing?** Check the [RFCs](rfcs/) and [Planning](planning/) sections
+- **Need API docs?** Browse the [API Reference](reference/)
+
+## Project Goals
+
+Epsilon aims to provide:
+
+- **Modern Lisp Environment** - Clean, efficient Lisp implementation
+- **Practical Libraries** - Real-world functionality for application development
+- **Developer Experience** - Excellent tooling and development workflow
+- **Performance** - Optimized for production use
+- **Simplicity** - Clear, understandable design
+
+## Community
+
+- **GitHub**: [jbouwman/epsilon](https://github.com/jbouwman/epsilon)
+- **Documentation**: This site
+- **Issues**: [GitHub Issues](https://github.com/jbouwman/epsilon/issues)
