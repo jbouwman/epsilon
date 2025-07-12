@@ -322,7 +322,7 @@
   (format t "    --module MODULE1[,MODULE2,...]  Build and test specific modules~%")
   (format t "    --test PATTERN                  Filter tests by name pattern (supports wildcards)~%")
   (format t "    --package PATTERN               Filter tests by package pattern~%")
-  (format t "    --format FORMAT                 Output format (shell, repl, junit)~%")
+  (format t "    --format FORMAT                 Output format (shell, junit, tap)~%")
   (format t "    --file FILE                     Write results to file~%")
   (format t "  benchmark [options]                       Run benchmarks~%")
   (format t "    --suite SUITE      Run benchmark suite (msgpack, all)~%")

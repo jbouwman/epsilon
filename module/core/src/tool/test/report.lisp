@@ -5,6 +5,7 @@
   (:local-nicknames
    (suite epsilon.tool.test.suite)
    (map epsilon.lib.map)
+   (str epsilon.lib.string)
    (xml epsilon.lib.xml))
   (:export
    make))
@@ -199,13 +200,84 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
                                    "time" (format nil "~,3F" test-time))
                  :children (reverse children))))
 
+;;; TAP (Test Anything Protocol) formatter
+
+(defclass tap-report ()
+  ((test-count :initform 0 :accessor test-count)))
+
+(defmethod event ((formatter tap-report) (event-type (eql :start)) event-data)
+  (declare (ignore event-data))
+  ;; TAP version declaration
+  (format t "TAP version 13~%"))
+
+(defmethod event ((formatter tap-report) (event-type (eql :start-group)) group)
+  (declare (ignore group))
+  ;; Groups are not explicitly represented in TAP
+  )
+
+(defmethod event ((formatter tap-report) (event-type (eql :end-test)) result)
+  (let ((test (suite:test result))
+        (status (suite:status result)))
+    (incf (test-count formatter))
+    (case status
+      (:failure
+       (format t "not ok ~D ~A~%" 
+               (test-count formatter)
+               (format-tap-test-name test))
+       (when (suite:condition result)
+         (format t "  ---~%")
+         (format t "  message: ~S~%"
+                 (suite::failure-message (suite:condition result)))
+         (format t "  severity: fail~%")
+         (format t "  ...~%")))
+      (:error
+       (format t "not ok ~D ~A~%" 
+               (test-count formatter)
+               (format-tap-test-name test))
+       (when (suite:condition result)
+         (format t "  ---~%")
+         (format t "  message: ~S~%"
+                 (format nil "~A" (suite::original-error (suite:condition result))))
+         (format t "  severity: fail~%")
+         (when (suite::stack-trace result)
+           (format t "  data:~%")
+           (format t "    stack: |~%")
+           (dolist (line (str:split #\Newline (suite::stack-trace result)))
+             (format t "      ~A~%" line)))
+         (format t "  ...~%")))
+      (:skip
+       (format t "ok ~D ~A # SKIP~@[ ~A~]~%"
+               (test-count formatter)
+               (format-tap-test-name test)
+               (when (suite:condition result)
+                 (suite::skip-message (suite:condition result)))))
+      (otherwise
+       (format t "ok ~D ~A~%"
+               (test-count formatter)
+               (format-tap-test-name test))))))
+
+(defmethod event ((formatter tap-report) (event-type (eql :end)) run)
+  (format t "1..~D~%" (test-count formatter))
+  ;; Optional plan can also be at the beginning, but at end is more reliable
+  (let ((failures (+ (length (suite:failures run)) (length (suite:errors run)))))
+    (when (> failures 0)
+      (format t "# Failed ~D test~P out of ~D~%"
+              failures failures (test-count formatter)))))
+
+(defun format-tap-test-name (test-symbol)
+  "Format test name for TAP output"
+  (format nil "~A::~A" 
+          (string-downcase (package-name (symbol-package test-symbol)))
+          (string-downcase (symbol-name test-symbol))))
+
 (defclass null-report ()
   ())
 
 (defparameter *report-formats*
   (map:make-map :none 'null-report
                 :shell 'shell-report
-                :junit 'junit-report))
+                :junit 'junit-report
+                :tap 'tap-report))
 
 (defun to-keyword (value)
   (etypecase value
