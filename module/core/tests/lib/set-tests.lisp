@@ -15,13 +15,13 @@
 
 (deftest test-basic-operations
   ;; Test add
-  (let ((s1 (set:add +empty+ 'a)))
+  (let ((s1 (set:add set:+empty+ 'a)))
     (is (= (set:size s1) 1))
     (is (set:contains-p s1 'a))
     (is (not (set:contains-p s1 'b))))
   
   ;; Test multiple adds
-  (let ((s2 (-> +empty+
+  (let ((s2 (-> set:+empty+
                 (set:add 'a)
                 (set:add 'b)
                 (set:add 'c))))

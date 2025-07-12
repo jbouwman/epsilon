@@ -92,29 +92,48 @@ markdown_extensions:
 nav:
   - Introduction:
     - Home: index.md
-    - Getting Started: getting-started.md
-    - Installation: installation.md
-  - Libraries:
-    - Overview: library/index.md
-    - Data Structures: core/data-structures.md
-    - JSON & YAML: core/json-yaml.md
-    - Cryptography: core/cryptography.md
-    - String Processing: core/strings.md
-    - Networking: network/http.md
-    - Threading: system/threading.md
-    - Filesystem: system/filesystem.md
-  - Tools:
-    - Overview: tools/index.md
-    - Build System: tools/build.md
-    - Test Framework: tools/testing.md
-    - Benchmarks: tools/benchmarks.md
-  - Roadmaps:
-    - Overview: roadmaps.md
-    - LSP: roadmaps/001_lsp.md
-    - Testing: roadmaps/002_testing_framework.md
-    - Interactive Dev: roadmaps/003_interactive_development.md
-    - Module System: roadmaps/004_module_system.md
-    - Async Networking: roadmaps/005_async_networking.md
+  - Development:
+    - Overview: development/index.md
+    - Getting Started: development/getting-started.md
+    - Installation: development/installation.md
+    - App Development: development/app-development-guide.md
+    - Examples: development/examples.md
+    - Tools: development/tools/index.md
+  - Planning:
+    - Overview: planning/index.md
+    - Gap Analysis: planning/gap-analysis.md
+    - Roadmaps: planning/roadmaps.md
+    - Wishlist: planning/wishlist.md
+    - Functional Programming Analysis: planning/functional-programming-gap-analysis.md
+  - RFCs:
+    - Overview: rfcs/index.md
+    - RFC 001 - LSP: rfcs/001_lsp.md
+    - RFC 002 - Testing: rfcs/002_testing_framework.md
+    - RFC 003 - Interactive Dev: rfcs/003_interactive_development.md
+    - RFC 004 - Module System: rfcs/004_module_system.md
+    - RFC 005 - Async Networking: rfcs/005_async_networking.md
+  - Architecture:
+    - Overview: architecture/index.md
+    - Data Structures: architecture/data-structures.md
+    - Module Management: architecture/module-management.md
+    - Package Format: architecture/package-format.md
+    - Binary Streams: architecture/binary-stream-proposal.md
+    - Boot Optimization: architecture/boot-optimization.md
+    - Codec Analysis: architecture/codec-modularization-analysis.md
+    - JSON & YAML: architecture/json-yaml.md
+    - Maps: architecture/map.md
+    - Sequences: architecture/sequence.md
+    - Sets: architecture/set.md
+    - Strings: architecture/string.md
+    - URI: architecture/uri.md
+    - Digest: architecture/digest.md
+    - Parser: architecture/epsilon_lib_parser.md
+    - Regex Plan: architecture/regex-simplification-plan.md
+  - Operations:
+    - Overview: operations/index.md
+    - Build Guide: operations/build.md
+    - CI/CD Process: operations/ci-release-process.md
+    - Distribution: operations/distribution.md
   - API Reference:
     - Overview: reference/index.md
     - epsilon.core:

@@ -413,7 +413,7 @@ Testing with Epsilon's test framework:
   (test:run-test-suite 'user-management-tests :verbose t))
 ```
 
-These examples demonstrate Epsilon's capabilities across different domains while showcasing the functional programming patterns and clean API design that make Epsilon powerful and enjoyable to use.
+These examples demonstrate Epsilon's capabilities across different domains while showcasing the functional programming patterns and API design.
 
 ---
 

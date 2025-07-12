@@ -254,8 +254,8 @@ Returns the leaf node for package-name."
              (seq:group-by (f:compose #'package-name #'symbol-package))
              (map:map (lambda (tests)
                         (sort (seq:realize tests) #'string< :key #'symbol-name)))
-             (map:vals))
-        #'string< :key (f:compose #'package-name #'symbol-package #'car)))
+             (map:seq))
+        #'string< :key #'car))
 
 (defun select (&key package name)
   (->> (collect (ensure-test-root))

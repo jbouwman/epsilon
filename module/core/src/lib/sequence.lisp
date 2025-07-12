@@ -48,7 +48,9 @@
    group-by
    partition-when
    take
-   each))
+   each
+   iterator
+   lazy))
 
 (in-package epsilon.lib.sequence)
 
@@ -220,6 +222,20 @@ Returns no value."
         while (not (empty-p current))
         do (funcall function (first current)))
   (values))
+
+(defun iterator (seq)
+  "Create an iterator function for the sequence. 
+   Returns a function that when called returns the next element or nil when exhausted."
+  (let ((current seq))
+    (lambda ()
+      (if (empty-p current)
+          nil
+          (prog1 (first current)
+            (setf current (rest current)))))))
+
+(defmacro lazy (expr)
+  "Create a lazy sequence from an expression that returns a sequence"
+  `(make-promise (lambda () ,expr)))
 
 (defun partition-when (predicate sequence)
   "Returns a lazy sequence of subsequences, split when predicate returns true.

@@ -224,13 +224,13 @@
           (load (path:string-path-join
                   #+win32 (sb-ext:native-namestring (truename "."))
                   #-win32 (sb-unix:posix-getcwd)
-                  "module/core/tests/lib/msgpack-binary-benchmark.lisp"))
+                  "module/msgpack/tests/lib/msgpack-binary-benchmark.lisp"))
           (funcall (find-symbol "RUN-MSGPACK-BENCHMARKS" "EPSILON.LIB.MSGPACK.BINARY.BENCHMARK")))
          ((string= suite "all")
           (load (path:string-path-join
                   #+win32 (sb-ext:native-namestring (truename "."))
                   #-win32 (sb-unix:posix-getcwd)
-                  "module/core/tests/lib/msgpack-binary-benchmark.lisp"))
+                  "module/msgpack/tests/lib/msgpack-binary-benchmark.lisp"))
           (funcall (find-symbol "RUN-COMPLETE-BENCHMARK-SUITE" "EPSILON.LIB.MSGPACK.BINARY.BENCHMARK")))
          (t
           (error "Unknown benchmark suite: ~A. Available: msgpack, all" suite))))
@@ -322,7 +322,7 @@
   (format t "    --module MODULE1[,MODULE2,...]  Build and test specific modules~%")
   (format t "    --test PATTERN                  Filter tests by name pattern (supports wildcards)~%")
   (format t "    --package PATTERN               Filter tests by package pattern~%")
-  (format t "    --format FORMAT                 Output format (shell, repl, junit)~%")
+  (format t "    --format FORMAT                 Output format (shell, junit, tap)~%")
   (format t "    --file FILE                     Write results to file~%")
   (format t "  benchmark [options]                       Run benchmarks~%")
   (format t "    --suite SUITE      Run benchmark suite (msgpack, all)~%")

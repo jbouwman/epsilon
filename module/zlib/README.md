@@ -7,10 +7,10 @@ This module provides ZLIB compression/decompression support for Epsilon, impleme
 - **Complete ZLIB Format Support**: Full RFC 1950 ZLIB format implementation
 - **Header Processing**: Complete ZLIB header parsing and validation
 - **Adler-32 Validation**: Data integrity verification using Adler-32 checksums
-- **DEFLATE Integration**: Seamless integration with the inflate module
+- **DEFLATE Integration**: Direct integration with the inflate module
 - **Dictionary Support**: Support for preset dictionaries (FDICT)
 - **Stream Interface**: Support for streaming compression/decompression
-- **Error Handling**: Comprehensive error conditions for invalid data
+- **Error Handling**: Complete error detection for invalid data
 
 ## API
 
@@ -168,7 +168,7 @@ Run tests with:
 The ZLIB implementation is optimized for:
 - **Header Parsing**: Efficient 2-byte header processing
 - **Memory Usage**: Minimal memory allocation during decompression
-- **Integration**: Seamless integration with inflate module
+- **Integration**: Direct integration with inflate module
 - **Checksum**: Fast Adler-32 validation
 
 ## Standards Compliance
