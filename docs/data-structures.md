@@ -165,7 +165,7 @@ All packages use local nicknames for clean integration:
 
 ## Collection Interoperation
 
-Collections are designed to work together seamlessly:
+Collections are designed to work together consistently:
 
 ```lisp
 ;; Convert between collection types

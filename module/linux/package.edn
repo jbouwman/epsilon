@@ -1,9 +1,9 @@
 {"name" "linux"
  "version" "1.0.0"
  "author" "Jesse Bouwman"
- "description" "Linux-specific functions (epoll networking)"
+ "description" "Linux-specific functions (epoll networking, TLS support)"
  "platform" "linux"
  "sources" ("src")
  "tests" ("tests")
- "dependencies" ("epsilon.core")
- "provides" ("linux" "epsilon.net")}
+ "dependencies" ("epsilon.core" "epsilon.net")
+ "provides" ("linux" "epsilon.net" "epsilon.tls")}

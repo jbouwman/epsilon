@@ -224,13 +224,13 @@
           (load (path:string-path-join
                   #+win32 (sb-ext:native-namestring (truename "."))
                   #-win32 (sb-unix:posix-getcwd)
-                  "module/core/tests/lib/msgpack-binary-benchmark.lisp"))
+                  "module/msgpack/tests/lib/msgpack-binary-benchmark.lisp"))
           (funcall (find-symbol "RUN-MSGPACK-BENCHMARKS" "EPSILON.LIB.MSGPACK.BINARY.BENCHMARK")))
          ((string= suite "all")
           (load (path:string-path-join
                   #+win32 (sb-ext:native-namestring (truename "."))
                   #-win32 (sb-unix:posix-getcwd)
-                  "module/core/tests/lib/msgpack-binary-benchmark.lisp"))
+                  "module/msgpack/tests/lib/msgpack-binary-benchmark.lisp"))
           (funcall (find-symbol "RUN-COMPLETE-BENCHMARK-SUITE" "EPSILON.LIB.MSGPACK.BINARY.BENCHMARK")))
          (t
           (error "Unknown benchmark suite: ~A. Available: msgpack, all" suite))))

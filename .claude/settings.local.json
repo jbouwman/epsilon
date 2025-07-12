@@ -66,7 +66,8 @@
       "Bash(/Users/jbouwman/git/epsilon/run.sh test:*)",
       "Bash(do echo \"=== $f ===\")",
       "Bash(wc:*)",
-      "Bash(du:*)"
+      "Bash(du:*)",
+      "Bash(openssl req:*)"
     ],
     "deny": []
   }

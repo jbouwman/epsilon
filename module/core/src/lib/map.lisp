@@ -13,7 +13,7 @@
 ;;;; - Syntax support for map literals via epsilon.lib.syntax
 ;;;;
 ;;;; Dependencies: epsilon.lib.syntax for reader macros
-;;;; Performance: O(log32 n) for basic operations, excellent cache locality
+;;;; Performance: O(log32 n) for basic operations, optimized cache locality
 
 (defpackage :epsilon.lib.map
   (:use
