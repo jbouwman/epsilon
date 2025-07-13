@@ -2,7 +2,7 @@
   (:use :cl)
   (:local-nicknames
    (#:epoll #:epsilon.sys.epoll)
-   (#:test #:epsilon.tool.test)))
+   (#:test #:epsilon.test)))
 
 (in-package :epsilon.sys.epoll.tests)
 

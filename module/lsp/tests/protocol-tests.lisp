@@ -1,5 +1,5 @@
 (defpackage #:epsilon.lsp.tests.protocol
-  (:use #:common-lisp #:epsilon.tool.test)
+  (:use #:common-lisp #:epsilon.test)
   (:local-nicknames
    (#:jsonrpc #:epsilon.lsp.protocol.jsonrpc)
    (#:protocol #:epsilon.lsp.protocol)

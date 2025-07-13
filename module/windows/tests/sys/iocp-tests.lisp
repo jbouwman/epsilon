@@ -2,7 +2,7 @@
   (:use :cl)
   (:local-nicknames
    (#:iocp #:epsilon.sys.iocp)
-   (#:test #:epsilon.tool.test)))
+   (#:test #:epsilon.test)))
 
 (in-package :epsilon.sys.iocp.tests)
 

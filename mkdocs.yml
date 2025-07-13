@@ -14,22 +14,20 @@ theme:
     text: 'IBM Plex Mono'
     code: 'IBM Plex Mono'
   palette:
-    # Light mode - technical documentation
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: blue grey
-      accent: deep orange
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    # Dark mode - terminal aesthetic
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
+    # Dark mode - default terminal aesthetic
+    - scheme: slate
       primary: blue grey
       accent: amber
       toggle:
-        icon: material/brightness-4
+        icon: material/brightness-7
         name: Switch to light mode
+    # Light mode - technical documentation  
+    - scheme: default
+      primary: blue grey
+      accent: deep orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to dark mode
   features:
     - navigation.tabs
     - navigation.sections
@@ -92,26 +90,23 @@ markdown_extensions:
 nav:
   - Introduction:
     - Home: index.md
+    - Module Catalog: module-dependencies.md
   - Development:
     - Overview: development/index.md
     - Getting Started: development/getting-started.md
     - Installation: development/installation.md
     - App Development: development/app-development-guide.md
     - Examples: development/examples.md
-    - Tools: development/tools/index.md
-  - Planning:
-    - Overview: planning/index.md
-    - Gap Analysis: planning/gap-analysis.md
-    - Roadmaps: planning/roadmaps.md
-    - Wishlist: planning/wishlist.md
-    - Functional Programming Analysis: planning/functional-programming-gap-analysis.md
-  - RFCs:
-    - Overview: rfcs/index.md
-    - RFC 001 - LSP: rfcs/001_lsp.md
-    - RFC 002 - Testing: rfcs/002_testing_framework.md
-    - RFC 003 - Interactive Dev: rfcs/003_interactive_development.md
-    - RFC 004 - Module System: rfcs/004_module_system.md
-    - RFC 005 - Async Networking: rfcs/005_async_networking.md
+  - Projects:
+    - Overview: projects/index.md
+    - 1 - LSP: projects/1_lsp.md
+    - 2 - Testing: projects/2_testing_framework.md
+    - 3 - Interactive Dev: projects/3_interactive_development.md
+    - 4 - Module System: projects/4_module_system.md
+    - 5 - Async Networking: projects/5_async_networking.md
+    - 6 - Package Registry: projects/6_package_registry.md
+    - 7 - Functional Extensions: projects/7_functional_extensions.md
+    - Wishlist: projects/wishlist.md
   - Architecture:
     - Overview: architecture/index.md
     - Data Structures: architecture/data-structures.md
@@ -134,45 +129,6 @@ nav:
     - Build Guide: operations/build.md
     - CI/CD Process: operations/ci-release-process.md
     - Distribution: operations/distribution.md
-  - API Reference:
-    - Overview: reference/index.md
-    - epsilon.core:
-      - Overview: reference/core/index.md
-      - Data Structures:
-        - epsilon.lib.map: reference/core/data-structures/map.md
-        - epsilon.lib.sequence: reference/core/data-structures/sequence.md
-        - epsilon.lib.vector: reference/core/data-structures/vector.md
-        - epsilon.lib.set: reference/core/data-structures/set.md
-        - epsilon.lib.list: reference/core/data-structures/list.md
-      - Data Encoding:
-        - epsilon.lib.json: reference/core/encoding/json.md
-        - epsilon.lib.yaml: reference/core/encoding/yaml.md
-        - epsilon.lib.msgpack: reference/core/encoding/msgpack.md
-        - epsilon.lib.base64: reference/core/encoding/base64.md
-        - epsilon.lib.hex: reference/core/encoding/hex.md
-      - Cryptography:
-        - epsilon.lib.digest: reference/core/crypto/digest.md
-        - epsilon.lib.checksum: reference/core/crypto/checksum.md
-      - String Processing:
-        - epsilon.lib.string: reference/core/strings/string.md
-        - epsilon.lib.char: reference/core/strings/char.md
-        - epsilon.lib.regex: reference/core/strings/regex.md
-      - System:
-        - epsilon.sys.fs: reference/core/system/fs.md
-        - epsilon.sys.thread: reference/core/system/thread.md
-        - epsilon.sys.env: reference/core/system/env.md
-      - Tools:
-        - epsilon.tool.build: reference/core/tools/build.md
-        - epsilon.tool.test: reference/core/tools/test.md
-        - epsilon.tool.benchmark: reference/core/tools/benchmark.md
-    - epsilon.net:
-      - Overview: reference/net/index.md
-      - epsilon.net: reference/net/core.md
-    - epsilon.http:
-      - Overview: reference/http/index.md
-      - epsilon.http.client: reference/http/client.md
-      - epsilon.http.server: reference/http/server.md
-    - Examples: reference/examples.md
 
 extra:
   version:

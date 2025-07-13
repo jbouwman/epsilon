@@ -610,7 +610,7 @@ task-manager/
   (load-sample-data))
 ```
 
-## Development Workflow
+## Usage Examples
 
 **Starting Development:**
 ```bash

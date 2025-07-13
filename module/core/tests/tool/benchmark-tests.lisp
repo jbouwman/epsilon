@@ -1,7 +1,7 @@
 (defpackage epsilon.tool.benchmark.tests
   (:use
    cl
-   epsilon.tool.test)
+   epsilon.test)
   (:local-nicknames 
    (bench epsilon.tool.benchmark)))
 

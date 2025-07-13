@@ -1,188 +1,281 @@
-# Epsilon CI and Release Process
+# CI and Release Process
 
-## Overview
+Automated testing, building, and releasing for Epsilon.
 
-The Epsilon CI system provides automated testing, compilation, and release of modular EPK packages across multiple platforms.
+## CI Pipeline
 
-## CI Pipeline Stages
+GitHub Actions workflow runs on every push and pull request.
 
-### 1. Module Discovery and Validation
-- **Purpose**: Discover all modules and extract version information
-- **Outputs**: Module matrix for testing, core version, release tag
-- **Duration**: ~1 minute
+### Test Matrix
 
-### 2. Platform Matrix Testing  
-- **Purpose**: Test each module on each compatible platform
-- **Matrix**: [Linux, macOS, Windows] × [all modules] 
-- **Excludes**: Platform-specific modules on incompatible platforms
-- **Features**:
-  - Dependency resolution and building
-  - Comprehensive test execution with JUnit output
-  - Build artifact caching for performance
-- **Duration**: ~10-20 minutes per platform
+Tests run on:
+- **OS**: Ubuntu 22.04, macOS 12, macOS 13 (arm64)
+- **SBCL**: 2.3.0+ 
+- **Modules**: All non-platform-specific modules
 
-### 3. Integration Testing
-- **Purpose**: Test module interactions and end-to-end workflows
-- **Tests**:
-  - Core module functionality
-  - Module loading and interaction
-  - Platform-specific modules
-  - Data format pipelines
-  - Foreign integration
-- **Duration**: ~5-10 minutes per platform
+Platform-specific modules tested only on their target OS.
 
-### 4. EPK Compilation
-- **Purpose**: Generate EPK packages for distribution
-- **Triggered**: On main branch or releases
-- **Outputs**: Platform-specific EPK files for all modules
-- **Features**:
-  - Combined core+essential packages for fast startup
-  - Platform detection and compatibility
-  - Manifest generation with metadata
-- **Duration**: ~5-10 minutes per platform
+### Workflow Stages
 
-### 5. Release Publishing
-- **Purpose**: Publish EPKs to package repository
-- **Triggered**: On GitHub releases only
-- **Outputs**: Updated package repository with indexes
-- **Features**:
-  - Package repository management
-  - Index generation for dependency resolution
-  - Release notes and compatibility matrices
-  - GitHub release artifact uploading
+1. **Setup** (~1 min)
+   - Checkout code
+   - Install SBCL
+   - Cache dependencies
 
-## Package Repository Structure
+2. **Build** (~5 min)
+   - Discover modules
+   - Build in dependency order
+   - Generate FASL files
 
-```
-packages/
-├── epsilon.core/
-│   └── 1.0.0/
-│       ├── epsilon.core-1.0.0-linux-x86_64.epk
-│       ├── epsilon.core-1.0.0-darwin-x86_64.epk
-│       └── epsilon.core-1.0.0-windows-x86_64.epk
-├── epsilon.yaml/
-│   └── 1.0.0/
-│       └── epsilon.yaml-1.0.0-linux-x86_64.epk
-index/
-├── repository.json      # Repository metadata
-└── packages.json        # Package index with dependencies
-releases/
-└── 1.0.0/
-    ├── RELEASE_NOTES.md
-    └── compatibility.json
+3. **Test** (~10 min)
+   - Run module tests
+   - Generate JUnit XML
+   - Upload test results
+
+4. **Package** (on main/tags only)
+   - Build core image
+   - Create distribution
+   - Generate checksums
+
+### Configuration
+
+`.github/workflows/ci.yml`:
+```yaml
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, macos-12]
+        exclude:
+          - os: ubuntu-22.04
+            module: darwin
+          - os: macos-12  
+            module: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: 40ants/setup-lisp@v2
+      - run: ./run.sh test
 ```
 
-## Usage
+## Release Process
 
-### Triggering CI
+Releases are triggered by version tags.
+
+### Version Tagging
+
 ```bash
-# Development testing
-git push origin develop
-
-# Production testing  
-git push origin main
-
-# Release
-git tag v1.0.0
-git push origin v1.0.0
-gh release create v1.0.0 --title "Epsilon 1.0.0" --notes "Release notes"
+# Update version in package.edn
+git commit -am "Release v1.2.3"
+git tag v1.2.3
+git push origin main v1.2.3
 ```
 
-### Installing Packages
+### Release Workflow
+
+1. **Build Distributions** (~20 min)
+   - Linux x86_64
+   - macOS x86_64
+   - macOS arm64
+
+2. **Create Release**
+   - Generate changelog
+   - Upload artifacts
+   - Create GitHub release
+
+3. **Publish**
+   - Update installation script
+   - Notify package managers
+
+### Release Files
+
+Each release includes:
+```
+epsilon-1.2.3-linux-x86_64.tar.gz
+epsilon-1.2.3-linux-x86_64.tar.gz.sha256
+epsilon-1.2.3-macos-x86_64.tar.gz
+epsilon-1.2.3-macos-x86_64.tar.gz.sha256
+epsilon-1.2.3-macos-arm64.tar.gz
+epsilon-1.2.3-macos-arm64.tar.gz.sha256
+```
+
+## Module Testing
+
+### Test Discovery
+
+Tests are discovered from `package.edn`:
+```edn
+{
+  "name" "epsilon.json"
+  "tests" ["tests"]
+}
+```
+
+Test files match `*-tests.lisp` pattern.
+
+### Test Execution
+
 ```bash
-# Add repository
-epsilon-package repo add epsilon-packages https://github.com/epsilon-org/packages.git
+# Test single module
+./run.sh test --module epsilon.json
 
-# Install core
-epsilon-package install epsilon.core@1.0.0
+# Test with coverage
+./run.sh test --module epsilon.json --coverage
 
-# Install modules
-epsilon-package install epsilon.yaml@1.0.0
-epsilon-package install epsilon.regex@1.0.0
+# Test with specific pattern
+./run.sh test --module epsilon.json --test parse-*
 ```
 
-### Manual EPK Generation
+### Test Output
+
+JUnit XML format for CI integration:
+```xml
+<testsuites>
+  <testsuite name="epsilon.json.tests" tests="42" failures="0">
+    <testcase name="parse-empty-object" time="0.001"/>
+    <testcase name="parse-nested-arrays" time="0.002"/>
+  </testsuite>
+</testsuites>
+```
+
+## Caching
+
+Build artifacts are cached to speed up CI.
+
+### Cache Keys
+
+```yaml
+key: ${{ runner.os }}-build-${{ hashFiles('**/package.edn') }}
+restore-keys: |
+  ${{ runner.os }}-build-
+  ${{ runner.os }}-
+```
+
+### Cached Paths
+
+- `~/.cache/epsilon/` - Build cache
+- `module/*/target/` - Compiled FASLs
+
+Cache invalidated when:
+- `package.edn` files change
+- Dependencies update
+- Cache version bumped
+
+## Platform Builds
+
+### Linux
+
+Built on Ubuntu 22.04 for glibc compatibility:
+```yaml
+runs-on: ubuntu-22.04
+steps:
+  - run: |
+      sudo apt-get update
+      sudo apt-get install -y sbcl
+```
+
+### macOS
+
+Universal binaries for Intel and Apple Silicon:
+```yaml
+strategy:
+  matrix:
+    include:
+      - os: macos-12
+        arch: x86_64
+      - os: macos-13-xlarge
+        arch: arm64
+```
+
+### Cross-Compilation
+
+Not supported. Each platform built natively.
+
+## Security
+
+### Code Signing
+
+macOS distributions are signed and notarized:
 ```bash
-# Build all modules
-./scripts/ci/build-all-modules.sh
-
-# Generate EPKs
-./scripts/ci/generate-epks.sh 1.0.0
-
-# Setup release repo
-./scripts/ci/setup-release-repo.sh v1.0.0
-
-# Generate index
-./scripts/ci/generate-release-index.sh 1.0.0
-
-# Publish (requires RELEASE_TOKEN)
-./scripts/ci/publish-release.sh v1.0.0
+codesign --deep --force --sign "Developer ID" epsilon
+xcrun notarytool submit epsilon-*.tar.gz --wait
 ```
 
-## Platform Support
+### Checksums
 
-### Supported Platforms
-- **Linux**: x86_64, arm64 (Ubuntu 20.04+, CentOS 8+, Debian 11+)
-- **macOS**: x86_64, arm64 (macOS 10.15+)
-- **Windows**: x86_64 (Windows 10+)
-
-### Platform-Specific Modules
-- `linux` - Linux epoll networking
-- `darwin` - macOS kqueue networking + TLS
-- `windows` - Windows IOCP networking
-
-## Configuration
-
-### Environment Variables
-- `EPSILON_RELEASE_REPO_URL` - Release repository URL
-- `RELEASE_TOKEN` - GitHub token for publishing
-- `CACHE_VERSION` - Build cache version for invalidation
-
-### GitHub Secrets Required
-- `RELEASE_TOKEN` - Personal access token with repo permissions
-
-## Module Dependencies
-
-```
-epsilon.core (foundation)
-├── Platform modules (linux/darwin/windows)
-│   └── http (depends on platform networking)
-│       └── lsp
-├── Data modules
-│   ├── epsilon.parsing (parser + lexer + json)
-│   ├── epsilon.yaml
-│   ├── epsilon.msgpack
-│   └── epsilon.regex
-├── Compression modules (independent)
-│   ├── epsilon.bzip
-│   ├── epsilon.gzip
-│   ├── epsilon.zlib
-│   └── epsilon.inflate
-└── epsilon.foreign (depends on epsilon.parsing)
+SHA-256 checksums for all artifacts:
+```bash
+shasum -a 256 epsilon-*.tar.gz > checksums.txt
 ```
 
-## Performance Optimizations
+### Secrets
 
-- **Build Caching**: Content-based hashing for incremental builds
-- **Artifact Caching**: GitHub Actions cache for compiled modules
-- **Combined EPKs**: Core+essential packages for fast startup
-- **Platform Matrix**: Parallel execution across platforms
-- **Dependency Building**: Smart dependency resolution
+Required GitHub secrets:
+- `APPLE_DEVELOPER_ID` - Code signing certificate
+- `APPLE_ID` - Notarization account
+- `APPLE_APP_PASSWORD` - App-specific password
 
-## Quality Assurance
+## Monitoring
 
-- **Zero Tolerance**: All tests must pass for release
-- **Platform Compatibility**: Automated testing across all platforms
-- **Integration Testing**: End-to-end workflow validation
-- **Performance Monitoring**: Benchmark execution tracking
-- **Dependency Validation**: Module compatibility verification
+### Build Status
 
-## Release Approval Process
+Badge in README:
+```markdown
+[![CI](https://github.com/jbouwman/epsilon/actions/workflows/ci.yml/badge.svg)](https://github.com/jbouwman/epsilon/actions/workflows/ci.yml)
+```
 
-1. **Development**: Push to `develop` branch triggers full CI
-2. **Staging**: Push to `main` branch triggers CI + EPK generation
-3. **Release**: GitHub release creation triggers full publication
-4. **Validation**: Automated verification of published packages
-5. **Notification**: Success/failure notifications
+### Notifications
 
-This process ensures reliable, tested, and compatible Epsilon packages across all supported platforms.
+On failure:
+- GitHub UI shows ❌
+- PR checks block merge
+- Optional: Slack/email alerts
+
+### Metrics
+
+Track in CI:
+- Build time
+- Test count
+- Test duration  
+- Cache hit rate
+- Distribution size
+
+## Troubleshooting
+
+### CI Failures
+
+**"Module not found"**
+- Check module registration
+- Verify `package.edn` syntax
+
+**"Tests timeout"**
+- Default timeout: 10 minutes
+- Increase with `timeout-minutes: 20`
+
+**"Cache miss"**
+- Check cache key changes
+- Manual cache clear in UI
+
+### Local Reproduction
+
+```bash
+# Run CI locally with act
+act -j test -P ubuntu-22.04=ubuntu:22.04
+
+# Match CI environment
+docker run -it ubuntu:22.04
+# Install SBCL and run tests
+```
+
+### Debug Logging
+
+```yaml
+- name: Debug build
+  run: |
+    ./run.sh --verbose test
+  env:
+    EPSILON_DEBUG: 1
+```

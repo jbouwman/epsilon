@@ -1,7 +1,7 @@
 ;;;; Tests for DEFLATE/Inflate Decompression Module
 
 (defpackage :epsilon.lib.inflate.tests
-  (:use :cl :epsilon.tool.test)
+  (:use :cl :epsilon.test)
   (:local-nicknames
    (:inflate :epsilon.lib.inflate))
   (:export :run-inflate-tests))

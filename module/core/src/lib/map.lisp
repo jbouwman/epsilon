@@ -50,6 +50,7 @@
    :make-map
    :map
    :map=
+   :map-p
    :merge
    :reduce
    :select-keys

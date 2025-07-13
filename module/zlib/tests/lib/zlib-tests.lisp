@@ -1,7 +1,7 @@
 ;;;; Tests for ZLIB Module
 
 (defpackage :epsilon.lib.zlib.tests
-  (:use :cl :epsilon.tool.test)
+  (:use :cl :epsilon.test)
   (:local-nicknames
    (:zlib :epsilon.lib.zlib))
   (:export :run-zlib-tests))

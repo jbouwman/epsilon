@@ -1,7 +1,7 @@
 (defpackage :epsilon.lib.stream-tests
   (:use
    :cl
-   :epsilon.tool.test
+   :epsilon.test
    :epsilon.lib.syntax)
   (:local-nicknames
    (:array :epsilon.lib.array)

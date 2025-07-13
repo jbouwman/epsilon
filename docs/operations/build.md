@@ -1,443 +1,202 @@
 # Build System
 
-Epsilon's dependency-tracking build system with incremental compilation and content-based change detection.
+Epsilon uses a content-based build system with dependency tracking and incremental compilation.
 
-## Overview
-
-The Epsilon build system (`epsilon.tool.build`) provides:
-
-- **Content-based change detection** using SHA-256 hashing
-- **Incremental compilation** - only rebuild what changed
-- **Dependency resolution** with topological sorting
-- **Module-based organization** with `package.yaml` configuration
-- **Parallel builds** where dependencies allow
-
-## Basic Usage
-
-### Command Line Interface
+## Quick Start
 
 ```bash
-# Build a specific module
+# Build a module
 ./run.sh build epsilon.core
 
-# Build with verbose output
-./run.sh build epsilon.core --verbose
+# Build all modules
+./run.sh build
 
-# Force rebuild (ignore cache)
-./run.sh build epsilon.core --force
-
-# Clean build artifacts
-./run.sh build epsilon.core --clean
+# Clean and rebuild
+./run.sh build --clean epsilon.core
 ```
 
-### Programmatic Interface
+## Module Structure
 
-```lisp
-(defpackage #:build-example
-  (:use #:common-lisp)
-  (:local-nicknames
-    (#:build #:epsilon.tool.build)))
+Each module requires a `package.edn` file:
 
-(in-package #:build-example)
-
-;; Build a module
-(build:build "epsilon.core")
-
-;; Build with options
-(build:build "my-module" :force t :verbose t)
-
-;; Get build status
-(build:build-status "epsilon.core")
+```edn
+{
+  "name" "mymodule"
+  "version" "1.0.0"
+  "sources" ["src"]
+  "tests" ["tests"]
+  "dependencies" ["epsilon.core"]
+}
 ```
 
-## Module Configuration
-
-### package.yaml Structure
-
-Each module requires a `package.yaml` file:
-
-```yaml
-name: my-module
-description: Example module
-version: 1.0.0
-
-# Source directories
-sources:
-  - src
-  - extra-src
-
-# Test directories  
-tests:
-  - tests
-  - integration-tests
-
-# Module dependencies
-dependencies:
-  - core
-  - another-module
-
-# Build configuration
-build:
-  target-dir: target
-  optimize: true
-  debug: false
+Directory layout:
+```
+mymodule/
+├── package.edn      # Module configuration
+├── src/             # Source files
+├── tests/           # Test files  
+└── target/          # Build artifacts (generated)
 ```
 
-### Directory Structure
-
-Standard module layout:
-
-```
-my-module/
-├── package.yaml          # Module configuration
-├── src/                  # Source files
-│   ├── package.lisp     # Package definition
-│   └── implementation.lisp
-├── tests/               # Test files
-│   └── tests.lisp
-└── target/              # Build artifacts
-    ├── fasls/          # Compiled files
-    └── cache/          # Build cache
-```
-
-## Dependency Management
+## Build Process
 
 ### Dependency Resolution
 
-The build system automatically resolves dependencies:
+Modules are built in dependency order:
+1. Parse `package.edn` files
+2. Construct dependency graph
+3. Topologically sort modules
+4. Build in order
 
+Circular dependencies cause build failure.
+
+### Change Detection
+
+Files are hashed with SHA-256 to detect changes:
+
+```
+src/foo.lisp (hash: abc123) → target/foo.fasl (hash: def456)
+```
+
+Only changed files and their dependents are rebuilt.
+
+### Compilation
+
+SBCL compiles each file:
 ```lisp
-;; Dependencies are built in correct order
-(build:build "app")  ; Builds core → utils → app
+(compile-file "src/foo.lisp" 
+              :output-file "target/fasls/foo.fasl"
+              :print nil
+              :verbose nil)
 ```
 
-### Circular Dependency Detection
+Compilation errors halt the build with file location and error message.
 
-```lisp
-;; Error: Circular dependency detected
-(build:build "module-a")  ; → module-b → module-a
-```
+## Build Cache
 
-### Module Graph Visualization
-
-```lisp
-(build:show-dependency-graph "epsilon.core")
-;; Outputs graphical representation of dependencies
-```
-
-## Change Detection
-
-### Content Hashing
-
-Files are hashed to detect changes:
-
-```lisp
-(defstruct source-file
-  path          ; Full file path
-  content-hash  ; SHA-256 of file content
-  last-modified ; File modification time
-  dependencies) ; Other files this depends on
-```
-
-### Incremental Builds
-
-Only changed files and their dependents are rebuilt:
+The build system maintains a cache in `target/build-cache/`:
 
 ```
-File Change: src/utils.lisp
-├── Rebuild: utils.lisp → utils.fasl
-├── Rebuild: app.lisp (depends on utils)
-└── Skip: other-module.lisp (no dependency)
+target/build-cache/
+├── hashes.sexp      # File content hashes
+├── deps.sexp        # Inter-file dependencies
+└── times.sexp       # Build timestamps
 ```
 
-### Build Cache
+Cache is invalidated when:
+- File content changes
+- Dependencies change
+- Build configuration changes
 
-```lisp
-;; Cache structure
-(defstruct build-cache
-  module-name    ; Module being built
-  source-hashes  ; Hash of each source file
-  dependency-hashes ; Hash of each dependency
-  build-time     ; When build completed
-  artifacts)     ; Generated files
-```
+## Configuration
 
-## Advanced Features
+### Command Line Options
 
-### Parallel Compilation
+```bash
+./run.sh build [module] [options]
 
-```lisp
-;; Configure parallel builds
-(build:set-build-options :parallel-jobs 4)
-
-;; Dependencies are built in parallel when possible
-(build:build "large-project")
-```
-
-### Custom Build Steps
-
-```yaml
-# package.yaml
-build:
-  pre-build:
-    - generate-version-file
-    - copy-resources
-  
-  post-build:
-    - run-tests
-    - create-documentation
-```
-
-```lisp
-;; Define custom build step
-(build:define-build-step generate-version-file (module)
-  (with-open-file (stream "src/version.lisp" 
-                          :direction :output
-                          :if-exists :supersede)
-    (format stream "(defconstant +version+ \"~A\")~%" 
-            (module-version module))))
+Options:
+  --verbose        Show compilation output
+  --force          Ignore cache, rebuild everything
+  --clean          Delete artifacts before building
+  --test           Run tests after building
 ```
 
 ### Build Profiles
 
-```yaml
-# Different configurations for different environments
-profiles:
-  development:
-    build:
-      optimize: false
-      debug: true
-      features: [debugging, profiling]
-  
-  production:
-    build:
-      optimize: true
-      debug: false
-      features: [release]
+Create `.epsilon-build.edn` in project root:
+
+```edn
+{
+  "profiles" {
+    "debug" {
+      "optimize" 0
+      "debug" 3
+    }
+    "release" {
+      "optimize" 3
+      "debug" 0
+    }
+  }
+}
 ```
+
+Use with: `./run.sh build --profile release`
+
+## Parallel Builds
+
+Modules without dependencies are built in parallel:
+
+```
+epsilon.core ─┬─> epsilon.json ──┐
+              ├─> epsilon.yaml ──┼─> epsilon.http
+              └─> epsilon.msgpack┘
+```
+
+Control with: `EPSILON_BUILD_JOBS=4 ./run.sh build`
+
+## Integration
+
+### With Testing
 
 ```bash
-# Build with specific profile
-./run.sh build my-module --profile production
+# Build and test
+./run.sh build --test epsilon.core
+
+# Test specific module after build
+./run.sh test --module epsilon.core
 ```
 
-## Build Hooks
+### With REPL
 
-### Pre/Post Build Actions
-
+During development:
 ```lisp
-;; Register build hooks
-(build:add-hook :pre-build 
-  (lambda (module)
-    (format t "Starting build of ~A~%" (module-name module))))
+;; Rebuild current module
+(epsilon.tool.build:build (epsilon.sys.package:current-module))
 
-(build:add-hook :post-build
-  (lambda (module success-p)
-    (if success-p
-        (format t "Successfully built ~A~%" (module-name module))
-        (format t "Build failed for ~A~%" (module-name module)))))
+;; Watch for changes
+(epsilon.tool.build:watch "mymodule")
 ```
 
-### File Watchers
+## Troubleshooting
 
-```lisp
-;; Watch for file changes and rebuild automatically
-(build:watch "my-module" 
-  :callback (lambda (changed-files)
-              (format t "Files changed: ~A~%" changed-files)
-              (build:build "my-module")))
+### Common Issues
+
+**Module not found**
 ```
-
-## Integration with Development Tools
-
-### REPL Integration
-
-```lisp
-;; Hot reload during development
-(build:enable-hot-reload "my-module")
-
-;; Changes are automatically compiled and loaded
-;; when files are modified
+Error: Module 'foo' not found in registry
 ```
+Check module name in `package.edn` and ensure module is registered.
 
-### Editor Integration
-
-```lisp
-;; Generate compilation database for IDE support
-(build:generate-compile-commands "my-module")
-;; Creates compile_commands.json for editors
+**Circular dependency**
 ```
-
-### Test Integration
-
-```lisp
-;; Build and run tests
-(build:build-and-test "my-module")
-
-;; Run tests only if build succeeds
-(when (build:build "my-module")
-  (test:run "my-module"))
+Error: Circular dependency: foo -> bar -> foo
 ```
+Restructure modules to eliminate circular references.
 
-## Performance Optimization
-
-### Build Metrics
-
-```lisp
-(build:build "my-module" :collect-metrics t)
-
-;; View build performance
-(build:show-metrics "my-module")
+**Compilation failure**
 ```
-
-Sample output:
+Error in foo.lisp:42: Undefined function BAR
 ```
-Build Metrics for my-module:
-├── Total time: 2.5s
-├── Compilation: 2.1s (84%)
-├── Dependency resolution: 0.3s (12%)
-├── Cache operations: 0.1s (4%)
-└── Files processed: 15 (6 files/second)
-```
+Check function definitions and package exports.
 
-### Memory Usage
-
-```lisp
-;; Monitor memory during build
-(build:build "large-module" :monitor-memory t)
-
-;; Configure memory limits
-(build:set-memory-limit (* 2 1024 1024 1024))  ; 2GB limit
-```
-
-### Distributed Builds
-
-```lisp
-;; Build across multiple machines (future feature)
-(build:build "huge-project" 
-  :distributed t
-  :workers '("build-server-1" "build-server-2"))
-```
-
-## Error Handling
-
-### Build Failures
-
-```lisp
-(handler-case
-  (build:build "problematic-module")
-  (build:compilation-error (e)
-    (format t "Compilation failed in ~A:~%~A~%" 
-            (build:error-file e)
-            (build:error-message e)))
-  (build:dependency-error (e)
-    (format t "Missing dependency: ~A~%" 
-            (build:missing-dependency e))))
-```
-
-### Recovery Strategies
-
-```lisp
-;; Attempt to fix common issues automatically
-(build:build "my-module" :auto-fix t)
-
-;; Clean and rebuild on persistent errors
-(build:clean-rebuild "my-module")
-```
-
-## Configuration
-
-### Global Build Settings
-
-```lisp
-;; Configure global build behavior
-(build:configure
-  :default-optimize-level 2
-  :parallel-jobs (build:cpu-count)
-  :cache-directory "~/.epsilon/build-cache"
-  :max-cache-size (* 1024 1024 1024))  ; 1GB
-```
-
-### Project-Specific Settings
-
-```yaml
-# .epsilon-build.yaml (project root)
-global:
-  cache-dir: .build-cache
-  parallel-jobs: 8
-  optimize: true
-
-modules:
-  core:
-    optimize: false  # Override for debugging
-  tests:
-    compile: false   # Don't compile test files
-```
-
-## Examples
-
-### Simple Library Build
-
-```yaml
-# mylibrary/package.yaml
-name: mylibrary
-description: Simple utility library
-version: 0.1.0
-
-sources: [src]
-tests: [tests]
-dependencies: [core]
-```
+### Debug Build
 
 ```bash
-./run.sh build mylibrary
+# Maximum verbosity
+./run.sh --log 'trace:epsilon.tool.build' build epsilon.core
+
+# Show dependency graph
+./run.sh build --show-deps epsilon.core
 ```
 
-### Complex Application Build
+### Clean Build
 
-```yaml
-# myapp/package.yaml  
-name: myapp
-description: Web application
-version: 2.0.0
-
-sources: 
-  - src
-  - generated
-
-dependencies:
-  - core
-  - web-framework
-  - database-driver
-
-build:
-  pre-build:
-    - generate-api-client
-    - compile-assets
-  post-build:
-    - run-integration-tests
-    - package-distribution
-```
-
-### Multi-Module Project
-
-```
-project/
-├── core/package.yaml
-├── utils/package.yaml
-├── web/package.yaml
-├── cli/package.yaml
-└── tests/package.yaml
-```
-
+When encountering persistent issues:
 ```bash
-# Build entire project
-./run.sh build-all
+# Remove all artifacts
+rm -rf module/*/target
 
-# Build specific component
-./run.sh build web
+# Full rebuild
+./run.sh build --force
 ```
-
----
-
-*Next: [Test Framework](testing.md) - Running and organizing tests*

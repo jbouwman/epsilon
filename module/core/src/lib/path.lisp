@@ -434,12 +434,8 @@
 ;;;; ==========================================================================
 
 (defun path-from-uri (uri-obj)
-  "Extract path string from a URI object (for migration from epsilon.lib.uri)"
+  "Extract path string from a URI/URL object (for migration compatibility)"
   (cond
-    ;; Handle epsilon.lib.uri objects
-    ((and uri-obj (find-package :epsilon.lib.uri)
-          (funcall (find-symbol "URI-P" :epsilon.lib.uri) uri-obj))
-     (funcall (find-symbol "PATH" :epsilon.lib.uri) uri-obj))
     ;; Handle string paths directly
     ((stringp uri-obj) uri-obj)
     ;; Handle path objects

@@ -1,7 +1,7 @@
 (defpackage #:epsilon.lib.checksum.tests
   (:use
    #:cl
-   #:epsilon.tool.test
+   #:epsilon.test
    #:epsilon.lib.checksum.adler-32
    #:epsilon.lib.checksum.generic
    #:epsilon.lib.type))

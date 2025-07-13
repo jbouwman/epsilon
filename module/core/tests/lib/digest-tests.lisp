@@ -1,6 +1,6 @@
 (defpackage #:epsilon.lib.digest.tests
   (:use #:cl
-        #:epsilon.tool.test)
+        #:epsilon.test)
   (:local-nicknames
    (digest epsilon.lib.digest)
    (hex epsilon.lib.hex)))

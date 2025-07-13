@@ -22,6 +22,7 @@
    (map epsilon.lib.map))
   (:export
    ;; Main API
+   main  ; Entry point for dev.lisp dispatcher
    benchmark
    run-benchmark
    compare-benchmarks
@@ -237,3 +238,31 @@
          (let ((,end-time (get-internal-real-time)))
            (format t "~&Execution time: ~,3F seconds~%"
                    (/ (- ,end-time ,start-time) internal-time-units-per-second)))))))
+
+(defun main (parsed-args)
+  "Main entry point for benchmark command from dev.lisp dispatcher"
+  (let* ((args (funcall (read-from-string "epsilon.tool.dev::parsed-args-arguments") parsed-args))
+         (options (funcall (read-from-string "epsilon.tool.dev::parsed-args-options") parsed-args)))
+    (cond
+      ;; No arguments - list available benchmarks
+      ((null args)
+       (let ((available (list-benchmarks)))
+         (if available
+             (format t "Available benchmarks: ~{~A~^, ~}~%" available)
+             (format t "No benchmarks registered.~%"))))
+      
+      ;; Run specific benchmarks
+      (t
+       (let ((benchmark-names (mapcar #'intern args)))
+         (handler-case
+             (multiple-value-bind (results comparison)
+                 (run-benchmark-suite benchmark-names)
+               ;; Print individual results
+               (dolist (result results)
+                 (format-benchmark-result result))
+               ;; Print comparison if multiple benchmarks
+               (when (> (length results) 1)
+                 (format t "~%")
+                 (format-comparison comparison)))
+           (error (e)
+             (format t "Error running benchmarks: ~A~%" e))))))))

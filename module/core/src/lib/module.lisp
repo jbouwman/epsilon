@@ -1,5 +1,13 @@
 (defpackage #:epsilon.lib.module
-  (:use #:cl))
+  (:use #:cl)
+  (:export
+   #:module
+   #:defmodule  ; For backward compatibility
+   #:read-module
+   #:parse-module
+   #:build-module
+   #:update-package
+   #:module-syntax))
 
 (in-package #:epsilon.lib.module)
 
@@ -106,3 +114,117 @@
     (let ((package (or (find-package name)
                        (make-package name))))
       package)))
+
+;;; Enhanced Module System 2.0 Implementation
+
+(defmacro module (name &body clauses)
+  "Enhanced module definition macro supporting modern import/export syntax.
+  
+  Usage:
+    (module my-app.core
+      :use (cl epsilon.lib.syntax)
+      :import ((map epsilon.lib.map)
+               (str epsilon.lib.string))
+      :export (main config start-server))
+  
+  Clauses:
+    :use (packages...)         - Standard CL :use clause
+    :import (specs...)         - Import with local nicknames
+    :shadow (symbols...)       - Shadow symbols from CL
+    :shadowing-import (specs...) - Shadowing imports
+    :export (symbols...)       - Export symbols
+    :re-export (symbols...)    - Re-export from imported modules
+    :when condition            - Conditional compilation
+    :features (features...)    - Feature flags"
+  (let ((package-name (string name))
+        (use-clause nil)
+        (local-nicknames nil)
+        (shadow-clause nil)
+        (shadowing-import-clause nil)
+        (export-clause nil)
+        (re-export-clause nil)
+        (import-from-clause nil)
+        (features nil)
+        (conditional nil))
+    
+    ;; Parse clauses in pairs
+    (loop for (keyword value . rest) on clauses by #'cddr do
+      (unless (keywordp keyword)
+        (error "Expected keyword in module clause, got: ~A" keyword))
+      (case keyword
+        (:use 
+         (setf use-clause value))
+        (:import
+         (dolist (spec value)
+           (cond
+             ((symbolp spec)
+              ;; Simple import: (package)
+              (push `(,spec ,spec) local-nicknames))
+             ((and (consp spec) (= (length spec) 2))
+              ;; Aliased import: ((alias package))
+              (push spec local-nicknames))
+             ((and (consp spec) (>= (length spec) 3) (eq (second (last spec 2)) 'from))
+              ;; Selective import: ((sym1 sym2) from package)
+              (let ((symbols (butlast spec 2))
+                    (package (car (last spec))))
+                (push `(:import-from ,package ,@symbols) import-from-clause)))
+             (t
+              (error "Invalid import specification: ~A" spec)))))
+        (:shadow
+         (setf shadow-clause value))
+        (:shadowing-import
+         (setf shadowing-import-clause value))
+        (:export
+         (setf export-clause value))
+        (:re-export
+         (setf re-export-clause value))
+        (:features
+         (setf features value))
+        (:when
+         (setf conditional value))))
+    
+    ;; Build the defpackage form
+    (let ((defpackage-clauses nil))
+      
+      ;; Add :use clause
+      (when use-clause
+        (push `(:use ,@use-clause) defpackage-clauses))
+      
+      ;; Add :local-nicknames
+      (when local-nicknames
+        (push `(:local-nicknames ,@(reverse local-nicknames)) defpackage-clauses))
+      
+      ;; Add :shadow
+      (when shadow-clause
+        (push `(:shadow ,@shadow-clause) defpackage-clauses))
+      
+      ;; Add :shadowing-import-from
+      (when shadowing-import-clause
+        (push `(:shadowing-import-from ,@shadowing-import-clause) defpackage-clauses))
+      
+      ;; Add :import-from clauses
+      (dolist (import-spec import-from-clause)
+        (push `(:import-from ,(second import-spec) ,@(cddr import-spec)) defpackage-clauses))
+      
+      ;; Add :export
+      (when (or export-clause re-export-clause)
+        (push `(:export ,@export-clause ,@re-export-clause) defpackage-clauses))
+      
+      ;; Generate the final form
+      (let ((package-form `(defpackage ,package-name
+                             ,@(reverse defpackage-clauses)))
+            (in-package-form `(in-package ,package-name)))
+        
+        ;; Wrap with conditional compilation if specified
+        (if conditional
+            `(when ,conditional
+               ,package-form
+               ,in-package-form)
+            `(progn
+               ,package-form
+               ,in-package-form))))))
+
+;; Backward compatibility alias
+(defmacro defmodule (name &body clauses)
+  "Backward compatibility alias for the original module syntax."
+  `(module ,name ,@clauses))

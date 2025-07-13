@@ -1,7 +1,7 @@
 ;;;; Tests for GZIP Module
 
 (defpackage :epsilon.lib.gzip.tests
-  (:use :cl :epsilon.tool.test)
+  (:use :cl :epsilon.test)
   (:local-nicknames
    (:gzip :epsilon.lib.gzip))
   (:export :run-gzip-tests))

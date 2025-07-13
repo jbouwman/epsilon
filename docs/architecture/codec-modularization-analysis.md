@@ -9,7 +9,7 @@ The `epsilon.lib.codec` file is **3,335 lines** and contains several distinct co
 ### 1. **Inflate/Deflate Module** (High Priority)
 **Size**: ~1,000-1,500 lines
 **Components**:
-- DEFLATE/Inflate decompression (RFC 1951)
+- DEFLATE/Inflate decompression
 - Huffman decoding tables
 - Fixed and dynamic block processing
 - Window management
@@ -22,7 +22,7 @@ The `epsilon.lib.codec` file is **3,335 lines** and contains several distinct co
 ### 2. **GZip Module** (Medium Priority)
 **Size**: ~300-500 lines
 **Components**:
-- GZip header parsing (RFC 1952)
+- GZip header parsing
 - GZip-specific constants and flags
 - CRC-32 validation
 - GZip codec implementation
@@ -32,7 +32,7 @@ The `epsilon.lib.codec` file is **3,335 lines** and contains several distinct co
 ### 3. **ZLib Module** (Medium Priority)
 **Size**: ~200-300 lines
 **Components**:
-- ZLib header parsing (RFC 1950)
+- ZLib header parsing
 - Adler-32 checksum validation
 - ZLib codec implementation
 
@@ -58,18 +58,18 @@ The `epsilon.lib.codec` file is **3,335 lines** and contains several distinct co
 
 ```
 module/
-├── inflate/           # DEFLATE/Inflate (RFC 1951)
+├── inflate/           # DEFLATE/Inflate
 │   ├── package.edn
 │   ├── src/lib/
 │   │   ├── inflate.lisp
 │   │   └── huffman.lisp
 │   └── tests/
-├── gzip/              # GZip format (RFC 1952)
+├── gzip/              # GZip format
 │   ├── package.edn
 │   ├── src/lib/
 │   │   └── gzip.lisp
 │   └── tests/
-├── zlib/              # ZLib format (RFC 1950)
+├── zlib/              # ZLib format
 │   ├── package.edn
 │   ├── src/lib/
 │   │   └── zlib.lisp
@@ -137,5 +137,5 @@ The slight reduction comes from eliminating duplication and improving organizati
 **Start with the Inflate module extraction** as it:
 - Provides the biggest size reduction for codec.lisp
 - Is used by both GZip and ZLib (natural dependency)
-- Has well-defined boundaries (RFC 1951)
+- Has well-defined boundaries
 - Is the most complex part that would benefit from isolation

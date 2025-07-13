@@ -1,5 +1,5 @@
 (defpackage :epsilon.lib.url.tests
-  (:use :cl :epsilon.tool.test :epsilon.lib.url))
+  (:use :cl :epsilon.test :epsilon.lib.url))
 
 (in-package :epsilon.lib.url.tests)
 

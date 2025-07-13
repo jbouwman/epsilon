@@ -7,18 +7,18 @@
 ;;;;
 ;;;; Key Features:
 ;;;; - Form-by-form and line-by-line coverage tracking
-;;;; - Integration with epsilon.tool.test framework
+;;;; - Integration with epsilon.test framework
 ;;;; - Multiple output formats (HTML, LCOV, JUnit XML, JSON)
 ;;;; - Module-aware filtering and reporting
 ;;;; - CI/CD integration support
 ;;;; - Configurable coverage thresholds
 ;;;;
-;;;; Dependencies: sb-cover, epsilon.tool.test, epsilon.sys.fs, epsilon.lib.map
+;;;; Dependencies: sb-cover, epsilon.test, epsilon.sys.fs, epsilon.lib.map
 
 (defpackage epsilon.tool.coverage
   (:use cl)
   (:local-nicknames
-   (test epsilon.tool.test)
+   ;; (test epsilon.test) ; Commented out until epsilon.test module is available
    (fs epsilon.sys.fs)
    (map epsilon.lib.map)
    (str epsilon.lib.string)
@@ -717,11 +717,12 @@
   (with-coverage (:packages packages 
                   :exclude-patterns exclude-patterns
                   :output-dir output-dir)
-    ;; Run tests
-    (if test-packages
-        (dolist (pkg test-packages)
-          (test:run :package pkg))
-        (test:run))
+    ;; Run tests - TODO: Restore when epsilon.test module is available
+    ;; (if test-packages
+    ;;     (dolist (pkg test-packages)
+    ;;       (test:run :package pkg))
+    ;;     (test:run))
+    (warn "Coverage tool temporarily disabled - epsilon.test module needed")
     
     ;; Generate reports
     (fs:make-dirs *coverage-output-directory*)

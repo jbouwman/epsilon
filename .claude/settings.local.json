@@ -67,7 +67,12 @@
       "Bash(do echo \"=== $f ===\")",
       "Bash(wc:*)",
       "Bash(du:*)",
-      "Bash(openssl req:*)"
+      "Bash(openssl req:*)",
+      "Bash(./test-simple.lisp)",
+      "Bash(git clean:*)",
+      "Bash(time:*)",
+      "Bash(do mv \"$f\" \"$f/rfc/project\")",
+      "Bash(do [ -f \"$f\" ])"
     ],
     "deny": []
   }

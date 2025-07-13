@@ -36,6 +36,7 @@
    (path epsilon.lib.path))
   (:export
    build
+   build-tests
    register-module
    register-modules
    dump-build-state
@@ -48,6 +49,9 @@
 (defvar *modules*
   map:+empty+
   "Registry of known modules as a map from module name to directory URI")
+
+(defvar *modules-discovered-p* nil
+  "Flag indicating whether module discovery has been performed")
 
 (defvar *error-behavior* :halt
   "How to handle compilation errors: :halt, :ignore, or :print")
@@ -68,7 +72,7 @@
 (defclass hashable ()
   ((hash :initarg :hash :accessor hash)))
 
-(defgeneric build-order (node)
+(defgeneric build-order (node &key)
   (:documentation "Produce a sequence of steps necessary to build a specific node in the project source tree."))
 
 (defclass source-info (locatable hashable)
@@ -119,7 +123,7 @@
    (end-time :initform nil
              :accessor end-time)))
 
-(defmethod build-order ((node build-input))
+(defmethod build-order ((node build-input) &key)
   (let ((root (list node)))
     (dolist (r (source-info-requires (source-info node)))
       (let ((p (find-provider (project node) r)))
@@ -178,32 +182,35 @@
          (edn-path (path:path-string (path:path-merge (path:path-from-uri uri) edn-file)))
          (path (cond ((probe-file edn-path) edn-path)
                      (t (error "No package file found: ~A" edn-path)))))
-    (let* ((parsed-value (edn:read-edn-from-string (fs:read-file path)))
-           (defs parsed-value)
-           (sources (when (map:get defs "sources")
-                      (sort-sources (mapcan (lambda (source-path)
-                                              (find-source-info (path:uri-merge uri source-path)))
-                                            (map:get defs "sources")))))
-           (tests (when (map:get defs "tests")
-                    (sort-sources (mapcan (lambda (test-path)
-                                            (find-source-info (path:uri-merge uri test-path)))
-                                          (map:get defs "tests")))))
-           (dependencies (map:get defs "dependencies"))
-           (modules (map:get defs "modules")))
-      
+    (let* ((edn-content (fs:read-file path))
+           (parsed-value (edn:read-edn-from-string edn-content))
+           ;; Simple direct parsing without complex package parser
+           (name (map:get parsed-value "name"))
+           (version (map:get parsed-value "version"))
+           (description (map:get parsed-value "description"))
+           (author (or (first (map:get parsed-value "authors"))
+                       (map:get parsed-value "author")))
+           (source-paths (or (map:get parsed-value "sources") '("src")))
+           (test-paths (or (map:get parsed-value "tests") '("tests")))
+           (sources (sort-sources (mapcan (lambda (source-path)
+                                            (find-source-info (path:uri-merge uri source-path)))
+                                          source-paths)))
+           (tests (sort-sources (mapcan (lambda (test-path)
+                                          (find-source-info (path:uri-merge uri test-path)))
+                                        test-paths))))
       
       (let ((project (make-instance 'project
                                     :uri uri
-                                    :name (map:get defs "name")
-                                    :version (map:get defs "version")
-                                    :author (map:get defs "author")
-                                    :description (map:get defs "description")
-                                    :platform (map:get defs "platform")
+                                    :name name
+                                    :version version
+                                    :author author
+                                    :description description
+                                    :platform nil  ; Platform not implemented yet
                                     :sources sources
                                     :tests tests
-                                    :dependencies (or dependencies '())
-                                    :modules (or modules map:+empty+))))
-        (map:assoc! *modules* (map:get defs "name") uri)
+                                    :dependencies '()  ; Dependencies not implemented yet
+                                    :modules map:+empty+)))
+        (map:assoc! *modules* name uri)
         project))))
 
 (defun find-source-info (uri)
@@ -278,11 +285,13 @@
                  :project project
                  :source-info source-info))
 
-(defmethod build-order ((project project))
+(defmethod build-order ((project project) &key include-tests)
   (multiple-value-bind (all-sources all-tests)
       (collect-all-sources project)
     (seq:map (fn:partial #'%make-build-input project)
-             (seq:seq (append all-sources all-tests)))))
+             (seq:seq (if include-tests
+                          (append all-sources all-tests)
+                          all-sources)))))
 
 (defun read-first-form (uri)
   (with-open-file (stream (path:path-from-uri uri))
@@ -522,13 +531,115 @@
 (defmethod event ((build project-build) type data)
   (event (reporter build) type data))
 
-(defun %build (project &key force reporter)
+(defun create-concatenated-fasl (fasl-files output-path)
+  "Create a concatenated FASL file from individual FASL files"
+  (when fasl-files
+    (fs:make-dirs (path:make-file-uri (path:path-string (path:path-parent (path:make-path output-path)))))
+    (with-open-file (output output-path :direction :output
+                                        :element-type '(unsigned-byte 8)
+                                        :if-exists :supersede
+                                        :if-does-not-exist :create)
+      (dolist (fasl-file fasl-files)
+        (when (probe-file fasl-file)
+          (with-open-file (input fasl-file :direction :input
+                                           :element-type '(unsigned-byte 8))
+            (loop for byte = (read-byte input nil nil)
+                  while byte
+                  do (write-byte byte output))))))))
+
+(defun concat-fasl-current-p (project concat-fasl-path)
+  "Check if concatenated FASL is current relative to all source files"
+  (when (probe-file concat-fasl-path)
+    (let ((fasl-time (file-write-date concat-fasl-path))
+          (sources (append (project-sources project) (project-tests project))))
+      (every (lambda (source-info)
+               (let ((source-path (path:path-from-uri (uri source-info))))
+                 (or (not (probe-file source-path))
+                     (<= (file-write-date source-path) fasl-time))))
+             sources))))
+
+(defun load-concatenated-fasl (project)
+  "Load concatenated FASL if it exists and is current, returns T if loaded"
+  (let* ((project-name (project-name project))
+         (concat-fasl-path (path:string-path-join 
+                            "target"
+                            (format nil "~A.fasl" project-name))))
+    (when (and (probe-file concat-fasl-path)
+               (concat-fasl-current-p project concat-fasl-path))
+      (format t ";;; Loading ~A from concatenated FASL...~%" project-name)
+      (load concat-fasl-path)
+      t)))
+
+(defun %build (project &key force reporter include-tests)
   "Build the given build-inputs, optionally forcing compilation of all steps"
+  ;; Try to load from concatenated FASL first (unless forced rebuild)
+  (unless force
+    (when (load-concatenated-fasl project)
+      ;; Successfully loaded from concatenated FASL, return early
+      (when reporter
+        (format t ";;; ~A loaded from concatenated FASL (no build needed)~%" (project-name project)))
+      (return-from %build nil)))
+  
   (let* ((build (make-instance 'project-build
                                :project project
                                :reporter reporter
                                :results '()))
-         (build-inputs (build-order project))
+         (build-inputs (build-order project :include-tests include-tests))
+         (total-count (seq:count build-inputs)))
+    ;; Set total files in reporter
+    (when reporter
+      (setf (total-files reporter) total-count))
+    (event build :start build)
+    (let ((results (seq:seq (seq:realize 
+                           (let ((index 0))
+                             (seq:map (lambda (build-input)
+                                       (incf index)
+                                       (when reporter
+                                         (setf (current-index reporter) index))
+                                       (event build :start-compile build-input)
+                                       (let ((result (if force
+                                                        (compile-source build-input)
+                                                        (case (build-input-status build-input)
+                                                          ((:target-missing
+                                                            :source-newer)
+                                                           (compile-source build-input))
+                                                          (t
+                                                           (load-source build-input))))))
+                                         (event build :end-compile result)
+                                         result))
+                                     build-inputs))))))
+      (setf (slot-value build 'results) results)
+      (setf (end-time build) (get-internal-real-time))
+      (event build :end build)
+      
+      ;; Create concatenated FASL if build was successful
+      (when (and (not force) ; Only create when doing incremental builds
+                 (seq:every-p (lambda (result)
+                                (not (compilation-errors result)))
+                              results))
+        (let* ((project-name (project-name project))
+               (fasl-files (seq:map (lambda (build-input)
+                                      (path:path-from-uri (target-uri build-input)))
+                                    build-inputs))
+               (concat-fasl-path (path:string-path-join 
+                                  "target"
+                                  (format nil "~A.fasl" project-name))))
+          (when (seq:not-empty-p fasl-files)
+            (format t ";;; Creating concatenated FASL: ~A~%" concat-fasl-path)
+            (create-concatenated-fasl (seq:realize fasl-files) concat-fasl-path))))
+      
+      build)))
+
+(defun %build-tests (project &key force reporter)
+  "Build only the test files for a project"
+  (let* ((build (make-instance 'project-build
+                               :project project
+                               :reporter reporter
+                               :results '()))
+         ;; Get only test sources
+         (test-sources (project-tests project))
+         (build-inputs (seq:map (fn:partial #'%make-build-input project)
+                                (seq:seq test-sources)))
          (total-count (seq:count build-inputs)))
     ;; Set total files in reporter
     (when reporter
@@ -560,16 +671,16 @@
 (defun build (module &key force 
                       (error-behavior :halt) 
                       (warning-behavior :ignore)
-                      (reporter (make-instance 'shell-build-report)))
+                      (reporter (make-instance 'shell-build-report))
+                      include-tests)
   "Build module sources and optionally tests.
   
   MODULE - Module name to build (e.g., 'epsilon.core', 'http'). Looks up module directory from registry.
   FORCE - Force compilation of all build steps regardless of timestamps
   ERROR-BEHAVIOR - How to handle compilation errors: :halt (default), :ignore, :print
   WARNING-BEHAVIOR - How to handle compilation warnings: :ignore (default), :halt, :print
-  REPORTER - Reporter instance for build progress"
-  ;; Register modules first to populate *modules*
-  (register-modules)
+  REPORTER - Reporter instance for build progress
+  INCLUDE-TESTS - Also build test files (default NIL)"
   (let* ((module-dir (map:get *modules* module))
          (project (progn
                     (unless module-dir
@@ -578,7 +689,28 @@
                     (load-project module-dir)))
          (*error-behavior* error-behavior)
          (*warning-behavior* warning-behavior))
-    (%build project :force force :reporter reporter)))
+    (%build project :force force :reporter reporter :include-tests include-tests)))
+
+(defun build-tests (module &key force 
+                           (error-behavior :halt) 
+                           (warning-behavior :ignore)
+                           (reporter (make-instance 'shell-build-report)))
+  "Build only the test files for a module.
+  
+  MODULE - Module name whose tests to build (e.g., 'epsilon.core', 'http').
+  FORCE - Force compilation of all test files regardless of timestamps
+  ERROR-BEHAVIOR - How to handle compilation errors: :halt (default), :ignore, :print
+  WARNING-BEHAVIOR - How to handle compilation warnings: :ignore (default), :halt, :print
+  REPORTER - Reporter instance for build progress"
+  (let* ((module-dir (map:get *modules* module))
+         (project (progn
+                    (unless module-dir
+                      (error "Unknown module: ~A. Available modules: ~A" 
+                             module (map:keys *modules*)))
+                    (load-project module-dir)))
+         (*error-behavior* error-behavior)
+         (*warning-behavior* warning-behavior))
+    (%build-tests project :force force :reporter reporter)))
 
 (defun operation-wall-time (result)
   (if (and (start-time result) (end-time result))
@@ -735,8 +867,13 @@
 
 (defun register-modules (&key (base-dir (path:make-file-uri 
                                          #+win32 (sb-ext:native-namestring (truename "."))
-                                         #-win32 (sb-unix:posix-getcwd))))
+                                         #-win32 (sb-unix:posix-getcwd)))
+                              force)
   "Discover and register all applicable modules found under base-dir/module/"
+  ;; Skip if already discovered unless forced
+  (when (and *modules-discovered-p* (not force))
+    (return-from register-modules (map:size *modules*)))
+  
   (let ((module-paths (find-module-directories base-dir))
         (registered-count 0)
         (skipped-count 0))
@@ -755,6 +892,9 @@
     (format t ";;; Module discovery complete (~d registered~@[, ~d skipped~])~%" 
             registered-count 
             (when (> skipped-count 0) skipped-count))
+    
+    ;; Mark as discovered
+    (setf *modules-discovered-p* t)
     
     ;; Return count of successfully registered modules
     registered-count))
@@ -808,3 +948,6 @@
       
       ;; Return the module name
       module-name)))
+
+;;; Perform initial module discovery when build.lisp is loaded
+(register-modules)

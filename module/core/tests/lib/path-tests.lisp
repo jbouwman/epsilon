@@ -1,7 +1,7 @@
 (defpackage :epsilon.lib.path.tests
   (:use
    :cl
-   :epsilon.tool.test
+   :epsilon.test
    :epsilon.lib.path))
 
 (in-package :epsilon.lib.path.tests)

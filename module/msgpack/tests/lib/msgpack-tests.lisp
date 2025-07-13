@@ -2,7 +2,7 @@
   (:use
    #:cl
    #:epsilon.lib.type
-   #:epsilon.tool.test)
+   #:epsilon.test)
   (:local-nicknames
    (:map #:epsilon.lib.map)
    (:msgp #:epsilon.lib.msgpack.impl)

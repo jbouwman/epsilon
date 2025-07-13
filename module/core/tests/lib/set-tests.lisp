@@ -2,7 +2,7 @@
   (:use
    :cl
    :epsilon.lib.syntax
-   :epsilon.tool.test)
+   :epsilon.test)
   (:local-nicknames
    (set epsilon.lib.set)))
 

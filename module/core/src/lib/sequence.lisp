@@ -32,6 +32,7 @@
   (:export
    *empty*
    empty-p
+   not-empty-p
    sequence-p
    filter
    from-list
@@ -50,7 +51,8 @@
    take
    each
    iterator
-   lazy))
+   lazy
+   every-p))
 
 (in-package epsilon.lib.sequence)
 
@@ -85,6 +87,9 @@
 
 (defun empty-p (sequence)
   (eq sequence *empty*))
+
+(defun not-empty-p (sequence)
+  (not (eq sequence *empty*)))
 
 (defun sequence-p (obj)
   "Returns true if OBJ is a lazy sequence"
@@ -276,4 +281,11 @@ Returns a map where keys are the group keys and values are lists of elements."
                                (map:get groups key *empty*)))))
           sequence
           :initial-value map:+empty+))
+
+(defun every-p (predicate seq)
+  "Returns true if predicate returns true for all elements in seq.
+Returns true for empty sequences."
+  (loop for current = seq then (rest current)
+        while (not (empty-p current))
+        always (funcall predicate (first current))))
 

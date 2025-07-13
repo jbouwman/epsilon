@@ -1,16 +1,18 @@
 # Functional Data Structures
 
-Epsilon provides a complete suite of immutable, functional data structures designed for high-performance Common Lisp development. All collections support structural sharing for memory efficiency and provide O(log n) operations for most common use cases.
+Epsilon provides immutable, functional data structures designed for
+performant Common Lisp development. All collections support structural
+sharing for memory efficiency and provide O(log n) operations for most
+common use cases.
 
 ## Overview
 
-Epsilon's functional collections are built on solid computer science foundations:
+Epsilon's collections are built on functional principles:
 
 - **Hash Array Mapped Tries (HAMT)** for maps and sets
-- **Lazy evaluation** with memoization for sequences  
+- **Lazy evaluation** with memoization for sequences
 - **Structural sharing** for memory efficiency
 - **Immutable by design** with persistent updates
-- **SBCL optimized** for maximum performance
 
 ## Core Collection Types
 
