@@ -192,6 +192,12 @@
                        (map:get parsed-value "author")))
            (source-paths (or (map:get parsed-value "sources") '("src")))
            (test-paths (or (map:get parsed-value "tests") '("tests")))
+           ;; Extract dependencies from package.edn
+           (dependencies (or (map:get parsed-value "dependencies") '()))
+           ;; Convert vector to list if needed (EDN parser returns vectors)
+           (dependencies-list (if (vectorp dependencies)
+                                  (coerce dependencies 'list)
+                                  dependencies))
            (sources (sort-sources (mapcan (lambda (source-path)
                                             (find-source-info (path:uri-merge uri source-path)))
                                           source-paths)))
@@ -208,7 +214,7 @@
                                     :platform nil  ; Platform not implemented yet
                                     :sources sources
                                     :tests tests
-                                    :dependencies '()  ; Dependencies not implemented yet
+                                    :dependencies dependencies-list
                                     :modules map:+empty+)))
         (map:assoc! *modules* name uri)
         project))))
@@ -689,6 +695,17 @@
                     (load-project module-dir)))
          (*error-behavior* error-behavior)
          (*warning-behavior* warning-behavior))
+    ;; Load dependencies before building
+    (dolist (dep-name (project-dependencies project))
+      (when (and (map:contains-p *modules* dep-name)
+                 (not (string= dep-name "epsilon.core"))) ; core is already loaded
+        (let ((dep-dir (map:get *modules* dep-name)))
+          (when reporter
+            (format t ";;; Loading dependency: ~A~%" dep-name))
+          ;; Try to load from concatenated FASL first
+          (unless (load-concatenated-fasl (load-project dep-dir))
+            ;; If not available, build the dependency
+            (build dep-name :force force :reporter reporter :include-tests nil)))))
     (%build project :force force :reporter reporter :include-tests include-tests)))
 
 (defun build-tests (module &key force 
@@ -710,6 +727,17 @@
                     (load-project module-dir)))
          (*error-behavior* error-behavior)
          (*warning-behavior* warning-behavior))
+    ;; Load dependencies before building tests
+    (dolist (dep-name (project-dependencies project))
+      (when (and (map:contains-p *modules* dep-name)
+                 (not (string= dep-name "epsilon.core"))) ; core is already loaded
+        (let ((dep-dir (map:get *modules* dep-name)))
+          (when reporter
+            (format t ";;; Loading dependency: ~A~%" dep-name))
+          ;; Try to load from concatenated FASL first
+          (unless (load-concatenated-fasl (load-project dep-dir))
+            ;; If not available, build the dependency
+            (build dep-name :force force :reporter reporter :include-tests nil)))))
     (%build-tests project :force force :reporter reporter)))
 
 (defun operation-wall-time (result)
