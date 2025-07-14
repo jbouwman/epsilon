@@ -1,5 +1,5 @@
 (defpackage :epsilon.http.tls-loopback.tests
-  (:use :cl :epsilon.tool.test)
+  (:use :cl :epsilon.test)
   (:local-nicknames
    (#:client #:epsilon.http.client)
    (#:server #:epsilon.http.server)

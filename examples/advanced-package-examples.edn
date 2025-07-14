@@ -1,0 +1,219 @@
+;; Example 1: Simple library with semantic versioning
+{"name" "my-library"
+ "version" "1.2.3"
+ "description" "A simple library with basic dependencies"
+ "author" "John Doe <john@example.com>"
+ "license" "MIT"
+ 
+ "dependencies" {
+   ;; Caret: Accept 2.x.x but not 3.0.0
+   "epsilon.core" "^2.1.0"
+   
+   ;; Tilde: Accept 1.5.x but not 1.6.0 
+   "epsilon.http" "~1.5.2"
+   
+   ;; Range: Accept anything from 1.0.0 up to (but not including) 2.0.0
+   "epsilon.database" ">=1.0.0 <2.0.0"
+   
+   ;; Exact version
+   "epsilon.json" "1.0.0"
+   
+   ;; Latest/any version
+   "epsilon.testing" "*"
+ }
+ 
+ "sources" ["src"]
+ "tests" ["tests"]}
+
+;; Example 2: Application with git dependencies and hash pinning
+{"name" "my-application"
+ "version" "0.5.0-beta.1"
+ "description" "Complex application with git dependencies"
+ "authors" ["Alice Smith <alice@example.com>"
+            "Bob Johnson <bob@example.com>"]
+ "homepage" "https://myapp.example.com"
+ "repository" {"type" "git"
+               "url" "https://github.com/example/myapp.git"}
+ 
+ "dependencies" {
+   "epsilon.core" "^2.1.0"
+   
+   ;; Git dependency with tag
+   "custom-lib" "git+https://github.com/user/custom-lib.git@v1.2.3"
+   
+   ;; Git dependency with commit hash (like Go modules)
+   "experimental-lib" "git+https://github.com/labs/experimental.git@abc123def456"
+   
+   ;; Git dependency with branch
+   "dev-tools" "git+https://github.com/tools/dev.git@develop"
+   
+   ;; Local path dependency
+   "shared-utils" {"path" "../shared-utils"
+                   "version" "*"}
+ }
+ 
+ "dev-dependencies" {
+   "epsilon.testing" "^1.0.0"
+   "epsilon.benchmarks" "^0.5.0"
+   "mock-server" "git+https://github.com/test/mock-server.git@v2.0.0"
+ }}
+
+;; Example 3: Feature-rich package with conditional dependencies
+{"name" "my-framework"
+ "version" "3.0.0"
+ "description" "Framework with feature flags and optional dependencies"
+ "license" "Apache-2.0"
+ 
+ "dependencies" {
+   "epsilon.core" "^2.1.0"
+   "epsilon.http" "^1.5.0"
+ }
+ 
+ "optional-dependencies" {
+   ;; These are only installed if explicitly requested
+   "redis-client" "^3.0.0"
+   "postgres-driver" "^4.2.0"
+   "metrics-collector" "^1.1.0"
+ }
+ 
+ "features" {
+   ;; Default features enabled unless specified otherwise
+   "default" ["json" "logging"]
+   
+   ;; All features
+   "full" ["json" "logging" "metrics" "cache" "database"]
+   
+   ;; Feature definitions with their dependencies
+   "json" {
+     "description" "JSON serialization support"
+     "dependencies" {"epsilon.json" "^1.0.0"}
+   }
+   
+   "logging" {
+     "description" "Structured logging support"
+     "dependencies" {"epsilon.log" "^2.0.0"}
+   }
+   
+   "metrics" {
+     "description" "Performance metrics collection"
+     "dependencies" {"metrics-collector" "^1.1.0"}
+   }
+   
+   "cache" {
+     "description" "Redis caching support"
+     "dependencies" {"redis-client" "^3.0.0"}
+   }
+   
+   "database" {
+     "description" "PostgreSQL database support"
+     "dependencies" {"postgres-driver" "^4.2.0"}
+   }
+ }
+ 
+ "build" {
+   "profiles" {
+     "dev" {
+       "features" ["default" "dev-tools"]
+       "optimization" 0
+       "debug" true
+     }
+     
+     "test" {
+       "features" ["full"]
+       "optimization" 1
+       "debug" true
+     }
+     
+     "release" {
+       "features" ["default"]
+       "optimization" 3
+       "debug" false
+       "compress" true
+     }
+   }
+   
+   "tasks" {
+     "test" {
+       "command" "run-tests"
+       "args" ["--format" "junit"]
+       "env" {"TEST_ENV" "true"}
+     }
+     
+     "bench" {
+       "command" "run-benchmarks"
+       "profile" "release"
+     }
+     
+     "deploy" {
+       "command" "deploy-app"
+       "env" ["DEPLOY_ENV" "API_KEY"]
+     }
+   }
+ }
+ 
+ "target" {
+   "platforms" ["linux" "darwin" "windows"]
+   "architectures" ["x86_64" "aarch64"]
+ }}
+
+;; Example 4: Monorepo workspace configuration
+{"name" "my-monorepo"
+ "version" "1.0.0"
+ "description" "Monorepo with multiple packages"
+ 
+ ;; Workspace members
+ "workspace" {
+   "members" [
+     "packages/core"
+     "packages/cli"
+     "apps/web-server"
+     "apps/worker"
+   ]
+   
+   ;; Shared dependencies for all workspace members
+   "dependencies" {
+     "epsilon.core" "^2.1.0"
+     "epsilon.testing" "^1.0.0"
+   }
+ }
+ 
+ ;; Scripts that can be run across workspace
+ "scripts" {
+   "test-all" "epsilon test --workspace"
+   "build-all" "epsilon build --workspace --parallel"
+   "release" "epsilon publish --workspace --access public"
+ }}
+
+;; Example 5: Lock file (epsilon-lock.edn) - auto-generated
+{"version" 1
+ "dependencies" {
+   "epsilon.core" {
+     "version" "2.1.5"
+     "checksum" "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4"
+     "source" "https://packages.epsilon-lang.org/"
+   }
+   
+   "epsilon.http" {
+     "version" "1.5.7"
+     "checksum" "sha256:2c26b46b68ffc68ff99b453c1d30413f"
+     "source" "https://packages.epsilon-lang.org/"
+   }
+   
+   "custom-lib" {
+     "version" "1.2.3"
+     "source" "git+https://github.com/user/custom-lib.git"
+     "git-hash" "abc123def4567890abcdef1234567890abcdef12"
+   }
+   
+   "experimental-lib" {
+     "version" "0.0.0+abc123def456"
+     "source" "git+https://github.com/labs/experimental.git"
+     "git-hash" "abc123def4567890abcdef1234567890abcdef12"
+   }
+ }
+ 
+ "build-metadata" {
+   "timestamp" "2024-01-15T10:30:00Z"
+   "epsilon-version" "2.1.0"
+   "platform" "linux-x86_64"
+ }}

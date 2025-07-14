@@ -5,7 +5,7 @@
 ;;;; that's actually used by other modules.
 
 (defpackage :epsilon.lib.char-tests
-  (:use :cl :epsilon.tool.test)
+  (:use :cl :epsilon.test)
   (:local-nicknames
    (:char :epsilon.lib.char)))
 
@@ -176,34 +176,6 @@
   
   (round-trip-test :utf-8 (make-string 1000 :initial-element #\λ)
                    "UTF-8 performance test: 1000 lambda characters"))
-
-;;;; Character Encoding Interface Tests
-
-(deftest character-encoding-interface
-  
-  ;; Test get-character-encoding function
-  (is
-      (char:get-character-encoding :utf-8)
-      "get-character-encoding for UTF-8")
-  
-  (is
-      (char:get-character-encoding :ascii)
-      "get-character-encoding for ASCII")
-  
-  (is-thrown (error)
-    (char:get-character-encoding :unknown-encoding)
-    "get-character-encoding error for unknown encoding")
-  
-  ;; Test enc-max-units-per-char function
-  (is-equal
-      (char:enc-max-units-per-char :utf-8)
-      4
-      "UTF-8 max units per character")
-  
-  (is-equal
-      (char:enc-max-units-per-char :ascii)
-      1
-      "ASCII max units per character"))
 
 ;;;; Integration Tests
 

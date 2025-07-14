@@ -1,0 +1,6 @@
+{"name" "epsilon.format"
+ "version" "1.0.0"
+ "description" "Code formatting tools for Epsilon"
+ "dependencies" ["epsilon.core"]
+ "sources" ("src")
+ "tests" ("tests")}

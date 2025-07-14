@@ -1,0 +1,9 @@
+{"name" "epsilon.websocket"
+ "version" "0.1.0"
+ "description" "WebSocket implementation (RFC 6455) for epsilon"
+ "dependencies" ("epsilon.core" "http")
+ "author" "epsilon"
+ "license" "public-domain"
+ "sources" ("src")
+ "tests" ("tests")
+ "provides" ("epsilon.websocket")}

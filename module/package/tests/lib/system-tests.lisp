@@ -1,7 +1,7 @@
 (defpackage :epsilon.lib.package.system.tests
   (:use
    :cl
-   :epsilon.tool.test)
+   :epsilon.test)
   (:local-nicknames
    (:sys :epsilon.lib.package.system)
    (:repo :epsilon.lib.package.repository)

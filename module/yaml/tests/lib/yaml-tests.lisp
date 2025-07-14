@@ -1,7 +1,7 @@
 (defpackage #:epsilon.lib.yaml.tests
   (:use
    :cl
-   :epsilon.tool.test)
+   :epsilon.test)
   (:local-nicknames
    (#:yaml #:epsilon.lib.yaml.impl)))
 

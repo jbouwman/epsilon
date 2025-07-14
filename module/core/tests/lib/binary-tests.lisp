@@ -1,10 +1,10 @@
 (defpackage epsilon.lib.binary.tests
   (:use
    cl
-   epsilon.tool.test)
+   epsilon.test)
   (:local-nicknames
    (binary epsilon.lib.binary)
-   (test epsilon.tool.test)
+   (test epsilon.test)
    (fs epsilon.sys.fs)))
 
 (in-package epsilon.lib.binary.tests)

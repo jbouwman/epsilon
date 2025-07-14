@@ -1,5 +1,5 @@
 (defpackage :epsilon.http.client.tests
-  (:use :cl :epsilon.tool.test)
+  (:use :cl :epsilon.test)
   (:local-nicknames
    (#:http #:epsilon.http.client)
    (#:map #:epsilon.lib.map)))

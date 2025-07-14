@@ -1,7 +1,7 @@
 (defpackage #:epsilon.lib.sequence.tests
   (:use
    #:cl
-   #:epsilon.tool.test)
+   #:epsilon.test)
   (:local-nicknames
    (#:seq #:epsilon.lib.sequence)
    (#:str #:epsilon.lib.string)))
@@ -47,3 +47,30 @@
   (is (equal '("abc") (seq:realize (str:split #\, "abc"))))
   (is (equal '("" "") (seq:realize (str:split #\a "a"))))
   (is (equal '("") (seq:realize (str:split #\a "")))))
+
+(deftest test-every-p
+  ;; Test with all elements satisfying predicate
+  (is (seq:every-p #'evenp (seq:seq '(2 4 6 8))))
+  (is (seq:every-p #'oddp (seq:seq '(1 3 5 7))))
+  
+  ;; Test with some elements not satisfying predicate
+  (is (not (seq:every-p #'evenp (seq:seq '(2 4 5 8)))))
+  (is (not (seq:every-p #'oddp (seq:seq '(1 3 4 7)))))
+  
+  ;; Test with empty sequence (should return true)
+  (is (seq:every-p #'evenp seq:*empty*))
+  (is (seq:every-p (constantly nil) seq:*empty*))
+  
+  ;; Test with single element
+  (is (seq:every-p #'evenp (seq:seq '(2))))
+  (is (not (seq:every-p #'evenp (seq:seq '(3))))))
+
+(deftest test-not-empty-p
+  ;; Test with non-empty sequences
+  (is (seq:not-empty-p (seq:seq '(1 2 3))))
+  (is (seq:not-empty-p (seq:seq '(1))))
+  
+  ;; Test with empty sequence
+  (is (not (seq:not-empty-p seq:*empty*)))
+  (is (not (seq:not-empty-p (seq:seq '()))))
+  (is (not (seq:not-empty-p (seq:seq nil)))))

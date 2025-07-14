@@ -1,7 +1,7 @@
 (defpackage :epsilon.lib.regex.tests
   (:use
    :cl
-   :epsilon.tool.test)
+   :epsilon.test)
   (:local-nicknames
    (:re :epsilon.lib.regex.impl)))
 

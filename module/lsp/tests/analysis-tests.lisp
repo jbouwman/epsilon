@@ -1,5 +1,5 @@
 (defpackage #:epsilon.lsp.tests.analysis
-  (:use #:common-lisp #:epsilon.tool.test)
+  (:use #:common-lisp #:epsilon.test)
   (:local-nicknames
    (#:analysis #:epsilon.lsp.analysis)))
 

@@ -2,7 +2,7 @@
   (:use
    cl
    epsilon.lib.syntax
-   epsilon.tool.test)
+   epsilon.test)
   (:local-nicknames
    (lib epsilon.sys.lib.impl)))
 

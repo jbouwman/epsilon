@@ -1,130 +1,242 @@
-# Epsilon Distribution System
+# Distribution
 
-Epsilon provides a distributable SBCL runtime with the Epsilon library preloaded, enabling curl-install deployment and usage as a modern Lisp development environment.
+Epsilon distributes as a standalone SBCL runtime with Epsilon libraries preloaded.
 
 ## Installation
 
-### Quick Install (Recommended)
+### Quick Install
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/jbouwman/epsilon/main/scripts/install.sh | bash
 ```
 
-### Manual Installation
+This script:
+1. Detects platform (Linux/macOS x86_64/arm64)
+2. Downloads appropriate release from GitHub
+3. Extracts to `~/.epsilon/`
+4. Updates PATH in shell profile
 
-1. Download the appropriate release for your platform from [GitHub Releases](https://github.com/jbouwman/epsilon/releases)
-2. Extract the archive to your desired location
-3. Add the `epsilon` binary to your PATH
+### Manual Install
 
-Available platforms:
-- `epsilon-macos-arm64.tar.gz` - macOS Apple Silicon
-- `epsilon-macos-x86_64.tar.gz` - macOS Intel
-- `epsilon-linux-x86_64.tar.gz` - Linux x86_64
+Download from [releases](https://github.com/jbouwman/epsilon/releases):
+- `epsilon-linux-x86_64.tar.gz`
+- `epsilon-macos-x86_64.tar.gz`  
+- `epsilon-macos-arm64.tar.gz`
+
+Extract and add to PATH:
+```bash
+tar -xzf epsilon-*.tar.gz
+sudo mv epsilon /usr/local/bin/
+```
 
 ## Usage
 
-The `epsilon` command provides a complete SBCL runtime with Epsilon preloaded:
+The `epsilon` command is SBCL with Epsilon preloaded:
 
 ```bash
-# Interactive REPL
+# REPL
 epsilon
 
-# Evaluate expressions
-epsilon --eval "(format t \"Hello, Epsilon!\")" --eval "(sb-ext:quit)"
+# Run file
+epsilon --load myapp.lisp
 
-# Use Epsilon libraries
-epsilon --eval "(format t \"Map: ~A~%\" (epsilon.lib.map:make-map :a 1 :b 2))" --eval "(sb-ext:quit)"
-
-# Run Lisp files
-epsilon --load my-program.lisp
+# Evaluate code
+epsilon --eval "(epsilon.lib.json:encode '((foo . 1)))" --quit
 ```
 
-## Development Workflow
-
-For development projects using Epsilon:
-
-1. Install Epsilon runtime using the installation script
-2. Create your project structure
-3. Use Epsilon's built-in tools for development:
-   - `epsilon.tool.build` for dependency-tracked builds
-   - `epsilon.tool.test` for testing
-   - `epsilon.tool.benchmark` for performance measurement
-
-## Building from Source
+## Building Distributions
 
 ### Prerequisites
 
-- SBCL (Steel Bank Common Lisp)
-- Git
-- Standard Unix tools (tar, gzip)
+- SBCL 2.0.0+
+- POSIX shell
+- tar, gzip
 
 ### Build Process
 
 ```bash
-# Clone the repository
-git clone https://github.com/jbouwman/epsilon.git
-cd epsilon
+# Build core image with Epsilon
+sbcl --load scripts/build-core.lisp
 
-# Build runtime package
-chmod +x scripts/build-runtime.sh
+# Create distribution
 ./scripts/build-runtime.sh
-
-# Test the built runtime
-mkdir test-runtime
-cd test-runtime
-tar -xzf ../target/epsilon-*.tar.gz
-./epsilon --eval "(format t \"Build test successful!\")" --eval "(sb-ext:quit)"
 ```
 
-### Build Outputs
-
-- `target/epsilon-core` - SBCL core image with Epsilon preloaded
-- `target/epsilon-{platform}-{arch}.tar.gz` - Complete runtime package
-- `target/dist/` - Extracted runtime components
-
-## Architecture
-
-The distribution system consists of:
-
-1. **Core Image**: SBCL core with Epsilon library preloaded
-2. **Runtime Package**: Tarball containing:
-   - SBCL executable
-   - Epsilon core image
-   - Wrapper script (`epsilon`)
-3. **Installation Script**: Detects platform and installs from GitHub releases
-4. **GitHub Actions**: Automated building and releasing for multiple platforms
-
-## Continuous Integration
-
-The project uses GitHub Actions for:
-- **CI**: Testing on every push/PR
-- **Release**: Building and publishing runtime packages on version tags
-
-To create a new release:
-1. Tag the commit: `git tag v1.0.0`
-2. Push the tag: `git push origin v1.0.0`
-3. GitHub Actions will automatically build and release packages
-
-## Project Structure
-
+This produces:
 ```
-epsilon/
-├── scripts/
-│   ├── build-core.lisp      # Core image creation
-│   ├── build-runtime.sh     # Runtime packaging
-│   └── install.sh           # Installation script
-├── .github/workflows/
-│   ├── ci.yml              # Continuous integration
-│   └── release.yml         # Release automation
-└── module/core/            # Epsilon library source
+target/
+├── epsilon-core              # SBCL core with Epsilon
+├── epsilon                   # Wrapper script
+└── epsilon-linux-x86_64.tar.gz
 ```
 
-## Advantages
+### Core Image Creation
 
-This distribution approach provides:
+`scripts/build-core.lisp`:
+```lisp
+;; Load Epsilon
+(load "scripts/boot.lisp")
+(epsilon.tool.boot:boot)
 
-1. **Zero Dependencies**: No need for Quicklisp or ASDF
-2. **Fast Startup**: Preloaded libraries eliminate compilation time
-3. **Consistent Environment**: Same runtime across development and deployment
-4. **Modern Tooling**: Built-in build system, testing, and benchmarking
-5. **Easy Distribution**: Single curl command installation
+;; Save core image
+(sb-ext:save-lisp-and-die 
+  "target/epsilon-core"
+  :toplevel #'epsilon-toplevel
+  :executable nil
+  :compression t)
+```
+
+The core image includes:
+- All Epsilon core modules
+- Compiled FASL files
+- Package definitions
+- No user code
+
+### Wrapper Script
+
+`epsilon` wrapper handles platform differences:
+```bash
+#!/bin/sh
+SCRIPT_DIR=$(dirname "$0")
+exec sbcl --core "$SCRIPT_DIR/epsilon-core" "$@"
+```
+
+## Release Process
+
+### GitHub Actions
+
+On tag push:
+1. Build on each platform (Linux, macOS)
+2. Create core images
+3. Package distributions
+4. Upload to GitHub release
+
+`.github/workflows/release.yml`:
+```yaml
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install SBCL
+        uses: 40ants/setup-lisp@v2
+        with:
+          ql-dist: ultralisp
+      - name: Build distribution
+        run: ./scripts/build-runtime.sh
+      - name: Upload release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: target/epsilon-*.tar.gz
+```
+
+### Version Management
+
+Version from `module/core/package.edn`:
+```edn
+{
+  "name" "epsilon.core"
+  "version" "1.0.0"
+  ...
+}
+```
+
+Tag matches version: `git tag v1.0.0`
+
+## Platform Support
+
+### Linux
+- glibc 2.17+ (CentOS 7+, Ubuntu 14.04+)
+- x86_64 architecture
+- No additional dependencies
+
+### macOS  
+- macOS 10.14+ (Mojave)
+- x86_64 and arm64 (Apple Silicon)
+- Signed and notarized binaries
+
+### Windows
+- Not currently supported
+- WSL2 recommended
+
+## Distribution Contents
+
+```
+epsilon-linux-x86_64.tar.gz
+├── epsilon              # Wrapper script (755)
+├── epsilon-core         # SBCL core image
+├── README.md            # Basic usage
+└── LICENSE              # License file
+```
+
+Size: ~50-70MB compressed, ~150-200MB extracted
+
+## Deployment
+
+### System Package
+
+For system-wide installation:
+```bash
+# Extract to system location
+sudo tar -C /opt -xzf epsilon-*.tar.gz
+sudo ln -s /opt/epsilon/epsilon /usr/local/bin/epsilon
+```
+
+### Container Image
+
+Dockerfile:
+```dockerfile
+FROM ubuntu:22.04
+RUN apt-get update && apt-get install -y curl
+RUN curl -sSL https://raw.githubusercontent.com/jbouwman/epsilon/main/scripts/install.sh | bash
+ENV PATH="/root/.epsilon/bin:${PATH}"
+CMD ["epsilon"]
+```
+
+### Application Bundling
+
+Include Epsilon with your application:
+```
+myapp/
+├── epsilon/             # Epsilon runtime
+├── src/                 # Your application
+└── run.sh               # ./epsilon/epsilon --load src/main.lisp
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**"epsilon-core not found"**
+- Ensure wrapper and core are in same directory
+- Check file permissions
+
+**"Cannot allocate memory"**
+- Increase ulimits: `ulimit -s unlimited`
+- Check available RAM (needs ~500MB)
+
+**Performance**
+- Core image loads faster than source
+- First run may be slower (filesystem cache)
+- Use `--dynamic-space-size` for large heaps
+
+### Verification
+
+```bash
+# Check version
+epsilon --eval "(format t \"~A~%\" (epsilon:version))" --quit
+
+# Test library loading  
+epsilon --eval "(epsilon.lib.json:encode '((test . ok)))" --quit
+
+# Run tests
+epsilon --load scripts/test-distribution.lisp
+```

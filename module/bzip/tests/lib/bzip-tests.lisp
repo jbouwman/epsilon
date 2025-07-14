@@ -3,7 +3,7 @@
 ;;;; Test suite for BZip2 decompression functionality
 
 (defpackage :epsilon.lib.bzip-tests
-  (:use :cl :epsilon.tool.test)
+  (:use :cl :epsilon.test)
   (:local-nicknames
    (:bzip :epsilon.lib.bzip)))
 

@@ -1,0 +1,15 @@
+{:name "epsilon.registry"
+ :version "2.0.0"
+ :description "Package registry and dependency management for Epsilon"
+ :author "Epsilon Team"
+ :license "MIT"
+ 
+ :dependencies {"epsilon.core" "2.0.0"}
+ 
+ :sources ["src"]
+ :tests ["tests"]
+ 
+ :provides ["epsilon.lib.package"
+           "epsilon.lib.registry"]
+ 
+ :modules []}

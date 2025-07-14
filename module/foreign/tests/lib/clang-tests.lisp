@@ -2,7 +2,7 @@
   (:use
    :cl
    :epsilon.lib.syntax
-   :epsilon.tool.test)
+   :epsilon.test)
   (:local-nicknames
    (#:fs #:epsilon.sys.fs)
    (#:lexer #:epsilon.lib.lexer.impl)

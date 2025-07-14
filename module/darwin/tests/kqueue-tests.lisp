@@ -2,7 +2,7 @@
   (:use cl)
   (:local-nicknames
    (kqueue epsilon.kqueue)
-   (test epsilon.tool.test))
+   (test epsilon.test))
   (:export))
 
 (in-package epsilon.kqueue.tests)

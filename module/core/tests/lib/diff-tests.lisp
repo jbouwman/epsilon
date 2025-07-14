@@ -1,5 +1,5 @@
 (defpackage #:epsilon.lib.diff.tests
-  (:use #:cl #:epsilon.tool.test)
+  (:use #:cl #:epsilon.test)
   (:local-nicknames (#:diff #:epsilon.lib.diff)))
 
 (in-package #:epsilon.lib.diff.tests)
