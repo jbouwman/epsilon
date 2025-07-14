@@ -199,10 +199,16 @@
                                   (coerce dependencies 'list)
                                   dependencies))
            (sources (sort-sources (mapcan (lambda (source-path)
-                                            (find-source-info (path:uri-merge uri source-path)))
+                                            (let ((full-uri (path:uri-merge uri source-path)))
+                                              (if (probe-file (path:path-from-uri full-uri))
+                                                  (find-source-info full-uri)
+                                                  '())))
                                           source-paths)))
            (tests (sort-sources (mapcan (lambda (test-path)
-                                          (find-source-info (path:uri-merge uri test-path)))
+                                          (let ((full-uri (path:uri-merge uri test-path)))
+                                            (if (probe-file (path:path-from-uri full-uri))
+                                                (find-source-info full-uri)
+                                                '())))
                                         test-paths))))
       
       (let ((project (make-instance 'project
@@ -220,9 +226,13 @@
         project))))
 
 (defun find-source-info (uri)
-  (remove-if #'null
-             (mapcar #'make-source-info
-                     (fs:list-files uri ".lisp"))))
+  (handler-case
+      (remove-if #'null
+                 (mapcar #'make-source-info
+                         (fs:list-files uri ".lisp")))
+    (error ()
+      ;; If directory doesn't exist or can't be read, return empty list
+      '())))
 
 (defun resolve-dependencies (project)
   "Resolve and load project dependencies"
