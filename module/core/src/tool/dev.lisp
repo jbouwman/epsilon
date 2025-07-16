@@ -219,6 +219,7 @@
   (let* ((options (parsed-args-options parsed-args))
          (modules (or (parsed-args-arguments parsed-args)
                       (list "epsilon.core"))))
+    (declare (ignore options))
     (dolist (module modules)
       (format t ";;; Building module: ~A~%" module)
       (build:build module))))

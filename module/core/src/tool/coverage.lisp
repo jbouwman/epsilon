@@ -714,6 +714,7 @@
                                     test-packages output-dir
                                     (report-formats '(:html :lcov)))
   "Run tests with coverage tracking and generate reports"
+  (declare (ignore test-packages)) ; TODO: Use when epsilon.test module is available
   (with-coverage (:packages packages 
                   :exclude-patterns exclude-patterns
                   :output-dir output-dir)

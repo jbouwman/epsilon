@@ -51,9 +51,9 @@
    (fields :initarg :fields)))
 
 (defun make-type-definition (typedef)
-  (destructuring-bind (&key name description type) typedef
+  (destructuring-bind (&key name description fields) typedef
     (unless (stringp name)
-      (error "invalid type definition: name is not a string: %s" name))
+      (error "invalid type definition: name is not a string: ~A" name))
     (make-instance 'type-definition
                    :name name
                    :description description
