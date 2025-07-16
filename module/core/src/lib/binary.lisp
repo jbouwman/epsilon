@@ -142,10 +142,9 @@
 
 (defun get-signed (value size)
   "Convert unsigned value to signed based on two's complement"
-  (let ((sign-bit (ash 1 (1- (* size 8)))))
-    (if (logbitp (1- (* size 8)) value)
-        (- value (ash 1 (* size 8)))
-        value)))
+  (if (logbitp (1- (* size 8)) value)
+      (- value (ash 1 (* size 8)))
+      value))
 
 ;;; Forward declarations and utility functions
 
@@ -506,6 +505,7 @@
                       (to-bytes low :u32 endian)
                       (to-bytes high :s32 endian)))))
   (:decoder
+   (declare (ignore bytes offset))
    (error "f64 decoder not implemented")))
 
 ;;; Type inference
@@ -675,7 +675,6 @@
   (let ((struct-var (gensym "STRUCT"))
         (field-defs (parse-struct-fields fields))
         (struct-name (if (listp name) (first name) name))
-        (parent (when (listp name) (second name)))
         (struct-symbol (intern (format nil "~A-STRUCT" (if (listp name) (first name) name)))))
     `(progn
        ;; Define the structure type

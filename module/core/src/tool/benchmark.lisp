@@ -226,6 +226,7 @@
                                    (max-iterations '*default-max-iterations*))
                         &body body)
   "Define and register a named benchmark"
+  (declare (ignore min-time max-iterations))
   `(register-benchmark ',name (lambda () ,@body)))
 
 (defmacro with-benchmark-timing (&body body)
@@ -243,6 +244,7 @@
   "Main entry point for benchmark command from dev.lisp dispatcher"
   (let* ((args (funcall (read-from-string "epsilon.tool.dev::parsed-args-arguments") parsed-args))
          (options (funcall (read-from-string "epsilon.tool.dev::parsed-args-options") parsed-args)))
+    (declare (ignore options))
     (cond
       ;; No arguments - list available benchmarks
       ((null args)

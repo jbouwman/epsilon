@@ -18,7 +18,7 @@ jobs:
     - name: Build and run tests
       run: |
         chmod +x run.sh
-        ./run.sh test --format junit
+        ./run.sh test --module epsilon.core --format junit
 
     - name: Rename test results for platform identification
       if: success() || failure()

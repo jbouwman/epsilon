@@ -822,10 +822,7 @@
             relative-path)))
 
 (defmethod event ((formatter shell-build-report) (event-type (eql :end-compile)) result)
-  (let* ((build-input (build-input result))
-         (source-path (path (source-info build-input)))
-         (status (compilation-status result))
-         (warning-count (length (compilation-warnings result)))
+  (let* ((warning-count (length (compilation-warnings result)))
          (error-count (length (compilation-errors result)))
          (time (operation-wall-time result)))
     (format t "~a ~,3fs" 
@@ -922,7 +919,7 @@
           (progn
             (register-module module-path :silent t)
             (incf registered-count))
-        (error (e)
+        (error ()
           ;; Skip modules that can't be registered (e.g., platform incompatible)
           (incf skipped-count))))
     

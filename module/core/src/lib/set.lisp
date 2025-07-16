@@ -273,7 +273,7 @@
 
 (defmethod node-remove ((node collision-node) hash shift value parent)
   (if (= hash (collision-node-hash node))
-      (let ((new-values (remove value (collision-node-values node) :test #'equalp)))
+      (let ((new-values (cl:remove value (collision-node-values node) :test #'equalp)))
         (cond
           ;; No values left
           ((null new-values) nil)
