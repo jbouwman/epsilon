@@ -34,6 +34,19 @@
     ((string= method "workspace/symbol")
      (handle-workspace-symbol server params))
     
+    ;; Evaluation extensions
+    ((string= method "epsilon/evaluation/createSession")
+     (handle-evaluation-create-session server params))
+    
+    ((string= method "epsilon/evaluation/listSessions")
+     (handle-evaluation-list-sessions server params))
+    
+    ((string= method "epsilon/evaluation/terminateSession")
+     (handle-evaluation-terminate-session server params))
+    
+    ((string= method "epsilon/evaluation/evaluate")
+     (handle-evaluation-evaluate server params))
+    
     (t 
      (error "Method not found: ~A" method))))
 
@@ -172,13 +185,74 @@
               '()))
         '())))
 
+;;; Evaluation Support
+
+(defun ensure-evaluation-service (server)
+  "Ensure the server has an evaluation service"
+  (or (lsp-server-evaluation-service server)
+      (let ((service (make-instance 'epsilon.lsp.evaluation.api:evaluation-service)))
+        (epsilon.lsp.evaluation.api:start-evaluation-service service)
+        (setf (lsp-server-evaluation-service server) service)
+        service)))
+
+(defun handle-evaluation-create-session (server params)
+  "Handle epsilon/evaluation/createSession request"
+  (let ((service (ensure-evaluation-service server))
+        (name (map:get params "name"))
+        (modules (map:get params "modules"))
+        (restrictions (map:get params "restrictions")))
+    (epsilon.lsp.evaluation.api:create-evaluation-session 
+     service
+     :name name
+     :owner (get-workspace-id server)
+     :modules modules
+     :restrictions (when restrictions
+                     (epsilon.lsp.evaluation.session:make-restrictions
+                      :max-memory (map:get restrictions "maxMemory")
+                      :max-cpu-time (map:get restrictions "maxCpuTime")
+                      :allow-file-read (map:get restrictions "allowFileRead")
+                      :allow-file-write (map:get restrictions "allowFileWrite")
+                      :allow-network (map:get restrictions "allowNetwork"))))))
+
+(defun handle-evaluation-list-sessions (server params)
+  "Handle epsilon/evaluation/listSessions request"
+  (let ((service (ensure-evaluation-service server)))
+    (epsilon.lsp.evaluation.api:list-evaluation-sessions 
+     service 
+     :owner (get-workspace-id server))))
+
+(defun handle-evaluation-terminate-session (server params)
+  "Handle epsilon/evaluation/terminateSession request"
+  (let ((service (ensure-evaluation-service server))
+        (session-id (map:get params "sessionId")))
+    (epsilon.lsp.evaluation.api:terminate-evaluation-session service session-id)
+    (map:make-map "status" "terminated")))
+
+(defun handle-evaluation-evaluate (server params)
+  "Handle epsilon/evaluation/evaluate request"
+  (let ((service (ensure-evaluation-service server))
+        (session-id (map:get params "sessionId"))
+        (code (map:get params "code"))
+        (timeout (map:get params "timeout")))
+    (if session-id
+        (epsilon.lsp.evaluation.api:evaluate service session-id code :timeout timeout)
+        (epsilon.lsp.evaluation.api:evaluate-in-new-session 
+         service code
+         :modules (map:get params "modules")
+         :owner (get-workspace-id server)))))
+
+(defun get-workspace-id (server)
+  "Get the current workspace ID"
+  (or (first (lsp-server-workspace-folders server))
+      "default"))
+
 ;;; Enhanced Main Entry Point
 
 (defun main ()
   "Main entry point for LSP server."
   (let ((server (start-lsp-server :protocol :json-rpc)))
     (format t "Enhanced LSP server started. Ready for communication via stdio.~%")
-    (format t "Supported features: definition, hover, completion, diagnostics, symbols, references~%")
+    (format t "Supported features: definition, hover, completion, diagnostics, symbols, references, evaluation~%")
     
     ;; Main message loop
     (loop
@@ -189,6 +263,10 @@
             (handle-lsp-message server message))
         (end-of-file ()
           (format t "Client disconnected.~%")
+          ;; Clean up evaluation service
+          (when (lsp-server-evaluation-service server)
+            (epsilon.lsp.evaluation.api:stop-evaluation-service 
+             (lsp-server-evaluation-service server)))
           (return))
         (error (e)
           (format t "Error handling message: ~A~%" e))))))

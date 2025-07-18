@@ -5,8 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ### Building and Testing
-- `./run.sh build` - Build the Epsilon library using SBCL
-- `./run.sh test` - Run all tests and exit with appropriate code (0 for success, 1 for failure)
+- `./run.sh build` - Build the Epsilon library using SBCL (default: epsilon.core)
+- `./run.sh build all` - Build all modules in the codebase
+- `./run.sh build epsilon.http` - Build a specific module
+- `./run.sh test` - Run tests for epsilon.core module
+- `./run.sh test all` - Run tests for all modules
+- `./run.sh test epsilon.http` - Run tests for a specific module
 - `./run.sh test --package epsilon.lib.json.tests --name parse-empty-structures` - Run a single, specific test
 
 ### Benchmarking

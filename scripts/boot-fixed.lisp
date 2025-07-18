@@ -37,7 +37,6 @@
     "lib/hex"
     "lib/regex"
     "lib/url"
-    "lib/uuid"
     "tool/build"))
 
 (defparameter *boot-log* 
@@ -93,6 +92,18 @@
                 while byte
                 do (write-byte byte output)))))))
 
+(defun compile-and-load-file (source-path log)
+  "Compile and load a file, ensuring package definitions are available"
+  (let ((fasl-path 
+          (let ((*standard-output* log)
+                (*error-output* log))
+            (compile-file source-path :print nil :verbose nil))))
+    (unless fasl-path
+      (error "compile-file returned NIL for ~A" source-path))
+    ;; Load immediately to ensure package definitions are available
+    (load fasl-path)
+    fasl-path))
+
 (defun boot ()
   (ensure-target-dir)
   
@@ -115,14 +126,22 @@
             (format t ";;; [~2D/~2D] ~A~%" current total file)
             (force-output)
             (handler-bind ((sb-kernel:redefinition-warning #'muffle-warning))
-              (let ((fasl-path 
-                      (let ((*standard-output* log)
-                            (*error-output* log))
-                        (compile-file source-path :print nil :verbose nil))))
-                (unless fasl-path
-                  (error "compile-file returned NIL for ~A" source-path))
-                (push fasl-path fasl-files)
-                (load fasl-path))))))
+              ;; Special handling for files that define packages needed by later files
+              (cond 
+                ;; tool/common defines epsilon.tool.common needed by tool/build
+                ((string= file "tool/common")
+                 (let ((fasl-path (compile-and-load-file source-path log)))
+                   (push fasl-path fasl-files)))
+                ;; Regular compilation for other files
+                (t
+                 (let ((fasl-path 
+                         (let ((*standard-output* log)
+                               (*error-output* log))
+                           (compile-file source-path :print nil :verbose nil))))
+                   (unless fasl-path
+                     (error "compile-file returned NIL for ~A" source-path))
+                   (push fasl-path fasl-files)
+                   (load fasl-path))))))))
       (format t ";;; Bootstrap complete (~D files compiled)~%" total)
       
       ;; Create concatenated FASL for next time

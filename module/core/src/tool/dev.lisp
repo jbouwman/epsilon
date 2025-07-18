@@ -218,27 +218,46 @@
   "Handle build command - this is always available"
   (let* ((options (parsed-args-options parsed-args))
          (modules (or (parsed-args-arguments parsed-args)
-                      (list "epsilon.core"))))
-    (declare (ignore options))
-    (dolist (module modules)
-      (format t ";;; Building module: ~A~%" module)
-      (build:build module))))
+                      (list "epsilon.core")))
+         (force (assoc "force" options :test #'string=))
+         (include-tests (assoc "include-tests" options :test #'string=))
+         (include-platform (assoc "include-platform" options :test #'string=)))
+    
+    ;; Check if 'all' is specified
+    (cond
+      ((member "all" modules :test #'string=)
+       ;; Build all modules
+       (build:build-all :force force
+                        :include-tests include-tests
+                        :include-platform include-platform))
+      (t
+       ;; Build specific modules
+       (dolist (module modules)
+         (format t ";;; Building module: ~A~%" module)
+         (build:build module 
+                      :force force
+                      :include-tests include-tests))))))
 
 (defun handle-build-help (parsed-args)
   "Show help for build command"
   (declare (ignore parsed-args))
   (format t "build - Build epsilon modules~%~%")
-  (format t "Usage: epsilon build [modules...]~%~%")
+  (format t "Usage: epsilon build [options] [modules...]~%~%")
   (format t "Arguments:~%")
-  (format t "  modules         One or more module names to build (default: epsilon.core)~%~%")
+  (format t "  modules              One or more module names to build (default: epsilon.core)~%")
+  (format t "                       Use 'all' to build all modules~%~%")
   (format t "Options:~%")
-  (format t "  --force         Force compilation of all files regardless of timestamps~%")
-  (format t "  --help          Show this help message~%~%")
+  (format t "  --force              Force compilation of all files regardless of timestamps~%")
+  (format t "  --include-tests      Also build test files~%")
+  (format t "  --include-platform   Include platform-specific modules when building 'all'~%")
+  (format t "  --help               Show this help message~%~%")
   (format t "Examples:~%")
-  (format t "  epsilon build                    # Build epsilon.core~%")
-  (format t "  epsilon build epsilon.core      # Build epsilon.core explicitly~%")
-  (format t "  epsilon build epsilon.http      # Build epsilon.http module~%")
-  (format t "  epsilon build --force            # Force rebuild of epsilon.core~%"))
+  (format t "  epsilon build                         # Build epsilon.core~%")
+  (format t "  epsilon build epsilon.core            # Build epsilon.core explicitly~%")
+  (format t "  epsilon build epsilon.http            # Build epsilon.http module~%")
+  (format t "  epsilon build all                     # Build all modules~%")
+  (format t "  epsilon build all --include-platform  # Build all modules including platform-specific~%")
+  (format t "  epsilon build --force                 # Force rebuild of epsilon.core~%"))
 
 (defun handle-bench-help (parsed-args)
   "Show help for bench command"
@@ -285,8 +304,7 @@
   (initialize-tool-registry)
   
   ;; Parse command line
-  (let* ((args (or #+sbcl (rest sb-ext:*posix-argv*)
-                   '()))
+  (let* ((args (rest sb-ext:*posix-argv*))
          (parsed (parse-command-line args)))
     
     ;; Handle special cases

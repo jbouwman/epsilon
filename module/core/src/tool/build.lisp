@@ -37,8 +37,10 @@
   (:export
    build
    build-tests
+   build-all
    register-module
    register-modules
+   list-modules
    dump-build-state
    *build-timeout*
    *error-behavior*
@@ -900,11 +902,14 @@
         (or (not platform)
             (string= platform (string-downcase (detect-platform))))))))
 
-(defun register-modules (&key (base-dir (path:make-file-uri 
-                                         #+win32 (sb-ext:native-namestring (truename "."))
-                                         #-win32 (sb-unix:posix-getcwd)))
-                              force)
+(defun register-modules (&key base-dir force)
   "Discover and register all applicable modules found under base-dir/module/"
+  ;; Default base-dir at runtime, not compile time
+  (unless base-dir
+    (setf base-dir (path:make-file-uri 
+                    #+win32 (sb-ext:native-namestring (truename "."))
+                    #-win32 (sb-unix:posix-getcwd))))
+  
   ;; Skip if already discovered unless forced
   (when (and *modules-discovered-p* (not force))
     (return-from register-modules (map:size *modules*)))
@@ -949,10 +954,9 @@
                                          (char= (char module-spec 1) #\:)
                                          (member (char module-spec 2) '(#\/ #\\))))
                                 (substitute #\/ #\\ module-spec)  ; absolute path - normalize separators
-                                (path:string-path-join 
-                                 #+win32 (substitute #\/ #\\ (sb-ext:native-namestring (truename ".")))
-                                 #-win32 (sb-unix:posix-getcwd)
-                                 (substitute #\/ #\\ module-spec)))) ; relative path - normalize separators
+                                (let ((cwd #+win32 (substitute #\/ #\\ (sb-ext:native-namestring (truename ".")))
+                                           #-win32 (sb-unix:posix-getcwd)))
+                                  (path:string-path-join cwd (substitute #\/ #\\ module-spec))))) ; relative path - normalize separators
                            (t 
                             (error "Unsupported module-spec type: ~A" module-spec))))
          (module-dir (path:make-file-uri module-dir-path))
@@ -984,5 +988,96 @@
       ;; Return the module name
       module-name)))
 
-;;; Perform initial module discovery when build.lisp is loaded
-(register-modules)
+(defun list-modules (&key include-platform)
+  "List all registered modules.
+   
+   INCLUDE-PLATFORM - When T, show platform-specific modules too"
+  (let ((all-modules (seq:seq (map:keys *modules*)))
+        (platform-modules '()))
+    
+    ;; Sort modules alphabetically - convert to list, sort, then back to seq
+    (setf all-modules (seq:from-list (sort (seq:realize all-modules) #'string<)))
+    
+    ;; Filter out platform-specific modules unless requested
+    (unless include-platform
+      (setf all-modules
+            (seq:filter (lambda (module-name)
+                          (let* ((module-dir (map:get *modules* module-name))
+                                 (edn-file (path:uri-merge module-dir "package.edn"))
+                                 (defs (edn:read-edn-from-string 
+                                        (fs:read-file (path:path-from-uri edn-file))))
+                                 (platform (map:get defs "platform")))
+                            (if platform
+                                (progn
+                                  (push (cons module-name platform) platform-modules)
+                                  nil)
+                                t)))
+                        all-modules)))
+    
+    ;; Return the list
+    (values (seq:realize all-modules)
+            platform-modules)))
+
+(defun build-all (&key 
+                   force 
+                   (error-behavior :halt) 
+                   (warning-behavior :ignore)
+                   (reporter (make-instance 'shell-build-report))
+                   include-tests
+                   include-platform)
+  "Build all registered modules.
+  
+  FORCE - Force compilation of all build steps regardless of timestamps
+  ERROR-BEHAVIOR - How to handle compilation errors: :halt (default), :ignore, :print
+  WARNING-BEHAVIOR - How to handle compilation warnings: :ignore (default), :halt, :print
+  REPORTER - Reporter instance for build progress
+  INCLUDE-TESTS - Also build test files (default NIL)
+  INCLUDE-PLATFORM - Also build platform-specific modules (default NIL)"
+  
+  ;; Ensure modules are discovered
+  (when (zerop (map:size *modules*))
+    (register-modules))
+  
+  (let ((modules-to-build (list-modules :include-platform include-platform))
+        (failed-modules '())
+        (succeeded-modules '()))
+    
+    (format t "~&;;; Building all modules (~D total)~%" (length modules-to-build))
+    
+    (dolist (module modules-to-build)
+      (format t "~&~%;;; ======================================~%")
+      (format t ";;; Building module: ~A~%" module)
+      (format t ";;; ======================================~%")
+      
+      (handler-case
+          (progn
+            (build module 
+                   :force force
+                   :error-behavior error-behavior
+                   :warning-behavior warning-behavior
+                   :reporter reporter
+                   :include-tests include-tests)
+            (push module succeeded-modules))
+        (error (e)
+          (format t "~&;;; ERROR building ~A: ~A~%" module e)
+          (push module failed-modules)
+          ;; If error-behavior is :halt, re-signal the error
+          (when (eq error-behavior :halt)
+            (error e)))))
+    
+    ;; Summary
+    (format t "~&~%;;; ======================================~%")
+    (format t ";;; Build Summary~%")
+    (format t ";;; ======================================~%")
+    (format t ";;; Total modules: ~D~%" (length modules-to-build))
+    (format t ";;; Succeeded: ~D~%" (length succeeded-modules))
+    (when failed-modules
+      (format t ";;; Failed: ~D (~{~A~^, ~})~%" 
+              (length failed-modules) 
+              (nreverse failed-modules)))
+    (format t ";;; ======================================~%")
+    
+    ;; Return success status
+    (zerop (length failed-modules))))
+
+;;; Module discovery is now done on-demand when needed

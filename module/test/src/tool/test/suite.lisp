@@ -30,6 +30,7 @@
    errors
    failures
    skipped
+   test-count
    list-suites
    suite-tests
    ensure-test-root
@@ -181,6 +182,10 @@ Returns the leaf node for package-name."
   "Return list of skipped test results"
   (remove-if-not (lambda (r) (eq :skip (status r)))
                  (map:vals (tests run))))
+
+(defun test-count (run)
+  "Return the total number of tests in this run"
+  (map:size (tests run)))
 
 ;;; Metric implementations
 

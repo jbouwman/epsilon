@@ -39,6 +39,7 @@
    ;; executing tests
    skip
    run
+   run-all
    success-p
    main  ; Added for dev.lisp dispatcher
 
@@ -117,6 +118,70 @@ If FILE is provided, write the report to the named file."
 (defun success-p (run)
   (zerop (+ (length (suite:failures run))
             (length (suite:errors run)))))
+
+(defun run-all (&key (format :shell) (file nil) include-platform)
+  "Run tests for all registered modules.
+  
+  FORMAT - Output format: :shell, :junit, :repl
+  FILE - If provided, write the report to the named file
+  INCLUDE-PLATFORM - Also test platform-specific modules (default NIL)"
+  
+  ;; Get list of all modules to test
+  (let* ((all-modules (build:list-modules :include-platform include-platform))
+         (total-failures 0)
+         (total-errors 0)
+         (total-tests 0)
+         (module-results '()))
+    
+    (format t "~&;;; Running tests for all modules (~D total)~%" (length all-modules))
+    
+    ;; Test each module
+    (dolist (module all-modules)
+      (format t "~&~%;;; ======================================~%")
+      (format t ";;; Testing module: ~A~%" module)
+      (format t ";;; ======================================~%")
+      
+      (handler-case
+          (let ((result (run :module module :format format :file file)))
+            (push (cons module result) module-results)
+            (when result
+              (incf total-failures (length (suite:failures result)))
+              (incf total-errors (length (suite:errors result)))
+              (incf total-tests (suite:test-count result))))
+        (error (e)
+          (format t "~&;;; ERROR testing ~A: ~A~%" module e)
+          (push (cons module :error) module-results))))
+    
+    ;; Summary
+    (format t "~&~%;;; ======================================~%")
+    (format t ";;; Test Summary~%")
+    (format t ";;; ======================================~%")
+    (format t ";;; Total modules tested: ~D~%" (length all-modules))
+    (format t ";;; Total tests run: ~D~%" total-tests)
+    (format t ";;; Total failures: ~D~%" total-failures)
+    (format t ";;; Total errors: ~D~%" total-errors)
+    
+    ;; Show module-by-module results
+    (format t "~&~%;;; Module Results:~%")
+    (dolist (result (nreverse module-results))
+      (let ((module (car result))
+            (run-result (cdr result)))
+        (cond
+          ((eq run-result :error)
+           (format t ";;;   ~A: ERROR~%" module))
+          ((null run-result)
+           (format t ";;;   ~A: NO TESTS~%" module))
+          (t
+           (let ((failures (length (suite:failures run-result)))
+                 (errors (length (suite:errors run-result)))
+                 (tests (suite:test-count run-result)))
+             (format t ";;;   ~A: ~D tests, ~D failures, ~D errors~%" 
+                     module tests failures errors))))))
+    
+    (format t ";;; ======================================~%")
+    
+    ;; Return success status
+    (and (zerop total-failures) (zerop total-errors))))
 
 (defun skip (&optional (message "Test skipped"))
   "Skip the current test with an optional message"
@@ -213,7 +278,7 @@ If REGEX is provided, the condition's printed representation must match it."
   (let* ((args (funcall (read-from-string "epsilon.tool.dev::parsed-args-arguments") parsed-args))
          (options (funcall (read-from-string "epsilon.tool.dev::parsed-args-options") parsed-args))
          ;; Parse options
-         (module (map:get options "module"))
+         (module (or (first args) (map:get options "module")))
          (package (map:get options "package"))
          (name (map:get options "name"))
          (format-str (or (map:get options "format") "shell"))
@@ -221,11 +286,28 @@ If REGEX is provided, the condition's printed representation must match it."
                    ((string= format-str "junit") :junit)
                    ((string= format-str "repl") :repl)
                    (t :shell)))
-         (file (map:get options "file")))
-    (format t "~&;;; Test main called with module: ~A, package: ~A~%" module package)
-    ;; Run tests with parsed options
-    (run :module module
-         :package package
-         :name name
-         :format format
-         :file file)))
+         (file (map:get options "file"))
+         (include-platform (map:get options "include-platform")))
+    
+    ;; Check if 'all' is specified
+    (cond
+      ((string= module "all")
+       ;; Run tests for all modules
+       (run-all :format format
+                :file file
+                :include-platform include-platform))
+      (module
+       ;; Run tests for specific module
+       (format t "~&;;; Test main called with module: ~A, package: ~A~%" module package)
+       (run :module module
+            :package package
+            :name name
+            :format format
+            :file file))
+      (t
+       ;; Default to epsilon.core if no module specified
+       (run :module "epsilon.core"
+            :package package
+            :name name
+            :format format
+            :file file)))))
