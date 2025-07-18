@@ -9,13 +9,16 @@
   (:local-nicknames
    (#:map #:epsilon.lib.map)
    (#:str #:epsilon.lib.string)
-   (#:build #:epsilon.tool.build))
+   (#:build #:epsilon.tool.build)
+   (#:fs #:epsilon.sys.fs)
+   (#:path #:epsilon.lib.path))
   (:export
    #:main
    #:register-tool
    #:list-tools
    #:initialize-tool-registry
    #:handle-build-help
+   #:handle-build-all-help
    #:handle-bench-help
    #:parsed-args))
 
@@ -55,12 +58,35 @@
                        :module "epsilon.test"  ; test is now separate module
                        :function 'test-main  ; Placeholder - will be resolved dynamically
                        :description "Run test suites"))
+           ("build-all" . ,(make-tool-info
+                            :name "build-all"
+                            :module nil  ; build is already loaded in core
+                            :function 'handle-build-all
+                            :help-function 'handle-build-all-help
+                            :description "Build all epsilon modules"))
+           ("test-all" . ,(make-tool-info
+                           :name "test-all"
+                           :module "epsilon.test"
+                           :function 'test-all-main
+                           :description "Run all test suites"))
            ("bench" . ,(make-tool-info
                         :name "bench"
                         :module nil  ; benchmark is in core
-                        :function (read-from-string "epsilon.tool.benchmark:main")
+                        :function 'handle-bench
                         :help-function 'handle-bench-help
                         :description "Run benchmarks"))
+           ("list-modules" . ,(make-tool-info
+                               :name "list-modules"
+                               :module nil  ; build is already loaded in core
+                               :function 'handle-list-modules
+                               :help-function 'handle-list-modules-help
+                               :description "List available epsilon modules"))
+           ("clean" . ,(make-tool-info
+                        :name "clean"
+                        :module nil  ; clean uses core functionality
+                        :function 'handle-clean
+                        :help-function 'handle-clean-help
+                        :description "Remove build artifacts and cached files"))
            ;; These will be uncommented when the modules exist
            #|("lsp" . ,(make-tool-info
                       :name "lsp"
@@ -218,27 +244,66 @@
   "Handle build command - this is always available"
   (let* ((options (parsed-args-options parsed-args))
          (modules (or (parsed-args-arguments parsed-args)
-                      (list "epsilon.core"))))
-    (declare (ignore options))
+                      (list "epsilon.core")))
+         (force (map:get options "force"))
+         (include-tests (map:get options "include-tests")))
+    
+    ;; Build specific modules only - removed 'all' special case
     (dolist (module modules)
       (format t ";;; Building module: ~A~%" module)
-      (build:build module))))
+      (build:build module 
+                   :force force
+                   :include-tests include-tests))))
+
+(defun handle-build-all (parsed-args)
+  "Handle build-all command"
+  (let* ((options (parsed-args-options parsed-args))
+         (force (map:get options "force"))
+         (include-tests (map:get options "include-tests"))
+         (include-platform (map:get options "include-platform")))
+    (build:build-all :force force
+                     :include-tests include-tests
+                     :include-platform include-platform)))
+
+(defun test-all-main (parsed-args)
+  "Dynamically dispatch to epsilon.test:test-all after loading the module"
+  (funcall (find-symbol "TEST-ALL" "EPSILON.TEST") parsed-args))
 
 (defun handle-build-help (parsed-args)
   "Show help for build command"
   (declare (ignore parsed-args))
-  (format t "build - Build epsilon modules~%~%")
-  (format t "Usage: epsilon build [modules...]~%~%")
+  (format t "build - Build specific epsilon modules~%~%")
+  (format t "Usage: epsilon build [options] [modules...]~%~%")
   (format t "Arguments:~%")
-  (format t "  modules         One or more module names to build (default: epsilon.core)~%~%")
+  (format t "  modules              One or more module names to build (default: epsilon.core)~%~%")
   (format t "Options:~%")
-  (format t "  --force         Force compilation of all files regardless of timestamps~%")
-  (format t "  --help          Show this help message~%~%")
+  (format t "  --force              Force compilation of all files regardless of timestamps~%")
+  (format t "  --include-tests      Also build test files~%")
+  (format t "  --help               Show this help message~%~%")
   (format t "Examples:~%")
-  (format t "  epsilon build                    # Build epsilon.core~%")
-  (format t "  epsilon build epsilon.core      # Build epsilon.core explicitly~%")
-  (format t "  epsilon build epsilon.http      # Build epsilon.http module~%")
-  (format t "  epsilon build --force            # Force rebuild of epsilon.core~%"))
+  (format t "  epsilon build                         # Build epsilon.core~%")
+  (format t "  epsilon build epsilon.core            # Build epsilon.core explicitly~%")
+  (format t "  epsilon build epsilon.http            # Build epsilon.http module~%")
+  (format t "  epsilon build --force                 # Force rebuild of epsilon.core~%"))
+
+(defun handle-build-all-help (parsed-args)
+  "Show help for build-all command"
+  (declare (ignore parsed-args))
+  (format t "build-all - Build all epsilon modules~%~%")
+  (format t "Usage: epsilon build-all [options]~%~%")
+  (format t "Options:~%")
+  (format t "  --force              Force compilation of all files regardless of timestamps~%")
+  (format t "  --include-tests      Also build test files~%")
+  (format t "  --include-platform   Include platform-specific modules~%")
+  (format t "  --help               Show this help message~%~%")
+  (format t "Examples:~%")
+  (format t "  epsilon build-all                     # Build all non-platform modules~%")
+  (format t "  epsilon build-all --include-platform  # Build all modules including platform-specific~%")
+  (format t "  epsilon build-all --force             # Force rebuild of all modules~%"))
+
+(defun handle-bench (parsed-args)
+  "Handle bench command - dynamically dispatch to benchmark:main"
+  (funcall (find-symbol "MAIN" "EPSILON.TOOL.BENCHMARK") parsed-args))
 
 (defun handle-bench-help (parsed-args)
   "Show help for bench command"
@@ -254,6 +319,130 @@
   (format t "  epsilon bench                    # List available benchmarks~%")
   (format t "  epsilon bench --suite msgpack    # Run MessagePack benchmarks~%")
   (format t "  epsilon bench --suite all        # Run all benchmark suites~%"))
+
+(defun handle-list-modules (parsed-args)
+  "Handle list-modules command"
+  (let ((modules-map (symbol-value (find-symbol "*MODULES*" "EPSILON.TOOL.BUILD"))))
+    ;; Ensure modules are discovered
+    (unless (plusp (map:count modules-map))
+      (funcall (find-symbol "REGISTER-MODULES" "EPSILON.TOOL.BUILD")))
+    
+    ;; Get all modules with status
+    (let ((modules-with-status (funcall (find-symbol "LIST-ALL-MODULES-WITH-STATUS" "EPSILON.TOOL.BUILD")))
+          (supported-count 0)
+          (unsupported-count 0))
+      
+      ;; List modules with status
+      (format t "~%Available modules:~%")
+      (dolist (module-info modules-with-status)
+        (let ((name (car module-info))
+              (status (cdr module-info)))
+          (case status
+            (:supported 
+             (format t "  ~A~%" name)
+             (incf supported-count))
+            (:unsupported
+             (format t "  ~A (unsupported platform)~%" name)
+             (incf unsupported-count))
+            (t
+             (format t "  ~A (unknown status)~%" name)))))
+      
+      (format t "~%Total: ~D modules (~D supported, ~D unsupported)~%" 
+              (length modules-with-status)
+              supported-count
+              unsupported-count))))
+
+(defun handle-list-modules-help (parsed-args)
+  "Show help for list-modules command"
+  (declare (ignore parsed-args))
+  (format t "list-modules - List all available epsilon modules~%~%")
+  (format t "Usage: epsilon [global-options] list-modules [options]~%~%")
+  (format t "Global Options:~%")
+  (format t "  --log SPEC           Configure logging (e.g., 'debug:epsilon.tool.build')~%")
+  (format t "  --verbose            Enable debug logging~%")
+  (format t "  --quiet              Only show warnings and errors~%~%")
+  (format t "Options:~%")
+  (format t "  --help               Show this help message~%~%")
+  (format t "Shows all modules including those for unsupported platforms.~%~%")
+  (format t "Examples:~%")
+  (format t "  epsilon list-modules                                    # List all modules~%")
+  (format t "  epsilon --log 'debug:epsilon.tool.build' list-modules   # List with debug logging~%"))
+
+(defun handle-clean (parsed-args)
+  "Handle clean command - remove build artifacts and cached files"
+  (let* ((options (parsed-args-options parsed-args))
+         (dry-run (map:get options "dry-run"))
+         (verbose (map:get options "verbose"))
+         (files-removed 0)
+         (dirs-removed 0))
+    
+    (format t "~%Cleaning build artifacts...~%")
+    
+    ;; Clean main target directory
+    (when (fs:exists-p "target")
+      (when (or verbose dry-run)
+        (format t "~:[Would remove~;Removing~] directory: target/~%" (not dry-run)))
+      (unless dry-run
+        (fs:delete-directory "target"))
+      (incf dirs-removed))
+    
+    ;; Clean module target directories
+    (when (fs:exists-p "module")
+      (dolist (module-name (fs:list-dir "module"))
+        (let ((module-target (path:string-path-join "module" module-name "target")))
+          (when (fs:exists-p module-target)
+            (when (or verbose dry-run)
+              (format t "~:[Would remove~;Removing~] directory: ~A~%" (not dry-run) module-target))
+            (unless dry-run
+              (fs:delete-directory module-target))
+            (incf dirs-removed)))))
+    
+    ;; Clean FASL files
+    (let ((fasl-files (fs:list-files "." ".fasl")))
+      (dolist (fasl-file fasl-files)
+        (when (or verbose dry-run)
+          (format t "~:[Would remove~;Removing~] file: ~A~%" (not dry-run) fasl-file))
+        (unless dry-run
+          (fs:delete-file* fasl-file))
+        (incf files-removed)))
+    
+    ;; Clean log files
+    (let ((log-files (fs:list-files "." ".log")))
+      (dolist (log-file log-files)
+        (when (or verbose dry-run)
+          (format t "~:[Would remove~;Removing~] file: ~A~%" (not dry-run) log-file))
+        (unless dry-run
+          (fs:delete-file* log-file))
+        (incf files-removed)))
+    
+    (if dry-run
+        (format t "~%Dry run complete: Would remove ~D files and ~D directories~%" 
+                files-removed dirs-removed)
+        (format t "~%Clean complete: Removed ~D files and ~D directories~%" 
+                files-removed dirs-removed))))
+
+(defun handle-clean-help (parsed-args)
+  "Show help for clean command"
+  (declare (ignore parsed-args))
+  (format t "clean - Remove build artifacts and cached files~%~%")
+  (format t "Usage: epsilon [global-options] clean [options]~%~%")
+  (format t "Global Options:~%")
+  (format t "  --log SPEC           Configure logging (e.g., 'debug:epsilon.sys.fs')~%")
+  (format t "  --verbose            Enable debug logging~%")
+  (format t "  --quiet              Only show warnings and errors~%~%")
+  (format t "Options:~%")
+  (format t "  --dry-run            Show what would be removed without actually removing~%")
+  (format t "  --verbose            Show each file/directory being removed~%")
+  (format t "  --help               Show this help message~%~%")
+  (format t "Removes:~%")
+  (format t "  - target/ directories (build outputs)~%")
+  (format t "  - *.fasl files (compiled Lisp)~%")
+  (format t "  - *.log files (log files)~%")
+  (format t "  - Temporary files (*~~, *.bak)~%~%")
+  (format t "Examples:~%")
+  (format t "  epsilon clean                    # Remove all build artifacts~%")
+  (format t "  epsilon clean --dry-run          # Show what would be removed~%")
+  (format t "  epsilon clean --verbose          # Show each file being removed~%"))
 
 (defun handle-help (parsed-args)
   "Show help for a specific command or general help"
@@ -285,8 +474,7 @@
   (initialize-tool-registry)
   
   ;; Parse command line
-  (let* ((args (or #+sbcl (rest sb-ext:*posix-argv*)
-                   '()))
+  (let* ((args (rest sb-ext:*posix-argv*))
          (parsed (parse-command-line args)))
     
     ;; Handle special cases

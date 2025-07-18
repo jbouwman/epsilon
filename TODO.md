@@ -1,0 +1,4 @@
+- The http-test module should be moved to 'examples'
+- There is stale API documentation under docs/architecture
+- The API documentation has a poor layout in mkdocs
+- (format t ..) looks weird: what is better?

@@ -7,7 +7,19 @@
    (#:re #:epsilon.lib.regex)
    (#:seq #:epsilon.lib.sequence)
    (#:digest #:epsilon.lib.digest)
-   (#:str #:epsilon.lib.string)))
+   (#:str #:epsilon.lib.string))
+  (:export
+   ;; Classes
+   #:type-catalog
+   #:type-definition
+   
+   ;; Functions
+   #:make-type-definition
+   #:make-type-field
+   #:parse-reference
+   
+   ;; Utilities
+   #:sha-256))
 
 (in-package #:epsilon.tool.catalog)
 

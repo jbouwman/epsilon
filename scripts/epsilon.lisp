@@ -2,6 +2,5 @@
 (load "scripts/boot.lisp")
 (epsilon.tool.boot:boot)
 
-;; Build epsilon.core if needed
-(epsilon.tool.build:build "epsilon.core")
-(epsilon.tool.build:build "epsilon.regex")
+;; Register available modules
+(epsilon.tool.build:register-modules)

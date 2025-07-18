@@ -12,41 +12,6 @@ node protocol - collision-node
 
 leaf-node operations
 
-;  TODO
-;
-;  1. HAMT Over-Engineering for Small Maps
-;  The Hash Array Mapped Trie implementation creates overhead for small maps (1-10 elements).
-;  Consider specialized small-map types (array-map, linear-map) that switch to HAMT above
-;  a threshold, similar to Clojure's implementation strategy.
-;
-;  2. Bulk Operation Performance
-;  Operations like merge, difference, and from-pairs could use internal mutable builders
-;  for efficiency, then convert to persistent structure at the end.
-;
-;  3. Extensive Symbol Shadowing
-;  Shadowing many core CL functions (assoc, get, map, reduce, etc.) creates potential
-;  conflicts and confusion when integrating with other Common Lisp code.
-;
-;  Reusable Components for Epsilon System
-;
-;  Unified Collection Interface
-;  Rather than separate packages for each protocol, consider a unified epsilon.lib.core
-;  approach similar to Clojure's core namespace, providing consistent collection operations
-;  across maps, vectors, sequences, and sets in a single coherent interface.
-;
-;  Path-Based Data Access
-;  The nested access functions (get-in, assoc-in, update-in) could work consistently
-;  across all collection types in epsilon.lib.core rather than being map-specific.
-;
-;  Small Collection Optimization
-;  Implement array-based maps for small sizes (1-10 elements) with automatic promotion
-;  to HAMT structure when size threshold is exceeded.
-;
-;  Transient/Mutable Builders
-;  Add transient map support for efficient bulk operations - create mutable builder,
-;  perform operations, then convert to persistent map for final result.
-;
-
 ## API Reference
 
 ### +EMPTY+

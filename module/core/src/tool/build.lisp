@@ -37,8 +37,12 @@
   (:export
    build
    build-tests
+   build-all
    register-module
+   register-module-unconditional
    register-modules
+   list-modules
+   list-all-modules-with-status
    dump-build-state
    *build-timeout*
    *error-behavior*
@@ -49,9 +53,6 @@
 (defvar *modules*
   map:+empty+
   "Registry of known modules as a map from module name to directory URI")
-
-(defvar *modules-discovered-p* nil
-  "Flag indicating whether module discovery has been performed")
 
 (defvar *error-behavior* :halt
   "How to handle compilation errors: :halt, :ignore, or :print")
@@ -604,7 +605,8 @@
          (total-count (seq:count build-inputs)))
     ;; Set total files in reporter
     (when reporter
-      (setf (total-files reporter) total-count))
+      (setf (total-files reporter) total-count)
+      (setf (include-tests reporter) include-tests))
     (event build :start build)
     (let ((results (seq:seq (seq:realize 
                            (let ((index 0))
@@ -798,7 +800,8 @@
   ((failure-count :initform 0)
    (max-failures :initform 10)
    (total-files :initform 0 :accessor total-files)
-   (current-index :initform 0 :accessor current-index)))
+   (current-index :initform 0 :accessor current-index)
+   (include-tests :initform nil :accessor include-tests)))
 
 (defmethod event ((formatter shell-build-report) (event-type (eql :start)) build)
   (format t "~&;; ~a~%~%" (path:path-from-uri (uri (slot-value build 'project)))))
@@ -847,17 +850,54 @@
 (defmethod event ((formatter shell-build-report) (event-type (eql :end)) build)
   (with-slots (project results start-time end-time) build
     (let* ((total-time (/ (- end-time start-time) internal-time-units-per-second))
-           (total-files (seq:count results))
            (results (seq:realize results))
            (failed-files (count-if (lambda (r) (compilation-errors r)) results))
-           (warning-files (count-if (lambda (r) (compilation-warnings r)) results)))
-      (format t "~%Build Complete:~%")
-      (format t ";;   Files: ~D~%" total-files)
+           (warning-files (count-if (lambda (r) (compilation-warnings r)) results))
+           ;; Get all build inputs that were considered (not just processed)
+           (all-build-inputs (build-order project :include-tests (include-tests formatter)))
+           (total-considered (seq:count all-build-inputs)))
+      (format t "~%Build Summary:~%")
+      (format t ";;   Module: ~A~%" (project-name project))
+      (format t ";;   Files considered: ~D~%" total-considered)
+      (format t ";;   Files processed: ~D~%" (length results))
       (when (> failed-files 0)
         (format t ";;   Failed: ~D~%" failed-files))
       (when (> warning-files 0)
         (format t ";;   Warnings: ~D~%" warning-files))
-      (format t ";;   Time: ~,2F seconds~%" total-time))))
+      (format t ";;   Time: ~,2F seconds~%" total-time)
+      
+      ;; Show detailed file information
+      (when (> total-considered 0)
+        (format t "~%File Details:~%")
+        (let ((index 0))
+          (seq:each (lambda (build-input)
+                      (incf index)
+                      (let* ((source-path (path:path-from-uri (source-uri build-input)))
+                             (target-path (path:path-from-uri (target-uri build-input)))
+                             (status (build-input-status build-input))
+                             (status-str (case status
+                                           (:target-missing "MISSING TARGET")
+                                           (:source-newer "SOURCE NEWER")
+                                           (:up-to-date "UP-TO-DATE")
+                                           (t (format nil "~A" status))))
+                             ;; Find if this file was actually processed
+                             (processed (find-if (lambda (result)
+                                                   (string= source-path 
+                                                           (path:path-from-uri 
+                                                            (source-uri (build-input result)))))
+                                                 results)))
+                        (format t ";;   [~2D] ~A~%" index status-str)
+                        (format t ";;       Source: ~A~%" source-path)
+                        (format t ";;       Target: ~A~%" target-path)
+                        (when processed
+                          (let ((action (if (compilation-errors processed) "FAILED"
+                                            (if (compilation-warnings processed) "COMPILED" "LOADED"))))
+                            (format t ";;       Action: ~A~%" action)))))
+                    all-build-inputs)))
+      
+      ;; If no files were considered, show why
+      (when (= total-considered 0)
+        (format t "~%No source files found or all loaded from concatenated FASL.~%")))))
 
 (defun report (project-build)
   (with-slots (project results) project-build
@@ -900,36 +940,27 @@
         (or (not platform)
             (string= platform (string-downcase (detect-platform))))))))
 
-(defun register-modules (&key (base-dir (path:make-file-uri 
-                                         #+win32 (sb-ext:native-namestring (truename "."))
-                                         #-win32 (sb-unix:posix-getcwd)))
-                              force)
+(defun register-modules (&key base-dir force)
   "Discover and register all applicable modules found under base-dir/module/"
-  ;; Skip if already discovered unless forced
-  (when (and *modules-discovered-p* (not force))
-    (return-from register-modules (map:size *modules*)))
+  ;; Default base-dir at runtime, not compile time
+  (unless base-dir
+    (setf base-dir (path:make-file-uri 
+                    #+win32 (sb-ext:native-namestring (truename "."))
+                    #-win32 (sb-unix:posix-getcwd))))
   
   (let ((module-paths (find-module-directories base-dir))
         (registered-count 0)
         (skipped-count 0))
     
-    ;; Register each module using register-module
+    ;; Register each module using register-module-unconditional for list-modules functionality
     (dolist (module-path module-paths)
       (handler-case 
           (progn
-            (register-module module-path :silent t)
+            (register-module-unconditional module-path :silent t)
             (incf registered-count))
         (error ()
-          ;; Skip modules that can't be registered (e.g., platform incompatible)
+          ;; Skip modules that can't be registered (e.g., malformed package.edn)
           (incf skipped-count))))
-    
-    ;; Print succinct summary like boot progress
-    (format t ";;; Module discovery complete (~d registered~@[, ~d skipped~])~%" 
-            registered-count 
-            (when (> skipped-count 0) skipped-count))
-    
-    ;; Mark as discovered
-    (setf *modules-discovered-p* t)
     
     ;; Return count of successfully registered modules
     registered-count))
@@ -949,10 +980,9 @@
                                          (char= (char module-spec 1) #\:)
                                          (member (char module-spec 2) '(#\/ #\\))))
                                 (substitute #\/ #\\ module-spec)  ; absolute path - normalize separators
-                                (path:string-path-join 
-                                 #+win32 (substitute #\/ #\\ (sb-ext:native-namestring (truename ".")))
-                                 #-win32 (sb-unix:posix-getcwd)
-                                 (substitute #\/ #\\ module-spec)))) ; relative path - normalize separators
+                                (let ((cwd #+win32 (substitute #\/ #\\ (sb-ext:native-namestring (truename ".")))
+                                           #-win32 (sb-unix:posix-getcwd)))
+                                  (path:string-path-join cwd (substitute #\/ #\\ module-spec))))) ; relative path - normalize separators
                            (t 
                             (error "Unsupported module-spec type: ~A" module-spec))))
          (module-dir (path:make-file-uri module-dir-path))
@@ -984,5 +1014,170 @@
       ;; Return the module name
       module-name)))
 
-;;; Perform initial module discovery when build.lisp is loaded
-(register-modules)
+(defun register-module-unconditional (module-spec &key silent)
+  "Register a single module regardless of platform compatibility.
+   
+   MODULE-SPEC can be:
+   - A string pathname to a directory containing package.edn
+   
+   SILENT suppresses individual registration messages."
+  (let* ((module-dir-path (cond
+                           ((stringp module-spec)
+                            (if (or (char= (char module-spec 0) #\/)
+                                    #+(or windows win32)
+                                    (and (>= (length module-spec) 3)
+                                         (char= (char module-spec 1) #\:)
+                                         (member (char module-spec 2) '(#\/ #\\))))
+                                (substitute #\/ #\\ module-spec)  ; absolute path - normalize separators
+                                (let ((cwd #+win32 (substitute #\/ #\\ (sb-ext:native-namestring (truename ".")))
+                                           #-win32 (sb-unix:posix-getcwd)))
+                                  (path:string-path-join cwd (substitute #\/ #\\ module-spec))))) ; relative path - normalize separators
+                           (t 
+                            (error "Unsupported module-spec type: ~A" module-spec))))
+         (module-dir (path:make-file-uri module-dir-path))
+         (edn-file (path:uri-merge module-dir "package.edn"))
+         (package-file (cond ((fs:exists-p edn-file) edn-file)
+                             (t nil))))
+    
+    ;; Validate package file exists
+    (unless package-file
+      (error "Package file not found: ~A" (path:path-from-uri edn-file)))
+    
+    ;; Parse package file and register module (skip platform check)
+    (let* ((defs (edn:read-edn-from-string (fs:read-file (path:path-from-uri package-file))))
+           (module-name (map:get defs "name")))
+      (unless module-name
+        (error "Module name not found in package file: ~A" (path:path-from-uri package-file)))
+      
+      ;; Register the module regardless of platform compatibility
+      (map:assoc! *modules* module-name module-dir)
+      (unless silent
+        (let ((platform (map:get defs "platform"))
+              (applicable (module-applicable-p module-dir)))
+          (format t ";;   Registered module: ~a -> ~a~@[ (~A~@[, unsupported~])~]~%" 
+                  module-name 
+                  (path:path-from-uri module-dir)
+                  platform
+                  (not applicable))))
+      
+      ;; Return the module name
+      module-name)))
+
+(defun list-modules (&key include-platform)
+  "List all registered modules.
+   
+   INCLUDE-PLATFORM - When T, show platform-specific modules too"
+  (let ((all-modules (seq:seq (map:keys *modules*)))
+        (platform-modules '()))
+    
+    ;; Sort modules alphabetically - convert to list, sort, then back to seq
+    (setf all-modules (seq:from-list (sort (seq:realize all-modules) #'string<)))
+    
+    ;; Filter out platform-specific modules unless requested
+    (unless include-platform
+      (setf all-modules
+            (seq:filter (lambda (module-name)
+                          (let* ((module-dir (map:get *modules* module-name))
+                                 (edn-file (path:uri-merge module-dir "package.edn"))
+                                 (defs (edn:read-edn-from-string 
+                                        (fs:read-file (path:path-from-uri edn-file))))
+                                 (platform (map:get defs "platform")))
+                            (if platform
+                                (progn
+                                  (push (cons module-name platform) platform-modules)
+                                  nil)
+                                t)))
+                        all-modules)))
+    
+    ;; Return the list
+    (values (seq:realize all-modules)
+            platform-modules)))
+
+(defun list-all-modules-with-status ()
+  "List all modules with their platform compatibility status.
+   Returns a list of (name . status) where status is :supported, :unsupported, or :unknown"
+  (let ((all-modules (seq:seq (map:keys *modules*)))
+        (current-platform (detect-platform))
+        (module-status '()))
+    
+    ;; Sort modules alphabetically
+    (setf all-modules (seq:from-list (sort (seq:realize all-modules) #'string<)))
+    
+    ;; Check each module's platform compatibility
+    (dolist (module-name (seq:realize all-modules))
+      (let* ((module-dir (map:get *modules* module-name))
+             (edn-file (path:uri-merge module-dir "package.edn"))
+             (defs (edn:read-edn-from-string 
+                    (fs:read-file (path:path-from-uri edn-file))))
+             (platform (map:get defs "platform"))
+             (status (cond
+                       ((not platform) :supported)  ; platform-agnostic
+                       ((string= platform (string-downcase current-platform)) :supported)
+                       (t :unsupported))))
+        (push (cons module-name status) module-status)))
+    
+    (nreverse module-status)))
+
+(defun build-all (&key 
+                   force 
+                   (error-behavior :halt) 
+                   (warning-behavior :ignore)
+                   (reporter (make-instance 'shell-build-report))
+                   include-tests
+                   include-platform)
+  "Build all registered modules.
+  
+  FORCE - Force compilation of all build steps regardless of timestamps
+  ERROR-BEHAVIOR - How to handle compilation errors: :halt (default), :ignore, :print
+  WARNING-BEHAVIOR - How to handle compilation warnings: :ignore (default), :halt, :print
+  REPORTER - Reporter instance for build progress
+  INCLUDE-TESTS - Also build test files (default NIL)
+  INCLUDE-PLATFORM - Also build platform-specific modules (default NIL)"
+  
+  ;; Ensure modules are discovered
+  (when (zerop (map:size *modules*))
+    (register-modules))
+  
+  (let ((modules-to-build (list-modules :include-platform include-platform))
+        (failed-modules '())
+        (succeeded-modules '()))
+    
+    (format t "~&;;; Building all modules (~D total)~%" (length modules-to-build))
+    
+    (dolist (module modules-to-build)
+      (format t "~&~%;;; ======================================~%")
+      (format t ";;; Building module: ~A~%" module)
+      (format t ";;; ======================================~%")
+      
+      (handler-case
+          (progn
+            (build module 
+                   :force force
+                   :error-behavior error-behavior
+                   :warning-behavior warning-behavior
+                   :reporter reporter
+                   :include-tests include-tests)
+            (push module succeeded-modules))
+        (error (e)
+          (format t "~&;;; ERROR building ~A: ~A~%" module e)
+          (push module failed-modules)
+          ;; If error-behavior is :halt, re-signal the error
+          (when (eq error-behavior :halt)
+            (error e)))))
+    
+    ;; Summary
+    (format t "~&~%;;; ======================================~%")
+    (format t ";;; Build Summary~%")
+    (format t ";;; ======================================~%")
+    (format t ";;; Total modules: ~D~%" (length modules-to-build))
+    (format t ";;; Succeeded: ~D~%" (length succeeded-modules))
+    (when failed-modules
+      (format t ";;; Failed: ~D (~{~A~^, ~})~%" 
+              (length failed-modules) 
+              (nreverse failed-modules)))
+    (format t ";;; ======================================~%")
+    
+    ;; Return success status
+    (zerop (length failed-modules))))
+
+;;; Module discovery is now done on-demand when needed
