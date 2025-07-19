@@ -19,7 +19,7 @@ for package_file in module/*/package.edn; do
         module_name=$(basename "$module_dir")
         
         # Skip if package.edn is malformed
-        if grep -q ":name" "$package_file"; then
+        if grep -q -E '(:name|"name")' "$package_file"; then
             MODULES+=("$module_name")
         fi
     fi

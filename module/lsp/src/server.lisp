@@ -45,7 +45,8 @@
   client-capabilities
   workspace-folders
   workspace                  ; Workspace instance for symbol management
-  open-documents)
+  open-documents
+  evaluation-service)        ; Evaluation service for code execution
 
 (defvar *current-server* nil
   "The currently running LSP server.")

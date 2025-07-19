@@ -72,7 +72,9 @@
       "Bash(git clean:*)",
       "Bash(time:*)",
       "Bash(do mv \"$f\" \"$f/rfc/project\")",
-      "Bash(do [ -f \"$f\" ])"
+      "Bash(do [ -f \"$f\" ])",
+      "Bash(./scripts/ci/discover-modules.sh:*)",
+      "Bash(bash:*)"
     ],
     "deny": []
   }
