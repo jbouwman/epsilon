@@ -24,7 +24,6 @@
     "lib/path"
     "sys/fs"
     "tool/common"
-    "lib/vector"
     "lib/char"
     "lib/function"
     "lib/list"
