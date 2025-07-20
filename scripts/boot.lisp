@@ -34,7 +34,6 @@
     "lib/digest/sha-2"
     "lib/digest/public"
     "lib/hex"
-    "lib/regex"
     "lib/url"
     "lib/uuid"
     "tool/build"

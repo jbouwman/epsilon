@@ -1,20 +1,14 @@
 ;;;; Test Framework and Assertion System
 ;;;;
-;;;; This module provides a comprehensive test framework with hierarchical
-;;;; test organization, metrics collection, and multiple output formats.
+;;;; This module provides a test framework with hierarchical test
+;;;; organization, metrics collection, and multiple output formats.
 ;;;; Supports both individual test execution and batch test running.
 ;;;;
-;;;; Key Features:
 ;;;; - Hierarchical test organization by package and name
-;;;; - Rich assertion macros (is, is-equal, is-thrown, etc.)
+;;;; - Assertion macros (is, is-equal, is-thrown, etc.)
 ;;;; - Test timing and metrics collection
-;;;; - Multiple output formats (detailed, junit, summary)
 ;;;; - Test skipping and conditional execution
-;;;; - Integration with epsilon's build system
 ;;;;
-;;;; Dependencies: epsilon.lib.symbol, epsilon.tool.build, epsilon.lib.map,
-;;;;               epsilon.sys.pkg, epsilon.lib.regex, epsilon.test.report,
-;;;;               epsilon.test.suite, epsilon.lib.path
 ;;;; Usage: Define tests with (deftest name ...) and run with (run)
 
 (defpackage epsilon.test

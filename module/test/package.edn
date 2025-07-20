@@ -2,6 +2,7 @@
  "version" "1.0.0"
  "description" "Test framework for Epsilon"
  "dependencies" ["epsilon.core"
+                 "epsilon.regex"
                  "epsilon.xml"]
  "sources" ("src")
  "tests" ("tests")}
