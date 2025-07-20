@@ -7,7 +7,7 @@
 ;;;;  The lexer struct and parsing predicates (end-of-string-p,
 ;;;;  looking-at-p) could become epsilon.lib.lexer.
 
-(defpackage #:epsilon.lib.regex.impl
+(defpackage #:epsilon.lib.regex
   (:use #:cl
         #:epsilon.lib.syntax
         #:epsilon.lib.symbol
@@ -34,7 +34,7 @@
    #:subn
    #:compile))
 
-(in-package #:epsilon.lib.regex.impl)
+(in-package #:epsilon.lib.regex)
 
 (defvar *extended-mode-p* nil
   "Whether the parser will start in extended mode.")

@@ -940,7 +940,7 @@
         (or (not platform)
             (string= platform (string-downcase (detect-platform))))))))
 
-(defun register-modules (&key base-dir force)
+(defun register-modules (&key base-dir)
   "Discover and register all applicable modules found under base-dir/module/"
   ;; Default base-dir at runtime, not compile time
   (unless base-dir
