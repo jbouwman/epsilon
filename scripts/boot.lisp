@@ -24,7 +24,6 @@
     "lib/path"
     "sys/fs"
     "tool/common"
-    "lib/vector"
     "lib/char"
     "lib/function"
     "lib/list"
@@ -33,19 +32,16 @@
     "lib/digest/reader"
     "lib/digest/generic"
     "lib/digest/sha-2"
-    "lib/digest/public"                 ; rename
+    "lib/digest/public"
     "lib/hex"
-    "lib/regex"
     "lib/url"
-    "tool/build"))
+    "lib/uuid"
+    "tool/build"
+    "tool/dev"))
 
-(defparameter *boot-log* 
-  #+win32 "target\\boot.log"
-  #-win32 "target/boot.log")
-
-(defparameter *stage1-fasl*
-  #+win32 "target\\stage-1.fasl"
-  #-win32 "target/stage-1.fasl")
+(defparameter *boot-fasl*
+  #+win32 "target\\boot.fasl"
+  #-win32 "target/boot.fasl")
 
 (defun ensure-target-dir ()
   (let ((target-dir #+win32 "target\\" #-win32 "target/"))
@@ -58,28 +54,27 @@
       (and (probe-file file1)
            (> (file-write-date file1) (file-write-date file2)))))
 
-(defun stage1-needs-rebuild-p ()
-  "Check if any source files are newer than the stage-1 FASL"
-  (or (not (probe-file *stage1-fasl*))
+(defun bootfile-needs-rebuild-p ()
+  "Check if any source files are newer than the boot FASL"
+  (or (not (probe-file *boot-fasl*))
       (some (lambda (file)
               (let ((source-path (concatenate 'string *module-core* 
                                               #+win32 (substitute #\\ #\/ file)
                                               #-win32 file
                                               ".lisp")))
-                (file-newer-p source-path *stage1-fasl*)))
+                (file-newer-p source-path *boot-fasl*)))
             *files*)))
 
-(defun load-stage1-fasl ()
-  "Load the concatenated stage-1 FASL if it exists and is current"
-  (when (and (probe-file *stage1-fasl*) 
-             (not (stage1-needs-rebuild-p)))
-    (format t "~&;;; Loading stage-1 from concatenated FASL...~%")
-    (load *stage1-fasl*)
+(defun load-boot-fasl ()
+  "Load the concatenated boot FASL if it exists and is current"
+  (when (and (probe-file *boot-fasl*) 
+             (not (bootfile-needs-rebuild-p)))
+    (load *boot-fasl*)
     t))
 
-(defun create-concatenated-fasl (fasl-files output-file)
-  "Create a concatenated FASL file from individual FASL files"
-  (format t "~&;;; Creating concatenated FASL: ~A~%" output-file)
+(defun concat-fasls (fasl-files output-file)
+  "Create a single FASL file from individual FASL files"
+  (format t "~&;;; Creating boot FASL: ~A~%" output-file)
   (with-open-file (output output-file :direction :output
                                       :element-type '(unsigned-byte 8)
                                       :if-exists :supersede
@@ -92,38 +87,25 @@
                 while byte
                 do (write-byte byte output)))))))
 
+(defun generate-boot-fasl ()
+  (let ((fasl-files '()))
+    (dolist (file *files*)
+      (let ((source-path (concatenate 'string *module-core* 
+                                      #+win32 (substitute #\\ #\/ file)
+                                      #-win32 file
+                                      ".lisp")))
+        (force-output)
+        (handler-bind ((sb-kernel:redefinition-warning #'muffle-warning))
+          (let ((fasl-path 
+                 (compile-file source-path :print nil :verbose nil)))
+            (unless fasl-path
+              (error "compile-file returned NIL for ~A" source-path))
+            (push fasl-path fasl-files)
+            (load fasl-path)))))
+    (concat-fasls (reverse fasl-files) *boot-fasl*)))
+
 (defun boot ()
   (ensure-target-dir)
-  
-  ;; Try to load from concatenated FASL first
-  (unless (load-stage1-fasl)
-    ;; Need to rebuild - compile individual files
-    (let ((total (length *files*))
-          (current 0)
-          (fasl-files '()))
-      (with-open-file (log *boot-log* :direction :output 
-                                      :if-exists :supersede
-                                      :if-does-not-exist :create)
-        (format t "~&;;; Bootstrapping epsilon~%;;;~%")
-        (dolist (file *files*)
-          (incf current)
-          (let ((source-path (concatenate 'string *module-core* 
-                                          #+win32 (substitute #\\ #\/ file)
-                                          #-win32 file
-                                          ".lisp")))
-            (format t ";;; [~2D/~2D] ~A~%" current total file)
-            (force-output)
-            (handler-bind ((sb-kernel:redefinition-warning #'muffle-warning))
-              (let ((fasl-path 
-                      (let ((*standard-output* log)
-                            (*error-output* log))
-                        (compile-file source-path :print nil :verbose nil))))
-                (unless fasl-path
-                  (error "compile-file returned NIL for ~A" source-path))
-                (push fasl-path fasl-files)
-                (load fasl-path))))))
-      (format t ";;; Bootstrap complete (~D files compiled)~%" total)
-      
-      ;; Create concatenated FASL for next time
-      (when fasl-files
-        (create-concatenated-fasl (reverse fasl-files) *stage1-fasl*)))))
+  (unless (load-boot-fasl)
+    ;; load is a side-effect
+    (generate-boot-fasl)))

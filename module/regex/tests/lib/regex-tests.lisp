@@ -3,7 +3,7 @@
    :cl
    :epsilon.test)
   (:local-nicknames
-   (:re :epsilon.lib.regex.impl)))
+   (:re :epsilon.lib.regex)))
 
 (in-package :epsilon.lib.regex.tests)
 

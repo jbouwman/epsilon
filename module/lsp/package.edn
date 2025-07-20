@@ -1,9 +1,14 @@
-{"name" "lsp"
- "description" "Language Server Protocol implementation for Epsilon"
- "version" "0.1.0"
+{"name" "epsilon.lsp"
+ "description" "Language Server Protocol implementation with code evaluation support"
+ "version" "0.2.0"
  "author" "Epsilon Project"
  "license" "MIT"
- "sources" ("src")
+ "sources" ("src" "src/evaluation")
  "tests" ("tests")
- "dependencies" ("epsilon.core")
- "provides" ("epsilon.lsp")}
+ "dependencies" ("epsilon.core" "epsilon.parsing")
+ "provides" ("epsilon.lsp"
+            "epsilon.lsp.evaluation.session"
+            "epsilon.lsp.evaluation.protocol"
+            "epsilon.lsp.evaluation.api"
+            "epsilon.lsp.evaluation.runner"
+            "epsilon.lsp.evaluation.integration")}

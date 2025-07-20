@@ -15,10 +15,14 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Build and run tests
+    - name: Build all modules
       run: |
         chmod +x run.sh
-        ./run.sh test --module epsilon.core --format junit
+        ./run.sh build
+    
+    - name: Run all tests
+      run: |
+        ./run.sh test --format junit
 
     - name: Rename test results for platform identification
       if: success() || failure()
@@ -64,9 +68,13 @@ jobs:
       run: |
         brew install sbcl
 
-    - name: Build and run tests
+    - name: Build all modules
       run: |
         chmod +x run.sh
+        ./run.sh build
+    
+    - name: Run all tests
+      run: |
         ./run.sh test --format junit
 
     - name: Rename test results for platform identification
@@ -111,7 +119,12 @@ jobs:
     - name: Install SBCL
       run: choco install sbcl
 
-    - name: Build and run tests
+    - name: Build all modules
+      shell: pwsh
+      run: |
+        .\run.ps1 build
+    
+    - name: Run all tests
       shell: pwsh
       run: |
         .\run.ps1 test --format junit

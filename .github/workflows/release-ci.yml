@@ -30,8 +30,8 @@ jobs:
       - name: Discover modules
         id: modules
         run: |
-          # Generate module matrix from package.edn files
-          MODULES=$(./scripts/ci/discover-modules.sh)
+          # Use Lisp to discover modules and format as JSON array
+          MODULES=$(./run.sh --eval "(progn (require 'epsilon.tool.build) (let ((modules (epsilon.tool.build:list-modules))) (format t \"[~{\\\"~A\\\"~^,~}]\" modules)))" --eval "(sb-ext:quit)")
           echo "modules=$MODULES" >> $GITHUB_OUTPUT
           
       - name: Extract versions
@@ -94,16 +94,16 @@ jobs:
             
       - name: Build module dependencies
         run: |
-          # Build dependency chain for module
-          ./scripts/ci/build-dependencies.sh ${{ matrix.module }}
+          # Dependencies are handled automatically by build system
+          echo "Module ${{ matrix.module }} dependencies will be built automatically"
           
       - name: Build module
         run: |
-          ./run.sh build --module ${{ matrix.module }} --force
+          ./run.sh build ${{ matrix.module }} --force
           
       - name: Run module tests
         run: |
-          ./run.sh test --module ${{ matrix.module }} --format junit --file test-results-${{ matrix.module }}.xml
+          ./run.sh test ${{ matrix.module }} --format junit --file test-results-${{ matrix.module }}.xml
           
       - name: Upload test results
         uses: actions/upload-artifact@v3

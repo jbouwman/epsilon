@@ -1,10 +1,10 @@
 # LSP Server Implementation Roadmap
 
-## Current Status: Phase 1 Complete ✅
+## Current Status: Phase 1 Complete
 
 The Language Server Protocol implementation for Epsilon has successfully completed its foundational phase and is ready for advanced feature development.
 
-### ✅ Phase 1 Completed: Foundation & Core Protocol (2-3 weeks)
+### Phase 1 Completed: Foundation & Core Protocol (2-3 weeks)
 
 **Implemented Components:**
 
