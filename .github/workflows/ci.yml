@@ -71,11 +71,11 @@ jobs:
     - name: Build all modules
       run: |
         chmod +x run.sh
-        ./run.sh build all
+        ./run.sh build
     
     - name: Run all tests
       run: |
-        ./run.sh test all --format junit
+        ./run.sh test --format junit
 
     - name: Rename test results for platform identification
       if: success() || failure()
@@ -122,12 +122,12 @@ jobs:
     - name: Build all modules
       shell: pwsh
       run: |
-        .\run.ps1 build all
+        .\run.ps1 build
     
     - name: Run all tests
       shell: pwsh
       run: |
-        .\run.ps1 test all --format junit
+        .\run.ps1 test --format junit
 
     - name: Rename test results for platform identification
       if: success() || failure()
