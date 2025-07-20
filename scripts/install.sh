@@ -2,7 +2,7 @@
 #
 # Epsilon Installation Script
 #
-# This script installs Epsilon (a value-added SBCL runtime) from GitHub releases
+# This script installs Epsilon (a Common Lisp programming environment) from GitHub releases
 # Usage: curl -sSL https://raw.githubusercontent.com/USER/REPO/main/scripts/install.sh | bash
 #
 
@@ -179,7 +179,7 @@ show_usage() {
 
 # Main installation flow
 main() {
-    echo -e "${GREEN}Installing Epsilon - A Value-Added SBCL Runtime${NC}"
+    echo -e "${GREEN}Installing Epsilon - A Common Lisp Programming Environment${NC}"
     echo
     
     # Detect platform

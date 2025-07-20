@@ -134,9 +134,9 @@ All API packages use local nicknames for clean integration:
 (defpackage #:my-application
   (:use #:common-lisp)
   (:local-nicknames
-    (#:map #:epsilon.lib.map)
-    (#:seq #:epsilon.lib.sequence)
-    (#:json #:epsilon.lib.json)
+    (#:map #:epsilon.map)
+    (#:seq #:epsilon.sequence)
+    (#:json #:epsilon.json)
     (#:http #:epsilon.net.http)))
 
 (in-package #:my-application)
@@ -172,10 +172,10 @@ This API reference is partially generated from source code using:
 
 ```bash
 # Generate documentation for a specific package
-./scripts/generate-api-docs.sh epsilon.lib.map
+./scripts/generate-api-docs.sh epsilon.map
 
 # Generate docs with output file
-./scripts/generate-api-docs.sh epsilon.lib.sequence docs/docs/reference/api/sequence.md
+./scripts/generate-api-docs.sh epsilon.sequence docs/docs/reference/api/sequence.md
 ```
 
 The generator extracts:

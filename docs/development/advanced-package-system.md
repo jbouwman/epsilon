@@ -1,12 +1,13 @@
 # Advanced Package System Specification
 
-Epsilon's advanced package system provides modern dependency management with semantic versioning, git hash pinning, and reproducible builds. Inspired by Go modules and Cargo, it offers precise control over dependencies while maintaining simplicity.
+Epsilon's package system provides dependency management with
+versioning, hash pinning, and reproducible builds.
 
 ## Core Features
 
-### 1. Semantic Versioning
+### 1. Versioning
 
-Epsilon supports full semantic versioning (SemVer) with flexible version constraints:
+Epsilon supports versioning with flexible version constraints:
 
 ```edn
 "dependencies" {
@@ -176,7 +177,7 @@ Different configurations for development, testing, and production:
  }}
 ```
 
-## Version Constraint Semantics
+## Version Constraints
 
 ### Caret Requirements (^)
 

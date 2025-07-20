@@ -1,8 +1,0 @@
-{"name" "epsilon.foreign"
- "description" "Foreign Function Interface and C language integration"
- "version" "0.1.0"
- "dependencies" ("epsilon.core" "epsilon.parsing")
- "provides" ("epsilon.sys.lib"
-            "epsilon.lib.clang")
- "sources" ("src")
- "tests" ("tests")}

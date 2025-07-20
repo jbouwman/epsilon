@@ -1,8 +1,8 @@
-# epsilon.lib.parser - Parser Combinator Library
+# epsilon.parser - Parser Combinator Library
 
 ## Overview
 
-The `epsilon.lib.parser` module implements monadic parser combinators based on Haskell's Parsec library. Parser combinators provide a compositional approach to building parsers from primitive functions.
+The `epsilon.parser` module implements monadic parser combinators based on Haskell's Parsec library. Parser combinators provide a compositional approach to building parsers from primitive functions.
 
 ## Core Architecture
 
@@ -334,7 +334,7 @@ Transform left-recursive grammars to right-recursive:
 
 ## Integration with Other Epsilon Modules
 
-### With epsilon.lib.sequence
+### With epsilon.sequence
 
 Parser combinators integrate with lazy sequences:
 
@@ -344,7 +344,7 @@ Parser combinators integrate with lazy sequences:
   (parse (translation-unit) tokens))
 ```
 
-### With epsilon.lib.lexer
+### With epsilon.lexer
 
 Build token-based parsers on character-based lexers:
 

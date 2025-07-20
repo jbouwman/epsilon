@@ -1,8 +1,8 @@
 FROM ubuntu:22.04
 
-# Install SBCL
+# Install SBCL and required tools
 RUN apt-get update && \
-    apt-get install -y sbcl wget && \
+    apt-get install -y sbcl wget git tar gzip && \
     rm -rf /var/lib/apt/lists/*
 
 # Set working directory

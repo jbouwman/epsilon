@@ -117,10 +117,10 @@ task-manager/
 (defpackage task-manager.config
   (:use cl)
   (:local-nicknames
-   (map epsilon.lib.map)
-   (json epsilon.lib.json)
+   (map epsilon.map)
+   (json epsilon.json)
    (env epsilon.sys.env)
-   (log epsilon.lib.log))
+   (log epsilon.log))
   (:export
    #:load-config
    #:get-setting
@@ -192,9 +192,9 @@ task-manager/
 (defpackage task-manager.models
   (:use cl)
   (:local-nicknames
-   (map epsilon.lib.map)
-   (uuid epsilon.lib.uuid)
-   (time epsilon.lib.time))
+   (map epsilon.map)
+   (uuid epsilon.uuid)
+   (time epsilon.time))
   (:export
    #:make-task
    #:task-id
@@ -257,7 +257,7 @@ task-manager/
   (:local-nicknames
    (models task-manager.models)
    (storage task-manager.storage)
-   (log epsilon.lib.log))
+   (log epsilon.log))
   (:export
    #:create-task
    #:get-task
@@ -324,11 +324,11 @@ task-manager/
   (:use cl)
   (:local-nicknames
    (http epsilon.http.server)
-   (json epsilon.lib.json)
-   (map epsilon.lib.map)
+   (json epsilon.json)
+   (map epsilon.map)
    (services task-manager.services)
    (validation task-manager.api.validation)
-   (log epsilon.lib.log))
+   (log epsilon.log))
   (:export
    #:setup-routes
    #:health-check
@@ -448,10 +448,10 @@ task-manager/
 (defpackage task-manager.storage
   (:use cl)
   (:local-nicknames
-   (map epsilon.lib.map)
-   (json epsilon.lib.json)
+   (map epsilon.map)
+   (json epsilon.json)
    (config task-manager.config)
-   (log epsilon.lib.log))
+   (log epsilon.log))
   (:export
    #:initialize-storage
    #:save-task
@@ -547,7 +547,7 @@ task-manager/
    (storage task-manager.storage)
    (api task-manager.api.handlers)
    (http epsilon.http.server)
-   (log epsilon.lib.log))
+   (log epsilon.log))
   (:export
    #:start-app
    #:stop-app

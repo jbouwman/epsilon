@@ -2,7 +2,7 @@
 
 ## Current State
 
-The `epsilon.lib.codec` file is **3,335 lines** and contains several distinct compression/decompression formats that could be separated into independent modules.
+The `epsilon.codec` file is **3,335 lines** and contains several distinct compression/decompression formats that could be separated into independent modules.
 
 ## Identified Module Candidates
 

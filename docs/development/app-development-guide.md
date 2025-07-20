@@ -8,7 +8,7 @@ This guide addresses real-world application development with Epsilon, covering m
 
 ```
 my-application/
-├── run.sh                 # Development command interface
+├── epsilon                # Self-contained epsilon binary
 ├── scripts/
 │   └── epsilon.lisp       # Bootstrap loader
 ├── module/
@@ -79,14 +79,14 @@ Epsilon handles dependency resolution automatically:
 3. **Content-based Rebuilds**: Only recompiles changed modules and dependents
 
 ```bash
-# Build all modules in dependency order
-./run.sh build
+# Run your application
+./epsilon main.lisp
 
-# Build specific modules
-./run.sh build --module my-app.core,my-app.api
+# Run specific scripts
+./epsilon setup.lisp
 
-# Force rebuild (ignore timestamps)
-./run.sh build --module my-app.core --force
+# For interactive development, start the REPL
+./epsilon
 ```
 
 ### Module Communication Patterns
@@ -97,8 +97,8 @@ Epsilon handles dependency resolution automatically:
 (defpackage my-app.config
   (:use cl)
   (:local-nicknames
-   (map epsilon.lib.map)
-   (json epsilon.lib.json))
+   (map epsilon.map)
+   (json epsilon.json))
   (:export
    #:load-config
    #:get-setting))
@@ -109,7 +109,7 @@ Epsilon handles dependency resolution automatically:
   (:local-nicknames
    (config my-app.config)
    (http epsilon.http.server)
-   (json epsilon.lib.json))
+   (json epsilon.json))
   (:export
    #:setup-routes
    #:health-check-handler))
@@ -124,7 +124,7 @@ Epsilon includes complete JSON support:
 ```lisp
 (defpackage my-app.api.handlers
   (:use cl)
-  (:local-nicknames (json epsilon.lib.json)))
+  (:local-nicknames (json epsilon.json)))
 
 ;; Parse JSON request body
 (defun parse-request-body (request)
@@ -155,7 +155,7 @@ Epsilon includes complete JSON support:
 ```lisp
 (defpackage my-app.lib.serialization
   (:use cl)
-  (:local-nicknames (msgpack epsilon.lib.msgpack)))
+  (:local-nicknames (msgpack epsilon.msgpack)))
 
 ;; Serialize data for caching or message queues
 (defun serialize-job-data (job)
@@ -176,7 +176,7 @@ Epsilon includes complete JSON support:
   (:use cl)
   (:local-nicknames 
    (http epsilon.http.client)
-   (json epsilon.lib.json)))
+   (json epsilon.json)))
 
 ;; Call external REST API
 (defun fetch-user-profile (user-id api-key)
@@ -224,8 +224,8 @@ Epsilon includes complete JSON support:
 (defpackage my-app.config
   (:use cl)
   (:local-nicknames 
-   (map epsilon.lib.map)
-   (json epsilon.lib.json)
+   (map epsilon.map)
+   (json epsilon.json)
    (env epsilon.sys.env)))
 
 (defvar *config* nil "Application configuration")
@@ -279,7 +279,7 @@ Epsilon includes complete JSON support:
    (api my-app.api.handlers)
    (workers my-app.workers.job-queue)
    (http epsilon.http.server)
-   (log epsilon.lib.log)))
+   (log epsilon.log)))
 
 (defun start-application (&key (env "development") (port 8080))
   "Start the complete application stack"
@@ -318,8 +318,8 @@ Epsilon includes complete JSON support:
   (:use cl)
   (:local-nicknames
    (http epsilon.http.server)
-   (json epsilon.lib.json)
-   (log epsilon.lib.log)))
+   (json epsilon.json)
+   (log epsilon.log)))
 
 (defun json-middleware (handler)
   "Wrap handler with JSON request/response processing"
@@ -362,7 +362,7 @@ Epsilon includes complete JSON support:
   (:use cl epsilon.tool.test)
   (:local-nicknames
    (http epsilon.http.client)
-   (json epsilon.lib.json)
+   (json epsilon.json)
    (main my-app.main)))
 
 (deftest full-application-test

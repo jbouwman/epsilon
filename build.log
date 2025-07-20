@@ -1,0 +1,48 @@
+Building Epsilon runtime for linux-x86_64...
+Platform detected: linux
+Working directory: /home/jbouwman/git/epsilon
+Building SBCL core image with Epsilon...
+Building SBCL core image...
+Current directory: /home/jbouwman/git/epsilon
+Target directory: /home/jbouwman/git/epsilon/target
+Generating version information...
+Generated version info: v0.9.20-1-ge4bc1c6-dirty
+
+; file: /home/jbouwman/git/epsilon/scripts/epsilon-init.lisp
+; in: DEFUN LOAD-VERSION-INFO
+;     (EPSILON.INIT::MAP-PKG (FIND-PACKAGE "EPSILON.LIB.MAP"))
+; 
+; caught STYLE-WARNING:
+;   The variable MAP-PKG is defined but never used.
+; 
+; compilation unit finished
+;   caught 1 STYLE-WARNING condition
+Unhandled SB-C::INPUT-ERROR-IN-LOAD in thread #<SB-THREAD:THREAD tid=463139 "main thread" RUNNING
+                                                 {10010A8003}>:
+  READ error during LOAD:
+
+    Lock on package SB-IMPL violated when interning *BANNER-PRINTED* while in
+    package EPSILON.INIT.
+See also:
+  The SBCL Manual, Node "Package Locks"
+
+    (in form starting at line: 93, column: 0, position: 3662)
+
+Backtrace for: #<SB-THREAD:THREAD tid=463139 "main thread" RUNNING {10010A8003}>
+0: (SB-DEBUG::DEBUGGER-DISABLED-HOOK #<SB-C::INPUT-ERROR-IN-LOAD {1001F66AD3}> #<unused argument> :QUIT T)
+1: (SB-DEBUG::RUN-HOOK SB-EXT:*INVOKE-DEBUGGER-HOOK* #<SB-C::INPUT-ERROR-IN-LOAD {1001F66AD3}>)
+2: (INVOKE-DEBUGGER #<SB-C::INPUT-ERROR-IN-LOAD {1001F66AD3}>)
+3: (ERROR #<SB-C::INPUT-ERROR-IN-LOAD {1001F66AD3}>)
+4: (SB-C:COMPILER-ERROR SB-C::INPUT-ERROR-IN-LOAD :CONDITION #<SB-EXT:PACKAGE-LOCKED-ERROR "interning ~A" {1001F66A83}> :POSITION 3662 :LINE/COL (93 . 0) :STREAM #<SB-INT:FORM-TRACKING-STREAM for "file /home/jbouwman/git/epsilon/scripts/epsilon-init.lisp" {1001CB3063}>)
+5: (SB-C::%DO-FORMS-FROM-INFO #<FUNCTION (LAMBDA (SB-KERNEL:FORM &KEY :CURRENT-INDEX &ALLOW-OTHER-KEYS) :IN SB-INT:LOAD-AS-SOURCE) {1001CB43FB}> #<SB-C::SOURCE-INFO {1001CB8603}> SB-C::INPUT-ERROR-IN-LOAD)
+6: (SB-INT:LOAD-AS-SOURCE #<SB-INT:FORM-TRACKING-STREAM for "file /home/jbouwman/git/epsilon/scripts/epsilon-init.lisp" {1001CB3063}> :VERBOSE NIL :PRINT NIL :CONTEXT "loading")
+7: ((LABELS SB-FASL::LOAD-STREAM-1 :IN LOAD) #<SB-INT:FORM-TRACKING-STREAM for "file /home/jbouwman/git/epsilon/scripts/epsilon-init.lisp" {1001CB3063}> NIL)
+8: (SB-FASL::CALL-WITH-LOAD-BINDINGS #<FUNCTION (LABELS SB-FASL::LOAD-STREAM-1 :IN LOAD) {7FA73C2CF88B}> #<SB-INT:FORM-TRACKING-STREAM for "file /home/jbouwman/git/epsilon/scripts/epsilon-init.lisp" {1001CB3063}> NIL #<SB-INT:FORM-TRACKING-STREAM for "file /home/jbouwman/git/epsilon/scripts/epsilon-init.lisp" {1001CB3063}>)
+9: (LOAD #P"scripts/epsilon-init.lisp" :VERBOSE NIL :PRINT NIL :IF-DOES-NOT-EXIST :ERROR :EXTERNAL-FORMAT :DEFAULT)
+10: (SB-IMPL::PROCESS-EVAL/LOAD-OPTIONS ((:LOAD . "scripts/boot.lisp") (:EVAL . "(epsilon.tool.boot:boot)") (:LOAD . "scripts/epsilon-init.lisp") (:EVAL . "(sb-ext:save-lisp-and-die \"target/epsilon-core\" :executable nil :save-runtime-options t :compression t :toplevel #'epsilon.init:epsilon-toplevel)") (:QUIT)))
+11: (SB-IMPL::TOPLEVEL-INIT)
+12: ((FLET SB-UNIX::BODY :IN SB-IMPL::START-LISP))
+13: ((FLET "WITHOUT-INTERRUPTS-BODY-3" :IN SB-IMPL::START-LISP))
+14: (SB-IMPL::%START-LISP)
+
+unhandled condition in --disable-debugger mode, quitting

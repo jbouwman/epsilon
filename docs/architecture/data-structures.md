@@ -16,7 +16,7 @@ Epsilon's collections are built on functional principles:
 
 ## Core Collection Types
 
-### Maps (`epsilon.lib.map`)
+### Maps (`epsilon.map`)
 
 Immutable key-value associations implemented as Hash Array Mapped Tries.
 
@@ -34,13 +34,12 @@ Immutable key-value associations implemented as Hash Array Mapped Tries.
 (map:merge map1 map2)
 ```
 
-**Key Features:**
 - O(log n) lookup, insert, and delete
 - Collision-resistant hashing
 - Nested access with `get-in`, `assoc-in`, `update-in`
 - Functional transformations: `map`, `filter`, `reduce`
 
-### Sets (`epsilon.lib.set`)
+### Sets (`epsilon.set`)
 
 Immutable collections of unique values, also HAMT-based.
 
@@ -58,12 +57,11 @@ Immutable collections of unique values, also HAMT-based.
 (set:contains-p my-set value)
 ```
 
-**Key Features:**
 - O(log n) add, remove, and membership testing
 - Mathematical set operations (union, intersection, difference)
 - Functional transformations over set elements
 
-### Sequences (`epsilon.lib.sequence`)
+### Sequences (`epsilon.sequence`)
 
 Lazy, infinite sequences with functional operations.
 
@@ -81,13 +79,12 @@ Lazy, infinite sequences with functional operations.
 ;=> (0 1 2 3 4)
 ```
 
-**Key Features:**
 - Lazy evaluation with memoization
 - Support for infinite sequences
 - Memory-efficient processing of large datasets
 - Rich functional operation library
 
-### Lists (`epsilon.lib.list`)
+### Lists (`epsilon.list`)
 
 Enhanced operations on standard Common Lisp lists.
 
@@ -104,7 +101,6 @@ Enhanced operations on standard Common Lisp lists.
 (list:circular-list-p my-list)
 ```
 
-**Key Features:**
 - Alist/plist conversion utilities
 - Circular list detection and handling
 - Property list manipulations
@@ -153,9 +149,9 @@ All packages use local nicknames for clean integration:
 (defpackage #:my-package
   (:use #:common-lisp)
   (:local-nicknames 
-    (#:map #:epsilon.lib.map)
-    (#:seq #:epsilon.lib.sequence)
-    (#:set #:epsilon.lib.set)))
+    (#:map #:epsilon.map)
+    (#:seq #:epsilon.sequence)
+    (#:set #:epsilon.set)))
 
 (in-package #:my-package)
 

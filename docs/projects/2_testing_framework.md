@@ -58,15 +58,15 @@ Epsilon has a functional testing framework with test definition, execution, and 
 ### Integration Points
 - **epsilon.tool.build**: Automatic test discovery and dependency tracking
 - **epsilon.lsp**: IDE integration for test running and results
-- **epsilon.lib.map**: Efficient test metadata and result storage
+- **epsilon.map**: Efficient test metadata and result storage
 - **epsilon.sys.thread**: Parallel test execution
-- **epsilon.lib.json**: JUnit XML and JSON result export
+- **epsilon.json**: JUnit XML and JSON result export
 
 ## Success Metrics
 
 ### Phase 1 Success Criteria
 - All tests run without framework errors
-- Consistent API with proper exports
+- Consistent API with exports
 - TAP and JUnit output compatibility
 
 ### Phase 2 Success Criteria

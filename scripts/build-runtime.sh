@@ -51,6 +51,10 @@ echo "Building SBCL core image..."
 echo "Current directory: $(pwd)"
 echo "Target directory: $TARGET_DIR"
 
+# Generate version information
+echo "Generating version information..."
+bash scripts/generate-version.sh
+
 # Build the core image
 sbcl --noinform \
      --non-interactive \
@@ -58,7 +62,8 @@ sbcl --noinform \
      --no-userinit \
      --load "scripts/boot.lisp" \
      --eval "(epsilon.tool.boot:boot)" \
-     --eval "(sb-ext:save-lisp-and-die \"target/epsilon-core\" :executable nil :save-runtime-options t :compression t)"
+     --load "scripts/epsilon-init-real.lisp" \
+     --eval "(sb-ext:save-lisp-and-die \"target/epsilon-core\" :executable nil :save-runtime-options t :compression t :toplevel #'epsilon.init:epsilon-toplevel)"
 
 # Create standalone SBCL runtime
 echo "Creating standalone SBCL runtime..."
@@ -103,6 +108,11 @@ if [ -f "$SBCL_ROOT/lib/sbcl/sbcl.core" ]; then
     # Also copy any contrib modules
     if [ -d "$SBCL_ROOT/lib/sbcl/contrib" ]; then
         cp -r "$SBCL_ROOT/lib/sbcl/contrib" "$DIST_DIR/lib/sbcl/"
+    fi
+    
+    # Copy version information
+    if [ -f "target/epsilon-version.edn" ]; then
+        cp "target/epsilon-version.edn" "$DIST_DIR/lib/sbcl/"
     fi
 fi
 
@@ -159,6 +169,25 @@ fi
 # Include source code for navigation
 echo "Including source code for navigation..."
 cp -r "$EPSILON_DIR/module/" "$DIST_DIR/module/"
+
+# Build bundled repository
+echo "Building bundled module repository..."
+cd "$EPSILON_DIR"
+
+# Check if zip is available for EPK creation
+if command -v zip >/dev/null 2>&1; then
+    echo "  ZIP available - will create EPK packages"
+    CREATE_EPK="t"
+else
+    echo "  ZIP not found - will create FASLs only"
+    CREATE_EPK="nil"
+fi
+
+"$DIST_DIR/epsilon" --non-interactive \
+    --eval "(load \"$EPSILON_DIR/scripts/build-repository-simple.lisp\")" \
+    --eval "(epsilon.build-simple:build-simple-repository :output-dir #p\"$DIST_DIR/repository/\")" \
+    --eval "(sb-ext:quit :unix-status 0)" \
+    || echo "Warning: Repository build failed, continuing without bundled modules"
 
 # Copy essential project files
 if [ -f "$EPSILON_DIR/CLAUDE.md" ]; then

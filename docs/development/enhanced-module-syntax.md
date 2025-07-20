@@ -8,10 +8,10 @@ The Epsilon Module System 2.0 provides a cleaner, more modern syntax for definin
 
 ```lisp
 (defpackage :my-app.core
-  (:use :cl :epsilon.lib.syntax)
+  (:use :cl :epsilon.syntax)
   (:local-nicknames
-   (:map :epsilon.lib.map)
-   (:str :epsilon.lib.string)
+   (:map :epsilon.map)
+   (:str :epsilon.string)
    (:http :epsilon.http.server))
   (:export
    #:main
@@ -25,9 +25,9 @@ The Epsilon Module System 2.0 provides a cleaner, more modern syntax for definin
 
 ```lisp
 (module my-app.core
-  :use (cl epsilon.lib.syntax)
-  :import ((map epsilon.lib.map)
-           (str epsilon.lib.string)
+  :use (cl epsilon.syntax)
+  :import ((map epsilon.map)
+           (str epsilon.string)
            (http epsilon.http.server))
   :export (main config start-server))
 ```
@@ -47,9 +47,9 @@ The enhanced syntax provides:
 ```lisp
 (module my-app.data
   :use (cl)
-  :import ((map epsilon.lib.map)        ; Creates (map epsilon.lib.map) nickname
-           (seq epsilon.lib.sequence)   ; Creates (seq epsilon.lib.sequence) nickname
-           (json epsilon.lib.json))     ; Creates (json epsilon.lib.json) nickname
+  :import ((map epsilon.map)        ; Creates (map epsilon.map) nickname
+           (seq epsilon.sequence)   ; Creates (seq epsilon.sequence) nickname
+           (json epsilon.json))     ; Creates (json epsilon.json) nickname
   :export (process-data))
 ```
 
@@ -60,8 +60,8 @@ This creates local nicknames, allowing you to use `map:get`, `seq:filter`, `json
 ```lisp
 (module my-app.utilities
   :use (cl)
-  :import (((make-map get assoc dissoc) from epsilon.lib.map)
-           ((split join trim uppercase) from epsilon.lib.string))
+  :import (((make-map get assoc dissoc) from epsilon.map)
+           ((split join trim uppercase) from epsilon.string))
   :export (text-processor data-builder))
 ```
 
@@ -71,10 +71,10 @@ This imports specific symbols directly into the package namespace, allowing you 
 
 ```lisp
 (module my-app.service
-  :use (cl epsilon.lib.syntax)
+  :use (cl epsilon.syntax)
   :import ((http epsilon.http.server)           ; Aliased import
-           (log epsilon.lib.log)                ; Aliased import  
-           ((encode decode) from epsilon.lib.json))  ; Selective import
+           (log epsilon.log)                ; Aliased import  
+           ((encode decode) from epsilon.json))  ; Selective import
   :export (start-service handle-request))
 ```
 
@@ -86,7 +86,7 @@ This imports specific symbols directly into the package namespace, allowing you 
 (module my-app.collections
   :use (cl)
   :shadow (map reduce filter count)  ; Shadow CL symbols
-  :import ((map epsilon.lib.map))
+  :import ((map epsilon.map))
   :export (process-collection))
 ```
 
@@ -119,8 +119,8 @@ This imports specific symbols directly into the package namespace, allowing you 
 ;; Configuration module
 (module my-web-app.config
   :use (cl)
-  :import ((map epsilon.lib.map)
-           (json epsilon.lib.json)
+  :import ((map epsilon.map)
+           (json epsilon.json)
            (env epsilon.sys.env))
   :export (load-config get-setting))
 
@@ -128,14 +128,14 @@ This imports specific symbols directly into the package namespace, allowing you 
 (module my-web-app.database
   :use (cl)
   :import ((config my-web-app.config)
-           (log epsilon.lib.log))
+           (log epsilon.log))
   :export (connect query insert update))
 
 ;; API handlers module
 (module my-web-app.handlers
   :use (cl)
   :import ((http epsilon.http.server)
-           (json epsilon.lib.json)
+           (json epsilon.json)
            (db my-web-app.database)
            ((validate sanitize) from my-web-app.validation))
   :export (setup-routes user-handler post-handler))
@@ -146,7 +146,7 @@ This imports specific symbols directly into the package namespace, allowing you 
   :import ((config my-web-app.config)
            (db my-web-app.database)
            (api my-web-app.handlers)
-           (log epsilon.lib.log))
+           (log epsilon.log))
   :export (start-application stop-application))
 ```
 
@@ -154,20 +154,20 @@ This imports specific symbols directly into the package namespace, allowing you 
 
 ```lisp
 (module my-library.core
-  :use (cl epsilon.lib.syntax)
+  :use (cl epsilon.syntax)
   :import (
     ;; Full module aliases
-    (map epsilon.lib.map)
-    (seq epsilon.lib.sequence)
+    (map epsilon.map)
+    (seq epsilon.sequence)
     
     ;; Selective symbol imports
-    ((encode decode) from epsilon.lib.json)
-    ((format-time parse-time) from epsilon.lib.time)
-    ((uuid-generate uuid-parse) from epsilon.lib.uuid)
+    ((encode decode) from epsilon.json)
+    ((format-time parse-time) from epsilon.time)
+    ((uuid-generate uuid-parse) from epsilon.uuid)
     
     ;; Standard aliases
-    (log epsilon.lib.log)
-    (str epsilon.lib.string))
+    (log epsilon.log)
+    (str epsilon.string))
   :shadow (time)  ; Shadow CL:TIME
   :export (
     ;; Main API functions
@@ -188,7 +188,7 @@ This imports specific symbols directly into the package namespace, allowing you 
 **Before:**
 ```lisp
 (defpackage :my-package
-  (:use :cl :epsilon.lib.syntax)
+  (:use :cl :epsilon.syntax)
   (:export #:function-1 #:function-2))
 (in-package :my-package)
 ```
@@ -196,7 +196,7 @@ This imports specific symbols directly into the package namespace, allowing you 
 **After:**
 ```lisp
 (module my-package
-  :use (cl epsilon.lib.syntax)
+  :use (cl epsilon.syntax)
   :export (function-1 function-2))
 ```
 
@@ -206,15 +206,15 @@ This imports specific symbols directly into the package namespace, allowing you 
 ```lisp
 (defpackage :my-package
   (:local-nicknames
-   (:map :epsilon.lib.map)
-   (:str :epsilon.lib.string)))
+   (:map :epsilon.map)
+   (:str :epsilon.string)))
 ```
 
 **After:**
 ```lisp
 (module my-package
-  :import ((map epsilon.lib.map)
-           (str epsilon.lib.string)))
+  :import ((map epsilon.map)
+           (str epsilon.string)))
 ```
 
 ### Step 3: Use Selective Imports Where Appropriate
@@ -222,15 +222,15 @@ This imports specific symbols directly into the package namespace, allowing you 
 **Before:**
 ```lisp
 (defpackage :my-package
-  (:import-from :epsilon.lib.map #:make-map #:get #:assoc)
-  (:import-from :epsilon.lib.string #:split #:join))
+  (:import-from :epsilon.map #:make-map #:get #:assoc)
+  (:import-from :epsilon.string #:split #:join))
 ```
 
 **After:**
 ```lisp
 (module my-package
-  :import (((make-map get assoc) from epsilon.lib.map)
-           ((split join) from epsilon.lib.string)))
+  :import (((make-map get assoc) from epsilon.map)
+           ((split join) from epsilon.string)))
 ```
 
 ## Best Practices
@@ -262,31 +262,3 @@ This imports specific symbols directly into the package namespace, allowing you 
 - **Be consistent** with naming patterns across modules
 - **Use descriptive names** that indicate purpose
 - **Follow Common Lisp conventions** for symbol names
-
-## Integration with Build System
-
-The enhanced module syntax works seamlessly with Epsilon's build system:
-
-```bash
-# Build modules using enhanced syntax
-./run.sh build --module my-app.core
-
-# Test modules
-./run.sh test --module my-app.core --package my-app.*
-
-# Run specific module
-./run.sh run --module my-app.main
-```
-
-The build system automatically handles dependency resolution and compilation order based on your import declarations.
-
-## Backward Compatibility
-
-The enhanced module system is fully backward compatible:
-
-- **Existing `defpackage` forms** continue to work unchanged
-- **`defmodule` alias** provided for gradual migration
-- **All Common Lisp package features** remain available
-- **Mix and match** old and new syntax as needed
-
-You can migrate gradually by converting one module at a time to the new syntax.

@@ -22,7 +22,7 @@ This section contains technical specifications, design documents, and architectu
 - **[Module Management](module-management.md)** - Module system architecture
 - **[Package Format](package-format.md)** - Package structure and format specification
 - **[Packages](packages.md)** - Package management system
-- **[Parser](epsilon_lib_parser.md)** - Language parser implementation
+- **[Parser](epsilon_parser.md)** - Language parser implementation
 
 ## Technical Proposals
 

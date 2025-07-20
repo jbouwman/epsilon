@@ -138,15 +138,15 @@
     ;; Handle epsilon.lib.* packages
     (when lib-pos
       (let ((module-name (subseq package-string (+ lib-pos 4))))
-        (push (format nil "module/core/src/lib/~A.lisp" module-name) possible-paths)))
+        (push (format nil "src/core/src/lib/~A.lisp" module-name) possible-paths)))
     
     ;; Handle other epsilon packages
     (let ((dot-pos (position #\. package-string)))
       (when dot-pos
         (let* ((prefix (subseq package-string 0 dot-pos))
                (suffix (subseq package-string (1+ dot-pos))))
-          (push (format nil "module/~A/src/~A.lisp" suffix prefix) possible-paths)
-          (push (format nil "module/~A/src/~A.lisp" prefix suffix) possible-paths))))
+          (push (format nil "src/~A/src/~A.lisp" suffix prefix) possible-paths)
+          (push (format nil "src/~A/src/~A.lisp" prefix suffix) possible-paths))))
     
     ;; Fallback paths
     (push (format nil "src/~A.lisp" (substitute #\/ #\. package-string)) possible-paths)
@@ -156,6 +156,6 @@
 ;;; Simple test function
 (defun test-map-docs ()
   "Generate documentation for epsilon.lib.map as a test."
-  (let ((source-file "module/core/src/lib/map.lisp"))
+  (let ((source-file "src/core/src/lib/map.lisp"))
     (generate-package-docs 'epsilon.lib.map 
                           :source-file source-file)))

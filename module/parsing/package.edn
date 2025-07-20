@@ -1,9 +1,0 @@
-{"name" "epsilon.parsing"
- "description" "Parsing and lexing utilities with JSON support"
- "version" "0.1.0"
- "dependencies" ("epsilon.core")
- "provides" ("epsilon.lib.parser"
-            "epsilon.lib.lexer"
-            "epsilon.lib.json")
- "sources" ("src")
- "tests" ("tests")}

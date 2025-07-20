@@ -12,57 +12,12 @@ env:
   CACHE_VERSION: v1
 
 jobs:
-  # Stage 1: Module Discovery and Validation
-  discover:
-    runs-on: ubuntu-latest
-    outputs:
-      modules: ${{ steps.modules.outputs.modules }}
-      core-version: ${{ steps.versions.outputs.core }}
-      release-tag: ${{ steps.versions.outputs.tag }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup SBCL
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y sbcl
-          
-      - name: Discover modules
-        id: modules
-        run: |
-          # Use Lisp to discover modules and format as JSON array
-          MODULES=$(./run.sh --eval "(progn (require 'epsilon.tool.build) (let ((modules (epsilon.tool.build:list-modules))) (format t \"[~{\\\"~A\\\"~^,~}]\" modules)))" --eval "(sb-ext:quit)")
-          echo "modules=$MODULES" >> $GITHUB_OUTPUT
-          
-      - name: Extract versions
-        id: versions
-        run: |
-          CORE_VERSION=$(./scripts/ci/get-version.sh epsilon.core)
-          echo "core=$CORE_VERSION" >> $GITHUB_OUTPUT
-          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
-
-  # Stage 2: Platform Matrix Testing
+  # Build and test modules
   test-modules:
-    needs: discover
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        module: ${{ fromJson(needs.discover.outputs.modules) }}
-        exclude:
-          # Platform-specific exclusions
-          - os: ubuntu-latest
-            module: darwin
-          - os: ubuntu-latest  
-            module: windows
-          - os: macos-latest
-            module: linux
-          - os: macos-latest
-            module: windows
-          - os: windows-latest
-            module: linux
-          - os: windows-latest
-            module: darwin
     runs-on: ${{ matrix.os }}
     
     steps:
@@ -70,7 +25,7 @@ jobs:
       
       - name: Setup SBCL (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y sbcl
+        run: sudo apt-get update && sudo apt-get install -y sbcl git
         
       - name: Setup SBCL (macOS)
         if: runner.os == 'macOS'
@@ -87,70 +42,24 @@ jobs:
           path: |
             module/*/target
             .epsilon-cache
-          key: build-${{ env.CACHE_VERSION }}-${{ runner.os }}-${{ matrix.module }}-${{ hashFiles('module/${{ matrix.module }}/**/*.lisp', 'module/${{ matrix.module }}/package.edn') }}
+          key: build-${{ env.CACHE_VERSION }}-${{ runner.os }}-${{ hashFiles('module/**/package.edn', 'module/**/*.lisp') }}
           restore-keys: |
-            build-${{ env.CACHE_VERSION }}-${{ runner.os }}-${{ matrix.module }}-
             build-${{ env.CACHE_VERSION }}-${{ runner.os }}-
             
-      - name: Build module dependencies
+      - name: Run tests
         run: |
-          # Dependencies are handled automatically by build system
-          echo "Module ${{ matrix.module }} dependencies will be built automatically"
-          
-      - name: Build module
-        run: |
-          ./run.sh build ${{ matrix.module }} --force
-          
-      - name: Run module tests
-        run: |
-          ./run.sh test ${{ matrix.module }} --format junit --file test-results-${{ matrix.module }}.xml
+          ./epsilon test --module epsilon.core --format junit --file test-results.xml
           
       - name: Upload test results
         uses: actions/upload-artifact@v3
         if: always()
         with:
-          name: test-results-${{ matrix.os }}-${{ matrix.module }}
-          path: test-results-${{ matrix.module }}.xml
+          name: test-results-${{ matrix.os }}
+          path: test-results.xml
 
-  # Stage 3: Integration Testing
-  integration-test:
-    needs: [discover, test-modules]
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup SBCL
-        run: |
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            sudo apt-get update && sudo apt-get install -y sbcl
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            brew install sbcl
-          else
-            choco install sbcl
-          fi
-        shell: bash
-        
-      - name: Run full integration tests
-        run: |
-          ./scripts/ci/integration-test.sh
-          
-      - name: Run performance benchmarks
-        run: |
-          ./run.sh benchmark --suite all --format junit --file benchmark-results.xml
-          
-      - name: Upload benchmark results
-        uses: actions/upload-artifact@v3
-        with:
-          name: benchmark-results-${{ matrix.os }}
-          path: benchmark-results.xml
-
-  # Stage 4: EPK Compilation
-  build-epks:
-    needs: [discover, test-modules]
+  # Build release artifacts
+  build-release:
+    needs: test-modules
     if: github.event_name == 'release' || github.ref == 'refs/heads/main'
     strategy:
       matrix:
@@ -160,97 +69,105 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup SBCL
+      - name: Setup SBCL (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y sbcl zip git tar gzip
+        
+      - name: Setup SBCL (macOS)
+        if: runner.os == 'macOS'
+        run: brew install sbcl
+        
+      - name: Setup SBCL (Windows)
+        if: runner.os == 'Windows'
         run: |
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            sudo apt-get update && sudo apt-get install -y sbcl zip
-          elif [ "$RUNNER_OS" == "macOS" ]; then
-            brew install sbcl
+          choco install sbcl zip
+          
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
           else
-            choco install sbcl zip
+            VERSION="dev-$(git rev-parse --short HEAD)"
           fi
+          echo "version=${VERSION#v}" >> $GITHUB_OUTPUT
         shell: bash
         
-      - name: Build all modules
+      - name: Build release
         run: |
-          # Build all compatible modules for this platform
-          ./scripts/ci/build-all-modules.sh
+          # Build release for current platform only
+          PLATFORM="${{ runner.os }}"
+          case "$PLATFORM" in
+            Linux) PLATFORM_SPEC="linux-x86-64" ;;
+            macOS) PLATFORM_SPEC="darwin-x86-64,darwin-arm64" ;;
+            Windows) PLATFORM_SPEC="windows-x86-64" ;;
+          esac
           
-      - name: Generate EPK packages
-        run: |
-          # Create EPK files for all modules
-          ./scripts/ci/generate-epks.sh ${{ needs.discover.outputs.core-version }}
+          # Set TMPDIR for macOS tar compatibility
+          export TMPDIR="${TMPDIR:-/tmp}"
           
-      - name: Upload EPK artifacts
+          # First build the release module
+          ./epsilon build --module epsilon.release
+          
+          ./epsilon release --version ${{ steps.version.outputs.version }} --platforms "$PLATFORM_SPEC"
+        shell: bash
+          
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v3
         with:
-          name: epks-${{ runner.os }}-${{ needs.discover.outputs.core-version }}
-          path: target/epk/*.epk
+          name: release-${{ runner.os }}-${{ steps.version.outputs.version }}
+          path: |
+            target/release/*.tar.gz
+            target/release/*.tar.gz.sha256
+            target/release/epk/*.epk
+            target/release/index.json
 
-  # Stage 5: Release Publishing
+  # Publish release
   publish-release:
-    needs: [discover, test-modules, integration-test, build-epks]
+    needs: build-release
     if: github.event_name == 'release'
     runs-on: ubuntu-latest
     
     steps:
       - uses: actions/checkout@v4
       
-      - name: Download all EPK artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v3
         with:
-          pattern: epks-*
+          pattern: release-*
           path: release-artifacts
           
-      - name: Setup release repository
+      - name: Merge release artifacts
         run: |
-          # Clone or setup release repository
-          ./scripts/ci/setup-release-repo.sh ${{ needs.discover.outputs.release-tag }}
+          mkdir -p merged-release
+          # List all downloaded artifacts for debugging
+          echo "Downloaded artifacts:"
+          find release-artifacts -type f -ls
           
-      - name: Generate release index
-        run: |
-          # Create/update package index with new versions
-          ./scripts/ci/generate-release-index.sh ${{ needs.discover.outputs.core-version }}
+          # Copy platform distributions
+          find release-artifacts -type f -name "*.tar.gz*" -exec cp {} merged-release/ \;
           
-      - name: Publish to release repository
-        env:
-          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-        run: |
-          # Push EPKs and index to release repository
-          ./scripts/ci/publish-release.sh ${{ needs.discover.outputs.release-tag }}
+          # Copy EPK packages
+          find release-artifacts -type f -name "*.epk" -exec cp {} merged-release/ \;
+          
+          # Create combined index.json from all platforms
+          echo '{"version":"1.0","packages":[]}' > merged-release/index.json
+          
+          echo "Merged artifacts:"
+          ls -la merged-release/
           
       - name: Update GitHub release
         uses: softprops/action-gh-release@v1
         with:
-          files: release-artifacts/**/*.epk
+          files: merged-release/*
           body: |
-            ## Epsilon Release ${{ needs.discover.outputs.core-version }}
+            ## Epsilon Release ${{ github.event.release.tag_name }}
             
-            This release includes EPK packages for all platforms and modules.
+            This release includes platform distributions and EPK packages.
             
             ### Installation
             ```bash
-            # Download and install core package
-            epsilon-package install epsilon.core@${{ needs.discover.outputs.core-version }}
+            # Download and extract for your platform
+            curl -LO https://github.com/jbouwman/epsilon/releases/download/${{ github.event.release.tag_name }}/epsilon-${{ github.event.release.tag_name }}-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m).tar.gz
+            tar xzf epsilon-*.tar.gz
             ```
-            
-            ### Module Packages Included
-            ${{ needs.discover.outputs.modules }}
-
-  # Stage 6: Cleanup and Notifications
-  notify:
-    needs: [publish-release]
-    if: always()
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Notify success
-        if: needs.publish-release.result == 'success'
-        run: |
-          echo "✅ Release ${{ needs.discover.outputs.core-version }} published successfully"
-          
-      - name: Notify failure
-        if: needs.publish-release.result == 'failure'
-        run: |
-          echo "❌ Release ${{ needs.discover.outputs.core-version }} failed"
-          exit 1

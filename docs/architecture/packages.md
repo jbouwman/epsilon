@@ -14,37 +14,37 @@ epsilon
 └── tool/         # Development tools
 ```
 
-## Core Library (`epsilon.lib.*`)
+## Core Library (`epsilon.*`)
 
 ### Data Structures
-- **`epsilon.lib.map`** - Immutable maps (HAMT implementation)
-- **`epsilon.lib.sequence`** - Lazy sequences with functional operations
-- **`epsilon.lib.set`** - Immutable sets based on HAMT
-- **`epsilon.lib.list`** - Extended list operations and utilities
-- **`epsilon.lib.vector`** - Vector operations and bounds checking
-- **`epsilon.lib.collect`** - Collection macros for efficient list building
+- **`epsilon.map`** - Immutable maps (HAMT implementation)
+- **`epsilon.sequence`** - Lazy sequences with functional operations
+- **`epsilon.set`** - Immutable sets based on HAMT
+- **`epsilon.list`** - Extended list operations and utilities
+- **`epsilon.vector`** - Vector operations and bounds checking
+- **`epsilon.collect`** - Collection macros for efficient list building
 
 ### Data Encoding/Decoding
-- **`epsilon.lib.json`** - JSON parsing and generation with Unicode support
-- **`epsilon.lib.yaml`** - YAML document processing
-- **`epsilon.lib.base64`** - Base64 encoding and decoding
-- **`epsilon.lib.hex`** - Hexadecimal string conversion
-- **`epsilon.lib.msgpack`** - MessagePack binary serialization
+- **`epsilon.json`** - JSON parsing and generation with Unicode support
+- **`epsilon.yaml`** - YAML document processing
+- **`epsilon.base64`** - Base64 encoding and decoding
+- **`epsilon.hex`** - Hexadecimal string conversion
+- **`epsilon.msgpack`** - MessagePack binary serialization
 
 ### Cryptography & Hashing
-- **`epsilon.lib.digest`** - SHA-2 family hash functions (SHA-224, SHA-256, SHA-384, SHA-512)
-- **`epsilon.lib.checksum`** - CRC-32 and Adler-32 checksums
+- **`epsilon.digest`** - SHA-2 family hash functions (SHA-224, SHA-256, SHA-384, SHA-512)
+- **`epsilon.checksum`** - CRC-32 and Adler-32 checksums
 
 ### Text & String Processing
-- **`epsilon.lib.string`** - String manipulation and utilities
-- **`epsilon.lib.character`** - Character operations and Unicode support
-- **`epsilon.lib.regex`** - Regular expression matching and replacement
+- **`epsilon.string`** - String manipulation and utilities
+- **`epsilon.character`** - Character operations and Unicode support
+- **`epsilon.regex`** - Regular expression matching and replacement
 
 ### Utilities
-- **`epsilon.lib.time`** - Time and date utilities
-- **`epsilon.lib.uuid`** - UUID generation and parsing
-- **`epsilon.lib.uri`** - URI parsing, construction, and manipulation
-- **`epsilon.lib.reader`** - Enhanced reader macros and syntax
+- **`epsilon.time`** - Time and date utilities
+- **`epsilon.uuid`** - UUID generation and parsing
+- **`epsilon.uri`** - URI parsing, construction, and manipulation
+- **`epsilon.reader`** - Enhanced reader macros and syntax
 
 ## System Utilities (`epsilon.sys.*`)
 
@@ -121,11 +121,11 @@ epsilon
 All packages define local nicknames for dependencies:
 
 ```lisp
-(defpackage #:epsilon.lib.map
+(defpackage #:epsilon.map
   (:use #:common-lisp)
   (:local-nicknames
-    (#:collect #:epsilon.lib.collect)
-    (#:hash #:epsilon.lib.hash))
+    (#:collect #:epsilon.collect)
+    (#:hash #:epsilon.hash))
   (:export ...))
 ```
 
@@ -148,9 +148,9 @@ All packages define local nicknames for dependencies:
 (defpackage #:my-package
   (:use #:common-lisp)
   (:local-nicknames
-    (#:map #:epsilon.lib.map)
-    (#:seq #:epsilon.lib.sequence)
-    (#:json #:epsilon.lib.json)))
+    (#:map #:epsilon.map)
+    (#:seq #:epsilon.sequence)
+    (#:json #:epsilon.json)))
 
 (in-package #:my-package)
 
@@ -164,9 +164,9 @@ All packages define local nicknames for dependencies:
 Some packages shadow Common Lisp symbols:
 
 ```lisp
-;; epsilon.lib.map shadows: map, reduce, count
-;; epsilon.lib.sequence shadows: map, reduce, count, remove
-;; epsilon.lib.list shadows: remove, delete
+;; epsilon.map shadows: map, reduce, count
+;; epsilon.sequence shadows: map, reduce, count, remove
+;; epsilon.list shadows: remove, delete
 
 ;; Access original CL functions with cl: prefix when needed
 (cl:map 'list #'identity my-list)

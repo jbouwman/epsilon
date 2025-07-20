@@ -1,3 +1,67 @@
-#!/usr/bin/env sbcl --script
+#!/bin/sh
+#
+# Epsilon command-line interface
+#
+# Works from fresh checkout (development mode) or system installation.
+# Requires SBCL to be installed and available in PATH.
+#
 
-(load "scripts/epsilon.lisp")
+set -e
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Detect if we're running from development directory or installed
+if [ -f "$SCRIPT_DIR/scripts/epsilon.lisp" ]; then
+    # Development mode - running from source checkout
+    EPSILON_MODE="development"
+    EPSILON_BOOT="$SCRIPT_DIR/scripts/epsilon.lisp"
+else
+    # Installed mode - use system installation
+    EPSILON_MODE="installed"
+    # Find epsilon installation directory
+    if [ -n "$EPSILON_HOME" ]; then
+        EPSILON_ROOT="$EPSILON_HOME"
+    elif [ -f "/usr/local/share/epsilon/epsilon.core" ]; then
+        EPSILON_ROOT="/usr/local/share/epsilon"
+    elif [ -f "/opt/epsilon/epsilon.core" ]; then
+        EPSILON_ROOT="/opt/epsilon"
+    else
+        echo "Error: Epsilon installation not found" >&2
+        echo "Set EPSILON_HOME or install to /usr/local/share/epsilon" >&2
+        exit 1
+    fi
+    EPSILON_BOOT="$EPSILON_ROOT/epsilon.core"
+fi
+
+# Check if SBCL is available
+if ! command -v sbcl >/dev/null 2>&1; then
+    echo "Error: SBCL not found in PATH" >&2
+    echo "Please install SBCL: https://www.sbcl.org/" >&2
+    exit 1
+fi
+
+# Common SBCL arguments
+SBCL_ARGS="--noinform --non-interactive --no-sysinit --no-userinit"
+
+case "$EPSILON_MODE" in
+    development)
+        # Development mode: load from source
+        cd "$SCRIPT_DIR"
+        exec sbcl $SBCL_ARGS \
+            --load "$EPSILON_BOOT" \
+            --eval "(epsilon.tool.dev:main)" \
+            "$@"
+        ;;
+    installed)
+        # Installed mode: load from core image
+        exec sbcl $SBCL_ARGS \
+            --core "$EPSILON_BOOT" \
+            --eval "(epsilon.tool.dev:main)" \
+            "$@"
+        ;;
+    *)
+        echo "Error: Unknown mode $EPSILON_MODE" >&2
+        exit 1
+        ;;
+esac

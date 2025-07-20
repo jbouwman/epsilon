@@ -1,8 +1,0 @@
-{"name" "epsilon.msgpack"
- "description" "MessagePack binary serialization format implementation"
- "version" "0.1.0"
- "dependencies" ("epsilon.core")
- "provides" ("epsilon.lib.msgpack"
-            "epsilon.lib.msgpack-binary")
- "sources" ("src")
- "tests" ("tests")}

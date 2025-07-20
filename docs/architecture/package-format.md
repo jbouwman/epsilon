@@ -51,8 +51,8 @@ package-name-1.0.0-darwin-arm64.epk
             :lisp-version "2.4.0"}
  
  ;; Package contents
- :provides ["epsilon.lib.path"]
- :main-package "epsilon.lib.path"
+ :provides ["epsilon.path"]
+ :main-package "epsilon.path"
  
  ;; Build information
  :build {:timestamp "2024-01-15T10:30:00Z"

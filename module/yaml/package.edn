@@ -1,7 +1,0 @@
-{"name" "epsilon.yaml"
- "description" "YAML parser for Common Lisp supporting YAML 1.2 subset"
- "version" "0.1.0"
- "dependencies" ("epsilon.core")
- "provides" ("epsilon.lib.yaml")
- "sources" ("src")
- "tests" ("tests")}

@@ -1,6 +1,6 @@
 # Regex Library Simplification Plan
 
-The current `epsilon.lib.regex` implementation is 4734 lines and includes many advanced Perl-compatible features that add complexity without clear benefit for most use cases.
+The current `epsilon.regex` implementation is 4734 lines and includes many advanced Perl-compatible features that add complexity without clear benefit for most use cases.
 
 ## Current Complex Features to Remove
 

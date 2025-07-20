@@ -5,9 +5,9 @@
 
 Epsilon is a Lisp programming environment built on top of SBCL that provides functional data structures, data encoding, cryptographic functionality, and network programming capabilities.
 
-## Key Features
+## Features
 
-- **Functional Data Structures** - Immutable maps, sets, and sequences with efficient structural sharing
+- **Functional Data Structures** - Immutable maps, sets, and sequences with structural sharing
 - **Data Encoding** - JSON, YAML, MessagePack, Base64, and binary format support  
 - **Cryptography** - SHA-2 family hashing, CRC-32, and Adler-32 checksums
 - **Network Programming** - HTTP client/server with TLS support

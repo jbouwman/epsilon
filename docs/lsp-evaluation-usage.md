@@ -2,15 +2,7 @@
 
 ## Overview
 
-The Epsilon LSP server provides a robust code evaluation system that allows IDE clients to execute Lisp code in isolated subprocesses. This enables REPL-like functionality while maintaining the stability and security of the LSP server.
-
-## Key Features
-
-- **Subprocess Isolation**: All code runs in separate processes
-- **Session Management**: Stateful sessions for REPL-style interaction
-- **Security Controls**: Resource limits and capability restrictions
-- **Multiple Session Types**: Ephemeral, named, and workspace sessions
-- **Async Evaluation**: Non-blocking code execution
+The Epsilon LSP server provides an evaluation system that allows IDE clients to execute Lisp code in isolated subprocesses. This enables REPL-like functionality while maintaining the stability and security of the LSP server.
 
 ## Client Integration
 
@@ -24,7 +16,7 @@ The Epsilon LSP server provides a robust code evaluation system that allows IDE 
   "method": "epsilon/evaluation/createSession",
   "params": {
     "name": "my-repl",
-    "modules": ["epsilon.core", "epsilon.lib.map"],
+    "modules": ["epsilon.core", "epsilon.map"],
     "restrictions": {
       "maxMemory": "512M",
       "maxCpuTime": 30,
@@ -43,7 +35,7 @@ The Epsilon LSP server provides a robust code evaluation system that allows IDE 
     "sessionId": "550e8400-e29b-41d4-a716-446655440000",
     "name": "my-repl",
     "state": "active",
-    "modules": ["epsilon.core", "epsilon.lib.map"],
+    "modules": ["epsilon.core", "epsilon.map"],
     "createdAt": 3909876543
   }
 }

@@ -273,14 +273,12 @@
 
 (format t "~%=== Demo Complete ===~%")
 (format t "~%The Epsilon LSP server provides:~%")
-(format t "  • Production-ready LSP 3.17 implementation~%")
-(format t "  • AST-based semantic analysis for accurate results~%")
-(format t "  • Full IDE integration with major editors~%")
-(format t "  • Real-time diagnostics and error reporting~%")
-(format t "  • High-performance symbol indexing and search~%")
-(format t "  • Integration with Epsilon's module and build systems~%")
-(format t "  • Extensible architecture for future language features~%")
-(format t "~%This positions Epsilon with world-class developer tooling!~%")
+(format t "  • LSP 3.17 implementation~%")
+(format t "  • AST-based semantic analysis~%")
+(format t "  • IDE integration with major editors~%")
+(format t "  • diagnostics and error reporting~%")
+(format t "  • symbol indexing and search~%")
+(format t "  • Integration with module and build systems~%")
 
 ;; Demo: Show actual LSP server capabilities
 (format t "~%=== Live LSP Server Capabilities ===~%")
