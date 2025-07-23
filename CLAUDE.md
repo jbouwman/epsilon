@@ -4,25 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-### Building and Testing
-- `./run.sh build` - Build the Epsilon library using SBCL (default: epsilon.core)
-- `./run.sh build all` - Build all modules in the codebase
-- `./run.sh build epsilon.http` - Build a specific module
-- `./run.sh test` - Run tests for epsilon.core module
-- `./run.sh test all` - Run tests for all modules
-- `./run.sh test epsilon.http` - Run tests for a specific module
-- `./run.sh test --package epsilon.lib.json.tests --name parse-empty-structures` - Run a single, specific test
+### Basic Usage
+- `./epsilon` - Show epsilon help and options
 
-### Benchmarking
-- `./run.sh benchmark` - List available benchmarks (if any are registered)
-- `./run.sh benchmark --suite msgpack` - Run MessagePack performance benchmarks
-- `./run.sh benchmark --suite all` - Run all available benchmark suites
-- `./run.sh benchmark arithmetic string-concat` - Compare specific benchmarks
-- `./run.sh bench` - Short alias for benchmark command
-
-Available benchmark suites:
-- `msgpack` - Compare original MessagePack vs binary structure implementation
-- `all` - Run complete benchmark suite with validation and memory analysis
+### Development Mode
+For development work on epsilon itself, you may use SBCL directly:
+- `sbcl --core lib/sbcl/sbcl.core --load script.lisp` - Load and run script
+- `sbcl --core lib/sbcl/sbcl.core --eval "(require 'module-name)"` - Load module
 
 ## Architecture Overview
 
@@ -31,7 +19,7 @@ Epsilon is a utility library for SBCL that provides functional data structures, 
 ### Package Structure
 The codebase is organized into several major modules:
 
-**Core Library (`src/lib/`)**
+**Core Library (`src/core/src/lib/`)**
 - Functional data structures (map, sequence, vector, list)
 - Data encoding/decoding (json, yaml, msgpack, base64, hex)
 - Cryptography (digest, checksum with SHA-2, CRC-32, Adler-32)
@@ -40,7 +28,7 @@ The codebase is organized into several major modules:
 - Time, UUID, and URI handling
 - Regular expressions and pattern matching
 
-**System Layer (`src/sys/`)**
+**System Layer (`src/core/src/sys/`)**
 - Threading primitives (locks, semaphores, atomic operations)
 - Filesystem operations
 - Environment variable handling
@@ -53,8 +41,10 @@ The codebase is organized into several major modules:
 - HTTP client and server implementation
 - TLS/SSL support
 
-**Tools (`src/tool/`)**
+**Tools (`src/core/src/tool/`)**
 - Build system with dependency tracking and hashing
+
+**Testing (`src/test`)
 - Test framework with metrics collection and reporting
 - Benchmark framework with performance measurement and comparison
 - Code formatting utilities
@@ -81,11 +71,11 @@ The system depends only on SBCL built-in modules:
 
 ## Major Differences from Standard Common Lisp Practices
 
-Epsilon diverges from conventional Common Lisp patterns in several key areas:
+Epsilon diverges from conventional Common Lisp patterns in several areas:
 
 **Build System**: ASDF is not used. Instead, `epsilon.tool.build` provides dependency tracking with content hashing for incremental builds. Use `./make build` rather than ASDF operations.
 
-**Path Handling**: Logical pathnames are superseded by URIs throughout the system. File and resource references use URI syntax and are handled by the URI utilities in `epsilon.lib.uri`.
+**Path Handling**: Logical pathnames are superseded by Paths and URIs throughout the system.
 
 **Data Structures**: Built-in hash tables are superseded by `epsilon.lib.map`, which provides immutable, functional maps with better performance characteristics and a more consistent API.
 - Never use Lisp hashtables: use `epsilon.lib.map`
@@ -111,31 +101,22 @@ Packages follow the pattern `epsilon.{module}.{submodule}` with hierarchical org
 ## Project Resources
 - The file `docs/wishlist.md` contains a structured list of desired future capabilities of various degrees of difficulty
 
-## Documentation Workflow
-- Write little summaries of the things I ask for in docs/transcript.md
-
-## Build System Improvements
-- The boot process now logs compilation output to `target/boot.log` with progress reporting
-- Build system shows progress as `[current/total]` for all compilation steps  
-- Test registry properly initializes on demand to avoid stale metadata issues
-- Build process is fully idempotent - can run `git clean -dxf` and rebuild from scratch
-
 ## Logging System (`epsilon.lib.log`)
 - Powerful hierarchical logging facility with level-based filtering
 - Support for structured logging with key-value context
 - Multiple appenders: console, file with different formatters (simple, detailed, JSON)
 - Wildcard pattern matching for logger configuration
-- Thread-safe with proper inheritance from parent loggers
+- Thread-safe with inheritance from parent loggers
 - Performance-optimized macros that avoid evaluation when logging is disabled
 
 ### Logging Configuration
 Configure logging via command line:
 ```bash
-./run.sh --log 'debug:epsilon.lib.*,trace:epsilon.lib.yaml,info:epsilon.tool.*' test --module epsilon.core
+./epsilon --log 'debug:epsilon.lib.*,trace:epsilon.yaml,info:epsilon.tool.*' test --module epsilon.core
 ```
 
-## Advanced Argument Parsing
-The development tool now supports sophisticated argument parsing:
+## Argument Parsing
+The development tool supports argument parsing:
 
 ### Global Options (before command)
 - `--log SPEC` - Configure logging with wildcard patterns
@@ -146,36 +127,36 @@ The development tool now supports sophisticated argument parsing:
 
 **Build Command:**
 ```bash
-./run.sh build --module epsilon.core
+./epsilon build --module epsilon.core
 ```
 
 **Test Command (with powerful filtering):**
 ```bash
 # Test multiple modules
-./run.sh test --module 'epsilon.core,lsp,http'
+./epsilon test --module 'epsilon.core,lsp,http'
 
 # Filter tests by name pattern (supports wildcards)
-./run.sh test --module epsilon.core --test 'parse-*'
+./epsilon test --module epsilon.core --test 'parse-*'
 
 # Filter by package pattern  
-./run.sh test --module epsilon.core --package 'epsilon.lib.yaml*'
+./epsilon test --module epsilon.core --package 'epsilon.yaml*'
 
 # Multiple output formats
-./run.sh test --module epsilon.core --format junit --file results.xml
+./epsilon test --module epsilon.core --format junit --file results.xml
 ```
 
 **Benchmark Command:**
 ```bash
 # Run specific benchmark suite
-./run.sh benchmark --suite msgpack
+./epsilon benchmark --suite msgpack
 
 # Run multiple specific benchmarks
-./run.sh benchmark --benchmarks 'string-concat,arithmetic'
+./epsilon benchmark --benchmarks 'string-concat,arithmetic'
 ```
 
 ### Combined Example
 ```bash
-./run.sh --log 'debug:epsilon.lib.*,trace:epsilon.tool.test' test --module 'epsilon.core,lsp' --test 'parse-yaml-*' --format detailed
+./epsilon --log 'debug:epsilon.lib.*,trace:epsilon.tool.test' test --module 'epsilon.core,lsp' --test 'parse-yaml-*' --format detailed
 ```
 
-This provides extremely precise diagnostic capabilities for troubleshooting issues.
+This provides diagnostic capabilities for troubleshooting issues.

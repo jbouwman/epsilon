@@ -51,7 +51,7 @@ While Epsilon provides functional data structures, it lacks some functional prog
 
 ### Language Integration
 - Ensure features compose well with existing Lisp constructs
-- Maintain readable syntax and clear semantics
+- Maintain readable syntax and semantics
 - Provide error messages and debugging support
 - Document functional programming practices
 

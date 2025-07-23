@@ -18,10 +18,10 @@ The goal is to provide efficient, composable stream processing.
 ### Binary Transform Interface
 
 ```lisp
-(defpackage epsilon.lib.binary.transform
+(defpackage epsilon.binary.transform
   (:use cl)
   (:local-nicknames
-   (binary epsilon.lib.binary))
+   (binary epsilon.binary))
   (:export
    ;; Core protocol
    binary-transform
@@ -189,11 +189,11 @@ Returns (values input-consumed output-produced finished-p error-code)
 ### Transform-Aware Binary Streams
 
 ```lisp
-(defpackage epsilon.lib.binary.stream
+(defpackage epsilon.binary.stream
   (:use cl)
   (:local-nicknames
-   (binary epsilon.lib.binary)
-   (transform epsilon.lib.binary.transform))
+   (binary epsilon.binary)
+   (transform epsilon.binary.transform))
   (:export
    binary-transform-stream
    make-transform-stream
@@ -292,13 +292,13 @@ Returns (values input-consumed output-produced finished-p error-code)
 ### ZIP Archive with Compression
 
 ```lisp
-(defpackage epsilon.lib.zip.compressed
+(defpackage epsilon.zip.compressed
   (:use cl)
   (:local-nicknames
-   (zip epsilon.lib.zip)
-   (binary epsilon.lib.binary)
-   (stream epsilon.lib.binary.stream)
-   (deflate epsilon.lib.binary.transform.deflate))
+   (zip epsilon.zip)
+   (binary epsilon.binary)
+   (stream epsilon.binary.stream)
+   (deflate epsilon.binary.transform.deflate))
   (:export
    read-compressed-zip-entry
    write-compressed-zip-entry))
@@ -371,11 +371,11 @@ Returns (values input-consumed output-produced finished-p error-code)
 ### Benchmarking Framework
 
 ```lisp
-(defpackage epsilon.lib.binary.transform.benchmark
+(defpackage epsilon.binary.transform.benchmark
   (:use cl)
   (:local-nicknames
-   (transform epsilon.lib.binary.transform)
-   (deflate epsilon.lib.binary.transform.deflate)
+   (transform epsilon.binary.transform)
+   (deflate epsilon.binary.transform.deflate)
    (benchmark epsilon.tool.benchmark))
   (:export
    benchmark-transform-throughput

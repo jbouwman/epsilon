@@ -23,16 +23,16 @@ Build one or more modules with dependency tracking:
 
 ```bash
 # Build a single module
-./run.sh build --module epsilon.core
+./epsilon build --module epsilon.core
 
 # Build multiple modules
-./run.sh build --module epsilon.core,lsp,http
+./epsilon build --module epsilon.core,lsp,http
 
 # Force rebuild (ignoring timestamps)
-./run.sh build --module epsilon.core --force
+./epsilon build --module epsilon.core --force
 
 # CI-friendly: exit with error code on failure
-./run.sh build --module epsilon.core,package || exit 1
+./epsilon build --module epsilon.core,package || exit 1
 ```
 
 #### Build Options
@@ -46,16 +46,16 @@ Test modules with the same pattern as build:
 
 ```bash
 # Test all available tests
-./run.sh test
+./epsilon test
 
 # Test specific modules
-./run.sh test --module epsilon.core,lsp
+./epsilon test --module epsilon.core,lsp
 
 # Test with pattern matching
-./run.sh test --module epsilon.core --test 'parse-*'
+./epsilon test --module epsilon.core --test 'parse-*'
 
 # Generate JUnit XML for CI
-./run.sh test --module epsilon.core --format junit --file results.xml
+./epsilon test --module epsilon.core --format junit --file results.xml
 ```
 
 #### Test Options
@@ -72,7 +72,7 @@ Manage and inspect modules:
 
 ```bash
 # List available modules and cache status
-./run.sh module --list
+./epsilon module --list
 ```
 
 Output shows:
@@ -142,11 +142,11 @@ The new command structure is designed for CI/CD pipelines:
 ```yaml
 - name: Build modules
   run: |
-    ./run.sh build --module epsilon.core,lsp,http
+    ./epsilon build --module epsilon.core,lsp,http
     
 - name: Run tests
   run: |
-    ./run.sh test --module epsilon.core,lsp,http \
+    ./epsilon test --module epsilon.core,lsp,http \
                   --format junit \
                   --file test-results.xml
                   
@@ -161,11 +161,11 @@ The new command structure is designed for CI/CD pipelines:
 
 ```groovy
 stage('Build') {
-    sh './run.sh build --module epsilon.core,package,http'
+    sh './epsilon build --module epsilon.core,package,http'
 }
 
 stage('Test') {
-    sh './run.sh test --module epsilon.core,package,http --format junit --file results.xml'
+    sh './epsilon test --module epsilon.core,package,http --format junit --file results.xml'
     junit 'results.xml'
 }
 ```
@@ -191,10 +191,10 @@ Use `--force` when:
 Example:
 ```bash
 # After updating SBCL
-./run.sh build --module epsilon.core --force
+./epsilon build --module epsilon.core --force
 
 # After changing optimization settings
-EPSILON_OPTIMIZE=3 ./run.sh build --module epsilon.core --force
+EPSILON_OPTIMIZE=3 ./epsilon build --module epsilon.core --force
 ```
 
 ## Performance Considerations
@@ -217,12 +217,12 @@ With the optimized boot system:
 ### Module Not Found
 
 ```bash
-./run.sh build --module mymodule
+./epsilon build --module mymodule
 ;;; Error: Unknown module: mymodule
 ```
 
 Solution:
-1. Check module exists: `./run.sh module --list`
+1. Check module exists: `./epsilon module --list`
 2. Ensure `package.edn` exists in module directory
 3. Verify platform compatibility in `package.edn`
 
@@ -238,11 +238,11 @@ If `--force` doesn't rebuild:
 For CI environments:
 ```bash
 # Verbose output for debugging
-./run.sh --verbose test --module epsilon.core
+./epsilon --verbose test --module epsilon.core
 
 # Separate build and test steps
-./run.sh build --module epsilon.core || exit 1
-./run.sh test --module epsilon.core || exit 1
+./epsilon build --module epsilon.core || exit 1
+./epsilon test --module epsilon.core || exit 1
 ```
 
 ## Future Enhancements
@@ -250,7 +250,7 @@ For CI environments:
 Planned improvements:
 
 1. **Module Dependencies**: Automatic dependency resolution
-2. **Package Creation**: `./run.sh package --module mymodule`
-3. **Module Templates**: `./run.sh new --template library mymodule`
+2. **Package Creation**: `./epsilon package --module mymodule`
+3. **Module Templates**: `./epsilon new --template library mymodule`
 4. **Remote Repositories**: Download modules from registry
 5. **Version Management**: Multiple versions of same module

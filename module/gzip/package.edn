@@ -1,8 +1,0 @@
-{"name" "epsilon.gzip"
- "version" "0.1.0"
- "description" "GZIP compression/decompression module for Epsilon"
- "author" "Epsilon Development Team"
- "sources" ("src")
- "tests" ("tests")
- "provides" ("epsilon.lib.gzip")
- "dependencies" ("epsilon.core" "epsilon.inflate")}

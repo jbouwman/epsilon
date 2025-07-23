@@ -174,7 +174,7 @@ While isolated evaluation is the default, many use cases require maintaining sta
 ;; Create a new session
 {:method "epsilon/createEvaluationSession"
  :params {:name "my-repl"
-          :modules ["epsilon.core" "epsilon.lib.map"]
+          :modules ["epsilon.core" "epsilon.map"]
           :restrictions {:max-memory "512MB"
                         :allow-file-read true
                         :allow-file-write false

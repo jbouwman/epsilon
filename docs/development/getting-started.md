@@ -7,10 +7,10 @@ This guide assumes you have already [installed Epsilon](installation.md).
 Start an interactive session:
 
 ```bash
-./run.sh
+./epsilon
 ```
 
-This launches a REPL with Epsilon's core libraries loaded.
+This launches a REPL with Epsilon's core libraries loaded from the self-contained binary.
 
 ## Basic Usage
 
@@ -21,15 +21,15 @@ Epsilon provides immutable maps:
 ```lisp
 ;; Create a map
 (defparameter *config* 
-  (epsilon.lib.map:make-map :host "localhost" 
+  (epsilon.map:make-map :host "localhost" 
                             :port 8080))
 
 ;; Access values
-(epsilon.lib.map:get *config* :host)
+(epsilon.map:get *config* :host)
 ;=> "localhost"
 
 ;; Update (returns new map, original unchanged)
-(epsilon.lib.map:assoc *config* :port 3000)
+(epsilon.map:assoc *config* :port 3000)
 ;=> #<MAP :host "localhost" :port 3000>
 ```
 
@@ -39,20 +39,20 @@ Lazy sequences support functional operations:
 
 ```lisp
 ;; Transform data
-(epsilon.lib.sequence:realize 
-  (epsilon.lib.sequence:map #'1+ 
-    (epsilon.lib.sequence:seq '(1 2 3 4 5))))
+(epsilon.sequence:realize 
+  (epsilon.sequence:map #'1+ 
+    (epsilon.sequence:seq '(1 2 3 4 5))))
 ;=> (2 3 4 5 6)
 
 ;; Filter values  
-(epsilon.lib.sequence:realize 
-  (epsilon.lib.sequence:filter #'evenp 
-    (epsilon.lib.sequence:seq '(1 2 3 4 5 6))))
+(epsilon.sequence:realize 
+  (epsilon.sequence:filter #'evenp 
+    (epsilon.sequence:seq '(1 2 3 4 5 6))))
 ;=> (2 4 6)
 
 ;; Reduce to single value
-(epsilon.lib.sequence:reduce #'+ 
-  (epsilon.lib.sequence:seq '(1 2 3 4 5)))
+(epsilon.sequence:reduce #'+ 
+  (epsilon.sequence:seq '(1 2 3 4 5)))
 ;=> 15
 ```
 
@@ -60,12 +60,12 @@ Lazy sequences support functional operations:
 
 ```lisp
 ;; Parse JSON
-(epsilon.lib.json:decode "{\"status\": \"ok\", \"count\": 42}")
+(epsilon.json:decode "{\"status\": \"ok\", \"count\": 42}")
 ;=> #<MAP "status" "ok" "count" 42>
 
 ;; Generate JSON
-(epsilon.lib.json:encode 
-  (epsilon.lib.map:make-map :status "ok" :count 42))
+(epsilon.json:encode 
+  (epsilon.map:make-map :status "ok" :count 42))
 ;=> "{\"status\":\"ok\",\"count\":42}"
 ```
 
@@ -82,9 +82,9 @@ Create `hello.lisp`:
 (defpackage :hello
   (:use :cl)
   (:local-nicknames
-   (:map :epsilon.lib.map)
-   (:json :epsilon.lib.json)
-   (:seq :epsilon.lib.sequence)))
+   (:map :epsilon.map)
+   (:json :epsilon.json)
+   (:seq :epsilon.sequence)))
 
 (in-package :hello)
 
@@ -109,7 +109,7 @@ For larger projects, use Epsilon's module system:
 
 1. Create a module directory with `package.edn`
 2. Define your packages and dependencies
-3. Build with `./run.sh build your-module`
+3. Use epsilon binary: `./epsilon your-script.lisp`
 
 See the [Application Development Guide](app-development-guide.md) for details.
 

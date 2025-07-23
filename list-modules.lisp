@@ -1,7 +1,0 @@
-(load "scripts/boot.lisp")
-(epsilon.tool.boot:boot)
-(epsilon.tool.build:register-modules)
-(format t "~%Available modules:~%")
-(dolist (m (epsilon.tool.build:list-modules :include-platform t))
-  (format t "  ~A~%" m))
-(sb-ext:quit)

@@ -58,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: 40ants/setup-lisp@v2
-      - run: ./run.sh test
+      - run: ./epsilon test
 ```
 
 ## Release Process
@@ -120,13 +120,13 @@ Test files match `*-tests.lisp` pattern.
 
 ```bash
 # Test single module
-./run.sh test --module epsilon.json
+./epsilon test --module epsilon.json
 
 # Test with coverage
-./run.sh test --module epsilon.json --coverage
+./epsilon test --module epsilon.json --coverage
 
 # Test with specific pattern
-./run.sh test --module epsilon.json --test parse-*
+./epsilon test --module epsilon.json --test parse-*
 ```
 
 ### Test Output
@@ -275,7 +275,7 @@ docker run -it ubuntu:22.04
 ```yaml
 - name: Debug build
   run: |
-    ./run.sh --verbose test
+    ./epsilon --verbose test
   env:
     EPSILON_DEBUG: 1
 ```

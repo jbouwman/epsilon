@@ -1,9 +1,0 @@
-{"name" "epsilon.catalog"
- "description" "Type catalog and registry system for managing type definitions"
- "version" "0.1.0"
- "author" "Epsilon Project"
- "license" "MIT"
- "sources" ("src")
- "tests" ("tests")
- "dependencies" ("epsilon.core")
- "provides" ("epsilon.tool.catalog")}

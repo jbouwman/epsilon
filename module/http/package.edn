@@ -1,8 +1,0 @@
-{"name" "http"
- "version" "1.0.0"
- "author" "Jesse Bouwman"
- "description" "HTTP client and server implementation"
- "sources" ("src")
- "tests" ("tests")
- "dependencies" ("epsilon.core" "epsilon.net")
- "provides" ("http")}

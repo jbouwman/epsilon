@@ -6,13 +6,13 @@ Epsilon uses a content-based build system with dependency tracking and increment
 
 ```bash
 # Build a module
-./run.sh build epsilon.core
+./epsilon build epsilon.core
 
 # Build all modules
-./run.sh build
+./epsilon build
 
 # Clean and rebuild
-./run.sh build --clean epsilon.core
+./epsilon build --clean epsilon.core
 ```
 
 ## Module Structure
@@ -93,7 +93,7 @@ Cache is invalidated when:
 ### Command Line Options
 
 ```bash
-./run.sh build [module] [options]
+./epsilon build [module] [options]
 
 Options:
   --verbose        Show compilation output
@@ -121,7 +121,7 @@ Create `.epsilon-build.edn` in project root:
 }
 ```
 
-Use with: `./run.sh build --profile release`
+Use with: `./epsilon build --profile release`
 
 ## Parallel Builds
 
@@ -133,7 +133,7 @@ epsilon.core ─┬─> epsilon.json ──┐
               └─> epsilon.msgpack┘
 ```
 
-Control with: `EPSILON_BUILD_JOBS=4 ./run.sh build`
+Control with: `EPSILON_BUILD_JOBS=4 ./epsilon build`
 
 ## Integration
 
@@ -141,10 +141,10 @@ Control with: `EPSILON_BUILD_JOBS=4 ./run.sh build`
 
 ```bash
 # Build and test
-./run.sh build --test epsilon.core
+./epsilon build --test epsilon.core
 
 # Test specific module after build
-./run.sh test --module epsilon.core
+./epsilon test --module epsilon.core
 ```
 
 ### With REPL
@@ -184,10 +184,10 @@ Check function definitions and package exports.
 
 ```bash
 # Maximum verbosity
-./run.sh --log 'trace:epsilon.tool.build' build epsilon.core
+./epsilon --log 'trace:epsilon.tool.build' build epsilon.core
 
 # Show dependency graph
-./run.sh build --show-deps epsilon.core
+./epsilon build --show-deps epsilon.core
 ```
 
 ### Clean Build
@@ -198,5 +198,5 @@ When encountering persistent issues:
 rm -rf module/*/target
 
 # Full rebuild
-./run.sh build --force
+./epsilon build --force
 ```

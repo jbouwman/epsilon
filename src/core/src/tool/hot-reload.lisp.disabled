@@ -1,0 +1,764 @@
+;;;; Hot reloading for Epsilon development using content-based
+;;;; dependency tracking to minimize recompilation.
+
+(defpackage :epsilon.tool.hot-reload
+  (:use :cl)
+  (:local-nicknames
+   (:build :epsilon.tool.build)
+   (:fs :epsilon.sys.fs)
+   (:path :epsilon.path)
+   (:map :epsilon.map)
+   (:seq :epsilon.sequence)
+   (:str :epsilon.string)
+   (:thread :epsilon.sys.thread)
+   (:log :epsilon.log))
+  (:export
+   ;; Hot reload session
+   #:start-hot-reload
+   #:stop-hot-reload
+   #:reload-changed
+   #:force-reload
+   
+   ;; File watching
+   #:watch-directory
+   #:unwatch-directory
+   #:watch-file
+   #:unwatch-file
+   
+   ;; State management
+   #:*reload-session*
+   #:reload-session-active-p
+   #:get-reload-statistics
+   #:clear-reload-cache
+   
+   ;; Configuration
+   #:*auto-reload*
+   #:*reload-tests*
+   #:*reload-delay-ms*
+   #:*ignore-patterns*))
+
+(in-package :epsilon.tool.hot-reload)
+
+;;; Configuration
+
+(defparameter *auto-reload* t
+  "Automatically reload changed files when detected")
+
+(defparameter *reload-tests* t
+  "Automatically re-run tests for changed modules")
+
+(defparameter *reload-delay-ms* 100
+  "Delay in milliseconds before processing file changes")
+
+(defparameter *ignore-patterns* 
+  '("*.fasl" "*.swp" "*~" ".#*" "#*#" "*.tmp")
+  "File patterns to ignore during watching")
+
+;;; Hot reload session state
+
+(defclass reload-session ()
+  ((watchers :initform nil :accessor session-watchers)
+   (file-states :initform (map:make-map) :accessor session-file-states)
+   (dependency-graph :initform (map:make-map) :accessor session-dependency-graph)
+   (last-build-state :initform nil :accessor session-last-build-state)
+   (active :initform t :accessor session-active-p)
+   (statistics :initform (make-reload-statistics) :accessor session-statistics)
+   (pending-changes :initform nil :accessor session-pending-changes)
+   (change-timer :initform nil :accessor session-change-timer)
+   (projects :initform nil :accessor session-projects)))
+
+(defstruct reload-statistics
+  "Statistics for reload session"
+  (files-watched 0 :type integer)
+  (changes-detected 0 :type integer)
+  (reloads-performed 0 :type integer)
+  (files-recompiled 0 :type integer)
+  (files-fast-loaded 0 :type integer)
+  (tests-rerun 0 :type integer)
+  (total-reload-time 0.0 :type float)
+  (last-reload-time 0.0 :type float))
+
+(defparameter *reload-session* nil
+  "Current active reload session")
+
+;;; File watching infrastructure
+
+#+linux
+(defun create-file-watcher ()
+  "Create inotify-based file watcher on Linux"
+  ;; This would use Linux inotify via FFI
+  ;; For now, return a mock watcher
+  (make-hash-table :test 'equal))
+
+#+darwin  
+(defun create-file-watcher ()
+  "Create FSEvents-based file watcher on macOS"
+  ;; This would use macOS FSEvents via FFI
+  ;; For now, return a mock watcher
+  (make-hash-table :test 'equal))
+
+#+windows
+(defun create-file-watcher ()
+  "Create ReadDirectoryChangesW-based file watcher on Windows"
+  ;; This would use Windows ReadDirectoryChangesW via FFI
+  ;; For now, return a mock watcher
+  (make-hash-table :test 'equal))
+
+#-(or linux darwin windows)
+(defun create-file-watcher ()
+  "Fallback polling-based file watcher"
+  (make-hash-table :test 'equal))
+
+(defun should-ignore-file-p (path)
+  "Check if file should be ignored based on patterns"
+  (let ((filename (path:path-name path)))
+    (some (lambda (pattern)
+            (match-glob-pattern filename pattern))
+          *ignore-patterns*)))
+
+(defun match-glob-pattern (string pattern)
+  "Simple glob pattern matching"
+  (cond
+    ((str:ends-with-p pattern "*")
+     (str:starts-with-p string (subseq pattern 0 (1- (length pattern)))))
+    ((str:starts-with-p pattern "*")
+     (str:ends-with-p string (subseq pattern 1)))
+    (t (string= string pattern))))
+
+;;; Hot reload session management
+
+(defun start-hot-reload (&key projects directories files (auto-reload *auto-reload*) 
+                              (reload-tests *reload-tests*))
+  "Start a hot reload session"
+  (when *reload-session*
+    (stop-hot-reload))
+  
+  (log:info "Starting hot reload session...")
+  
+  (setf *reload-session* (make-instance 'reload-session))
+  (setf *auto-reload* auto-reload)
+  (setf *reload-tests* reload-tests)
+  
+  ;; Set up projects
+  (when projects
+    (setf (session-projects *reload-session*) projects)
+    (dolist (project projects)
+      (scan-project-files project)))
+  
+  ;; Set up directory watchers
+  (dolist (dir (or directories '("src" "tests")))
+    (watch-directory dir))
+  
+  ;; Set up individual file watchers
+  (dolist (file files)
+    (watch-file file))
+  
+  ;; Build initial state
+  (build-initial-state)
+  
+  (log:info "Hot reload session started - watching ~D files" 
+            (reload-statistics-files-watched (session-statistics *reload-session*)))
+  
+  *reload-session*)
+
+(defun stop-hot-reload ()
+  "Stop the current hot reload session"
+  (when *reload-session*
+    (log:info "Stopping hot reload session...")
+    
+    ;; Cancel pending timer
+    (when (session-change-timer *reload-session*)
+      ;; TODO: Implement timer cancellation when thread module supports it
+      ;; (thread:cancel-timer (session-change-timer *reload-session*))
+      (setf (session-change-timer *reload-session*) nil))
+    
+    ;; Stop all watchers
+    (dolist (watcher (session-watchers *reload-session*))
+      (stop-file-watcher watcher))
+    
+    ;; Mark inactive
+    (setf (session-active-p *reload-session*) nil)
+    
+    ;; Clear session
+    (setf *reload-session* nil)
+    
+    (log:info "Hot reload session stopped")))
+
+(defun reload-session-active-p ()
+  "Check if hot reload session is active"
+  (and *reload-session* 
+       (session-active-p *reload-session*)))
+
+;;; File state tracking
+
+(defun scan-project-files (project)
+  "Scan all files in a project and record their state"
+  ;; TODO: Fix when build module exports project accessors
+  (declare (ignore project))
+  #|
+  (let ((sources (build:project-sources project))
+        (tests (build:project-tests project)))
+    
+    ;; Scan source files
+    (dolist (source sources)
+      (record-file-state (build:uri source) (build:hash source)))
+    
+    ;; Scan test files  
+    (dolist (test tests)
+      (record-file-state (build:uri test) (build:hash test))))
+  |#)
+
+(defun record-file-state (uri hash)
+  "Record the current state of a file"
+  (when *reload-session*
+    (setf (map:get (session-file-states *reload-session*) uri)
+          (map:make-map
+           "hash" hash
+           "last-modified" (file-write-date (path:path-string (path:path-from-uri uri)))
+           "compiled" nil
+           "dependents" '()))))
+
+(defun file-changed-p (uri)
+  "Check if a file has changed since last recorded state"
+  (when *reload-session*
+    (let* ((current-hash (build:calculate-hash uri))
+           (recorded-state (map:get (session-file-states *reload-session*) uri))
+           (recorded-hash (when recorded-state (map:get recorded-state "hash"))))
+      (and recorded-hash 
+           (not (string= current-hash recorded-hash))))))
+
+(defun update-file-state (uri)
+  "Update recorded state for a file"
+  (when *reload-session*
+    (let ((new-hash (build:calculate-hash uri))
+          (new-mtime (file-write-date (path:path-string (path:path-from-uri uri)))))
+      (setf (map:get (session-file-states *reload-session*) uri)
+            (map:assoc (map:get (session-file-states *reload-session*) uri)
+                       "hash" new-hash
+                       "last-modified" new-mtime)))))
+
+;;; Dependency graph management
+
+(defun build-dependency-graph ()
+  "Build dependency graph from current project state"
+  (when *reload-session*
+    (let ((graph (map:make-map)))
+      
+      ;; For each project, analyze dependencies
+      (dolist (project (session-projects *reload-session*))
+        (dolist (source (build:project-sources project))
+          (let* ((uri (build:uri source))
+                 (requires (build:source-info-requires source))
+                 (provides (build:source-info-defines source)))
+            
+            ;; Record what this file provides
+            (when provides
+              (setf (map:get graph provides) uri))
+            
+            ;; Record dependencies
+            (dolist (req requires)
+              (let ((provider-uri (map:get graph req)))
+                (when provider-uri
+                  ;; Add this file as a dependent of the provider
+                  (let ((provider-state (map:get (session-file-states *reload-session*) provider-uri)))
+                    (when provider-state
+                      (setf (map:get (session-file-states *reload-session*) provider-uri)
+                            (map:assoc provider-state "dependents" 
+                                       (cons uri (map:get provider-state "dependents"))))))))))))
+      
+      (setf (session-dependency-graph *reload-session*) graph))))
+
+(defun find-dependents (uri)
+  "Find all files that depend on the given file"
+  (when *reload-session*
+    (let ((file-state (map:get (session-file-states *reload-session*) uri)))
+      (when file-state
+        (map:get file-state "dependents")))))
+
+(defun find-transitive-dependents (uri)
+  "Find all files transitively dependent on the given file"
+  (when *reload-session*
+    (let ((visited (make-hash-table :test 'equal))
+          (dependents '()))
+      
+      (labels ((collect-dependents (file-uri)
+                 (unless (gethash file-uri visited)
+                   (setf (gethash file-uri visited) t)
+                   (let ((direct-dependents (find-dependents file-uri)))
+                     (dolist (dep direct-dependents)
+                       (push dep dependents)
+                       (collect-dependents dep))))))
+        
+        (collect-dependents uri)
+        (remove-duplicates dependents :test #'string=)))))
+
+;;; File watching
+
+(defun watch-directory (directory)
+  "Start watching a directory for changes"
+  (when *reload-session*
+    (log:debug "Watching directory: ~A" directory)
+    
+    ;; Add to statistics
+    (let ((stats (session-statistics *reload-session*)))
+      (incf (reload-statistics-files-watched stats)
+            (count-files-in-directory directory)))
+    
+    ;; Create and start watcher
+    (let ((watcher (create-directory-watcher directory)))
+      (push watcher (session-watchers *reload-session*))
+      watcher)))
+
+(defun watch-file (file-path)
+  "Start watching a specific file for changes"
+  (when *reload-session*
+    (log:debug "Watching file: ~A" file-path)
+    
+    ;; Add to statistics
+    (incf (reload-statistics-files-watched (session-statistics *reload-session*)))
+    
+    ;; Create and start watcher
+    (let ((watcher (create-file-watcher-for file-path)))
+      (push watcher (session-watchers *reload-session*))
+      watcher)))
+
+(defun unwatch-directory (directory)
+  "Stop watching a directory"
+  (when *reload-session*
+    (setf (session-watchers *reload-session*)
+          (remove-if (lambda (w) (watcher-matches-directory-p w directory))
+                     (session-watchers *reload-session*)))))
+
+(defun unwatch-file (file-path)
+  "Stop watching a file"
+  (when *reload-session*
+    (setf (session-watchers *reload-session*)
+          (remove-if (lambda (w) (watcher-matches-file-p w file-path))
+                     (session-watchers *reload-session*)))))
+
+;;; Change detection and processing
+
+(defun on-file-change (file-path event-type)
+  "Handle file change event from watcher"
+  (when (and *reload-session* 
+             (session-active-p *reload-session*)
+             (not (should-ignore-file-p file-path)))
+    
+    (log:debug "File change detected: ~A (~A)" file-path event-type)
+    
+    ;; Add to pending changes
+    (pushnew file-path (session-pending-changes *reload-session*) :test #'string=)
+    
+    ;; Update statistics
+    (incf (reload-statistics-changes-detected (session-statistics *reload-session*)))
+    
+    ;; Cancel existing timer and start new one (debouncing)
+    (when (session-change-timer *reload-session*)
+      ;; TODO: Implement timer cancellation when thread module supports it
+      ;; (thread:cancel-timer (session-change-timer *reload-session*))
+      (setf (session-change-timer *reload-session*) nil))
+    
+    ;; TODO: Implement timer when thread module supports it
+    ;; For now, process changes immediately
+    (process-pending-changes)))
+
+(defun process-pending-changes ()
+  "Process all pending file changes"
+  (when (and *reload-session* (session-pending-changes *reload-session*))
+    (let ((changed-files (session-pending-changes *reload-session*)))
+      (setf (session-pending-changes *reload-session*) nil)
+      
+      (log:info "Processing ~D changed file~:P..." (length changed-files))
+      
+      (when *auto-reload*
+        (reload-changed-files changed-files)))))
+
+(defun reload-changed-files (files)
+  "Reload specific changed files and their dependents"
+  (let ((start-time (get-internal-real-time))
+        (files-to-reload '())
+        (files-to-fast-load '()))
+    
+    ;; Determine which files need recompilation vs fast-loading
+    (dolist (file files)
+      (let ((uri (path:uri-from-path file)))
+        (when (file-changed-p uri)
+          ;; This file changed - needs recompilation
+          (push uri files-to-reload)
+          
+          ;; Its dependents also need recompilation
+          (dolist (dependent (find-transitive-dependents uri))
+            (pushnew dependent files-to-reload :test #'string=))
+          
+          ;; Update file state
+          (update-file-state uri))))
+    
+    ;; Find files that need fast-loading (dependencies of changed files)
+    (dolist (file-uri files-to-reload)
+      (let ((source-info (find-source-info-for-uri file-uri)))
+        (when source-info
+          (dolist (requirement (build:source-info-requires source-info))
+            (let ((provider-uri (find-provider-uri requirement)))
+              (when (and provider-uri 
+                         (not (member provider-uri files-to-reload :test #'string=))
+                         (compiled-file-exists-p provider-uri))
+                (pushnew provider-uri files-to-fast-load :test #'string=)))))))
+    
+    ;; Perform the reload
+    (when (or files-to-reload files-to-fast-load)
+      (log:info "Reloading: ~D recompile, ~D fast-load" 
+                (length files-to-reload) (length files-to-fast-load))
+      
+      ;; Fast-load unchanged dependencies first
+      (dolist (uri files-to-fast-load)
+        (fast-load-compiled-file uri))
+      
+      ;; Recompile changed files in dependency order
+      (let ((ordered-files (topological-sort files-to-reload)))
+        (dolist (uri ordered-files)
+          (recompile-file uri)))
+      
+      ;; Update statistics
+      (let ((stats (session-statistics *reload-session*)))
+        (incf (reload-statistics-reloads-performed stats))
+        (incf (reload-statistics-files-recompiled stats) (length files-to-reload))
+        (incf (reload-statistics-files-fast-loaded stats) (length files-to-fast-load))
+        
+        (let ((reload-time (/ (- (get-internal-real-time) start-time)
+                              internal-time-units-per-second)))
+          (incf (reload-statistics-total-reload-time stats) reload-time)
+          (setf (reload-statistics-last-reload-time stats) reload-time)
+          
+          (log:info "Reload completed in ~,3F seconds" reload-time)))
+      
+      ;; Re-run tests if enabled
+      (when *reload-tests*
+        (rerun-affected-tests files-to-reload)))))
+
+;;; Compilation and loading
+
+(defun fast-load-compiled-file (uri)
+  "Fast-load a compiled .fasl file"
+  (let* ((source-path (path:path-from-uri uri))
+         (fasl-path (make-fasl-path source-path)))
+    
+    (when (and (probe-file (path:path-string fasl-path))
+               (> (file-write-date (path:path-string fasl-path))
+                  (file-write-date (path:path-string source-path))))
+      
+      (log:debug "Fast-loading ~A" (path:path-string fasl-path))
+      
+      (handler-case
+          (load (path:path-string fasl-path))
+        (error (e)
+          (log:warn "Fast-load failed for ~A: ~A" (path:path-string fasl-path) e)
+          ;; Fall back to recompilation
+          (recompile-file uri))))))
+
+(defun recompile-file (uri)
+  "Recompile a source file"
+  (let ((source-path (path:path-from-uri uri)))
+    (log:debug "Recompiling ~A" (path:path-string source-path))
+    
+    (handler-case
+        (progn
+          (compile-file (path:path-string source-path))
+          (load (path:path-string source-path)))
+      (error (e)
+        (log:error "Compilation failed for ~A: ~A" (path:path-string source-path) e)))))
+
+(defun compiled-file-exists-p (uri)
+  "Check if compiled .fasl file exists and is newer than source"
+  (let* ((source-path (path:path-from-uri uri))
+         (fasl-path (make-fasl-path source-path)))
+    
+    (and (probe-file (path:path-string fasl-path))
+         (> (file-write-date (path:path-string fasl-path))
+            (file-write-date (path:path-string source-path))))))
+
+(defun make-fasl-path (source-path)
+  "Generate .fasl path for source file"
+  (path:path-merge (path:path-directory source-path)
+                   (format nil "~A.fasl" (path:path-stem source-path))))
+
+;;; Test integration
+
+(defun rerun-affected-tests (changed-files)
+  "Re-run tests for modules affected by changes"
+  (when *reload-session*
+    (let ((affected-packages '())
+          (start-time (get-internal-real-time)))
+      
+      ;; Find packages affected by changes
+      (dolist (uri changed-files)
+        (let ((source-info (find-source-info-for-uri uri)))
+          (when source-info
+            (let ((package (build:source-info-defines source-info)))
+              (when package
+                (pushnew package affected-packages :test #'string=))))))
+      
+      ;; Run tests for affected packages
+      (when affected-packages
+        (log:info "Re-running tests for ~D affected package~:P..." 
+                  (length affected-packages))
+        
+        (dolist (package affected-packages)
+          (run-tests-for-package package))
+        
+        ;; Update statistics
+        (let ((stats (session-statistics *reload-session*)))
+          (incf (reload-statistics-tests-rerun stats) (length affected-packages))
+          
+          (let ((test-time (/ (- (get-internal-real-time) start-time)
+                              internal-time-units-per-second)))
+            (log:info "Tests completed in ~,3F seconds" test-time)))))))
+
+(defun run-tests-for-package (package-name)
+  "Run tests for a specific package using epsilon.tool.test"
+  (log:debug "Running tests for package ~A" package-name)
+  
+  ;; Integrate with epsilon.tool.test framework
+  (handler-case
+      (let ((test-results (epsilon.tool.test:run-tests 
+                           :package package-name
+                           :verbose nil)))
+        (if (epsilon.tool.test:all-tests-passed-p test-results)
+            (format t "~&  ✓ Tests for ~A passed~%" package-name)
+            (format t "~&  ✗ Tests for ~A failed~%" package-name)))
+    (error (e)
+      (log:warn "Failed to run tests for ~A: ~A" package-name e)
+      (format t "~&  ? Tests for ~A (error: ~A)~%" package-name e))))
+
+;;; Utility functions
+
+(defun build-initial-state ()
+  "Build initial file states and dependency graph"
+  (when *reload-session*
+    (build-dependency-graph)
+    (log:debug "Built dependency graph with ~D nodes" 
+               (map:count (session-dependency-graph *reload-session*)))))
+
+(defun topological-sort (uris)
+  "Sort URIs in dependency order using existing build system"
+  ;; Use existing build system's topological sort
+  (when *reload-session*
+    (let ((build-inputs '()))
+      ;; Convert URIs to build-inputs
+      (dolist (project (session-projects *reload-session*))
+        (dolist (source (append (build:project-sources project)
+                                (build:project-tests project)))
+          (when (member (build:uri source) uris :test #'string=)
+            (push (build:%make-build-input project source) build-inputs))))
+      
+      ;; Use build system's ordering
+      (let ((ordered-inputs (build:build-order (first (session-projects *reload-session*)))))
+        (mapcar (lambda (input)
+                  (build:uri (build:source-info input)))
+                (remove-if-not (lambda (input)
+                                 (member (build:uri (build:source-info input)) 
+                                         uris :test #'string=))
+                               ordered-inputs))))))
+
+(defun find-source-info-for-uri (uri)
+  "Find source-info for a given URI in current projects"
+  (when *reload-session*
+    (dolist (project (session-projects *reload-session*))
+      (dolist (source (append (build:project-sources project)
+                              (build:project-tests project)))
+        (when (string= (build:uri source) uri)
+          (return-from find-source-info-for-uri source))))))
+
+(defun find-provider-uri (package-name)
+  "Find URI that provides a package"
+  (when *reload-session*
+    (map:get (session-dependency-graph *reload-session*) package-name)))
+
+(defun count-files-in-directory (directory)
+  "Count .lisp files in directory"
+  (length (fs:list-files (path:uri-from-path directory) ".lisp")))
+
+;;; File system watcher implementations
+
+#+linux
+(defun create-directory-watcher (directory)
+  "Create inotify-based directory watcher on Linux"
+  (let ((watcher (map:make-map 
+                  "type" "directory"
+                  "path" directory
+                  "active" t
+                  "thread" nil)))
+    ;; Start watching thread
+    (setf (map:get watcher "thread")
+          (thread:make-thread
+           (lambda ()
+             (linux-watch-directory directory))
+           :name (format nil "watch-~A" directory)))
+    watcher))
+
+#+linux
+(defun linux-watch-directory (directory)
+  "Linux inotify-based directory watching"
+  (loop while t do
+    (let ((files (fs:list-files (path:uri-from-path directory) ".lisp")))
+      (dolist (file files)
+        (let ((path (path:path-string (path:path-from-uri file))))
+          (when (file-changed-since-last-check-p path)
+            (on-file-change path :modified))))
+      (sleep 0.5)))) ; Poll every 500ms as fallback
+
+#+darwin
+(defun create-directory-watcher (directory)
+  "Create FSEvents-based directory watcher on macOS"
+  (let ((watcher (map:make-map 
+                  "type" "directory"
+                  "path" directory
+                  "active" t
+                  "thread" nil)))
+    ;; Start watching thread
+    (setf (map:get watcher "thread")
+          (thread:make-thread
+           (lambda ()
+             (macos-watch-directory directory))
+           :name (format nil "watch-~A" directory)))
+    watcher))
+
+#+darwin
+(defun macos-watch-directory (directory)
+  "macOS FSEvents-based directory watching"
+  (loop while t do
+    (let ((files (fs:list-files (path:uri-from-path directory) ".lisp")))
+      (dolist (file files)
+        (let ((path (path:path-string (path:path-from-uri file))))
+          (when (file-changed-since-last-check-p path)
+            (on-file-change path :modified))))
+      (sleep 0.5)))) ; Poll every 500ms as fallback
+
+#+windows
+(defun create-directory-watcher (directory)
+  "Create ReadDirectoryChangesW-based directory watcher on Windows"
+  (let ((watcher (map:make-map 
+                  "type" "directory"
+                  "path" directory
+                  "active" t
+                  "thread" nil)))
+    ;; Start watching thread
+    (setf (map:get watcher "thread")
+          (thread:make-thread
+           (lambda ()
+             (windows-watch-directory directory))
+           :name (format nil "watch-~A" directory)))
+    watcher))
+
+#+windows
+(defun windows-watch-directory (directory)
+  "Windows ReadDirectoryChangesW-based directory watching"
+  (loop while t do
+    (let ((files (fs:list-files (path:uri-from-path directory) ".lisp")))
+      (dolist (file files)
+        (let ((path (path:path-string (path:path-from-uri file))))
+          (when (file-changed-since-last-check-p path)
+            (on-file-change path :modified))))
+      (sleep 0.5)))) ; Poll every 500ms as fallback
+
+#-(or linux darwin windows)
+(defun create-directory-watcher (directory)
+  "Create polling-based directory watcher (fallback)"
+  (let ((watcher (map:make-map 
+                  "type" "directory"
+                  "path" directory
+                  "active" t
+                  "thread" nil)))
+    ;; Start watching thread
+    (setf (map:get watcher "thread")
+          (thread:make-thread
+           (lambda ()
+             (polling-watch-directory directory))
+           :name (format nil "watch-~A" directory)))
+    watcher))
+
+#-(or linux darwin windows)
+(defun polling-watch-directory (directory)
+  "Polling-based directory watching (universal fallback)"
+  (loop while t do
+    (let ((files (fs:list-files (path:uri-from-path directory) ".lisp")))
+      (dolist (file files)
+        (let ((path (path:path-string (path:path-from-uri file))))
+          (when (file-changed-since-last-check-p path)
+            (on-file-change path :modified))))
+      (sleep 1.0)))) ; Poll every second for fallback
+
+(defun file-changed-since-last-check-p (file-path)
+  "Check if file has changed since last check using modification time"
+  (when *reload-session*
+    (let* ((uri (path:uri-from-path file-path))
+           (current-mtime (file-write-date file-path))
+           (recorded-state (map:get (session-file-states *reload-session*) uri))
+           (recorded-mtime (when recorded-state 
+                            (map:get recorded-state "last-modified"))))
+      (and recorded-mtime
+           (> current-mtime recorded-mtime)))))
+
+(defun create-file-watcher-for (file-path)
+  "Create file-specific watcher"
+  (let ((directory (path:path-string (path:path-parent (path:make-path file-path)))))
+    (create-directory-watcher directory)))
+
+(defun stop-file-watcher (watcher)
+  "Stop file system watcher"
+  (when (map:get watcher "thread")
+    (setf (map:get watcher "active") nil)
+    (thread:terminate-thread (map:get watcher "thread"))))
+
+(defun watcher-matches-directory-p (watcher directory)
+  "Check if watcher matches directory"
+  (and (string= (map:get watcher "type") "directory")
+       (string= (map:get watcher "path") directory)))
+
+(defun watcher-matches-file-p (watcher file-path)
+  "Check if watcher matches file"
+  (let ((file-dir (path:path-string (path:path-parent (path:make-path file-path)))))
+    (watcher-matches-directory-p watcher file-dir)))
+
+;;; Public API functions
+
+(defun reload-changed ()
+  "Manually trigger reload of changed files"
+  (when *reload-session*
+    (let ((changed-files '()))
+      ;; Check all watched files for changes
+      (map:reduce (lambda (_ uri state)
+                    (declare (ignore _ state))
+                    (when (file-changed-p uri)
+                      (push (path:path-string (path:path-from-uri uri)) changed-files)))
+                  nil
+                  (session-file-states *reload-session*))
+      
+      (if changed-files
+          (reload-changed-files changed-files)
+          (log:info "No changed files detected")))))
+
+(defun force-reload ()
+  "Force reload of all watched files"
+  (when *reload-session*
+    (let ((all-files '()))
+      (map:reduce (lambda (_ uri state)
+                    (declare (ignore _ state))
+                    (push (path:path-string (path:path-from-uri uri)) all-files))
+                  nil
+                  (session-file-states *reload-session*))
+      
+      (when all-files
+        (log:info "Force reloading ~D files..." (length all-files))
+        (reload-changed-files all-files)))))
+
+(defun get-reload-statistics ()
+  "Get statistics for current reload session"
+  (when *reload-session*
+    (session-statistics *reload-session*)))
+
+(defun clear-reload-cache ()
+  "Clear reload session cache"
+  (when *reload-session*
+    (setf (session-file-states *reload-session*) (map:make-map))
+    (setf (session-dependency-graph *reload-session*) (map:make-map))
+    (log:info "Reload cache cleared")))

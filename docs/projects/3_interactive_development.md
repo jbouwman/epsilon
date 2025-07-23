@@ -15,7 +15,7 @@ Epsilon provides REPL functionality through SBCL but lacks additional interactiv
   - Maps print as `{:key value, ...}`
   - Sets print as `#{element ...}`
   - Sequences with truncation for large collections
-  - Nested structure formatting with proper indentation
+  - Nested structure formatting with indentation
 - **REPL commands**: Common operations as REPL shortcuts
   - `:i object` - inspect object with expandable views
   - `:t function` - trace function execution
@@ -33,7 +33,7 @@ Epsilon provides REPL functionality through SBCL but lacks additional interactiv
 
 ### Technical Requirements
 - Integration with epsilon.lsp for symbol information
-- Persistent configuration using epsilon.lib.yaml
+- Persistent configuration using epsilon.yaml
 - Fast symbol indexing with epsilon.lib.map
 - Command history with epsilon.sys.fs
 
@@ -88,7 +88,7 @@ Epsilon provides REPL functionality through SBCL but lacks additional interactiv
 ## Phase 6: Time-Travel Debugging (10-12 weeks)
 
 ### Debugging Features
-- **Record all state changes**: Comprehensive execution history
+- **Record all state changes**: execution history
 - **Step backwards through execution**: Reverse debugging capabilities
 - **Replay with modifications**: "What if" debugging scenarios
 - **Diff view between states**: Visual comparison of program states

@@ -53,7 +53,7 @@ Manage application configuration with environment overrides:
   (:local-nicknames
     (#:map #:epsilon.lib.map)
     (#:env #:epsilon.sys.env)
-    (#:yaml #:epsilon.lib.yaml)))
+    (#:yaml #:epsilon.yaml)))
 
 (in-package #:example.config)
 

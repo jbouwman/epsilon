@@ -1,9 +1,0 @@
-{"name" "darwin"
- "version" "0.1.0"
- "author" "Jesse Bouwman"
- "description" "Darwin/macOS platform services including kqueue event system, async networking, and TLS/SSL support via LibreSSL"
- "platform" "darwin"
- "sources" ("src")
- "tests" ("tests")
- "dependencies" ("epsilon.core")
- "provides" ("epsilon.kqueue" "epsilon.net" "epsilon.tls")}

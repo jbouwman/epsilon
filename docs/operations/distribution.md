@@ -41,7 +41,7 @@ epsilon
 epsilon --load myapp.lisp
 
 # Evaluate code
-epsilon --eval "(epsilon.lib.json:encode '((foo . 1)))" --quit
+epsilon --eval "(epsilon.json:encode '((foo . 1)))" --quit
 ```
 
 ## Building Distributions
@@ -201,16 +201,6 @@ ENV PATH="/root/.epsilon/bin:${PATH}"
 CMD ["epsilon"]
 ```
 
-### Application Bundling
-
-Include Epsilon with your application:
-```
-myapp/
-├── epsilon/             # Epsilon runtime
-├── src/                 # Your application
-└── run.sh               # ./epsilon/epsilon --load src/main.lisp
-```
-
 ## Troubleshooting
 
 ### Common Issues
@@ -235,7 +225,7 @@ myapp/
 epsilon --eval "(format t \"~A~%\" (epsilon:version))" --quit
 
 # Test library loading  
-epsilon --eval "(epsilon.lib.json:encode '((test . ok)))" --quit
+epsilon --eval "(epsilon.json:encode '((test . ok)))" --quit
 
 # Run tests
 epsilon --load scripts/test-distribution.lisp

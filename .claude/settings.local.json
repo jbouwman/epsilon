@@ -74,7 +74,16 @@
       "Bash(do mv \"$f\" \"$f/rfc/project\")",
       "Bash(do [ -f \"$f\" ])",
       "Bash(./scripts/ci/discover-modules.sh:*)",
-      "Bash(bash:*)"
+      "Bash(bash:*)",
+      "Bash(git describe:*)",
+      "Bash(scripts/generate-version.sh:*)",
+      "Bash(./scripts/generate-version.sh:*)",
+      "Bash(git restore:*)",
+      "Bash(curl:*)",
+      "Bash(./sbcl:*)",
+      "Bash(./target/dist/sbcl:*)",
+      "Bash(TMPDIR=/tmp ./epsilon release --version 1.0.0)",
+      "Bash(TMPDIR=/tmp ./epsilon release --version 1.0.0 --output target/test-release)"
     ],
     "deny": []
   }

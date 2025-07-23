@@ -114,7 +114,7 @@ Get the parent URI (one directory level up)
 
 **Signature**: `(PATH-JOIN &REST COMPONENTS)`
 
-Join path components with proper separator handling.
+Join path components with separator handling.
    Avoids double slashes and handles empty components gracefully.
    
    Example: (path-join "src" "lib/" "uri.lisp") → "src/lib/uri.lisp"

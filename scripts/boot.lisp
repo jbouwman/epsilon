@@ -10,13 +10,15 @@
 (require :sb-bsd-sockets)
 (require :sb-rotate-byte)
 
-(defparameter *module-core* "module/core/src/")
+(defparameter *module-core* "src/core/src/")
 
 (defparameter *files*
   '("lib/syntax"
     "lib/map"
     "lib/sequence"
     "lib/string"
+    "lib/log"
+    "lib/argparse"
     "sys/pkg"
     "lib/symbol"
     "lib/type"
@@ -36,23 +38,39 @@
     "lib/hex"
     "lib/url"
     "lib/uuid"
-    "tool/build"
-    "tool/dev"))
+    "tool/build"))
 
 (defparameter *boot-fasl*
-  #+win32 "target\\boot.fasl"
-  #-win32 "target/boot.fasl")
+  #+win32 "src\\core\\target\\bootstrap.fasl"
+  #-win32 "src/core/target/bootstrap.fasl")
+
+(defparameter *boot-dirs*
+  #+win32
+  '("src\\core\\target\\" 
+    "src\\core\\target\package\\fasl\\")
+  #-win32
+  '("src/core/target/"
+    "src/core/target/package/fasl/"))
 
 (defun ensure-target-dir ()
-  (let ((target-dir #+win32 "target\\" #-win32 "target/"))
-    (unless (probe-file target-dir)
-      (ensure-directories-exist target-dir))))
+  (dolist (dir *boot-dirs*)
+    (unless (probe-file dir)
+      (ensure-directories-exist dir))))
 
 (defun file-newer-p (file1 file2)
   "Return true if file1 is newer than file2, or if file2 doesn't exist"
   (or (not (probe-file file2))
       (and (probe-file file1)
            (> (file-write-date file1) (file-write-date file2)))))
+
+(defun epk-fasl-path (file)
+  "Generate EPK FASL path for a given source file"
+  (concatenate 'string 
+               #+win32 "src\\core\\target\\package\\fasl\\"
+               #-win32 "src/core/target/package/fasl/"
+               #+win32 (substitute #\\ #\/ file)
+               #-win32 file
+               ".fasl"))
 
 (defun bootfile-needs-rebuild-p ()
   "Check if any source files are newer than the boot FASL"
@@ -74,7 +92,7 @@
 
 (defun concat-fasls (fasl-files output-file)
   "Create a single FASL file from individual FASL files"
-  (format t "~&;;; Creating boot FASL: ~A~%" output-file)
+  (format t "~&;;; Creating bootstrap FASL: ~A~%" output-file)
   (with-open-file (output output-file :direction :output
                                       :element-type '(unsigned-byte 8)
                                       :if-exists :supersede
@@ -90,14 +108,19 @@
 (defun generate-boot-fasl ()
   (let ((fasl-files '()))
     (dolist (file *files*)
-      (let ((source-path (concatenate 'string *module-core* 
-                                      #+win32 (substitute #\\ #\/ file)
-                                      #-win32 file
-                                      ".lisp")))
+      (let* ((source-path (concatenate 'string *module-core* 
+                                       #+win32 (substitute #\\ #\/ file)
+                                       #-win32 file
+                                       ".lisp"))
+             (target-fasl-path (epk-fasl-path file)))
+        ;; Ensure the directory exists for this FASL
+        (ensure-directories-exist target-fasl-path)
         (force-output)
         (handler-bind ((sb-kernel:redefinition-warning #'muffle-warning))
           (let ((fasl-path 
-                 (compile-file source-path :print nil :verbose nil)))
+                 (compile-file source-path 
+                               :output-file target-fasl-path
+                               :print nil :verbose nil)))
             (unless fasl-path
               (error "compile-file returned NIL for ~A" source-path))
             (push fasl-path fasl-files)

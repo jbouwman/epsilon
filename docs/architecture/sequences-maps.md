@@ -2,7 +2,7 @@
 
 Detailed API documentation for Epsilon's core functional collections: sequences and maps.
 
-## Maps (`epsilon.lib.map`)
+## Maps (`epsilon.map`)
 
 Immutable key-value associations implemented as Hash Array Mapped Tries (HAMT).
 
@@ -224,7 +224,7 @@ Test if the map is empty.
 
 ---
 
-## Sequences (`epsilon.lib.sequence`)
+## Sequences (`epsilon.sequence`)
 
 Lazy, functional sequences with efficient operations.
 

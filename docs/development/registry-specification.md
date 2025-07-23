@@ -1,6 +1,7 @@
 # Epsilon Package Registry Specification
 
-The Epsilon package registry provides a complete package management ecosystem with modern features including semantic versioning, git hash pinning, local caching, and reproducible builds.
+The package registry provides package management with versioning, hash
+pinning, caching, and reproducible builds.
 
 ## Architecture Overview
 
@@ -488,9 +489,3 @@ CREATE TABLE package_authors (
     author_email VARCHAR(255)
 );
 ```
-
-### API Implementation
-
-The registry server provides RESTful API endpoints for package management with PostgreSQL backend, Redis caching, and CDN integration for package archives.
-
-This comprehensive registry system positions Epsilon with enterprise-grade package management capabilities rivaling npm, Cargo, and Go modules.

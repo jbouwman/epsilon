@@ -10,8 +10,8 @@ Data serialization and parsing with Epsilon's encoding libraries.
 (defpackage #:json-example
   (:use #:common-lisp)
   (:local-nicknames
-    (#:json #:epsilon.lib.json)
-    (#:map #:epsilon.lib.map)))
+    (#:json #:epsilon.json)
+    (#:map #:epsilon.map)))
 
 (in-package #:json-example)
 
@@ -105,8 +105,8 @@ For large JSON documents:
 (defpackage #:yaml-example
   (:use #:common-lisp)
   (:local-nicknames
-    (#:yaml #:epsilon.lib.yaml)
-    (#:map #:epsilon.lib.map)))
+    (#:yaml #:epsilon.yaml)
+    (#:map #:epsilon.map)))
 
 (in-package #:yaml-example)
 
@@ -208,8 +208,8 @@ Common pattern for application configuration:
 (defpackage #:app-config
   (:use #:common-lisp)
   (:local-nicknames
-    (#:yaml #:epsilon.lib.yaml)
-    (#:map #:epsilon.lib.map)))
+    (#:yaml #:epsilon.yaml)
+    (#:map #:epsilon.map)))
 
 (defclass config ()
   ((database-url :reader database-url)

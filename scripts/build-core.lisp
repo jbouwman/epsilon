@@ -17,11 +17,23 @@
   ;; Ensure target directory exists
   (ensure-directories-exist (directory-namestring output-file))
   
+  ;; Generate version information
+  (when verbose
+    (format t "Generating version information...~%"))
+  (sb-ext:run-program "scripts/generate-version.sh" nil 
+                      :output *standard-output*
+                      :error *error-output*)
+  
   ;; Boot Epsilon first
   (when verbose
     (format t "Loading Epsilon...~%"))
   (load "scripts/boot.lisp")
   (funcall (find-symbol "BOOT" "EPSILON.TOOL.BOOT"))
+  
+  ;; Load initialization for custom toplevel
+  (when verbose
+    (format t "Loading Epsilon initialization...~%"))
+  (load "scripts/epsilon-init.lisp")
   
   ;; Create core image
   (when verbose
@@ -29,7 +41,8 @@
   (sb-ext:save-lisp-and-die output-file
                             :executable nil
                             :save-runtime-options t
-                            :compression t))
+                            :compression t
+                            :toplevel #'epsilon.init:epsilon-toplevel))
 
 ;; Auto-run if loaded directly
 (when (find-package "EPSILON.TOOL.BOOT")

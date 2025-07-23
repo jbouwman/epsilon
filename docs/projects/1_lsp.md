@@ -189,7 +189,7 @@ The Language Server Protocol implementation for Epsilon has successfully complet
 
 ### Integration Points
 - **epsilon.lib.json**: Message serialization and parsing
-- **epsilon.lib.msgpack**: Alternative high-performance protocol
+- **epsilon.lib.msgpack**: Alternative transport protocol
 - **epsilon.lib.reader**: AST parsing and syntax analysis
 - **epsilon.tool.build**: Project structure and dependency management
 - **epsilon.tool.test**: Test execution and result reporting

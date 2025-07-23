@@ -1,8 +1,0 @@
-{"name" "epsilon.bzip"
- "version" "1.0.0"
- "author" "Jesse Bouwman"
- "description" "BZip2 compression and decompression support"
- "sources" ("src")
- "tests" ("tests")
- "provides" ("epsilon.lib.bzip")
- "dependencies" ("epsilon.core")}

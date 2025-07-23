@@ -1,8 +1,0 @@
-{"name" "epsilon.inflate"
- "version" "0.1.0"
- "description" "DEFLATE/Inflate decompression module for Epsilon"
- "author" "Epsilon Development Team"
- "sources" ("src")
- "tests" ("tests")
- "provides" ("epsilon.lib.inflate")
- "dependencies" ("epsilon.core")}

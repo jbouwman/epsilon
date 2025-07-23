@@ -1,8 +1,0 @@
-{"name" "epsilon.regex"
- "description" "Complete regular expression engine with NFA/DFA conversion and optimization"
- "version" "0.1.0"
- "dependencies" ("epsilon.core")
- "provides" ("epsilon.lib.regex"
-            "epsilon.lib.charset")
- "sources" ("src")
- "tests" ("tests")}

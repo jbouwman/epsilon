@@ -20,18 +20,18 @@ Replace verbose `defpackage` with a concise `module` macro:
 ```lisp
 ;; Current (verbose)
 (defpackage my-app.core
-  (:use cl epsilon.lib.syntax)
+  (:use cl epsilon.syntax)
   (:local-nicknames
-   (map epsilon.lib.map)
-   (str epsilon.lib.string)
+   (map epsilon.map)
+   (str epsilon.string)
    (http epsilon.http.server))
   (:export #:main #:config))
 
 ;; New (concise)
 (module my-app.core
-  :use (cl epsilon.lib.syntax)
-  :import ((map epsilon.lib.map)
-           (str epsilon.lib.string)
+  :use (cl epsilon.syntax)
+  :import ((map epsilon.map)
+           (str epsilon.string)
            (http epsilon.http.server))
   :export (main config))
 ```
@@ -53,8 +53,8 @@ Replace verbose `defpackage` with a concise `module` macro:
 
 ;; Selective imports
 (module my-app.utils
-  :import ((map:make-map map:get map:assoc) from epsilon.lib.map)
-          ((str:split str:join) from epsilon.lib.string))
+  :import ((map:make-map map:get map:assoc) from epsilon.map)
+          ((str:split str:join) from epsilon.string))
 ```
 
 ### 1.3 Feature Flags and Conditional Compilation
@@ -156,7 +156,7 @@ Replace verbose `defpackage` with a concise `module` macro:
 
 ### 2.2 Version Constraints
 
-Support semantic versioning with flexible constraints:
+Support versioning with constraints:
 
 - `"1.2.3"` - Exact version
 - `"^1.2.3"` - Compatible version (>=1.2.3 <2.0.0)
@@ -463,5 +463,3 @@ epsilon migrate update-syntax
 - CI/CD integrations
 - Docker tooling
 - Documentation and examples
-
-This specification provides a comprehensive roadmap for creating a world-class module system that addresses all current pain points while providing features that rival or exceed the best package managers in the industry.

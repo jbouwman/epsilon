@@ -22,8 +22,8 @@ Replace verbose `defpackage` with cleaner `module` syntax that provides:
   "Language Server Protocol implementation"
   
   (import common-lisp
-          (epsilon.lib.map map)
-          (epsilon.lib.json json)
+          (epsilon.map map)
+          (epsilon.json json)
           (epsilon.sys.thread thread))
   
   (from epsilon.lsp.protocol
@@ -59,11 +59,11 @@ Replace verbose `defpackage` with cleaner `module` syntax that provides:
   :version "1.0.0"
   :author "Epsilon Project"
   :depends-on ((epsilon.core ">=1.0.0")
-               (epsilon.lib.json ">=0.9.0"))
+               (epsilon.json ">=0.9.0"))
   
   (import common-lisp
-          (epsilon.lib.map map)
-          (epsilon.lib.json json))
+          (epsilon.map map)
+          (epsilon.json json))
   
   #+unix
   (from epsilon.sys.posix socket-connect)
@@ -73,7 +73,7 @@ Replace verbose `defpackage` with cleaner `module` syntax that provides:
   
   (export make-request get post put delete)
   
-  (re-export (epsilon.lib.json encode decode)))
+  (re-export (epsilon.json encode decode)))
 ```
 
 ## Phase 3: Module Discovery and Management (3-4 weeks)
@@ -96,8 +96,8 @@ Replace verbose `defpackage` with cleaner `module` syntax that provides:
 ### Unified Module Definition
 - **Single source of truth**: Extend package.yaml to include module definitions
 - **Build system integration**: Automatic module processing during builds
-- **IDE support**: Rich editing experience for module definitions
-- **Validation**: Comprehensive checking of module consistency
+- **IDE support**: editing module definitions
+- **Validation**: checking of module consistency
 
 ### Enhanced Package.yaml
 ```yaml
@@ -111,8 +111,8 @@ modules:
     exports: [start-server, stop-server]
     imports:
       - common-lisp
-      - epsilon.lib.map: map
-      - epsilon.lib.json: json
+      - epsilon.map: map
+      - epsilon.json: json
   
   epsilon.lsp.protocol:
     file: src/protocol.lisp
@@ -143,7 +143,7 @@ tests:
 ### Integration Points
 - **epsilon.tool.build**: Integration with build system for automatic processing
 - **epsilon.lsp**: IDE support for module editing and navigation
-- **epsilon.lib.yaml**: Enhanced package.yaml parsing and validation
+- **epsilon.yaml**: Enhanced package.yaml parsing and validation
 - **epsilon.tool.format**: Pretty-printing for module definitions
 
 ## Migration Strategy
