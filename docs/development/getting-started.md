@@ -12,6 +12,14 @@ Start an interactive session:
 
 This launches a REPL with Epsilon's core libraries loaded from the self-contained binary.
 
+Run a local package during development:
+
+```bash
+./epsilon run [args...]
+```
+
+This auto-detects and runs the package defined in the current directory's `package.lisp`.
+
 ## Basic Usage
 
 ### Working with Maps

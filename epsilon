@@ -47,6 +47,8 @@ SBCL_ARGS="--noinform --non-interactive --no-sysinit --no-userinit"
 case "$EPSILON_MODE" in
     development)
         # Development mode: load from source
+        # Save the user's current directory for commands like 'run'
+        export EPSILON_USER_DIR="$(pwd)"
         cd "$SCRIPT_DIR"
         exec sbcl $SBCL_ARGS \
             --load "$EPSILON_BOOT" \

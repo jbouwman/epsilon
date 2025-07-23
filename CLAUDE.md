@@ -2,161 +2,91 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Commands
+## Project Overview
 
-### Basic Usage
-- `./epsilon` - Show epsilon help and options
+Epsilon is a Lisp programming environment built on SBCL that provides functional data structures, data encoding, cryptographic functionality, and network programming capabilities. The project is organized as a modular system with packages in `src/` and comprehensive documentation in `docs/`.
 
-### Development Mode
-For development work on epsilon itself, you may use SBCL directly:
-- `sbcl --core lib/sbcl/sbcl.core --load script.lisp` - Load and run script
-- `sbcl --core lib/sbcl/sbcl.core --eval "(require 'module-name)"` - Load module
+## Core Architecture
 
-## Architecture Overview
+- **Modular Design**: Each module in `src/` has its own `package.lisp` and follows the pattern: `src/module-name/src/` for implementation, `src/module-name/tests/` for tests
+- **Core Libraries**: `src/core/` contains fundamental libraries (map, sequence, string, etc.) and system utilities (fs, thread, etc.)
+- **Specialized Modules**: HTTP, JSON, WebSocket, LSP, cryptography, and other functionality in separate modules
+- **Build System**: Content-based incremental build system with dependency tracking
+- **Package System**: Uses `package.edn` files for module configuration and dependencies
 
-Epsilon is a utility library for SBCL that provides functional data structures, compression, cryptography, data encoding, and network protocols.
+## Development Commands
 
-### Package Structure
-The codebase is organized into several major modules:
+### Building
+```bash
+# Build specific module
+./epsilon build epsilon.core
 
-**Core Library (`src/core/src/lib/`)**
-- Functional data structures (map, sequence, vector, list)
-- Data encoding/decoding (json, yaml, msgpack, base64, hex)
-- Cryptography (digest, checksum with SHA-2, CRC-32, Adler-32)
-- String/character processing with Unicode support
-- Stream processing and I/O utilities
-- Time, UUID, and URI handling
-- Regular expressions and pattern matching
+# Build all modules  
+./epsilon build
 
-**System Layer (`src/core/src/sys/`)**
-- Threading primitives (locks, semaphores, atomic operations)
-- Filesystem operations
-- Environment variable handling
-- Package system utilities
-- Garbage collection controls
-- Error handling and timeouts
+# Clean and rebuild
+./epsilon build --clean epsilon.core
 
-**Network Layer (`src/net/`)**
-- Core networking primitives
-- HTTP client and server implementation
-- TLS/SSL support
-
-**Tools (`src/core/src/tool/`)**
-- Build system with dependency tracking and hashing
-
-**Testing (`src/test`)
-- Test framework with metrics collection and reporting
-- Benchmark framework with performance measurement and comparison
-- Code formatting utilities
-
-### Key Design Patterns
-
-**Local Nicknames**: Each package uses local nicknames extensively to create clean, readable code while avoiding naming conflicts.
-
-**Functional Style**: The library emphasizes immutable data structures and functional programming patterns, particularly in the `map`, `sequence`, and `vector` modules.
-
-**Test Framework**: Custom test framework (`epsilon.tool.test`) with features like:
-- Hierarchical test organization by package
-- Timing and metrics collection
-- Assertion macros (`is`, `is-equal`, `is-equalp`, `is-thrown-p`)
-- Test skipping and failure reporting
-- Configurable verbosity and logging
-
-**Build System**: The build tool (`epsilon.tool.build`) implements dependency tracking with content hashing for incremental builds.
-
-### Dependencies
-The system depends only on SBCL built-in modules:
-- `sb-posix` for POSIX system calls
-- `sb-rotate-byte` for bit manipulation
-
-## Major Differences from Standard Common Lisp Practices
-
-Epsilon diverges from conventional Common Lisp patterns in several areas:
-
-**Build System**: ASDF is not used. Instead, `epsilon.tool.build` provides dependency tracking with content hashing for incremental builds. Use `./make build` rather than ASDF operations.
-
-**Path Handling**: Logical pathnames are superseded by Paths and URIs throughout the system.
-
-**Data Structures**: Built-in hash tables are superseded by `epsilon.lib.map`, which provides immutable, functional maps with better performance characteristics and a more consistent API.
-- Never use Lisp hashtables: use `epsilon.lib.map`
-
-## Development Notes
+# Build with tests
+./epsilon build --test epsilon.core
+```
 
 ### Testing
-Tests are co-located with source code and follow the naming convention `*-tests.lisp`. The test framework can be configured for different verbosity levels and failure handling.
-
-### Package Naming
-Packages follow the pattern `epsilon.{module}.{submodule}` with hierarchical organization. The main package exports high-level functions and uses local nicknames for internal dependencies.
-
-### File Organization
-- Source files are organized by functionality in `src/`
-- Tests mirror the source structure in `tests/`
-- Build artifacts and coverage reports go in `target/`
-
-### Documentation Style
-- Use dry, matter-of-fact technical style for all documentation in this project
-- Avoiding subjective language like "elegant", "good", "simple", "powerful", etc.
-- Focus on factual descriptions of functionality, API specifications, and implementation details
-  
-## Project Resources
-- The file `docs/wishlist.md` contains a structured list of desired future capabilities of various degrees of difficulty
-
-## Logging System (`epsilon.lib.log`)
-- Powerful hierarchical logging facility with level-based filtering
-- Support for structured logging with key-value context
-- Multiple appenders: console, file with different formatters (simple, detailed, JSON)
-- Wildcard pattern matching for logger configuration
-- Thread-safe with inheritance from parent loggers
-- Performance-optimized macros that avoid evaluation when logging is disabled
-
-### Logging Configuration
-Configure logging via command line:
 ```bash
-./epsilon --log 'debug:epsilon.lib.*,trace:epsilon.yaml,info:epsilon.tool.*' test --module epsilon.core
+# Run tests for specific module
+./epsilon test --module epsilon.core
+
+# Run all tests
+./epsilon test
+
+# Test a single file
+./epsilon test path/to/test-file.lisp
 ```
 
-## Argument Parsing
-The development tool supports argument parsing:
-
-### Global Options (before command)
-- `--log SPEC` - Configure logging with wildcard patterns
-- `--verbose` - Enable debug logging  
-- `--quiet` - Only show warnings and errors
-
-### Enhanced Commands
-
-**Build Command:**
+### Development Environment
 ```bash
-./epsilon build --module epsilon.core
+# Start interactive REPL
+./epsilon
+
+# Evaluate expression
+./epsilon --eval "(format t \"Hello\")" --eval "(sb-ext:quit)"
+
+# Runtime distribution build
+bash scripts/build-runtime.sh
 ```
 
-**Test Command (with powerful filtering):**
-```bash
-# Test multiple modules
-./epsilon test --module 'epsilon.core,lsp,http'
+## Key Conventions
 
-# Filter tests by name pattern (supports wildcards)
-./epsilon test --module epsilon.core --test 'parse-*'
+- **File Organization**: Each module follows `src/module-name/src/implementation.lisp` and `src/module-name/tests/module-tests.lisp`
+- **Package Definitions**: Located in `package.lisp` files at module root
+- **Test Framework**: Uses custom test framework in `src/test/` with `deftest` macro and assertions like `is`, `is-equal`, `is-thrown`
+- **Documentation**: Architecture and API docs in `docs/` with MkDocs formatting
+- **Build Artifacts**: Generated in `target/` directories (do not edit manually)
 
-# Filter by package pattern  
-./epsilon test --module epsilon.core --package 'epsilon.yaml*'
+## Module Dependencies
 
-# Multiple output formats
-./epsilon test --module epsilon.core --format junit --file results.xml
+Core dependency hierarchy:
+- `epsilon.core` - foundational libraries (required by most modules)
+- Platform-specific modules: `epsilon.darwin`, `epsilon.linux`, `epsilon.windows`
+- Network stack: `epsilon.http` depends on platform networking
+- Data formats: `epsilon.json`, `epsilon.yaml`, `epsilon.msgpack` are independent
+- Development tools: `epsilon.lsp`, `epsilon.test` for tooling
+
+## Important Files
+
+- `scripts/boot.lisp` - Bootstrap loader defining core module load order
+- `scripts/build-runtime.sh` - Creates standalone distribution packages
+- `docs/operations/build.md` - Build system documentation
+- Module `package.edn` files define dependencies and structure
+
+## Test Framework Usage
+
+```lisp
+(deftest test-name
+  "Test description"
+  (is (= 2 (+ 1 1)))
+  (is-equal "hello" (string-downcase "HELLO"))
+  (is-thrown 'error (error "test")))
 ```
 
-**Benchmark Command:**
-```bash
-# Run specific benchmark suite
-./epsilon benchmark --suite msgpack
-
-# Run multiple specific benchmarks
-./epsilon benchmark --benchmarks 'string-concat,arithmetic'
-```
-
-### Combined Example
-```bash
-./epsilon --log 'debug:epsilon.lib.*,trace:epsilon.tool.test' test --module 'epsilon.core,lsp' --test 'parse-yaml-*' --format detailed
-```
-
-This provides diagnostic capabilities for troubleshooting issues.
+Run with `(epsilon.test:run)` or via command line.
