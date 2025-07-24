@@ -90,6 +90,15 @@
        (when (file-p ,name)
          (delete-file* ,name)))))
 
+#+win32
+(defun directory-pathname-p (pathname)
+  "Check if pathname refers to a directory on Windows"
+  (let ((namestring (namestring pathname)))
+    (or (char= (char namestring (1- (length namestring))) #\\)
+        (char= (char namestring (1- (length namestring))) #\/)
+        (and (probe-file pathname)
+             (not (pathname-name pathname))))))
+
 (defun file-info (path)
   #-win32 (sb-posix:stat path)
   #+win32 (let ((truepath (probe-file path)))

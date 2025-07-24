@@ -976,7 +976,7 @@
   ;; Default base-dir at runtime, not compile time
   (unless base-dir
     (setf base-dir (path:make-path
-                    #+win32 (sb-ext:native-namestring (truename "."))
+                    #+win32 (namestring (truename "."))
                     #-win32 (sb-unix:posix-getcwd))))
   
   (let ((module-paths (find-module-directories base-dir))

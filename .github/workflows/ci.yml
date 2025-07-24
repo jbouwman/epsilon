@@ -51,6 +51,9 @@ jobs:
 
     - name: Build release package
       run: |
+        # Configure git safe directory (needed in container)
+        git config --global --add safe.directory /__w/epsilon/epsilon || true
+        
         # Set TMPDIR for tar compatibility
         export TMPDIR="${TMPDIR:-/tmp}"
         

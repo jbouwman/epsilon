@@ -9,6 +9,7 @@
    (:path :epsilon.path)
    (:map :epsilon.map)
    (:str :epsilon.string)
+   (:seq :epsilon.seq)
    (:build :epsilon.tool.build)
    (:json :epsilon.json)
    (:digest :epsilon.digest)
@@ -380,7 +381,7 @@
                 (setf options (map:assoc options :version (pop args))))
                ((string= arg "--modules")
                 (setf options (map:assoc options :modules 
-                                      (str:split #\, (pop args)))))
+                                      (seq:realize (str:split #\, (pop args))))))
                ((string= arg "--output")
                 (setf options (map:assoc options :output-dir (pop args))))
                ((string= arg "--platforms")
@@ -393,10 +394,10 @@
 (defun parse-platforms (spec)
   "Parse platform specification"
   (mapcar (lambda (p)
-            (destructuring-bind (os arch) (str:split #\- p)
+            (destructuring-bind (os arch) (seq:realize (str:split #\- p))
               (list :os (intern (string-upcase os) :keyword)
                     :arch (intern (string-upcase arch) :keyword))))
-          (str:split #\, spec)))
+          (seq:realize (str:split #\, spec))))
 
 (defun build-all (&key 
                    force 
@@ -468,7 +469,7 @@
         (build-release 
          :version version
          :modules (let ((modules-str (map:get options "modules")))
-                    (when modules-str (str:split #\, modules-str)))
+                    (when modules-str (seq:realize (str:split #\, modules-str))))
          :platforms (let ((platforms-str (map:get options "platforms")))
                       (when platforms-str (parse-platforms platforms-str)))
          :output-dir (map:get options "output-dir")))
