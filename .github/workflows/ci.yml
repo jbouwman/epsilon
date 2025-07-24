@@ -51,14 +51,26 @@ jobs:
 
     - name: Build release package
       run: |
+        # Debug git setup
+        echo "Current directory: $PWD"
+        echo "Git directory check:"
+        ls -la .git || echo "No .git directory found"
+        
         # Configure git safe directory (needed in container)
-        git config --global --add safe.directory /__w/epsilon/epsilon || true
+        git config --global --add safe.directory "$PWD"
+        git config --global --add safe.directory /__w/epsilon/epsilon
+        git config --global --add safe.directory /github/workspace
         
         # Set TMPDIR for tar compatibility
         export TMPDIR="${TMPDIR:-/tmp}"
         
         # Get short commit hash for version
-        VERSION="dev-$(git rev-parse --short HEAD)"
+        # Use GITHUB_SHA environment variable as it's more reliable in containers
+        if [ -n "$GITHUB_SHA" ]; then
+          VERSION="dev-${GITHUB_SHA:0:7}"
+        else
+          VERSION="dev-$(git rev-parse --short HEAD 2>/dev/null || echo "snapshot")"
+        fi
         
         # First build the release module
         ./epsilon build epsilon.release
