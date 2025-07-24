@@ -394,7 +394,10 @@
 (defun parse-platforms (spec)
   "Parse platform specification"
   (mapcar (lambda (p)
-            (destructuring-bind (os arch) (seq:realize (str:split #\- p))
+            (let* ((parts (seq:realize (str:split #\- p)))
+                   (os (first parts))
+                   (arch-parts (rest parts))
+                   (arch (str:join "-" arch-parts)))
               (list :os (intern (string-upcase os) :keyword)
                     :arch (intern (string-upcase arch) :keyword))))
           (seq:realize (str:split #\, spec))))

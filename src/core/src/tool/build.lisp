@@ -984,6 +984,9 @@
   (let ((module-paths (find-module-directories base-dir))
         (registered-count 0)
         (skipped-count 0))
+    ;; Debug output for Windows
+    #+win32 (format t ";;; Base directory: ~A~%" base-dir)
+    #+win32 (format t ";;; Found module paths: ~A~%" module-paths)
     
     ;; Register each module using register-module for list-modules functionality
     (dolist (module-path module-paths)
