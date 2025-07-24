@@ -9,7 +9,7 @@
    (:path :epsilon.path)
    (:map :epsilon.map)
    (:str :epsilon.string)
-   (:seq :epsilon.seq)
+   (:seq :epsilon.sequence)
    (:build :epsilon.tool.build)
    (:json :epsilon.json)
    (:digest :epsilon.digest)

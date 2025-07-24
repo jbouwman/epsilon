@@ -67,7 +67,7 @@ jobs:
         # Get short commit hash for version
         # Use GITHUB_SHA environment variable as it's more reliable in containers
         if [ -n "$GITHUB_SHA" ]; then
-          VERSION="dev-${GITHUB_SHA:0:7}"
+          VERSION="dev-$(echo $GITHUB_SHA | cut -c1-7)"
         else
           VERSION="dev-$(git rev-parse --short HEAD 2>/dev/null || echo "snapshot")"
         fi

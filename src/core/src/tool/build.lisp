@@ -946,6 +946,8 @@
   (let ((module-base (path:uri-merge base-dir "src/"))
         (module-dirs '()))
     (when (fs:exists-p module-base)
+      ;; Debug output for Windows
+      #+win32 (format t ";;; Searching for modules in: ~A~%" (path:path-from-uri module-base))
       ;; List all entries in the module directory
       (dolist (entry-name (fs:list-dir (path:path-from-uri module-base)))
         (let* ((entry-path (path:string-path-join "src" entry-name))

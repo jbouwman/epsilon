@@ -273,8 +273,8 @@
   (let* ((normalized-dir (normalize-path-separators directory))
          (pattern (if (and (> (length normalized-dir) 0)
                            (char= (char normalized-dir (1- (length normalized-dir))) #\/))
-                      (concatenate 'string directory "*.*")
-                      (concatenate 'string directory "\\*.*"))))
+                      (concatenate 'string normalized-dir "*.*")
+                      (concatenate 'string normalized-dir "/*.*"))))
     (handler-case
         (mapcar #'file-namestring
                 (remove-if (lambda (path)
