@@ -339,8 +339,11 @@
 
 (defun current-directory ()
   "Get current working directory"
-  (pathname (sb-posix:getcwd)))
+  #-win32 (pathname (sb-posix:getcwd))
+  #+win32 (truename *default-pathname-defaults*))
 
 (defun change-directory (path)
   "Change current working directory"
-  (sb-posix:chdir (if (stringp path) path (namestring path))))
+  #-win32 (sb-posix:chdir (if (stringp path) path (namestring path)))
+  #+win32 (let ((new-path (if (stringp path) (pathname path) path)))
+            (setf *default-pathname-defaults* (truename new-path))))

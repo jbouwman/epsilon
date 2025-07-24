@@ -18,6 +18,10 @@ jobs:
     - name: Install required tools
       run: |
         apt-get update && apt-get install -y git tar gzip
+    
+    - name: Configure git safe directory
+      run: |
+        git config --global --add safe.directory /__w/epsilon/epsilon
 
     - name: Run tests
       run: |

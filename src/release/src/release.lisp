@@ -251,7 +251,8 @@
       (format stream "exec sbcl --core \"$SCRIPT_DIR/epsilon-core\" \"$@\"~%"))
     
     ;; Make executable
-    (sb-posix:chmod script-path #o755)))
+    #-win32 (sb-posix:chmod script-path #o755)
+    #+win32 nil)) ; Windows doesn't need chmod for executables
 
 (defun create-distribution-archive (source-dir archive-name output-dir)
   "Create distribution tarball"
@@ -379,7 +380,7 @@
                 (setf options (map:assoc options :version (pop args))))
                ((string= arg "--modules")
                 (setf options (map:assoc options :modules 
-                                      (str:split "," (pop args)))))
+                                      (str:split #\, (pop args)))))
                ((string= arg "--output")
                 (setf options (map:assoc options :output-dir (pop args))))
                ((string= arg "--platforms")
@@ -392,10 +393,10 @@
 (defun parse-platforms (spec)
   "Parse platform specification"
   (mapcar (lambda (p)
-            (destructuring-bind (os arch) (str:split "-" p)
+            (destructuring-bind (os arch) (str:split #\- p)
               (list :os (intern (string-upcase os) :keyword)
                     :arch (intern (string-upcase arch) :keyword))))
-          (str:split "," spec)))
+          (str:split #\, spec)))
 
 (defun build-all (&key 
                    force 
@@ -467,7 +468,7 @@
         (build-release 
          :version version
          :modules (let ((modules-str (map:get options "modules")))
-                    (when modules-str (str:split "," modules-str)))
+                    (when modules-str (str:split #\, modules-str)))
          :platforms (let ((platforms-str (map:get options "platforms")))
                       (when platforms-str (parse-platforms platforms-str)))
          :output-dir (map:get options "output-dir")))
