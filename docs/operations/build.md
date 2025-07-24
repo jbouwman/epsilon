@@ -13,6 +13,9 @@ Epsilon uses a content-based build system with dependency tracking and increment
 
 # Clean and rebuild
 ./epsilon build --clean epsilon.core
+
+# Run a local package during development
+./epsilon run package-name [args...]
 ```
 
 ## Module Structure
@@ -145,6 +148,21 @@ Control with: `EPSILON_BUILD_JOBS=4 ./epsilon build`
 
 # Test specific module after build
 ./epsilon test --module epsilon.core
+```
+
+### Local Package Development
+
+For development of local packages without full module builds:
+
+```bash
+# Run package in current directory (auto-detects name from package.lisp)
+./epsilon run [args...]
+
+# Package.lisp format for run command
+# (:name "package-name"
+#  :sources ("src")
+#  :dependencies ("epsilon.core") 
+#  :main "package-name:main")
 ```
 
 ### With REPL

@@ -4,29 +4,90 @@
 ;;;; development tools. It provides a lightweight command dispatcher that
 ;;;; demand-loads tool modules as needed, keeping the core bootstrap minimal.
 
-(defpackage #:epsilon.tool.dev
-  (:use #:cl)
+(defpackage epsilon.tool.dev
+  (:use cl)
   (:local-nicknames
-   (#:map #:epsilon.map)
-   (#:str #:epsilon.string)
-   (#:build #:epsilon.tool.build)
-   (#:fs #:epsilon.sys.fs)
-   (#:path #:epsilon.path)
-   (#:package #:epsilon.tool.package))
+   (map epsilon.map)
+   (str epsilon.string)
+   (build epsilon.tool.build)
+   (fs epsilon.sys.fs)
+   (path epsilon.path)
+   (package epsilon.tool.package))
   (:export
-   #:main
-   #:register-tool
-   #:list-tools
-   #:initialize-tool-registry
-   #:handle-build-help
-   #:handle-build-all-help
-   #:handle-bench-help
-   #:parsed-args
-   #:parsed-args-command
-   #:parsed-args-arguments
-   #:parsed-args-options))
+   main
+   register-tool
+   list-tools
+   initialize-tool-registry
+   handle-build-help
+   handle-build-all-help
+   handle-bench-help
+   parsed-args
+   parsed-args-command
+   parsed-args-arguments
+   parsed-args-options))
 
-(in-package #:epsilon.tool.dev)
+(in-package epsilon.tool.dev)
+
+;;; Global variables
+
+(defvar *user-directory* nil
+  "Original user directory before epsilon changes to its home directory")
+
+;;; Local Package Discovery Functions
+
+(defun ensure-trailing-slash (path-string)
+  "Ensure path string ends with slash for directory merging"
+  (if (and path-string (not (char= (char path-string (1- (length path-string))) #\/)))
+      (concatenate 'string path-string "/")
+      path-string))
+
+(defun find-local-package-file ()
+  "Find package.lisp in current working directory"
+  (handler-case
+      (let* ((user-dir (or (ignore-errors
+                             (when (find-package :sb-posix)
+                               (funcall (intern "GETENV" :sb-posix) "EPSILON_USER_DIR")))
+                           (ignore-errors (fs:current-directory))
+                           "."))
+             (package-path (ignore-errors (path:path-join user-dir "package.lisp"))))
+        (when (and package-path (ignore-errors (fs:exists-p package-path)))
+          package-path))
+    (error ()
+      ;; Return nil if package discovery fails
+      nil)))
+
+(defun read-local-package-definition ()
+  "Read local package definition from package.lisp, return nil if not found or invalid"
+  (handler-case
+      (let ((package-file (find-local-package-file)))
+        (when package-file
+          (handler-case
+            (with-open-file (stream (path:path-string package-file))
+              (let ((form (read stream nil nil)))
+                (when form
+                  (let ((package-data (if (and (listp form) (keywordp (first form)))
+                                          ;; It's a plist at top level
+                                          form
+                                          ;; It might be a quoted plist or other form
+                                          (when (listp form) form))))
+                    (when package-data
+                      (let ((result (list :name (getf package-data :name)
+                                          :version (getf package-data :version)
+                                          :description (getf package-data :description)
+                                          :path (ignore-errors (path:path-string (path:path-parent package-file)))
+                                          :local t)))
+                        result))))))
+            (error ()
+              nil))))
+    (error ()
+      nil)))
+
+(defun read-local-package-name ()
+  "Read package name from package.lisp in current directory, return nil if not found"
+  (let ((package-def (read-local-package-definition)))
+    (when package-def
+      (getf package-def :name))))
+
 
 ;;; Tool Registry
 
@@ -56,11 +117,11 @@
                         :module nil  ; build is already loaded in core
                         :function 'handle-build
                         :help-function 'handle-build-help
-                        :description "Build epsilon modules"))
+                        :description "Build epsilon packages"))
            ("test" . ,(make-tool-info
                        :name "test"
-                       :module "epsilon.test"  ; test is now separate module
-                       :function 'test-main  ; Placeholder - will be resolved dynamically
+                       :module nil  ; handled directly in dev.lisp with local package support
+                       :function 'test-main
                        :description "Run test suites"))
            ("clean" . ,(make-tool-info
                         :name "clean"
@@ -68,6 +129,12 @@
                         :function 'handle-clean
                         :help-function 'handle-clean-help
                         :description "Remove build artifacts and cached files"))
+           ("run" . ,(make-tool-info
+                      :name "run"
+                      :module nil  ; run is in core
+                      :function 'handle-run
+                      :help-function 'handle-run-help
+                      :description "Run local package in current directory"))
            ("release" . ,(make-tool-info
                           :name "release"
                           :module "epsilon.release"  ; demand-load release module
@@ -247,38 +314,96 @@
 ;;; Built-in Commands
 
 (defun test-main (parsed-args)
-  "Dynamically dispatch to epsilon.test:main after loading the module"
-  (funcall (find-symbol "MAIN" "EPSILON.TEST") parsed-args))
+  "Handle test command with local package detection, then dispatch to epsilon.test:main"
+  ;; First load the epsilon.test module
+  (build:build "epsilon.test")
+  
+  (let* ((args (parsed-args-arguments parsed-args))
+         (options (parsed-args-options parsed-args))
+         (explicit-module (or (first args) (map:get options "module")))
+         (local-package (read-local-package-name)))
+    
+    
+    ;; If no explicit module is specified and we have a local package, add it as an argument
+    (when (and (not explicit-module) local-package)
+      (format t ";;; Detected local package: ~A~%" local-package)
+      ;; Register the local package as a module
+      (let ((user-dir (or (sb-posix:getenv "EPSILON_USER_DIR")
+                         (fs:current-directory)
+                         ".")))
+        (handler-case
+            (progn
+              ;; Ensure epsilon.test is built first (needed for test compilation)
+              (format t ";;; Ensuring epsilon.test is available for testing...~%")
+              (build:build "epsilon.test")
+              ;; Now register the local package
+              (build:register-module user-dir :silent t))
+          (error (e)
+            (format *error-output* "Warning: Could not register local package ~A: ~A~%" 
+                    local-package e))))
+      ;; Modify the parsed args to include the local package name
+      (setf (parsed-args-arguments parsed-args) (list local-package)))
+    
+    ;; Now dispatch to epsilon.test with potentially modified args
+    (funcall (find-symbol "MAIN" "EPSILON.TEST") parsed-args)))
+
 
 (defun handle-build (parsed-args)
   "Handle build command - this is always available"
   (let* ((options (parsed-args-options parsed-args))
-         (modules (or (parsed-args-arguments parsed-args)
-                      (list "epsilon.core")))
+         (explicit-packages (parsed-args-arguments parsed-args))
+         (package-flag (map:get options "package"))
+         (local-package (read-local-package-name))
          (force (map:get options "force"))
          (include-tests (map:get options "include-tests")))
     
-    ;; Build specific modules only - removed 'all' special case
-    (dolist (module modules)
-      (format t ";;; Building module: ~A~%" module)
-      (build:build module 
-                   :force force
-                   :include-tests include-tests))))
-
-#++
-(defun handle-build-all (parsed-args)
-  "Handle build-all command"
-  (let* ((options (parsed-args-options parsed-args))
-         (force (map:get options "force"))
-         (include-tests (map:get options "include-tests"))
-         (include-platform (map:get options "include-platform")))
-    (build:build-all :force force
-                     :include-tests include-tests
-                     :include-platform include-platform)))
-
-(defun test-all-main (parsed-args)
-  "Dynamically dispatch to epsilon.test:test-all after loading the module"
-  (funcall (find-symbol "TEST-ALL" "EPSILON.TEST") parsed-args))
+    ;; Determine what to build
+    (cond
+      ;; Use explicit arguments if provided
+     (explicit-packages
+      (dolist (package explicit-packages)
+        (format t ";;; Building package: ~A~%" package)
+        (build:build package :force force :include-tests include-tests)))
+      
+      ;; Use --package flag if provided
+     (package-flag
+      (progn
+        (format t ";;; Building package: ~A~%" package-flag)
+        (build:build package-flag :force force :include-tests include-tests)))
+      
+      ;; Use local package if found
+     (local-package
+      (progn
+        (format t ";;; Building local package: ~A~%" local-package)
+        ;; Register the local package as a module in the build system
+        (let* ((user-dir (or (sb-posix:getenv "EPSILON_USER_DIR")
+                            (fs:current-directory)
+                            "."))
+               (package-def (read-local-package-definition)))
+          (when package-def
+            ;; Register the local package directory as a module
+            (handler-case
+                (progn
+                  ;; Register the module with the build system
+                  (build:register-module user-dir :silent t)
+                  ;; Now build it using the standard build system
+                  (build:build local-package :force force :include-tests include-tests))
+              (error (e)
+                (format *error-output* "~%Error building local package: ~A~%" e)
+                (sb-ext:exit :code 1)))))))
+      
+      ;; No package specified and no local package found
+     (t
+       (format *error-output* "~%Error: No package specified and no package.lisp found in current directory.~%~%")
+       (format *error-output* "To build a specific package:~%")
+       (format *error-output* "  epsilon build --package PACKAGE-NAME~%")
+       (format *error-output* "  epsilon build PACKAGE-NAME~%~%")
+       (format *error-output* "To build current directory package:~%")
+       (format *error-output* "  Create a package.lisp file with package definition~%~%")
+       (format *error-output* "Examples:~%")
+       (format *error-output* "  epsilon build --package epsilon.core~%")
+       (format *error-output* "  epsilon build epsilon.http~%~%")
+       (sb-ext:exit :code 1)))))
 
 (defun release-main (parsed-args)
   "Dynamically dispatch to epsilon.tool.release:main after loading the module"
@@ -287,19 +412,22 @@
 (defun handle-build-help (parsed-args)
   "Show help for build command"
   (declare (ignore parsed-args))
-  (format t "build - Build specific epsilon modules~%~%")
-  (format t "Usage: epsilon build [options] [modules...]~%~%")
+  (format t "build - Build epsilon packages~%~%")
+  (format t "Usage: epsilon build [options] [packages...]~%~%")
   (format t "Arguments:~%")
-  (format t "  modules              One or more module names to build (default: epsilon.core)~%~%")
+  (format t "  packages             One or more package names to build~%")
+  (format t "                       (default: package in current directory, or epsilon.core)~%~%")
   (format t "Options:~%")
+  (format t "  --package NAME       Build specific package~%")
   (format t "  --force              Force compilation of all files regardless of timestamps~%")
   (format t "  --include-tests      Also build test files~%")
   (format t "  --help               Show this help message~%~%")
   (format t "Examples:~%")
-  (format t "  epsilon build                         # Build epsilon.core~%")
+  (format t "  epsilon build                         # Build current directory package~%")
   (format t "  epsilon build epsilon.core            # Build epsilon.core explicitly~%")
-  (format t "  epsilon build epsilon.http            # Build epsilon.http module~%")
-  (format t "  epsilon build --force                 # Force rebuild of epsilon.core~%"))
+  (format t "  epsilon build epsilon.http            # Build epsilon.http package~%")
+  (format t "  epsilon build --package epsilon.json  # Build specific package~%")
+  (format t "  epsilon build --force                 # Force rebuild of current package~%"))
 
 (defun handle-build-all-help (parsed-args)
   "Show help for build-all command"
@@ -446,11 +574,35 @@
     
     (cond
       ((string= subcommand "list")
-       (let ((packages (package:list-packages)))
+       (let ((packages (package:list-packages))
+             (local-package (read-local-package-definition)))
+         
+         ;; Show local package first if found
+         (when local-package
+           (format t "~A (~A) [local: ~A]~%" 
+                   (getf local-package :name)
+                   (or (getf local-package :version) "unknown")
+                   (getf local-package :path)))
+         
+         ;; Show other packages with paths
          (dolist (pkg packages)
-           (if (consp pkg)
-               (format t "~A (~A)~%" (car pkg) (cdr pkg))
-               (format t "~A~%" pkg)))))
+           (let ((pkg-name (if (consp pkg) (car pkg) pkg))
+                 (pkg-status (if (consp pkg) (cdr pkg) "")))
+             ;; Skip if this is the same as our local package
+             (unless (and local-package 
+                          (string= pkg-name (getf local-package :name)))
+               (let ((pkg-info (ignore-errors (package:package-info pkg-name))))
+                 (if pkg-info
+                     (let ((uri (getf pkg-info :uri)))
+                       (if (consp pkg)
+                           (format t "~A (~A) [~A]~%" pkg-name pkg-status 
+                                   (if uri (ignore-errors (path:path-string uri)) "unknown"))
+                           (format t "~A [~A]~%" pkg-name 
+                                   (if uri (ignore-errors (path:path-string uri)) "unknown"))))
+                     ;; Fallback if no info available
+                     (if (consp pkg)
+                         (format t "~A (~A)~%" pkg-name pkg-status)
+                         (format t "~A~%" pkg-name)))))))))
       
       ((string= subcommand "info")
        (let ((pkg-name (first rest-args)))
@@ -478,10 +630,10 @@
                  (format t "~A - ~A~%" 
                          (getf result :name)
                          (getf result :description "No description"))))
-             (format t "Error: Search query required~%"))))
+             (format t "Error: Search query required~%")))
       
       (t
-       (handle-package-help parsed-args)))))
+       (handle-package-help parsed-args))))))
 
 (defun handle-package-help (parsed-args)
   "Show help for package command"
@@ -521,6 +673,39 @@
   (format t "  --help              Show this help message~%")
   (format t "  --version           Show version information~%")
   (format t "  --verbose           Enable verbose output~%"))
+
+(defun find-epsilon-home ()
+  "Find epsilon home directory by looking for scripts/epsilon.lisp"
+  ;; Since epsilon sets the working directory, we can use a relative path
+  ;; from the current directory which should be epsilon root when running
+  (let ((cwd-scripts (probe-file "scripts/epsilon.lisp")))
+    (if cwd-scripts
+        (truename ".")
+        ;; Fallback: walk up from current directory
+        (let ((current-dir (truename *default-pathname-defaults*)))
+          (loop for dir = current-dir 
+                then (make-pathname :directory (butlast (pathname-directory dir)))
+                for depth from 0 below 10
+                when (probe-file (merge-pathnames "scripts/epsilon.lisp" dir))
+                  return dir
+                when (null (cdr (pathname-directory dir)))
+                  do (error "Could not find epsilon home directory"))))))
+
+(defun handle-run (parsed-args)
+  "Handle run command - execute local package"
+  ;; Load the run module functionality
+  (let* ((epsilon-home (find-epsilon-home))
+         (run-file (merge-pathnames "src/core/src/tool/run.lisp" epsilon-home)))
+    (load run-file))
+  (funcall (find-symbol "HANDLE-RUN" "EPSILON.TOOL.RUN") parsed-args))
+
+(defun handle-run-help (parsed-args)
+  "Show help for run command"
+  ;; Load the run module for help
+  (let* ((epsilon-home (find-epsilon-home))
+         (run-file (merge-pathnames "src/core/src/tool/run.lisp" epsilon-home)))
+    (load run-file))
+  (funcall (find-symbol "HANDLE-RUN-HELP" "EPSILON.TOOL.RUN") parsed-args))
 
 ;;; Main Entry Point
 
