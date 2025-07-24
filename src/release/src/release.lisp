@@ -397,7 +397,9 @@
             (let* ((parts (seq:realize (str:split #\- p)))
                    (os (first parts))
                    (arch-parts (rest parts))
-                   (arch (str:join "-" arch-parts)))
+                   (arch (if arch-parts
+                             (str:join "-" (seq:from-list arch-parts))
+                             "")))
               (list :os (intern (string-upcase os) :keyword)
                     :arch (intern (string-upcase arch) :keyword))))
           (seq:realize (str:split #\, spec))))
