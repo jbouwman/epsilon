@@ -177,8 +177,6 @@
          (setf export-clause value))
         (:re-export
          (setf re-export-clause value))
-        (:features
-         (setf features value))
         (:when
          (setf conditional value))))
     

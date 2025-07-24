@@ -54,7 +54,7 @@ jobs:
         VERSION="dev-$(git rev-parse --short HEAD)"
         
         # First build the release module
-        ./epsilon build --module epsilon.release
+        ./epsilon build epsilon.release
         
         # Build release with EPK for Linux platform
         ./epsilon release --version "$VERSION" --platforms linux-x86-64
@@ -117,7 +117,7 @@ jobs:
         VERSION="dev-$(git rev-parse --short HEAD)"
         
         # First build the release module
-        ./epsilon build --module epsilon.release
+        ./epsilon build epsilon.release
         
         # Build release with EPK for macOS platforms
         ./epsilon release --version "$VERSION" --platforms darwin-x86-64,darwin-arm64
@@ -178,7 +178,7 @@ jobs:
         VERSION="dev-$(git rev-parse --short HEAD)"
         
         # First build the release module
-        ./epsilon build --module epsilon.release
+        ./epsilon build epsilon.release
         
         # Build release with EPK for Windows platform
         ./epsilon release --version "$VERSION" --platforms windows-x86-64
