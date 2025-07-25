@@ -1,139 +1,184 @@
-name: Build and Release Epsilon Runtime
+name: Release
 
 on:
   push:
     tags:
-      - 'v*'
-  workflow_dispatch:
+      - 'v*.*.*'  # Semantic versioning tags only
+  release:
+    types: [published]
 
 jobs:
-  build:
+  # Build release artifacts for all platforms
+  build-release:
+    name: Build Release (${{ matrix.os }})
     strategy:
       matrix:
         include:
           - os: ubuntu-latest
             platform: linux
             arch: x86_64
+            container: ghcr.io/${{ github.repository }}/epsilon-ci:latest
           - os: macos-latest
-            platform: macos
+            platform: darwin
             arch: arm64
           - os: macos-13
-            platform: macos
+            platform: darwin
             arch: x86_64
-          # Windows temporarily disabled until local testing machine available
+          # Windows can be added when ready
           # - os: windows-latest
           #   platform: windows
           #   arch: x86_64
-
+            
     runs-on: ${{ matrix.os }}
-
+    container: ${{ matrix.container }}
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
-    - name: Install SBCL (Ubuntu)
-      if: matrix.os == 'ubuntu-latest'
+      
+    - name: Setup build environment
       run: |
-        sudo apt-get update
-        sudo apt-get install -y sbcl
-
-    - name: Install SBCL (macOS)
-      if: startsWith(matrix.os, 'macos')
+        # Container setup for Linux
+        if [ -n "${{ matrix.container }}" ]; then
+          apt-get update && apt-get install -y git tar gzip xz-utils
+          git config --global --add safe.directory /__w/epsilon/epsilon
+        fi
+        
+        # macOS setup
+        if [[ "${{ runner.os }}" == "macOS" ]]; then
+          brew install sbcl || true
+        fi
+        
+        # Set TMPDIR for tar compatibility
+        export TMPDIR="${TMPDIR:-/tmp}"
+        
+    - name: Extract version from tag
+      id: version
       run: |
-        brew install sbcl
-
-    - name: Install SBCL (Windows)
-      if: matrix.os == 'windows-latest'
+        if [[ "${GITHUB_REF}" =~ ^refs/tags/v(.+)$ ]]; then
+          VERSION="${BASH_REMATCH[1]}"
+        else
+          VERSION="0.0.0-dev"
+        fi
+        echo "version=${VERSION}" >> $GITHUB_OUTPUT
+        echo "Building version: ${VERSION}"
+        
+    - name: Run all tests before release
       run: |
-        choco install sbcl
-
-    - name: Build Epsilon runtime (Unix)
-      if: runner.os != 'Windows'
+        echo "=== Running all tests before building release ==="
+        ./scripts/ci-test-all.sh || {
+          echo "Tests failed - aborting release"
+          exit 1
+        }
+        
+    - name: Build runtime executable
       run: |
-        chmod +x scripts/build-runtime.sh
-        ./scripts/build-runtime.sh
-
-    - name: Build Epsilon runtime (Windows)
-      if: runner.os == 'Windows'
+        echo "=== Building epsilon runtime for ${{ matrix.platform }}-${{ matrix.arch }} ==="
+        
+        # Build the release module first
+        ./epsilon build epsilon.release
+        
+        # Build the runtime executable
+        ./scripts/build-epsilon-runtime.sh "${{ matrix.platform }}" "${{ matrix.arch }}"
+        
+    - name: Build distribution package
       run: |
-        scripts/build-runtime.sh
-
-    - name: Upload runtime artifact
+        VERSION="${{ steps.version.outputs.version }}"
+        PLATFORM="${{ matrix.platform }}-${{ matrix.arch }}"
+        
+        # Create distribution archive
+        ./epsilon release --version "${VERSION}" --platforms "${PLATFORM}"
+        
+        # List generated artifacts
+        echo "=== Generated artifacts ==="
+        find target/release -type f -name "*.tar.gz" -o -name "*.sha256" | sort
+        
+    - name: Test runtime executable
+      run: |
+        # Extract and test the runtime
+        TARBALL=$(find target/release -name "epsilon-*.tar.gz" | head -1)
+        if [ -f "$TARBALL" ]; then
+          tar -xzf "$TARBALL"
+          ./epsilon/epsilon version
+          ./epsilon/epsilon test epsilon.core
+        fi
+        
+    - name: Upload release artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: epsilon-${{ matrix.platform }}-${{ matrix.arch }}
-        path: target/epsilon-${{ matrix.platform }}-${{ matrix.arch }}.*
+        name: epsilon-${{ steps.version.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}
+        path: |
+          target/release/epsilon-*.tar.gz
+          target/release/epsilon-*.tar.gz.sha256
+          target/release/epk/*.epk
 
-  release:
-    needs: build
+  # Create GitHub release with all artifacts
+  publish-release:
+    name: Publish Release
+    needs: build-release
+    if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
+      
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
-        path: artifacts
-
-    - name: Create release
+        path: release-artifacts
+        
+    - name: Prepare release assets
+      run: |
+        mkdir -p release-files
+        
+        # Collect all distribution files
+        find release-artifacts -type f \( -name "*.tar.gz" -o -name "*.sha256" -o -name "*.epk" \) -exec cp {} release-files/ \;
+        
+        # Generate release notes
+        VERSION="${GITHUB_REF#refs/tags/v}"
+        cat > release-files/RELEASE_NOTES.md << EOF
+        ## Epsilon ${VERSION}
+        
+        ### Installation
+        
+        Download the appropriate archive for your platform and extract it:
+        
+        \`\`\`bash
+        # Linux x86_64
+        curl -LO https://github.com/jbouwman/epsilon/releases/download/v${VERSION}/epsilon-${VERSION}-linux-x86_64.tar.gz
+        tar xzf epsilon-${VERSION}-linux-x86_64.tar.gz
+        
+        # macOS ARM64 (M1/M2)
+        curl -LO https://github.com/jbouwman/epsilon/releases/download/v${VERSION}/epsilon-${VERSION}-darwin-arm64.tar.gz
+        tar xzf epsilon-${VERSION}-darwin-arm64.tar.gz
+        
+        # macOS x86_64 (Intel)
+        curl -LO https://github.com/jbouwman/epsilon/releases/download/v${VERSION}/epsilon-${VERSION}-darwin-x86_64.tar.gz
+        tar xzf epsilon-${VERSION}-darwin-x86_64.tar.gz
+        \`\`\`
+        
+        ### Verify checksums
+        
+        \`\`\`bash
+        sha256sum -c epsilon-${VERSION}-<platform>.tar.gz.sha256
+        \`\`\`
+        
+        ### What's New
+        
+        See [CHANGELOG.md](https://github.com/jbouwman/epsilon/blob/v${VERSION}/CHANGELOG.md) for details.
+        EOF
+        
+        # List all files to be released
+        echo "=== Release files ==="
+        ls -la release-files/
+        
+    - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/v')
       with:
-        files: |
-          artifacts/*/*.*
-        generate_release_notes: true
+        files: release-files/*
+        body_path: release-files/RELEASE_NOTES.md
         draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  test:
-    needs: build
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            platform: linux
-            arch: x86_64
-          - os: macos-latest
-            platform: macos
-            arch: arm64
-          - os: macos-13
-            platform: macos
-            arch: x86_64
-          # Windows temporarily disabled until local testing machine available
-          # - os: windows-latest
-          #   platform: windows
-          #   arch: x86_64
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Download runtime artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: epsilon-${{ matrix.platform }}-${{ matrix.arch }}
-        path: .
-
-    - name: Test runtime (Unix)
-      if: runner.os != 'Windows'
-      run: |
-        mkdir -p test-runtime
-        cd test-runtime
-        tar -xzf ../epsilon-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz
-        ./epsilon --eval "(format t \"~%Epsilon runtime test successful on ${{ matrix.os }}!~%\")" --eval "(sb-ext:quit)"
-        ./epsilon --eval "(format t \"Map test: ~A~%\" (epsilon.lib.map:get (epsilon.lib.map:make-map :a 1 :b 2) :a))" --eval "(sb-ext:quit)"
-
-    - name: Test runtime (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        mkdir test-runtime
-        cd test-runtime
-        unzip ../epsilon-${{ matrix.platform }}-${{ matrix.arch }}.zip
-        ./epsilon.exe --eval "(format t \"~%Epsilon runtime test successful on ${{ matrix.os }}!~%\")" --eval "(sb-ext:quit)"
-        ./epsilon.exe --eval "(format t \"Map test: ~A~%\" (epsilon.lib.map:get (epsilon.lib.map:make-map :a 1 :b 2) :a))" --eval "(sb-ext:quit)"
+        prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+        generate_release_notes: true

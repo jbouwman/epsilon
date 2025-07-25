@@ -2,153 +2,93 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
   pull_request:
     branches: [ main ]
 
-jobs:
-  test-linux:
-    runs-on: ubuntu-latest
-    container: ghcr.io/${{ github.repository }}/epsilon-ci:latest
+env:
+  CACHE_VERSION: v1
 
+jobs:
+  # Run tests for all packages
+  test:
+    name: Test All Packages (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            container: ghcr.io/${{ github.repository }}/epsilon-ci:latest
+          - os: macos-latest
+            container: null
+    
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
-    - name: Install required tools
+      
+    - name: Setup environment (Container)
+      if: matrix.container
       run: |
         apt-get update && apt-get install -y git tar gzip
+        git config --global --add safe.directory /__w/epsilon/epsilon
     
-    - name: Configure git safe directory
-      run: |
-        git config --global --add safe.directory /__w/epsilon/epsilon
-
-    - name: Run tests
-      run: |
-        ./epsilon test --format junit
-
-    - name: Rename test results for platform identification
-      if: success() || failure()
-      run: |
-        if [ -f target/TEST-epsilon.xml ]; then
-          mv target/TEST-epsilon.xml target/TEST-epsilon-linux.xml
-        fi
-
-    - name: Publish Test Report (Linux)
-      uses: mikepenz/action-junit-report@v5
-      if: success() || failure()
+    - name: Install SBCL (macOS)
+      if: runner.os == 'macOS'
+      run: brew install sbcl
+        
+    - name: Cache build artifacts
+      uses: actions/cache@v4
       with:
-        report_paths: '**/TEST-epsilon-linux.xml'
-        check_name: 'Test Results (Linux)'
-        job_summary: true
-
-    - name: Upload test results
-      uses: actions/upload-artifact@v4
-      if: success() || failure()
-      with:
-        name: test-results-linux
-        path: target/TEST-epsilon-linux.xml
-
-    - name: Build release package
+        path: |
+          src/*/target
+          .epsilon-cache
+        key: build-${{ env.CACHE_VERSION }}-${{ runner.os }}-${{ hashFiles('src/**/package.lisp', 'src/**/*.lisp') }}
+        restore-keys: |
+          build-${{ env.CACHE_VERSION }}-${{ runner.os }}-
+    
+    - name: Run tests for all packages
       run: |
-        # Debug git setup
-        echo "Current directory: $PWD"
-        echo "Git directory check:"
-        ls -la .git || echo "No .git directory found"
+        echo "=== Testing all epsilon packages ==="
         
-        # Configure git safe directory (needed in container)
-        git config --global --add safe.directory "$PWD"
-        git config --global --add safe.directory /__w/epsilon/epsilon
-        git config --global --add safe.directory /github/workspace
-        
-        # Set TMPDIR for tar compatibility
-        export TMPDIR="${TMPDIR:-/tmp}"
-        
-        # Get short commit hash for version
-        # Use GITHUB_SHA environment variable as it's more reliable in containers
-        if [ -n "$GITHUB_SHA" ]; then
-          VERSION="dev-$(echo $GITHUB_SHA | cut -c1-7)"
+        # Use the comprehensive test script
+        if [ -x ./scripts/ci-test-all.sh ]; then
+          ./scripts/ci-test-all.sh
         else
-          VERSION="dev-$(git rev-parse --short HEAD 2>/dev/null || echo "snapshot")"
+          # Fallback: test all known modules
+          ./epsilon test all --format junit --file target/TEST-epsilon-${{ runner.os }}.xml
         fi
         
-        # First build the release module
-        ./epsilon build epsilon.release
-        
-        # Build release with EPK for Linux platform
-        ./epsilon release --version "$VERSION" --platforms linux-x86-64
-        
-        # List generated artifacts
-        echo "Generated artifacts:"
-        find target/release -type f -ls
-    
-    - name: Test release package
-      run: |
-        # Extract and test EPK
-        if [ -f target/release/epk/*.epk ]; then
-          echo "Found EPK file:"
-          ls -la target/release/epk/*.epk
-        fi
-
-  test-macos:
-    runs-on: macos-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Install SBCL
-      run: |
-        brew install sbcl
-
-    - name: Run all tests
-      run: |
-        ./epsilon test --format junit
-
-    - name: Rename test results for platform identification
-      if: success() || failure()
-      run: |
-        if [ -f target/TEST-epsilon.xml ]; then
-          mv target/TEST-epsilon.xml target/TEST-epsilon-macos.xml
-        fi
-
-    - name: Publish Test Report (macOS)
+    - name: Publish Test Report
       uses: mikepenz/action-junit-report@v5
       if: success() || failure()
       with:
-        report_paths: '**/TEST-epsilon-macos.xml'
-        check_name: 'Test Results (macOS)'
+        report_paths: '**/TEST-*.xml'
+        check_name: 'Test Results (${{ runner.os }})'
         job_summary: true
-
+        detailed_summary: true
+        
     - name: Upload test results
       uses: actions/upload-artifact@v4
       if: success() || failure()
       with:
-        name: test-results-macos
-        path: target/TEST-epsilon-macos.xml
-
-    - name: Build release package
+        name: test-results-${{ runner.os }}
+        path: target/TEST-*.xml
+        
+    - name: Check test coverage
+      if: success()
       run: |
-        # Set TMPDIR for tar compatibility
-        export TMPDIR="${TMPDIR:-/tmp}"
-        
-        # Get short commit hash for version
-        VERSION="dev-$(git rev-parse --short HEAD)"
-        
-        # First build the release module
-        ./epsilon build epsilon.release
-        
-        # Build release with EPK for macOS platforms
-        ./epsilon release --version "$VERSION" --platforms darwin-x86-64,darwin-arm64
-        
-        # List generated artifacts
-        echo "Generated artifacts:"
-        find target/release -type f -ls
-    
-    - name: Test release package
-      run: |
-        # Extract and test EPK
-        if [ -f target/release/epk/*.epk ]; then
-          echo "Found EPK file:"
-          ls -la target/release/epk/*.epk
-        fi
+        echo "=== Test Summary ==="
+        # Show which packages were tested
+        find src -name "package.lisp" -type f | while read pkg; do
+          dir=$(dirname "$pkg")
+          module=$(basename $(dirname "$dir"))
+          if [ -d "$dir/tests" ]; then
+            echo "✓ $module - has tests"
+          else
+            echo "⚠ $module - no tests found"
+          fi
+        done

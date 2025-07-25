@@ -41,8 +41,25 @@ if ! command -v sbcl >/dev/null 2>&1; then
     exit 1
 fi
 
-# Common SBCL arguments
-SBCL_ARGS="--noinform --non-interactive --no-sysinit --no-userinit"
+# Parse debug flag before passing to SBCL
+DEBUG_MODE="false"
+FILTERED_ARGS=""
+for arg in "$@"; do
+    if [ "$arg" = "--debug" ]; then
+        DEBUG_MODE="true"
+    else
+        FILTERED_ARGS="$FILTERED_ARGS $arg"
+    fi
+done
+
+# Common SBCL runtime arguments
+SBCL_RUNTIME_ARGS="--noinform"
+# Common SBCL toplevel arguments  
+if [ "$DEBUG_MODE" = "true" ]; then
+    SBCL_TOPLEVEL_ARGS="--no-sysinit --no-userinit --quit"
+else
+    SBCL_TOPLEVEL_ARGS="--no-sysinit --no-userinit --disable-debugger --quit"
+fi
 
 case "$EPSILON_MODE" in
     development)
@@ -50,17 +67,19 @@ case "$EPSILON_MODE" in
         # Save the user's current directory for commands like 'run'
         export EPSILON_USER_DIR="$(pwd)"
         cd "$SCRIPT_DIR"
-        exec sbcl $SBCL_ARGS \
+        exec sbcl $SBCL_RUNTIME_ARGS \
+            $SBCL_TOPLEVEL_ARGS \
             --load "$EPSILON_BOOT" \
             --eval "(epsilon.tool.dev:main)" \
-            "$@"
+            -- $FILTERED_ARGS
         ;;
     installed)
         # Installed mode: load from core image
-        exec sbcl $SBCL_ARGS \
+        exec sbcl $SBCL_RUNTIME_ARGS \
             --core "$EPSILON_BOOT" \
+            $SBCL_TOPLEVEL_ARGS \
             --eval "(epsilon.tool.dev:main)" \
-            "$@"
+            -- $FILTERED_ARGS
         ;;
     *)
         echo "Error: Unknown mode $EPSILON_MODE" >&2

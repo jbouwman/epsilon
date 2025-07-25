@@ -1,5 +1,5 @@
 (defpackage #:epsilon.tool.catalog.tests
-  (:use #:cl #:epsilon.tool.test)
+  (:use #:cl #:epsilon.test)
   (:local-nicknames
    (#:catalog #:epsilon.tool.catalog)))
 

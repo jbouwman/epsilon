@@ -1,15 +1,9 @@
-;;;; Test Framework and Assertion System
-;;;;
 ;;;; This module provides a test framework with hierarchical test
 ;;;; organization, metrics collection, and multiple output formats.
-;;;; Supports both individual test execution and batch test running.
+;;;; It supports both individual test execution and batch test
+;;;; running.
 ;;;;
-;;;; - Hierarchical test organization by package and name
-;;;; - Assertion macros (is, is-equal, is-thrown, etc.)
-;;;; - Test timing and metrics collection
-;;;; - Test skipping and conditional execution
-;;;;
-;;;; Usage: Define tests with (deftest name ...) and run with (run)
+;;;; Te use, define tests with (deftest name ...) and run with (run)
 
 (defpackage epsilon.test
   (:use
@@ -22,6 +16,7 @@
    (re epsilon.regex)
    (report epsilon.test.report)
    (suite epsilon.test.suite)
+   (fixture epsilon.test.fixture)
    (path epsilon.path))
   (:export
 
@@ -29,6 +24,10 @@
    deftest
    with-label
    project-file
+   
+   ;; fixtures
+   fixture
+   with-fixture
 
    ;; executing tests
    skip
@@ -69,6 +68,10 @@
          ,@real-body)
        (suite:register-test ',name ,docstring))))
 
+;;; TODO rmeove 'module' argument -- 'package' here is 'epsilon
+;;; package'. Rename the 'package' argument to 'name' and use it to
+;;; apply a regexp.
+
 (defun run (&key package name module (format :shell) (file nil))
   "Run tests, optionally filtered by name, package, or module.
 
@@ -83,30 +86,26 @@ If FILE is provided, write the report to the named file."
     (format t "~&;;; Building module: ~A~%" module)
     (build:build module)  ; Build the module itself (without tests)
     (format t "~&;;; Loading tests for module: ~A~%" module)
-    (handler-case
-        (build:build-tests module)  ; Build and load just the tests
-      (error (e)
-        (format t "~&;;; Error loading tests: ~A~%" e))))
+    (build:build-tests module))  ; Build and load just the tests
   
-  (let ((target-package (or package
-                            (when module
-                              ;; Convert module name to package pattern
-                              ;; e.g., "epsilon.core" -> filter packages starting with "epsilon."
-                              (if (string= module "epsilon.core")
-                                  "epsilon."
-                                  module)))))
-    (let ((selected-tests (suite:select :package target-package
-                                        :name name)))
-      (format t "~&;;; Selected ~D tests~@[ for package pattern '~A'~]~%" 
-              (length selected-tests) target-package)
-      (when (zerop (length selected-tests))
-        (format t "~&;;; Warning: No tests found!~%")
-        (let ((available (suite:list-available-packages)))
-          (when available
-            (format t "~&;;; Available test packages: ~{~A~^, ~}~%" available))))
-      (suite:run selected-tests
-                 (report:make :format format
-                              :file file)))))
+  ;; Only apply selectors if explicitly provided
+  (let ((selected-tests (if (or package name)
+                            ;; Explicit selectors provided - filter tests
+                            (suite:select :package package :name name)
+                            ;; No selectors - run all loaded tests
+                            (suite:select))))
+    (if (or package name)
+        (format t "~&;;; Selected ~D tests~@[ for package pattern '~A'~]~@[ matching name '~A'~]~%" 
+                (length selected-tests) package name)
+        (format t "~&;;; Running all ~D loaded tests~%" (length selected-tests)))
+    (when (zerop (length selected-tests))
+      (format t "~&;;; Warning: No tests found!~%")
+      (let ((available (suite:list-available-packages)))
+        (when available
+          (format t "~&;;; Available test packages: ~{~A~^, ~}~%" available))))
+    (suite:run selected-tests
+               (report:make :format format
+                            :file file))))
 
 (defun success-p (run)
   (zerop (+ (length (suite:failures run))
@@ -270,8 +269,10 @@ If REGEX is provided, the condition's printed representation must match it."
   "Main entry point for test command from dev.lisp dispatcher"
   (let* ((args (funcall (read-from-string "epsilon.tool.dev::parsed-args-arguments") parsed-args))
          (options (funcall (read-from-string "epsilon.tool.dev::parsed-args-options") parsed-args))
-         ;; Parse options
-         (module (or (first args) (map:get options "module")))
+         ;; Parse options - prioritize --package over --module and positional args
+         (target-package (or (map:get options "package") 
+                             (map:get options "module") 
+                             (first args)))
          (package (map:get options "package"))
          (name (map:get options "name"))
          (format-str (or (map:get options "format") "shell"))
@@ -284,23 +285,31 @@ If REGEX is provided, the condition's printed representation must match it."
     
     ;; Check if 'all' is specified
     (cond
-      ((string= module "all")
-       ;; Run tests for all modules
+      ((and target-package (string= target-package "all"))
+       ;; Run tests for all packages
        (run-all :format format
                 :file file
                 :include-platform include-platform))
-      (module
-       ;; Run tests for specific module
-       (format t "~&;;; Test main called with module: ~A, package: ~A~%" module package)
-       (run :module module
-            :package package
+      (target-package
+       ;; Run tests for specific package
+       (format t "~&;;; Test main called with package: ~A~%" target-package)
+       (run :module target-package
+            :package nil  ; Don't filter by Lisp package when testing epsilon package
             :name name
             :format format
             :file file))
       (t
-       ;; Default to epsilon.core if no module specified
+       ;; Default to epsilon.core if no package specified
        (run :module "epsilon.core"
-            :package package
+            :package nil  ; Don't filter by Lisp package by default
             :name name
             :format format
             :file file)))))
+
+;; Re-export fixture functionality
+;; Note: directly exporting the symbols from the fixture package
+(defmacro fixture (&rest args)
+  `(fixture:fixture ,@args))
+
+(defmacro with-fixture (&rest args)
+  `(fixture:with-fixture ,@args))

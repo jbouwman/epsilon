@@ -4,8 +4,5 @@
  :description "HTTP client and server implementation"
  :sources ("src")
  :tests ("tests")
- :dependencies ("epsilon.core"
-                #+darwin "epsilon.darwin"
-                #+linux "epsilon.linux"  
-                #+win32 "epsilon.windows")
+ :dependencies ("epsilon.core" "epsilon.json" "epsilon.tls")
  :provides ("epsilon.http"))

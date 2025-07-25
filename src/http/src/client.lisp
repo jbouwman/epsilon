@@ -5,19 +5,20 @@
 (defpackage :epsilon.http.client
   (:use :cl)
   (:local-nicknames
-   (#:net #:epsilon.net)
-   (#:url #:epsilon.url)
+   (#:net #:epsilon.http.net)
    (#:str #:epsilon.string)
+   (#:seq #:epsilon.sequence)
    (#:map #:epsilon.map)
-   (#:base64 #:epsilon.base64))
+   (#:base64 #:epsilon.base64)
+   (#:tls #:epsilon.tls))
   (:export
    #:request
-   #:get
-   #:post
-   #:put
-   #:delete
-   #:head
-   #:options
+   #:http-get
+   #:http-post
+   #:http-put
+   #:http-delete
+   #:http-head
+   #:http-options
    #:with-connection))
 
 (in-package :epsilon.http.client)
@@ -26,34 +27,69 @@
   ((socket :initarg :socket :accessor connection-socket)
    (host :initarg :host :accessor connection-host)
    (port :initarg :port :accessor connection-port)
-   (ssl-p :initarg :ssl-p :accessor connection-ssl-p :initform nil)))
+   (ssl-p :initarg :ssl-p :accessor connection-ssl-p :initform nil)
+   (tls-connection :initarg :tls-connection :accessor connection-tls-connection :initform nil)))
 
 (defun make-http-connection (host port &key ssl-p)
   "Create an HTTP connection using platform-specific epsilon.net"
-  (let ((socket (net:socket-connect host port)))
+  (let* ((socket (net:socket-connect host port))
+         (tls-conn (when ssl-p
+                     (let ((tls-ctx (tls:create-tls-context :server-p nil)))
+                       (tls:set-verify-mode tls-ctx tls:+tls-verify-none+)
+                       (tls:tls-connect socket tls-ctx)))))
     (make-instance 'http-connection
                    :socket socket
                    :host host
                    :port port
-                   :ssl-p ssl-p)))
+                   :ssl-p ssl-p
+                   :tls-connection tls-conn)))
 
 (defmacro with-connection ((conn host port &key ssl-p) &body body)
   "Execute body with an HTTP connection"
   `(let ((,conn (make-http-connection ,host ,port :ssl-p ,ssl-p)))
      (unwind-protect
           (progn ,@body)
-       (when (connection-socket ,conn)
-         (net:socket-close (connection-socket ,conn))))))
+       (progn
+         (when (connection-tls-connection ,conn)
+           (tls:tls-close (connection-tls-connection ,conn)))
+         (when (connection-socket ,conn)
+           (net:socket-close (connection-socket ,conn)))))))
 
 (defun parse-url (url-string)
-  "Parse URL into components"
-  (let ((url-obj (url:parse url-string)))
-    (values (url:scheme url-obj)
-            (url:host url-obj)
-            (or (url:port url-obj)
-                (if (string= (url:scheme url-obj) "https") 443 80))
-            (or (url:path url-obj) "/")
-            (url:query url-obj))))
+  "Parse URL into components - simple implementation"
+  (let* ((scheme-end (search "://" url-string))
+         (scheme (if scheme-end
+                     (subseq url-string 0 scheme-end)
+                     "http"))
+         (rest-url (if scheme-end
+                       (subseq url-string (+ scheme-end 3))
+                       url-string))
+         (slash-pos (position #\/ rest-url))
+         (question-pos (position #\? rest-url))
+         (colon-pos (position #\: rest-url))
+         ;; Find the end of the authority section (host:port)
+         (authority-end (cond
+                          (slash-pos slash-pos)
+                          (question-pos question-pos)
+                          (t (length rest-url))))
+         ;; Only consider colon as port separator if it's before path/query
+         (port-colon-pos (when (and colon-pos (< colon-pos authority-end))
+                           colon-pos))
+         (host-end (or port-colon-pos authority-end))
+         (host (subseq rest-url 0 host-end))
+         (port (cond
+                 (port-colon-pos
+                  (parse-integer (subseq rest-url (1+ port-colon-pos) authority-end)))
+                 ((string= scheme "https") 443)
+                 (t 80)))
+         (path-start (or slash-pos (length rest-url)))
+         (path-end (or question-pos (length rest-url)))
+         (path (if (< path-start (length rest-url))
+                   (subseq rest-url path-start path-end)
+                   "/"))
+         (query (when (and question-pos (< question-pos (length rest-url)))
+                  (subseq rest-url (1+ question-pos)))))
+    (values scheme host port path query)))
 
 (defun format-request-line (method path query)
   "Format HTTP request line"
@@ -96,13 +132,17 @@
                           request-line #\Return #\Linefeed
                           (format-headers final-headers) #\Return #\Linefeed
                           body)))
-    (let ((stream (net:socket-stream (connection-socket connection))))
+    (let ((stream (if (connection-ssl-p connection)
+                      (tls:tls-stream (connection-tls-connection connection))
+                      (net:socket-stream (connection-socket connection)))))
       (write-string request stream)
       (force-output stream))))
 
 (defun read-response (connection)
   "Read HTTP response from connection"
-  (let* ((stream (net:socket-stream (connection-socket connection)))
+  (let* ((stream (if (connection-ssl-p connection)
+                     (tls:tls-stream (connection-tls-connection connection))
+                     (net:socket-stream (connection-socket connection))))
          (response-lines '())
          (line nil))
     ;; Read status line and headers
@@ -110,7 +150,7 @@
           do (push line response-lines)
           when (string= line "") do (return))
     ;; Try to read body based on Content-Length header
-    (let* ((headers-text (str:join (reverse response-lines) (string #\Linefeed)))
+    (let* ((headers-text (str:join #\Linefeed (seq:from-list (reverse response-lines))))
            (content-length (extract-content-length headers-text))
            (body (when (and content-length (> content-length 0))
                    (let ((buffer (make-string content-length)))
@@ -121,16 +161,17 @@
 
 (defun parse-response (response-string)
   "Parse HTTP response into status, headers, and body"
-  (let* ((lines (str:split response-string #\Linefeed))
-         (status-line (first lines))
-         (status-parts (str:split status-line #\Space))
+  (let* ((lines (str:split #\Linefeed response-string))
+         (status-line (seq:first lines))
+         (status-parts (seq:realize (str:split #\Space status-line)))
          (status-code (parse-integer (second status-parts)))
          (headers map:+empty+)
          (body-start nil))
     
     ;; Parse headers
-    (loop for i from 1 below (length lines)
-          for line = (nth i lines)
+    (let ((lines-list (seq:realize lines)))
+      (loop for i from 1 below (length lines-list)
+            for line = (nth i lines-list)
           do (cond
                ((or (string= line "") (string= line (string #\Return)))
                 (setf body-start (1+ i))
@@ -142,11 +183,10 @@
                           (value (str:trim (subseq line (1+ colon-pos)))))
                       (setf headers (map:assoc headers key value))))))))
     
-    ;; Extract body
-    (let ((body (when body-start
-                  (str:join (subseq lines body-start) 
-                            (string #\Linefeed)))))
-      (values status-code headers body))))
+      ;; Extract body
+      (let ((body (when body-start
+                    (str:join #\Linefeed (seq:from-list (subseq lines-list body-start))))))
+        (values status-code headers body)))))
 
 (defun request (url &key (method "GET") headers body)
   "Make an HTTP request to URL"
@@ -160,26 +200,26 @@
                       :query query)
         (read-response conn)))))
 
-(defun get (url &key headers)
+(defun http-get (url &key headers)
   "Make GET request"
   (request url :method "GET" :headers headers))
 
-(defun post (url &key headers body)
+(defun http-post (url &key headers body)
   "Make POST request"
   (request url :method "POST" :headers headers :body body))
 
-(defun put (url &key headers body)
+(defun http-put (url &key headers body)
   "Make PUT request"
   (request url :method "PUT" :headers headers :body body))
 
-(defun delete (url &key headers)
+(defun http-delete (url &key headers)
   "Make DELETE request"
   (request url :method "DELETE" :headers headers))
 
-(defun head (url &key headers)
+(defun http-head (url &key headers)
   "Make HEAD request"
   (request url :method "HEAD" :headers headers))
 
-(defun options (url &key headers)
+(defun http-options (url &key headers)
   "Make OPTIONS request"
   (request url :method "OPTIONS" :headers headers))

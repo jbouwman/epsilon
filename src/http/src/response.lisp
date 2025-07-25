@@ -64,7 +64,8 @@
   "Create a JSON response"
   (make-response :status status
                  :headers (map:make-map "Content-Type" "application/json")
-                 :body (epsilon.json:to-json data)))
+                 :body (with-output-to-string (s)
+                         (epsilon.json:encode data s))))
 
 (defun html-response (html &key (status 200))
   "Create an HTML response"

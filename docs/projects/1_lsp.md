@@ -240,3 +240,263 @@ The Language Server Protocol implementation for Epsilon has successfully complet
 - **Collaboration features**: Shared editing and debugging sessions
 
 This roadmap provides a path from the current foundation to a development environment that can replace SLIME while maintaining compatibility during the transition period.
+
+---
+
+# SLIME Replacement Implementation Plan
+
+## Overview
+
+This section provides a comprehensive implementation plan to complete the epsilon.lsp server as a full replacement for SLIME in Emacs and other editors. Based on the analysis of the current implementation, we have a solid foundation with basic LSP features and can focus on the critical missing components.
+
+## Current Implementation Analysis
+
+### ✅ Already Implemented
+- Core LSP protocol (JSON-RPC 2.0) with stdio transport
+- Basic language features (go-to-definition, hover, completion within documents)
+- Document synchronization and workspace management
+- Advanced evaluation system with security sandboxing
+- Document symbols and workspace symbol search
+- Basic diagnostics and syntax error reporting
+
+### ❌ Critical Missing Features
+- **TCP/IP Transport**: Required for real editor connections (currently stdio only)
+- **Cross-file Analysis**: Symbol resolution across workspace
+- **REPL Integration**: Interactive development via custom LSP commands
+- **Incremental Parsing**: Performance optimization for large files
+- **Network Transport**: TCP server for client connections
+
+## Implementation Phases
+
+### Phase 1: Network Transport & Enhanced Workspace (Weeks 1-2)
+
+#### 1.1 TCP Transport Implementation
+- Add TCP server using epsilon.net
+- Support multiple simultaneous client connections  
+- Maintain compatibility with existing stdio transport
+- Connection lifecycle management
+
+#### 1.2 Enhanced Workspace Management
+- File watching for external changes using platform APIs
+- Cross-file symbol indexing with dependency tracking
+- Project root detection (.asd files, .git directories)
+- Incremental symbol database updates
+
+**Key Files to Create:**
+- `src/lsp/src/transport-tcp.lisp` - TCP transport layer
+- `src/lsp/src/workspace-index.lisp` - Cross-file analysis
+- `src/lsp/src/file-watcher.lisp` - File change monitoring
+
+### Phase 2: REPL Integration (Weeks 3-4)
+
+#### 2.1 Custom LSP Protocol Extensions
+Define non-standard LSP commands for REPL operations:
+```
+lisp/createRepl - Create new REPL session
+lisp/evalExpression - Evaluate expression
+lisp/evalDefun - Evaluate current defun
+lisp/evalRegion - Evaluate selected text
+lisp/interruptEvaluation - Interrupt running code
+```
+
+#### 2.2 Session Management
+- Extend existing evaluation.lisp for interactive REPL
+- Multiple REPL sessions per workspace
+- Session state preservation (package, variables)
+- Output streaming for long operations
+
+#### 2.3 Client Integration
+- Emacs package with REPL buffer management
+- VS Code extension for REPL panel
+- Neovim configuration for REPL integration
+
+**Key Files to Create:**
+- `src/lsp/src/repl-integration.lisp` - REPL session manager
+- `clients/emacs/epsilon-lsp-repl.el` - Emacs REPL client
+- `clients/vscode/src/repl.ts` - VS Code REPL panel
+
+### Phase 3: Advanced Analysis (Weeks 5-6)
+
+#### 3.1 Cross-file Symbol Resolution
+- Parse ASDF system definitions for dependencies
+- Build workspace dependency graph
+- Resolve symbols across package boundaries
+- Track symbol usage across files
+
+#### 3.2 Incremental Parsing Performance
+- Implement diff-based parsing for large files
+- Cache parsed forms with content hashing
+- Background analysis worker threads
+- Memory-efficient symbol storage
+
+#### 3.3 Macro Expansion Support
+- Track macro definitions and expansions
+- Show expanded forms on hover
+- Step-by-step macro expansion viewer
+- Handle compiler macros correctly
+
+**Key Files to Modify:**
+- `src/lsp/src/analysis.lisp` - Enhanced analysis engine
+- `src/lsp/src/workspace.lisp` - Cross-file indexing
+- `src/lsp/src/server.lisp` - Performance optimizations
+
+### Phase 4: Debugging & Inspection (Weeks 7-8)
+
+#### 4.1 Debugger Integration
+Custom LSP extensions for debugging:
+```
+lisp/getBacktrace - Capture stack trace
+lisp/inspectFrame - Examine stack frame
+lisp/invokeRestart - Select restart option
+lisp/setBreakpoint - Add conditional breakpoint
+```
+
+#### 4.2 Interactive Debugging
+- Capture and forward conditions to client
+- Present restarts as code actions
+- Support step-by-step debugging
+- Local variable inspection
+
+#### 4.3 Object Inspector
+```
+lisp/inspect - Inspect object structure
+lisp/inspectPart - Navigate object components
+lisp/modifySlot - Edit object state
+```
+
+**Key Files to Create:**
+- `src/lsp/src/debug-adapter.lisp` - Debug protocol implementation
+- `src/lsp/src/inspector.lisp` - Object inspection system
+
+### Phase 5: Refactoring & Code Actions (Weeks 9-10)
+
+#### 5.1 Symbol Renaming
+- Project-wide symbol renaming with conflict detection
+- Preserve symbol meaning across package boundaries
+- Integration with version control for rollback
+
+#### 5.2 Code Actions
+- **Add missing import**: Auto-import undefined symbols
+- **Generate defgeneric**: Create generic from defmethod
+- **Extract function**: Extract selection to new function
+- **Inline function**: Replace calls with function body
+
+#### 5.3 Advanced Completions
+- Context-aware completions (function vs variable context)
+- Snippet expansion for common patterns
+- Auto-import suggestions for external symbols
+- Parameter hints with type information
+
+### Phase 6: Performance & Production (Weeks 11-12)
+
+#### 6.1 Performance Optimization
+- Parallel analysis using worker threads
+- Memory-mapped file handling for large projects
+- Result caching with TTL expiration
+- Profiling and bottleneck elimination
+
+#### 6.2 Configuration & Deployment
+- User/workspace configuration system
+- Standalone binary distribution
+- Editor integration packages
+- Comprehensive documentation
+
+## Client Integration Strategies
+
+### Emacs Integration
+```elisp
+;; Enhanced lsp-mode integration
+(use-package epsilon-lsp
+  :after lsp-mode
+  :config
+  (lsp-register-client
+   (make-lsp-client
+    :new-connection (lsp-tcp-connection "localhost" 7777)
+    :activation-fn (lsp-activate-on "lisp")
+    :server-id 'epsilon-lsp
+    :custom-capabilities '((repl . t) (debugging . t))))
+  :bind
+  (:map lisp-mode-map
+   ("C-c C-e" . epsilon-eval-expression)
+   ("C-c C-k" . epsilon-compile-file)
+   ("C-c C-z" . epsilon-switch-to-repl)))
+```
+
+### VS Code Extension
+- Language server configuration in package.json
+- Custom commands for REPL operations
+- Debug adapter protocol integration
+- Syntax highlighting for Epsilon extensions
+
+### Neovim Integration
+```lua
+-- Built-in LSP client configuration
+require'lspconfig'.epsilon_lsp.setup{
+  cmd = {"epsilon", "lsp", "--tcp", "--port", "7777"},
+  filetypes = {"lisp"},
+  root_dir = require'lspconfig'.util.root_pattern("*.asd", ".git"),
+  settings = {
+    epsilon = {
+      repl = { enabled = true },
+      analysis = { crossFile = true }
+    }
+  }
+}
+```
+
+## Migration from SLIME
+
+### Feature Mapping
+| SLIME Feature | epsilon.lsp Equivalent |
+|---------------|------------------------|
+| `slime-eval-defun` | `lisp/evalDefun` command |
+| `slime-compile-file` | `textDocument/diagnostics` |
+| `slime-repl` | Custom REPL panel |
+| `slime-inspect` | `lisp/inspect` command |
+| `slime-who-calls` | `textDocument/references` |
+| `slime-macroexpand-1` | `lisp/macroexpand` command |
+| `slime-debugger` | Debug adapter protocol |
+
+### Compatibility Layer
+Create `slime-compat.el` to provide SLIME keybindings that map to LSP commands:
+```elisp
+(defun slime-eval-defun ()
+  "SLIME compatibility: evaluate defun"
+  (interactive)
+  (lsp-request "lisp/evalDefun" 
+               (list :textDocument (lsp--text-document-identifier)
+                     :position (lsp--cur-position))))
+```
+
+## Success Metrics
+
+### Performance Targets
+- **Response time**: <100ms for common operations (completion, hover)
+- **Startup time**: <2 seconds for medium projects (1000 files)
+- **Memory usage**: <500MB for large projects (10,000 files)
+- **Network latency**: <10ms additional overhead vs stdio
+
+### Feature Completeness
+- **Core LSP**: 100% compliance with LSP 3.17 specification
+- **SLIME parity**: 90% of commonly used SLIME features
+- **Editor support**: Emacs, VS Code, Neovim working configurations
+- **Stability**: <1 crash per 100 hours of usage
+
+### Adoption Metrics
+- **Community feedback**: Beta testing with 10+ experienced Lisp developers
+- **Documentation coverage**: Setup guides for all supported editors
+- **Issue resolution**: <48 hour response time for bug reports
+- **Performance benchmarks**: Public results vs SLIME baseline
+
+## Timeline Summary
+
+- **Weeks 1-2**: TCP transport and enhanced workspace management
+- **Weeks 3-4**: REPL integration with custom LSP commands
+- **Weeks 5-6**: Cross-file analysis and incremental parsing
+- **Weeks 7-8**: Debugging and inspection support
+- **Weeks 9-10**: Refactoring tools and code actions
+- **Weeks 11-12**: Performance optimization and production deployment
+
+**Total Implementation Time**: 12 weeks for complete SLIME replacement
+
+This implementation plan builds on the existing solid foundation to create a modern, secure, and editor-agnostic development environment for Common Lisp that surpasses SLIME's capabilities while maintaining familiar workflows.
