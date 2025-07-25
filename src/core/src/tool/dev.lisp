@@ -328,7 +328,7 @@
     (when (and (not explicit-module) local-package)
       (format t ";;; Detected local package: ~A~%" local-package)
       ;; Register the local package as a module
-      (let ((user-dir (or (sb-posix:getenv "EPSILON_USER_DIR")
+      (let ((user-dir (or (sb-ext:posix-getenv "EPSILON_USER_DIR")
                          (fs:current-directory)
                          ".")))
         (handler-case
@@ -376,7 +376,7 @@
       (progn
         (format t ";;; Building local package: ~A~%" local-package)
         ;; Register the local package as a module in the build system
-        (let* ((user-dir (or (sb-posix:getenv "EPSILON_USER_DIR")
+        (let* ((user-dir (or (sb-ext:posix-getenv "EPSILON_USER_DIR")
                             (fs:current-directory)
                             "."))
                (package-def (read-local-package-definition)))
@@ -632,8 +632,7 @@
                          (getf result :description "No description"))))
              (format t "Error: Search query required~%")))
       
-      (t
-       (handle-package-help parsed-args))))))
+       (handle-package-help parsed-args)))))
 
 (defun handle-package-help (parsed-args)
   "Show help for package command"

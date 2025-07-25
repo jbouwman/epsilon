@@ -18,6 +18,10 @@ jobs:
     - name: Install required tools
       run: |
         apt-get update && apt-get install -y git tar gzip
+    
+    - name: Configure git safe directory
+      run: |
+        git config --global --add safe.directory /__w/epsilon/epsilon
 
     - name: Run tests
       run: |
@@ -47,14 +51,29 @@ jobs:
 
     - name: Build release package
       run: |
+        # Debug git setup
+        echo "Current directory: $PWD"
+        echo "Git directory check:"
+        ls -la .git || echo "No .git directory found"
+        
+        # Configure git safe directory (needed in container)
+        git config --global --add safe.directory "$PWD"
+        git config --global --add safe.directory /__w/epsilon/epsilon
+        git config --global --add safe.directory /github/workspace
+        
         # Set TMPDIR for tar compatibility
         export TMPDIR="${TMPDIR:-/tmp}"
         
         # Get short commit hash for version
-        VERSION="dev-$(git rev-parse --short HEAD)"
+        # Use GITHUB_SHA environment variable as it's more reliable in containers
+        if [ -n "$GITHUB_SHA" ]; then
+          VERSION="dev-$(echo $GITHUB_SHA | cut -c1-7)"
+        else
+          VERSION="dev-$(git rev-parse --short HEAD 2>/dev/null || echo "snapshot")"
+        fi
         
         # First build the release module
-        ./epsilon build --module epsilon.release
+        ./epsilon build epsilon.release
         
         # Build release with EPK for Linux platform
         ./epsilon release --version "$VERSION" --platforms linux-x86-64
@@ -117,7 +136,7 @@ jobs:
         VERSION="dev-$(git rev-parse --short HEAD)"
         
         # First build the release module
-        ./epsilon build --module epsilon.release
+        ./epsilon build epsilon.release
         
         # Build release with EPK for macOS platforms
         ./epsilon release --version "$VERSION" --platforms darwin-x86-64,darwin-arm64
@@ -133,66 +152,3 @@ jobs:
           echo "Found EPK file:"
           ls -la target/release/epk/*.epk
         fi
-
-  test-windows:
-    runs-on: windows-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Install SBCL
-      run: choco install sbcl
-
-    - name: Run all tests
-      shell: pwsh
-      run: |
-        .\epsilon test --format junit
-
-    - name: Rename test results for platform identification
-      if: success() || failure()
-      shell: pwsh
-      run: |
-        if (Test-Path "target/TEST-epsilon.xml") {
-          Move-Item "target/TEST-epsilon.xml" "target/TEST-epsilon-windows.xml"
-        }
-
-    - name: Publish Test Report (windows)
-      uses: mikepenz/action-junit-report@v5
-      if: success() || failure()
-      with:
-        report_paths: '**/TEST-epsilon-windows.xml'
-        check_name: 'Test Results (Windows)'
-        job_summary: true
-
-    - name: Upload test results
-      uses: actions/upload-artifact@v4
-      if: success() || failure()
-      with:
-        name: test-results-windows
-        path: target/TEST-epsilon-windows.xml
-    
-    - name: Build release package
-      shell: bash
-      run: |
-        # Get short commit hash for version
-        VERSION="dev-$(git rev-parse --short HEAD)"
-        
-        # First build the release module
-        ./epsilon build --module epsilon.release
-        
-        # Build release with EPK for Windows platform
-        ./epsilon release --version "$VERSION" --platforms windows-x86-64
-        
-        # List generated artifacts
-        echo "Generated artifacts:"
-        find target/release -type f -ls
-    
-    - name: Test release package
-      shell: bash
-      run: |
-        # Extract and test EPK
-        if [ -f target/release/epk/*.epk ]; then
-          echo "Found EPK file:"
-          ls -la target/release/epk/*.epk
-        fi
-

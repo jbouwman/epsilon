@@ -110,13 +110,16 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
 
 (defun emit-junit-xml (report run)
   "Emit JUnit XML format test results to file"
-  (with-open-file (stream (output-file report)
-                          :direction :output 
-                          :if-exists :supersede
-                          :if-does-not-exist :create)
-    ;; This XML declaration should be handled by the xml package.
-    (format stream "<?xml version=\"1.0\" encoding=\"UTF-8\"?>~%")
-    (xml:emit (make-junit-testsuites run) stream)))
+  (let ((output-path (output-file report)))
+    ;; Ensure target directory exists
+    (ensure-directories-exist output-path)
+    (with-open-file (stream output-path
+                            :direction :output 
+                            :if-exists :supersede
+                            :if-does-not-exist :create)
+      ;; This XML declaration should be handled by the xml package.
+      (format stream "<?xml version=\"1.0\" encoding=\"UTF-8\"?>~%")
+      (xml:emit (make-junit-testsuites run) stream))))
 
 (defun make-junit-testsuites (run)
   "Create JUnit XML testsuites element"

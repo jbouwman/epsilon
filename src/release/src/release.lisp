@@ -9,6 +9,7 @@
    (:path :epsilon.path)
    (:map :epsilon.map)
    (:str :epsilon.string)
+   (:seq :epsilon.sequence)
    (:build :epsilon.tool.build)
    (:json :epsilon.json)
    (:digest :epsilon.digest)
@@ -22,21 +23,39 @@
    :build-distribution
    :generate-index
    :build-all
-   :*release-config*))
+   :*release-config*
+   ;; Configuration structures
+   :make-release-config
+   :release-config-version
+   :release-config-modules  
+   :release-config-platforms
+   :release-config-output-dir
+   ;; Internal functions for testing
+   :parse-platforms
+   :parse-arguments
+   :get-module-info
+   :copy-directory-contents
+   :generate-checksum))
 
 (in-package :epsilon.tool.release)
 
 (defun copy-directory-contents (source dest)
   "Copy directory contents from source to dest"
-  (fs:make-dirs dest)
-  (dolist (entry (fs:list-dir source))
-    (let ((source-path (path:path-string (path:path-join source entry)))
-          (dest-path (path:path-string (path:path-join dest entry))))
-      (cond
-        ((fs:dir-p source-path)
-         (copy-directory-contents source-path dest-path))
-        ((fs:file-p source-path)
-         (fs:copy-file source-path dest-path))))))
+  (let ((source-str (if (typep source 'path:path)
+                        (path:path-string source)
+                        source))
+        (dest-str (if (typep dest 'path:path)
+                      (path:path-string dest)
+                      dest)))
+    (fs:make-dirs dest-str)
+    (dolist (entry (fs:list-dir source-str))
+      (let ((source-path (path:path-string (path:path-join source-str entry)))
+            (dest-path (path:path-string (path:path-join dest-str entry))))
+        (cond
+          ((fs:dir-p source-path)
+           (copy-directory-contents source-path dest-path))
+          ((fs:file-p source-path)
+           (fs:copy-file source-path dest-path)))))))
 
 (defvar *release-config* nil
   "Current release configuration")
@@ -242,6 +261,7 @@
 
 (defun create-wrapper-script (dist-dir os)
   "Create platform-specific wrapper script"
+  (declare (ignore os)) ; TODO: Make OS-specific scripts
   (let ((script-path (path:path-join dist-dir "epsilon")))
     (with-open-file (stream script-path
                            :direction :output
@@ -251,7 +271,8 @@
       (format stream "exec sbcl --core \"$SCRIPT_DIR/epsilon-core\" \"$@\"~%"))
     
     ;; Make executable
-    (sb-posix:chmod script-path #o755)))
+    #-win32 (sb-posix:chmod script-path #o755)
+    #+win32 nil)) ; Windows doesn't need chmod for executables
 
 (defun create-distribution-archive (source-dir archive-name output-dir)
   "Create distribution tarball"
@@ -270,17 +291,22 @@
 
 (defun generate-checksum (file)
   "Generate SHA256 checksum for file"
-  (let ((checksum (with-open-file (stream file :element-type '(unsigned-byte 8))
-                    (let ((digest (digest:make-digest :sha-256)))
-                      (digest:digest-stream digest stream)
-                      (digest:get-digest digest))))
-        (checksum-file (str:concat file ".sha256")))
+  (let* ((file-str (if (typep file 'path:path)
+                       (path:path-string file)
+                       file))
+         (checksum (with-open-file (stream file-str :element-type '(unsigned-byte 8))
+                     (let ((digest (digest:make-digest :sha-256)))
+                       (digest:digest-stream digest stream)
+                       (digest:get-digest digest))))
+         (checksum-file (str:concat file-str ".sha256")))
     (with-open-file (stream checksum-file
                            :direction :output
                            :if-exists :supersede)
       (format stream "~A  ~A~%" 
               (hex:u8-to-hex checksum)
-              (let ((p (path:make-path file)))
+              (let ((p (if (typep file 'path:path)
+                           file
+                           (path:make-path file))))
                 (or (path:path-name p) ""))))))
 
 (defun generate-index (modules version output-dir)
@@ -379,7 +405,7 @@
                 (setf options (map:assoc options :version (pop args))))
                ((string= arg "--modules")
                 (setf options (map:assoc options :modules 
-                                      (str:split "," (pop args)))))
+                                      (seq:realize (str:split #\, (pop args))))))
                ((string= arg "--output")
                 (setf options (map:assoc options :output-dir (pop args))))
                ((string= arg "--platforms")
@@ -392,10 +418,12 @@
 (defun parse-platforms (spec)
   "Parse platform specification"
   (mapcar (lambda (p)
-            (destructuring-bind (os arch) (str:split "-" p)
+            (let* ((dash-pos (position #\- p))
+                   (os (if dash-pos (subseq p 0 dash-pos) p))
+                   (arch (if dash-pos (subseq p (1+ dash-pos)) "")))
               (list :os (intern (string-upcase os) :keyword)
                     :arch (intern (string-upcase arch) :keyword))))
-          (str:split "," spec)))
+          (seq:realize (str:split #\, spec))))
 
 (defun build-all (&key 
                    force 
@@ -467,7 +495,7 @@
         (build-release 
          :version version
          :modules (let ((modules-str (map:get options "modules")))
-                    (when modules-str (str:split "," modules-str)))
+                    (when modules-str (seq:realize (str:split #\, modules-str))))
          :platforms (let ((platforms-str (map:get options "platforms")))
                       (when platforms-str (parse-platforms platforms-str)))
          :output-dir (map:get options "output-dir")))

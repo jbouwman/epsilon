@@ -3,6 +3,7 @@
  :author "Jesse Bouwman"
  :description "Release and distribution tool for Epsilon"
  :sources ("src")
+ :tests ("tests")
  :provides ("epsilon.tool.release")
  :dependencies ("epsilon.core"
                 "epsilon.json"

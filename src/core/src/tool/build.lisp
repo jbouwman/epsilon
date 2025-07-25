@@ -943,11 +943,21 @@
 (defun find-module-directories (base-dir)
   "Find all directories containing package.lisp files under base-dir/src/
    Returns a list of directory path strings suitable for register-module"
-  (let ((module-base (path:uri-merge base-dir "src/"))
-        (module-dirs '()))
-    (when (fs:exists-p module-base)
+  (let* ((module-base (path:uri-merge base-dir "src/"))
+         ;; On Windows, try a more direct approach if the first one fails
+         (module-base-path (or (ignore-errors (path:path-from-uri module-base))
+                               #+win32 (merge-pathnames "src/" (pathname base-dir))
+                               #-win32 nil))
+         (module-dirs '()))
+    ;; Debug output for Windows
+    #+win32 (format t ";;; Module base URI: ~A~%" module-base)
+    #+win32 (format t ";;; Module base path: ~A~%" module-base-path)
+    #+win32 (format t ";;; Module base exists: ~A~%" (when module-base-path (probe-file module-base-path)))
+    (when (and module-base-path (probe-file module-base-path))
+      ;; Debug output for Windows
+      #+win32 (format t ";;; Searching for modules in: ~A~%" module-base-path)
       ;; List all entries in the module directory
-      (dolist (entry-name (fs:list-dir (path:path-from-uri module-base)))
+      (dolist (entry-name (fs:list-dir module-base-path))
         (let* ((entry-path (path:string-path-join "src" entry-name))
                (entry-uri (path:uri-merge base-dir entry-path))
                (package-file (path:uri-merge entry-uri "package.lisp")))
@@ -976,12 +986,15 @@
   ;; Default base-dir at runtime, not compile time
   (unless base-dir
     (setf base-dir (path:make-path
-                    #+win32 (sb-ext:native-namestring (truename "."))
+                    #+win32 (namestring (truename *default-pathname-defaults*))
                     #-win32 (sb-unix:posix-getcwd))))
   
   (let ((module-paths (find-module-directories base-dir))
         (registered-count 0)
         (skipped-count 0))
+    ;; Debug output for Windows
+    #+win32 (format t ";;; Base directory: ~A~%" base-dir)
+    #+win32 (format t ";;; Found module paths: ~A~%" module-paths)
     
     ;; Register each module using register-module for list-modules functionality
     (dolist (module-path module-paths)

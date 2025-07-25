@@ -90,6 +90,15 @@
        (when (file-p ,name)
          (delete-file* ,name)))))
 
+#+win32
+(defun directory-pathname-p (pathname)
+  "Check if pathname refers to a directory on Windows"
+  (let ((namestring (namestring pathname)))
+    (or (char= (char namestring (1- (length namestring))) #\\)
+        (char= (char namestring (1- (length namestring))) #\/)
+        (and (probe-file pathname)
+             (not (pathname-name pathname))))))
+
 (defun file-info (path)
   #-win32 (sb-posix:stat path)
   #+win32 (let ((truepath (probe-file path)))
@@ -264,8 +273,8 @@
   (let* ((normalized-dir (normalize-path-separators directory))
          (pattern (if (and (> (length normalized-dir) 0)
                            (char= (char normalized-dir (1- (length normalized-dir))) #\/))
-                      (concatenate 'string directory "*.*")
-                      (concatenate 'string directory "\\*.*"))))
+                      (concatenate 'string normalized-dir "*.*")
+                      (concatenate 'string normalized-dir "/*.*"))))
     (handler-case
         (mapcar #'file-namestring
                 (remove-if (lambda (path)
@@ -339,8 +348,11 @@
 
 (defun current-directory ()
   "Get current working directory"
-  (pathname (sb-posix:getcwd)))
+  #-win32 (pathname (sb-posix:getcwd))
+  #+win32 (truename *default-pathname-defaults*))
 
 (defun change-directory (path)
   "Change current working directory"
-  (sb-posix:chdir (if (stringp path) path (namestring path))))
+  #-win32 (sb-posix:chdir (if (stringp path) path (namestring path)))
+  #+win32 (let ((new-path (if (stringp path) (pathname path) path)))
+            (setf *default-pathname-defaults* (truename new-path))))
