@@ -1,4 +1,17 @@
-(defpackage epsilon.msgpack.binary
+
+;;;; https://github.com/msgpack/msgpack/blob/master/spec.md
+;;;;
+;;;; MessagePack is an object serialization specification like JSON.
+;;;;
+;;;; MessagePack has two concepts: type system and formats.
+;;;;
+;;;; Serialization is conversion from application objects into
+;;;; MessagePack formats via MessagePack type system.
+;;;;
+;;;; Deserialization is conversion from MessagePack formats into
+;;;; application objects via MessagePack type system.
+
+(defpackage epsilon.msgpack
   (:use cl)
   (:local-nicknames
    (binary epsilon.binary)
@@ -16,13 +29,13 @@
    msgpack-timestamp
    
    ;; Encoding/decoding functions
-   encode-with-binary-structs
-   decode-with-binary-structs
+   encode
+   decode
    
    ;; Format detection
    detect-msgpack-format))
 
-(in-package :epsilon.msgpack.binary)
+(in-package epsilon.msgpack)
 
 ;;;; MessagePack binary structure definitions using epsilon.binary
 
@@ -291,7 +304,7 @@
                    (if (listp field)
                        (let ((var (first field))
                              (type (second field)))
-                         `(binary:write ,stream-var ,var ,type))
+                         `(binary:write ,stream-var ,var ,type :big-endian))
                        `(binary:write ,stream-var ,field :u8)))
                  fields))))
 
@@ -395,10 +408,50 @@
      (let ((s (make-msgpack-map32-struct :format +map32+ :length length)))
        (binary:write stream s 'msgpack-map32)))))
 
+(defun encode-extension-with-structs (stream type-code data)
+  "Encode extension type using binary structures"
+  (let ((length (length data)))
+    (cond
+      ((= length 1)
+       (binary:write stream +fixext1+ :u8)
+       (binary:write stream type-code :s8)
+       (binary:write-bytes stream data))
+      ((= length 2)
+       (binary:write stream +fixext2+ :u8)
+       (binary:write stream type-code :s8)
+       (binary:write-bytes stream data))
+      ((= length 4)
+       (binary:write stream +fixext4+ :u8)
+       (binary:write stream type-code :s8)
+       (binary:write-bytes stream data))
+      ((= length 8)
+       (binary:write stream +fixext8+ :u8)
+       (binary:write stream type-code :s8)
+       (binary:write-bytes stream data))
+      ((= length 16)
+       (binary:write stream +fixext16+ :u8)
+       (binary:write stream type-code :s8)
+       (binary:write-bytes stream data))
+      ((<= length 255)
+       (binary:write stream +ext8+ :u8)
+       (binary:write stream length :u8)
+       (binary:write stream type-code :s8)
+       (binary:write-bytes stream data))
+      ((<= length 65535)
+       (binary:write stream +ext16+ :u8)
+       (binary:write stream length :u16 :big-endian)
+       (binary:write stream type-code :s8)
+       (binary:write-bytes stream data))
+      (t
+       (binary:write stream +ext32+ :u8)
+       (binary:write stream length :u32 :big-endian)
+       (binary:write stream type-code :s8)
+       (binary:write-bytes stream data)))))
+
 ;;; Main encoding function
 
-(defun encode-with-binary-structs (object)
-  "Encode object using binary structures approach"
+(defun encode (object)
+  "Encode object"
   (let ((stream (make-instance 'binary:binary-output-stream)))
     (encode-object-with-structs stream object)
     (binary:get-output-stream-bytes stream)))
@@ -414,9 +467,16 @@
     (string
      (encode-string-with-structs stream object))
     (list
-     (encode-array-header-with-structs stream (length object))
-     (dolist (element object)
-       (encode-object-with-structs stream element)))
+     (if (and (>= (length object) 3) (eq (first object) :ext))
+         ;; Handle extension type: (:ext type-code data)
+         (let ((type-code (second object))
+               (data (third object)))
+           (encode-extension-with-structs stream type-code data))
+         ;; Regular array
+         (progn
+           (encode-array-header-with-structs stream (length object))
+           (dolist (element object)
+             (encode-object-with-structs stream element)))))
     (single-float
      (write-float32-direct stream object))
     (double-float
@@ -436,23 +496,24 @@
                  do (encode-object-with-structs stream element)))))
     ;; Handle HAMT maps from epsilon.map
     (structure-object
-     (if (and (find-symbol "HAMT" "EPSILON.LIB.MAP")
-              (typep object (find-symbol "HAMT" "EPSILON.LIB.MAP")))
+     (if (typep object 'epsilon.map::hamt)
          (let ((pairs (map:seq object)))
            (encode-map-header-with-structs stream (map:count object))
            (dolist (pair pairs)
-             (encode-object-with-structs stream (first pair))
-             (encode-object-with-structs stream (second pair))))
+             (encode-object-with-structs stream (car pair))
+             (encode-object-with-structs stream (cdr pair))))
          (error "Cannot encode structure of type ~A" (type-of object))))
     (t
      (error "Cannot encode object of type ~A" (type-of object)))))
 
 ;;; Decoding using binary structures
 
-(defun decode-with-binary-structs (bytes)
-  "Decode MessagePack data using binary structures approach"
+(defun decode (bytes)
+  "Decode MessagePack data"
   (let ((stream (make-instance 'binary:binary-input-stream :data bytes :position 0)))
     (decode-object-with-structs stream)))
+
+;; TODO This should be a static dispatch table
 
 (defun decode-object-with-structs (stream)
   "Decode a single MessagePack object using binary structures"
@@ -469,72 +530,109 @@
       ((= format-byte +uint8+)
        (binary:read stream :u8))
       ((= format-byte +uint16+)
-       (binary:read stream :u16))
+       (binary:read stream :u16 :big-endian))
       ((= format-byte +uint32+)
-       (binary:read stream :u32))
+       (binary:read stream :u32 :big-endian))
       ((= format-byte +uint64+)
-       (binary:read stream :u64))
+       (binary:read stream :u64 :big-endian))
       ((= format-byte +int8+)
        (binary:read stream :s8))
       ((= format-byte +int16+)
-       (binary:read stream :s16))
+       (binary:read stream :s16 :big-endian))
       ((= format-byte +int32+)
-       (binary:read stream :s32))
+       (binary:read stream :s32 :big-endian))
       ((= format-byte +int64+)
-       (binary:read stream :s64))
+       (binary:read stream :s64 :big-endian))
       
       ;; Floats
       ((= format-byte +float32+)
-       (binary:read stream :f32))
+       (binary:read stream :f32 :big-endian))
       ((= format-byte +float64+)
-       (binary:read stream :f64))
+       (binary:read stream :f64 :big-endian))
       
       ;; Strings
       ((<= +fixstr+ format-byte (+ +fixstr+ #x1f))     ; fixstr
        (let ((len (logand format-byte #x1f)))
          (decode-string-with-structs stream len)))
       ((= format-byte +str8+)
-       (let ((struct (binary:read stream 'msgpack-str8)))
-         (msgpack-str8-struct-data struct)))
+       (let ((len (binary:read stream :u8)))
+         (decode-string-with-structs stream len)))
       ((= format-byte +str16+)
-       (let ((struct (binary:read stream 'msgpack-str16)))
-         (msgpack-str16-struct-data struct)))
+       (let ((len (binary:read stream :u16 :big-endian)))
+         (decode-string-with-structs stream len)))
       ((= format-byte +str32+)
-       (let ((struct (binary:read stream 'msgpack-str32)))
-         (msgpack-str32-struct-data struct)))
+       (let ((len (binary:read stream :u32 :big-endian)))
+         (decode-string-with-structs stream len)))
       
       ;; Binary
       ((= format-byte +bin8+)
-       (let ((struct (binary:read stream 'msgpack-bin8)))
-         (msgpack-bin8-struct-data struct)))
+       (let ((len (binary:read stream :u8)))
+         (binary:read-bytes stream len)))
       ((= format-byte +bin16+)
-       (let ((struct (binary:read stream 'msgpack-bin16)))
-         (msgpack-bin16-struct-data struct)))
+       (let ((len (binary:read stream :u16 :big-endian)))
+         (binary:read-bytes stream len)))
       ((= format-byte +bin32+)
-       (let ((struct (binary:read stream 'msgpack-bin32)))
-         (msgpack-bin32-struct-data struct)))
+       (let ((len (binary:read stream :u32 :big-endian)))
+         (binary:read-bytes stream len)))
       
       ;; Arrays
       ((<= +fixarray+ format-byte (+ +fixarray+ #xf))  ; fixarray
        (let ((len (logand format-byte #xf)))
          (decode-array-with-structs stream len)))
       ((= format-byte +array16+)
-       (let ((struct (binary:read stream 'msgpack-array16)))
-         (decode-array-with-structs stream (msgpack-array16-struct-length struct))))
+       (let ((len (binary:read stream :u16 :big-endian)))
+         (decode-array-with-structs stream len)))
       ((= format-byte +array32+)
-       (let ((struct (binary:read stream 'msgpack-array32)))
-         (decode-array-with-structs stream (msgpack-array32-struct-length struct))))
+       (let ((len (binary:read stream :u32 :big-endian)))
+         (decode-array-with-structs stream len)))
       
       ;; Maps
       ((<= +fixmap+ format-byte (+ +fixmap+ #xf))      ; fixmap
        (let ((len (logand format-byte #xf)))
          (decode-map-with-structs stream len)))
       ((= format-byte +map16+)
-       (let ((struct (binary:read stream 'msgpack-map16)))
-         (decode-map-with-structs stream (msgpack-map16-struct-length struct))))
+       (let ((len (binary:read stream :u16 :big-endian)))
+         (decode-map-with-structs stream len)))
       ((= format-byte +map32+)
-       (let ((struct (binary:read stream 'msgpack-map32)))
-         (decode-map-with-structs stream (msgpack-map32-struct-length struct))))
+       (let ((len (binary:read stream :u32 :big-endian)))
+         (decode-map-with-structs stream len)))
+      
+      ;; Extension types
+      ((= format-byte +fixext1+)
+       (let ((type-code (binary:read stream :s8))
+             (data (binary:read-bytes stream 1)))
+         (list :ext type-code data)))
+      ((= format-byte +fixext2+)
+       (let ((type-code (binary:read stream :s8))
+             (data (binary:read-bytes stream 2)))
+         (list :ext type-code data)))
+      ((= format-byte +fixext4+)
+       (let ((type-code (binary:read stream :s8))
+             (data (binary:read-bytes stream 4)))
+         (list :ext type-code data)))
+      ((= format-byte +fixext8+)
+       (let ((type-code (binary:read stream :s8))
+             (data (binary:read-bytes stream 8)))
+         (list :ext type-code data)))
+      ((= format-byte +fixext16+)
+       (let ((type-code (binary:read stream :s8))
+             (data (binary:read-bytes stream 16)))
+         (list :ext type-code data)))
+      ((= format-byte +ext8+)
+       (let* ((len (binary:read stream :u8))
+              (type-code (binary:read stream :s8))
+              (data (binary:read-bytes stream len)))
+         (list :ext type-code data)))
+      ((= format-byte +ext16+)
+       (let* ((len (binary:read stream :u16 :big-endian))
+              (type-code (binary:read stream :s8))
+              (data (binary:read-bytes stream len)))
+         (list :ext type-code data)))
+      ((= format-byte +ext32+)
+       (let* ((len (binary:read stream :u32 :big-endian))
+              (type-code (binary:read stream :s8))
+              (data (binary:read-bytes stream len)))
+         (list :ext type-code data)))
       
       (t (error "Unsupported MessagePack format: ~X" format-byte)))))
 

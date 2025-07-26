@@ -799,9 +799,6 @@
 
 (defun %build (project &key force include-tests)
   "Build the given build-inputs, optionally forcing compilation of all steps"
-  (unless force
-    (when (load-concatenated-fasl project)
-      (return-from %build nil)))
   
   (let* ((build (make-instance 'project-build
                                :project project
@@ -853,22 +850,49 @@
          (total-count (seq:count build-inputs)))
     (log:info "Building tests for ~A (~D files)" 
               (project-name project) total-count)
+    (format t "~&;;; DEBUG: build-inputs count: ~D~%" total-count)
+    (format t "~&;;; DEBUG: test-sources count: ~D~%" (length test-sources))
     (let* ((index 0)
-           (results (seq:map (lambda (build-input)
-                              (incf index)
-                              (let ((result (if force
-                                                (compile-source build-input)
-                                                (case (build-input-status build-input)
-                                                  ((:target-missing
-                                                    :source-newer)
-                                                   (compile-source build-input))
-                                                  (t
-                                                   (load-source build-input))))))
-                                (when (compilation-errors result)
-                                  (log:log-error "Compilation failed: ~A" 
-                                                 (path (source-info (build-input result)))))
-                                result))
-                            build-inputs)))
+           (results '()))
+      (handler-case
+          (seq:each (lambda (build-input)
+                      (handler-case
+                          (progn
+                            (incf index)
+                            (let* ((source-path (path:path-from-uri (source-uri build-input)))
+                                   (action (if force
+                                               "compiling"
+                                               (case (build-input-status build-input)
+                                                 ((:target-missing :source-newer) "compiling")
+                                                 (t "loading"))))
+                                   (result (progn
+                                             (format t "~&;;; [~D/~D] ~A test file: ~A~%" 
+                                                     index total-count action source-path)
+                                             (force-output)
+                                             (handler-case
+                                                 (if force
+                                                     (compile-source build-input)
+                                                     (case (build-input-status build-input)
+                                                       ((:target-missing :source-newer)
+                                                        (compile-source build-input))
+                                                       (t
+                                                        (load-source build-input))))
+                                               (error (e)
+                                                 (format t "~&;;; ERROR loading ~A: ~A~%" source-path e)
+                                                 (force-output)
+                                                 nil)))))
+                              (when (and result (compilation-errors result))
+                                (log:log-error "Compilation failed: ~A" 
+                                               (path (source-info (build-input result)))))
+                              (push result results)))
+                        (error (e)
+                          (format t "~&;;; FATAL ERROR processing test file ~D: ~A~%" index e)
+                          (force-output))))
+                    build-inputs)
+        (error (e)
+          (format t "~&;;; FATAL ERROR in seq:each: ~A~%" e)
+          (force-output)))
+      (setf results (nreverse results))
       (setf (slot-value build 'results) results)
       (setf (end-time build) (get-internal-real-time))
       build)))
@@ -898,12 +922,15 @@
           (log:debug "Resolved virtual dependency ~A to ~A" dep-name resolved-dep))
         (when (and (map:contains-p *modules* resolved-dep)
                    (not (is-module-loaded resolved-dep))) ; Skip if already loaded
-          (let* ((dep-info (get-module resolved-dep))
-                 (dep-dir (module-uri dep-info))
-                 (dep-project (load-project dep-dir)))
-            (unless (load-concatenated-fasl dep-project)
-              (build resolved-dep :force force :include-tests nil))
-            (mark-module-loaded resolved-dep)))))
+          ;; Recursively build the dependency (which handles its own dependencies)
+          (build resolved-dep :force force :include-tests nil)
+          (mark-module-loaded resolved-dep))))
+    
+    ;; Now try to load concatenated FASL if dependencies are resolved and it's up-to-date
+    (unless force
+      (when (load-concatenated-fasl project)
+        (return-from build t)))
+    
     (let ((build-result (%build project :force force :include-tests include-tests)))
       (when build-result
         (mark-module-loaded module))
@@ -926,16 +953,24 @@
          (project (load-project module-dir))
          (*error-behavior* error-behavior)
          (*warning-behavior* warning-behavior))
+    ;; Ensure the module itself is built first since test files depend on it
+    (unless (is-module-loaded module)
+      (build module :force force :include-tests nil)
+      (mark-module-loaded module))
+    
+    ;; Ensure epsilon.test is built first since test files depend on it
+    (when (and (map:contains-p *modules* "epsilon.test")
+               (not (is-module-loaded "epsilon.test")))
+      (build "epsilon.test" :force force :include-tests nil)
+      (mark-module-loaded "epsilon.test"))
+    
     (dolist (dep-name (project-dependencies project))
       (when (and (map:contains-p *modules* dep-name)
                  (not (string= dep-name "epsilon.core")) ; core is already loaded
+                 (not (string= dep-name "epsilon.test")) ; test is already loaded above
                  (not (is-module-loaded dep-name))) ; Skip if already loaded
-        (let* ((dep-info (get-module dep-name))
-               (dep-dir (module-uri dep-info))
-               (dep-project (load-project dep-dir)))
-          (unless (load-concatenated-fasl dep-project)
-            (build dep-name :force force :include-tests nil))
-          (mark-module-loaded dep-name))))
+        (build dep-name :force force :include-tests nil)
+        (mark-module-loaded dep-name)))
     (%build-tests project :force force)))
 
 ;;; Module registration

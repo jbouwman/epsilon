@@ -1,14 +1,14 @@
-(defpackage #:epsilon.msgpack.tests
+(defpackage epsilon.msgpack.tests
   (:use
-   #:cl
-   #:epsilon.type
-   #:epsilon.test)
+   cl
+   epsilon.type
+   epsilon.test)
   (:local-nicknames
-   (:map #:epsilon.map)
-   (:msgp #:epsilon.msgpack.impl)
-   (:time #:epsilon.time)))
+   (map epsilon.map)
+   (msgp epsilon.msgpack)
+   (time epsilon.time)))
 
-(in-package #:epsilon.msgpack.tests)
+(in-package epsilon.msgpack.tests)
 
 (deftest nil-bool-values
   (is (equalp (msgp:encode nil) #(192)))
@@ -105,16 +105,16 @@
   (is (equalp (msgp:encode #(1 2 3)) #(147 1 2 3)))
   
   ;; Test array with 15 elements (still fixarray)
-  (let ((array15 (make-array 15 :initial-contents (loop for i from 0 below 15 collect i))))
-    (let ((encoded (msgp:encode array15))
-          (decoded (msgp:decode (msgp:encode array15))))
-      (is (equalp decoded array15))))
+  (let* ((array15 (make-array 15 :initial-contents (loop for i from 0 below 15 collect i)))
+         (encoded (msgp:encode array15))
+         (decoded (msgp:decode encoded)))
+    (is (equalp decoded array15)))
   
   ;; Test array with 16 elements (should use array16 format)
-  (let ((array16 (make-array 16 :initial-contents (loop for i from 0 below 16 collect i))))
-    (let ((encoded (msgp:encode array16))
-          (decoded (msgp:decode (msgp:encode array16))))
-      (is (equalp decoded array16))))
+  (let* ((array16 (make-array 16 :initial-contents (loop for i from 0 below 16 collect i)))
+         (encoded (msgp:encode array16))
+         (decoded (msgp:decode encoded)))
+    (is (equalp decoded array16)))
   
   ;; Test array with 100 elements (should use array16 format)
   (let ((array100 (make-array 100 :initial-contents (loop for i from 0 below 100 collect i))))

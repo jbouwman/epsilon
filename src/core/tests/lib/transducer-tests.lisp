@@ -1,10 +1,9 @@
 (defpackage epsilon.lib.transducer.tests
   (:use cl epsilon.test)
   (:local-nicknames
-   (xf epsilon.lib.transducer)
-   (seq epsilon.lib.sequence)
-   (vec epsilon.lib.vector)
-   (map epsilon.lib.map)))
+   (xf epsilon.transducer)
+   (seq epsilon.sequence)
+   (map epsilon.map)))
 
 (in-package :epsilon.lib.transducer.tests)
 

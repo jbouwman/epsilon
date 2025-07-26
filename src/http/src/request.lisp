@@ -2,7 +2,8 @@
   (:use :cl)
   (:local-nicknames
    (#:str #:epsilon.string)
-   (#:map #:epsilon.map))
+   (#:map #:epsilon.map)
+   (#:seq #:epsilon.sequence))
   (:export
    #:make-request
    #:request-method
@@ -36,7 +37,7 @@
   "Parse URL query string into parameters map"
   (if (and query-string (> (length query-string) 0))
       (let ((params map:+empty+))
-        (dolist (pair (str:split query-string #\&))
+        (dolist (pair (seq:realize (str:split #\& query-string)))
           (let ((eq-pos (position #\= pair)))
             (if eq-pos
                 (let ((key (subseq pair 0 eq-pos))
@@ -72,17 +73,18 @@
 
 (defun parse-http-request (request-string)
   "Parse raw HTTP request string into http-request object"
-  (let ((lines (str:split request-string (format nil "~C~C" #\Return #\Newline))))
+  (let ((lines (mapcar (lambda (line) (string-right-trim '(#\Return) line))
+                       (seq:realize (str:split #\Newline request-string)))))
     (when (< (length lines) 1)
       (error "Invalid HTTP request: no request line"))
     
     ;; Parse request line (GET /path HTTP/1.1)
     (let* ((request-line (first lines))
-           (request-parts (str:split request-line #\Space)))
+           (request-parts (seq:realize (str:split #\Space request-line))))
       (when (< (length request-parts) 3)
         (error "Invalid HTTP request line: ~A" request-line))
       
-      (let ((method (str:upcase (first request-parts)))
+      (let ((method (string-upcase (first request-parts)))
             (path-with-query (second request-parts))
             (headers map:+empty+)
             (body nil))
@@ -104,7 +106,7 @@
                 while (and line (> (length line) 0))
                 do (let ((colon-pos (position #\: line)))
                      (when colon-pos
-                       (let ((header-name (str:downcase (str:trim (subseq line 0 colon-pos))))
+                       (let ((header-name (string-downcase (str:trim (subseq line 0 colon-pos))))
                              (header-value (str:trim (subseq line (1+ colon-pos)))))
                          (setf headers (map:assoc headers header-name header-value))))))
           
@@ -117,4 +119,4 @@
                   (when body-start
                     (setf body (subseq request-string (+ body-start 4))))))))
           
-          (make-request method path :headers headers :body body :params params)))))
+          (make-request method path :headers headers :body body :params params))))))

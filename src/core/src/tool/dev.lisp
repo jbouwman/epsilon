@@ -4,6 +4,14 @@
 ;;;; development tools. It provides a lightweight command dispatcher that
 ;;;; demand-loads tool modules as needed, keeping the core bootstrap minimal.
 
+;;;; TODO
+;;;;
+;;;; - This could be much more modular, given that 'build' is
+;;;;   available at the time that it's loaded.
+;;;;
+;;;; - The static usage information should be generated instead, from
+;;;; - the arg parser.
+
 (defpackage epsilon.tool.dev
   (:use cl)
   (:local-nicknames
@@ -12,7 +20,8 @@
    (build epsilon.tool.build)
    (fs epsilon.sys.fs)
    (path epsilon.path)
-   (package epsilon.tool.package))
+   (package epsilon.tool.package)
+   (table epsilon.table))
   (:export
    main
    register-tool
@@ -140,13 +149,13 @@
                           :module "epsilon.release"  ; demand-load release module
                           :function 'release-main  ; Placeholder - will be resolved dynamically
                           :help-function 'handle-release-help
-                          :description "Build complete Epsilon release with EPK packages and distributions"))
+                          :description "Build complete Epsilon release with packages and distributions"))
            ("package" . ,(make-tool-info
                           :name "package"
                           :module nil  ; package is in core
                           :function 'handle-package
                           :help-function 'handle-package-help
-                          :description "Manage EPK packages"))
+                          :description "Manage packages"))
            ;; These will be uncommented when the modules exist
            #|("lsp" . ,(make-tool-info
                       :name "lsp"
@@ -174,12 +183,12 @@
                         :module nil  ; benchmark is in core
                         :function 'handle-bench
                         :help-function 'handle-bench-help
-                        :description "Run benchmarks"))
+                        :description "Run benchmarks")) |#
            ("repl" . ,(make-tool-info
                        :name "repl"
-                       :module "epsilon.repl"
-                       :function (read-from-string "epsilon.repl:main")
-                       :description "Start an enhanced REPL"))|#))))
+                       :module nil
+                       :function 'handle-repl
+                       :description "Start a REPL"))))))
 
 ;;; Tool Registration API
 
@@ -468,7 +477,6 @@
   "Handle clean command - remove build artifacts and cached files"
   (let* ((options (parsed-args-options parsed-args))
          (dry-run (map:get options "dry-run"))
-         (verbose (map:get options "verbose"))
          (files-removed 0)
          (dirs-removed 0))
     
@@ -476,7 +484,7 @@
     
     ;; Clean main target directory
     (when (fs:exists-p "target")
-      (when (or verbose dry-run)
+      (when dry-run
         (format t "~:[Would remove~;Removing~] directory: target/~%" (not dry-run)))
       (unless dry-run
         (fs:delete-directory "target"))
@@ -487,7 +495,7 @@
       (dolist (module-name (fs:list-dir "module"))
         (let ((module-target (path:string-path-join "module" module-name "target")))
           (when (fs:exists-p module-target)
-            (when (or verbose dry-run)
+            (when dry-run
               (format t "~:[Would remove~;Removing~] directory: ~A~%" (not dry-run) module-target))
             (unless dry-run
               (fs:delete-directory module-target))
@@ -496,7 +504,7 @@
     ;; Clean FASL files
     (let ((fasl-files (fs:list-files "." ".fasl")))
       (dolist (fasl-file fasl-files)
-        (when (or verbose dry-run)
+        (when dry-run
           (format t "~:[Would remove~;Removing~] file: ~A~%" (not dry-run) fasl-file))
         (unless dry-run
           (fs:delete-file* fasl-file))
@@ -505,7 +513,7 @@
     ;; Clean log files
     (let ((log-files (fs:list-files "." ".log")))
       (dolist (log-file log-files)
-        (when (or verbose dry-run)
+        (when dry-run
           (format t "~:[Would remove~;Removing~] file: ~A~%" (not dry-run) log-file))
         (unless dry-run
           (fs:delete-file* log-file))
@@ -524,11 +532,9 @@
   (format t "Usage: epsilon [global-options] clean [options]~%~%")
   (format t "Global Options:~%")
   (format t "  --log SPEC           Configure logging (e.g., 'debug:epsilon.sys.fs')~%")
-  (format t "  --verbose            Enable debug logging~%")
   (format t "  --quiet              Only show warnings and errors~%~%")
   (format t "Options:~%")
   (format t "  --dry-run            Show what would be removed without actually removing~%")
-  (format t "  --verbose            Show each file/directory being removed~%")
   (format t "  --help               Show this help message~%~%")
   (format t "Removes:~%")
   (format t "  - target/ directories (build outputs)~%")
@@ -537,18 +543,16 @@
   (format t "  - Temporary files (*~~, *.bak)~%~%")
   (format t "Examples:~%")
   (format t "  epsilon clean                    # Remove all build artifacts~%")
-  (format t "  epsilon clean --dry-run          # Show what would be removed~%")
-  (format t "  epsilon clean --verbose          # Show each file being removed~%"))
+  (format t "  epsilon clean --dry-run          # Show what would be removed~%"))
 
 
 (defun handle-release-help (parsed-args)
   "Show help for release command"
   (declare (ignore parsed-args))
-  (format t "release - Build complete Epsilon release with EPK packages and distributions~%~%")
+  (format t "release - Build complete Epsilon release with packages and distributions~%~%")
   (format t "Usage: epsilon [global-options] release --version VERSION [options]~%~%")
   (format t "Global Options:~%")
   (format t "  --log SPEC           Configure logging~%")
-  (format t "  --verbose            Enable debug logging~%")
   (format t "  --quiet              Only show warnings and errors~%~%")
   (format t "Options:~%")
   (format t "  --version VERSION    Release version (required)~%")
@@ -575,34 +579,44 @@
     (cond
       ((string= subcommand "list")
        (let ((packages (package:list-packages))
-             (local-package (read-local-package-definition)))
+             (local-package (read-local-package-definition))
+             (package-data '()))
          
-         ;; Show local package first if found
+         ;; Collect package information
          (when local-package
-           (format t "~A (~A) [local: ~A]~%" 
-                   (getf local-package :name)
-                   (or (getf local-package :version) "unknown")
-                   (getf local-package :path)))
+           (push (list (getf local-package :name)
+                      (or (getf local-package :version) "unknown")
+                      "LOCAL"
+                      (getf local-package :path))
+                 package-data))
          
-         ;; Show other packages with paths
          (dolist (pkg packages)
            (let ((pkg-name (if (consp pkg) (car pkg) pkg))
-                 (pkg-status (if (consp pkg) (cdr pkg) "")))
+                 (pkg-status (if (consp pkg) (string (cdr pkg)) "AVAILABLE")))
              ;; Skip if this is the same as our local package
              (unless (and local-package 
                           (string= pkg-name (getf local-package :name)))
                (let ((pkg-info (ignore-errors (package:package-info pkg-name))))
                  (if pkg-info
                      (let ((uri (getf pkg-info :uri)))
-                       (if (consp pkg)
-                           (format t "~A (~A) [~A]~%" pkg-name pkg-status 
-                                   (if uri (ignore-errors (path:path-string uri)) "unknown"))
-                           (format t "~A [~A]~%" pkg-name 
-                                   (if uri (ignore-errors (path:path-string uri)) "unknown"))))
+                       (push (list pkg-name
+                                  (or (getf pkg-info :version) "unknown")
+                                  pkg-status
+                                  (if uri (ignore-errors (path:path-string uri)) "unknown"))
+                             package-data))
                      ;; Fallback if no info available
-                     (if (consp pkg)
-                         (format t "~A (~A)~%" pkg-name pkg-status)
-                         (format t "~A~%" pkg-name)))))))))
+                     (push (list pkg-name "unknown" pkg-status "unknown")
+                           package-data))))))
+         
+         ;; Sort packages by name and format as table
+         (setf package-data (sort (nreverse package-data) #'string< :key #'first))
+         
+         (let ((pkg-table (table:simple-table 
+                          '("NAME" "VERSION" "STATUS" "LOCATION")
+                          package-data)))
+           (format t "~%")
+           (table:print-table pkg-table)
+           (format t "~%Found ~D package~:P~%" (length package-data)))))
       
       ((string= subcommand "info")
        (let ((pkg-name (first rest-args)))
@@ -637,7 +651,7 @@
 (defun handle-package-help (parsed-args)
   "Show help for package command"
   (declare (ignore parsed-args))
-  (format t "package - Manage EPK packages~%~%")
+  (format t "package - Manage packages~%~%")
   (format t "Usage: epsilon [global-options] package <subcommand> [options]~%~%")
   (format t "Subcommands:~%")
   (format t "  list                 List all packages~%")
@@ -653,8 +667,19 @@
 
 (defun handle-help (parsed-args)
   "Show help for a specific command or general help"
-  (declare (ignore parsed-args))
-  (print-usage))
+  (let ((command (first (parsed-args-arguments parsed-args))))
+    (if command
+        ;; Show help for specific command
+        (let ((tool-info (map:get *tool-registry* command)))
+          (if tool-info
+              (if (tool-info-help-function tool-info)
+                  ;; Use command-specific help function
+                  (funcall (tool-info-help-function tool-info) parsed-args)
+                  ;; Fallback to generic help
+                  (format t "~A - ~A~%~%" command (tool-info-description tool-info)))
+              (format t "Unknown command: ~A~%~%" command)))
+        ;; No command specified - show general help
+        (print-usage))))
 
 (defun print-usage ()
   "Print usage information"
@@ -671,7 +696,7 @@
   (format t "~%Global options:~%")
   (format t "  --help              Show this help message~%")
   (format t "  --version           Show version information~%")
-  (format t "  --verbose           Enable verbose output~%"))
+  (format t "  --debug             Enable debugger (don't use --disable-debugger)~%"))
 
 (defun find-epsilon-home ()
   "Find epsilon home directory by looking for scripts/epsilon.lisp"
@@ -690,6 +715,11 @@
                 when (null (cdr (pathname-directory dir)))
                   do (error "Could not find epsilon home directory"))))))
 
+(defun handle-repl (parsed-args)
+  "Enter interactive repl"
+  (declare (ignore parsed-args))
+  (sb-impl::toplevel-init))
+
 (defun handle-run (parsed-args)
   "Handle run command - execute local package"
   ;; Load the run module functionality
@@ -706,6 +736,60 @@
     (load run-file))
   (funcall (find-symbol "HANDLE-RUN-HELP" "EPSILON.TOOL.RUN") parsed-args))
 
+;;; Version Information
+
+(defun read-file-string (pathname)
+  "Read entire file as a string"
+  (with-open-file (stream pathname :if-does-not-exist nil)
+    (when stream
+      (let ((contents (make-string (file-length stream))))
+        (read-sequence contents stream)
+        contents))))
+
+(defun get-epsilon-version ()
+  "Get epsilon version from VERSION file, package.lisp, or git"
+  (let ((epsilon-home (find-epsilon-home)))
+    (or
+     ;; 1. Check VERSION file first (for releases)
+     (handler-case
+         (let ((version-file (merge-pathnames "VERSION" epsilon-home)))
+           (when (probe-file version-file)
+             (str:trim (read-file-string version-file))))
+       (error () nil))
+     
+     ;; 2. Check package.lisp
+     (handler-case
+         (let ((package-file (merge-pathnames "src/core/package.lisp" epsilon-home)))
+           (when (probe-file package-file)
+             (with-open-file (stream package-file)
+               (let ((package-info (read stream)))
+                 (when (listp package-info)
+                   (getf package-info :version))))))
+       (error () nil))
+     
+     ;; 3. Fallback to git describe
+     (handler-case
+         (let ((git-version (with-output-to-string (s)
+                             (sb-ext:run-program "git" 
+                                                 '("describe" "--tags" "--always" "--dirty")
+                                                 :output s
+                                                 :error nil))))
+           (str:trim git-version))
+       (error () nil))
+     
+     ;; 4. Default
+     "dev")))
+
+(defun print-version ()
+  "Print epsilon version information"
+  (let ((version (get-epsilon-version))
+        (sbcl-version (lisp-implementation-version)))
+    (format t "epsilon ~A~%" version)
+    (format t "SBCL ~A~%" sbcl-version)
+    (format t "Platform: ~A ~A~%" 
+            (string-downcase (string (software-type)))
+            (machine-type))))
+
 ;;; Main Entry Point
 
 (defun main ()
@@ -714,24 +798,30 @@
   (initialize-tool-registry)
   
   ;; Parse command line
-  (let* ((args (rest sb-ext:*posix-argv*))
-         (parsed (parse-command-line args)))
-    
-    ;; Handle special cases
-    (cond
-      ;; No command - show help
-      ((null (parsed-args-command parsed))
-       (print-usage))
-      
-      ;; Help command
-      ((string= (parsed-args-command parsed) "help")
-       (handle-help parsed))
-      
-      ;; Version (only if no command specified)
-      ((and (null (parsed-args-command parsed))
-            (map:get (parsed-args-options parsed) "version"))
-       (format t "Epsilon development tools v2.0.0~%"))
-      
-      ;; Dispatch to tool
-      (t
-       (dispatch-tool (parsed-args-command parsed) parsed)))))
+  (let ((args (rest sb-ext:*posix-argv*)))
+    (when (string-equal "--" (car args))
+      (pop args))
+    (let ((parsed (parse-command-line args)))
+      ;; Handle special cases
+      (cond
+        ;; Version flag (check first)
+        ((or (member "--version" args :test #'string=)
+             (map:get (parsed-args-options parsed) "version"))
+         (print-version))
+        
+        ;; Help flag
+        ((or (member "--help" args :test #'string=)
+             (map:get (parsed-args-options parsed) "help"))
+         (print-usage))
+        
+        ;; No command - show help
+        ((null (parsed-args-command parsed))
+         (print-usage))
+        
+        ;; Help command
+        ((string= (parsed-args-command parsed) "help")
+         (handle-help parsed))
+        
+        ;; Dispatch to tool
+        (t
+         (dispatch-tool (parsed-args-command parsed) parsed))))))

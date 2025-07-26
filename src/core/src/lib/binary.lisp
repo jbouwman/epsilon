@@ -1,3 +1,6 @@
+;;;; An API for reading and writing binary data with explicit
+;;;; endianness control.
+
 (defpackage epsilon.binary
   (:use
    cl)
@@ -40,9 +43,6 @@
    binary-input-stream
    binary-output-stream
    get-output-stream-bytes))
-
-;;;; An API for reading and writing binary data with explicit
-;;;; endianness control.
 
 (in-package :epsilon.binary)
 
@@ -547,22 +547,26 @@
 
 ;;; Helper functions for define-binary-struct macro
 (eval-when (:compile-toplevel :load-toplevel :execute)
-(defun parse-struct-fields (fields)
+(defun parse-struct-fields (fields &optional struct-endian)
   "Parse field definitions into binary-struct-field objects"
   (let ((offset 0)
         (result '()))
     (dolist (field fields (nreverse result))
-      (let* ((parsed (parse-field-definition field))
+      (let* ((parsed (parse-field-definition field struct-endian))
              (field-obj (apply #'make-binary-struct-field parsed)))
         (setf (binary-struct-field-offset field-obj) offset)
         (when (integerp (binary-struct-field-size field-obj))
           (incf offset (binary-struct-field-size field-obj)))
         (push field-obj result)))))
 
-(defun parse-field-definition (field)
+(defun parse-field-definition (field &optional struct-endian)
   "Parse a single field definition"
   (destructuring-bind (name type &rest options) field
-    (list* :name name :type type options)))
+    (let ((parsed-options (list* :name name :type type options)))
+      ;; Apply struct-level endianness if field doesn't have explicit endianness
+      (when (and struct-endian (not (getf parsed-options :endian)))
+        (setf parsed-options (list* :endian struct-endian parsed-options)))
+      parsed-options)))
 
 (defun field-to-plist (field)
   "Convert field object to plist for macro expansion"
@@ -672,10 +676,11 @@
      (define-binary-struct pascal-string ()
        (length :u8)
        (data :bytes :size length))"
-  (let ((struct-var (gensym "STRUCT"))
-        (field-defs (parse-struct-fields fields))
-        (struct-name (if (listp name) (first name) name))
-        (struct-symbol (intern (format nil "~A-STRUCT" (if (listp name) (first name) name)))))
+  (let* ((struct-var (gensym "STRUCT"))
+         (struct-endian (getf options :endian))
+         (field-defs (parse-struct-fields fields struct-endian))
+         (struct-name (if (listp name) (first name) name))
+         (struct-symbol (intern (format nil "~A-STRUCT" (if (listp name) (first name) name)))))
     `(progn
        ;; Define the structure type
        (defstruct ,struct-symbol
@@ -694,16 +699,14 @@
          
          ;; Register as a binary type
          (register-binary-type ',struct-name
-                              (or ,(compute-struct-size field-defs) 
-                                  (lambda (value) (struct-size value ',struct-name)))
-                              (make-struct-reader ',struct-name)
-                              (make-struct-writer ',struct-name)
-                              (make-struct-encoder ',struct-name)
-                              (make-struct-decoder ',struct-name)))
+                               (or ,(compute-struct-size field-defs) 
+                                   (lambda (value) (struct-size value ',struct-name)))
+                               (make-struct-reader ',struct-name)
+                               (make-struct-writer ',struct-name)
+                               (make-struct-encoder ',struct-name)
+                               (make-struct-decoder ',struct-name)))
        
        ',struct-name)))
-
-;;; Helper functions (moved earlier in file)
 
 (defun make-struct-reader (struct-name)
   "Create a reader function for a binary structure"
@@ -723,18 +726,12 @@
           (setf (slot-value result (binary-struct-field-name field)) value)))
       result)))
 
-;;; read-struct-field (moved earlier in file)
-
-;;; resolve-field-size (moved earlier in file)
-
 (defun make-struct-writer (struct-name)
   "Create a writer function for a binary structure"
   (lambda (stream value endian)
     (let ((struct-type (get-binary-struct struct-name)))
       (dolist (field (binary-struct-type-fields struct-type))
         (write-struct-field stream field value endian)))))
-
-;;; write-struct-field (moved earlier in file)
 
 (defun make-struct-encoder (struct-name)
   "Create an encoder function for a binary structure"
@@ -757,13 +754,3 @@
       (let ((field-value (slot-value value (binary-struct-field-name field))))
         (incf total (field-size field field-value))))
     total))
-
-;;; field-size (moved earlier in file)
-
-;;; Binary stream classes for in-memory operations
-;;; (moved earlier in file)
-
-;;; Stream generics and methods (moved earlier in file)
-
-;; Wrapper functions that use the appropriate stream type
-;;; (moved earlier in file)

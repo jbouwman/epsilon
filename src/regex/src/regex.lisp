@@ -355,10 +355,10 @@ we don't tolerate whitespace in front of the number."
   "Create character from char-code NUMBER. NUMBER can be NIL
 which is interpreted as 0. ERROR-POS is the position where
 the corresponding number started within the regex string."
+  (declare (ignore error-pos))
   (let ((code (logand #o377 (the fixnum (or number 0)))))
     (or (and (< code char-code-limit)
-             (code-char code))
-        (signal-syntax-error* error-pos "No character for hex-code ~X." number))))
+             (code-char code)))))
 
 (defun unescape-char (lexer)
   "Convert the characters\(s) following a backslash into a token
@@ -697,7 +697,6 @@ closing #\> will also be consumed."
                                    (signal-syntax-error* (1- (lexer-pos lexer))
                                                          "Character '~A' may not follow '(?<'"
                                                          next-char)
-                                   (decf (lexer-pos lexer))
                                    :open-paren-less-letter)
                                   (t
                                    (case next-char

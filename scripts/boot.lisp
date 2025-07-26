@@ -17,6 +17,7 @@
     "lib/map"
     "lib/sequence"
     "lib/string"
+    "lib/table"
     "lib/log"
     "lib/argparse"
     "sys/pkg"

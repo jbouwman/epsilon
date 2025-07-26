@@ -1,13 +1,13 @@
 (defpackage :epsilon.http.server
   (:use :cl)
   (:local-nicknames
-   (#:net #:epsilon.net)
+   (#:net #:epsilon.http.net)
    (#:str #:epsilon.string)
    (#:map #:epsilon.map)
    (#:time #:epsilon.time)
-   (#:thread #:epsilon.sys.thread)
    (#:request #:epsilon.http.request)
-   (#:response #:epsilon.http.response))
+   (#:response #:epsilon.http.response)
+   (#:tls #:epsilon.tls))
   (:export
    #:start-server
    #:stop-server
@@ -25,11 +25,15 @@
   ((port :initarg :port :accessor server-port)
    (socket :initarg :socket :accessor server-socket)
    (thread :initarg :thread :accessor server-thread)
-   (running-p :initform t :accessor server-running-p)))
+   (running-p :initform t :accessor server-running-p)
+   (tls-context :initarg :tls-context :accessor server-tls-context :initform nil)
+   (ssl-p :initarg :ssl-p :accessor server-ssl-p :initform nil)))
 
-(defun read-http-request (connection)
+(defun read-http-request (connection ssl-p)
   "Read HTTP request from connection and return request object"
-  (let ((stream (net:socket-stream connection)))
+  (let ((stream (if ssl-p
+                    (tls:tls-stream connection)
+                    (net:socket-stream connection))))
     (when stream
       (let ((request-text ""))
         ;; Read request line and headers
@@ -46,9 +50,11 @@
         (when (> (length request-text) 0)
           (request:parse-http-request request-text))))))
 
-(defun send-http-response (connection response-obj)
+(defun send-http-response (connection response-obj ssl-p)
   "Send HTTP response object to connection"
-  (let ((stream (net:socket-stream connection)))
+  (let ((stream (if ssl-p
+                    (tls:tls-stream connection)
+                    (net:socket-stream connection))))
     (when stream
       (let ((response-text (response:response-to-string response-obj)))
         (write-string response-text stream)
@@ -58,58 +64,82 @@
   "Find handler for method and path"
   (map:get *handlers* (format nil "~A ~A" method path)))
 
-(defun handle-client (connection)
+(defun handle-client (connection ssl-p)
   "Handle a client connection"
   (handler-case
-      (let ((req (read-http-request connection)))
+      (let ((req (read-http-request connection ssl-p)))
         (if req
             (let ((handler (find-handler (request:request-method req) 
                                          (request:request-path req))))
               (if handler
                   (let ((response (funcall handler req)))
-                    (send-http-response connection response))
+                    (send-http-response connection response ssl-p))
                   (send-http-response connection 
                                       (response:html-response 
                                        "<h1>404 Not Found</h1>"
-                                       :status 404))))
+                                       :status 404)
+                                      ssl-p)))
             (send-http-response connection 
                                 (response:html-response 
                                  "<h1>400 Bad Request</h1>"
-                                 :status 400))))
+                                 :status 400)
+                                ssl-p)))
     (error (e)
       (ignore-errors
         (send-http-response connection 
                             (response:html-response 
                              (format nil "<h1>500 Internal Server Error</h1><p>~A</p>" e)
-                             :status 500)))))
+                             :status 500)
+                            ssl-p))))
   
-  (net:socket-close connection))
+  ;; Close connection properly
+  (if ssl-p
+      (tls:tls-close connection)
+      (net:socket-close connection)))
 
 (defun server-loop (server)
   "Main server loop"
   (loop while (server-running-p server)
         do (handler-case
-               (let ((connection (net:socket-accept (server-socket server))))
-                 (when connection
-                   (thread:spawn 
-                    (lambda () 
-                      (handle-client connection))
-                    :name "HTTP client handler")))
+               (let ((raw-connection (net:socket-accept (server-socket server))))
+                 (when raw-connection
+                   (let ((connection (if (server-ssl-p server)
+                                         (tls:tls-accept raw-connection 
+                                                         (server-tls-context server))
+                                         raw-connection)))
+                     (sb-thread:make-thread 
+                      (lambda () 
+                        (handle-client connection (server-ssl-p server)))
+                      :name "HTTP client handler"))))
              (error (e)
+               (declare (ignore e))  ; Log errors in production
                (unless (server-running-p server)
                  (return))))))
 
-(defun start-server (&key (port *default-port*) (address "0.0.0.0"))
+(defun start-server (&key (port *default-port*) (address "0.0.0.0") 
+                           tls-context ssl-p cert-file key-file)
   "Start HTTP server on specified port"
   (when (map:get *servers* port)
     (error "Server already running on port ~D" port))
   
+  ;; Create TLS context if SSL is requested
+  (when (or ssl-p cert-file key-file)
+    (unless tls-context
+      (setf tls-context (tls:create-tls-context :server-p t))
+      (when cert-file
+        (tls:load-cert-file tls-context cert-file))
+      (when key-file  
+        (tls:load-key-file tls-context key-file))
+      (tls:set-verify-mode tls-context tls:+tls-verify-none+)))
+  
   (let* ((listener (net:socket-listen address port))
          (server (make-instance 'http-server
                                 :port port
-                                :socket listener)))
+                                :socket listener
+                                :tls-context tls-context
+                                :ssl-p (or ssl-p (not (null tls-context))))))
     (setf (server-thread server)
-          (thread:spawn 
+          (sb-thread:make-thread 
            (lambda () 
              (server-loop server))
            :name (format nil "HTTP server on port ~D" port)))
@@ -125,7 +155,7 @@
     (when server
       (setf (server-running-p server) nil)
       (net:socket-close (server-socket server))
-      (thread:join (server-thread server))
+      (sb-thread:join-thread (server-thread server))
       (setf *servers* (map:dissoc *servers* (server-port server)))
       t)))
 
