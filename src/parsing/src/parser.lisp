@@ -1,3 +1,6 @@
+;;;; This library implements parser combinators, providing a way to
+;;;; build parsers from reusable primitives.
+
 (defpackage :epsilon.parser
   (:use :cl)
   (:local-nicknames 
@@ -43,11 +46,6 @@
    :parse))
 
 (in-package :epsilon.parser)
-
-;;;; Parser Combinator Library
-;;;;
-;;;; This library implements monadic parser combinators, providing a
-;;;; way to build parsers from reusable primitives.
 
 ;;; Parser State and Result Types
 ;;;

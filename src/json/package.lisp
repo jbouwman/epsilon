@@ -4,4 +4,5 @@
  :description "JSON parser"
  :sources ("src")
  :tests ("tests")
+ :data ("tests/json")                   ; JSON test files used for testing
  :dependencies ("epsilon.core" "epsilon.parsing"))

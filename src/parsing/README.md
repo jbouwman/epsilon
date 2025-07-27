@@ -1,6 +1,6 @@
 # Epsilon Parsing Module
 
-Parsing and lexing utilities with JSON support for Common Lisp.
+Parsing and lexing utilities for Common Lisp.
 
 ## Components
 
@@ -10,34 +10,20 @@ General parsing utilities and combinators for building parsers.
 ### Lexer
 Lexical analysis tools for tokenizing input streams.
 
-### JSON
-Complete JSON parsing and encoding implementation.
-
 ## Usage
 
 ```lisp
 ;; Load the module
-(epsilon.lib.module:load-module "epsilon.parsing")
-
-;; JSON parsing
-(json:parse "{\"name\": \"John\", \"age\": 30}")
-(json:encode '(("name" . "John") ("age" . 30)))
+(epsilon:load "epsilon.parsing")
 
 ;; Parser combinators
-(parser:parse-sequence ...)
+(epsilon.parser:parse-sequence ...)
 
 ;; Lexer utilities
-(lexer:tokenize ...)
+(epsilon.lexer:tokenize ...)
 ```
 
 ## Features
-
-### JSON Support
-- Full JSON specification compliance
-- Streaming parser support
-- Pretty printing
-- Custom encoding/decoding hooks
-- Validation support
 
 ### Parser Utilities
 - Parser combinators

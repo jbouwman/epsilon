@@ -26,6 +26,7 @@
    :with-temp-file
    :replace-extension
    :copy-file
+   :copy-directory
    :change-directory
    :current-directory
 
@@ -356,3 +357,21 @@
   #-win32 (sb-posix:chdir (if (stringp path) path (namestring path)))
   #+win32 (let ((new-path (if (stringp path) (pathname path) path)))
             (setf *default-pathname-defaults* (truename new-path))))
+
+(defun copy-directory (source dest)
+  "Recursively copy directory contents from source to dest"
+  (let ((source-str (if (typep source 'path:path)
+                        (path:path-string source)
+                        source))
+        (dest-str (if (typep dest 'path:path)
+                      (path:path-string dest)
+                      dest)))
+    (make-dirs dest-str)
+    (dolist (entry (list-dir source-str))
+      (let ((source-path (path:path-string (path:path-join source-str entry)))
+            (dest-path (path:path-string (path:path-join dest-str entry))))
+        (cond
+          ((dir-p source-path)
+           (copy-directory source-path dest-path))
+          ((file-p source-path)
+           (copy-file source-path dest-path)))))))

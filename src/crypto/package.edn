@@ -1,0 +1,8 @@
+(:name "epsilon.crypto"
+ :version "1.0.0"
+ :author "Jesse Bouwman"
+ :description "Additional cryptographic and encoding utilities for Epsilon"
+ :sources ("src")
+ :tests ("tests")
+ :depends-on ("epsilon.core")
+ :provides ("epsilon.crypto"))

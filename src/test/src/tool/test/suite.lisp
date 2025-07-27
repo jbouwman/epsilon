@@ -367,6 +367,7 @@ Returns the leaf node for package-name."
 (defun suite-tests (test-run suite-name)
   "Return all test results for the given suite (package) name, sorted by test name"
   (sort (map:vals (map:filter (lambda (name result)
+                                (declare (ignore name))
                                 (string= suite-name 
                                          (package-name (symbol-package (test result)))))
                               (tests test-run)))

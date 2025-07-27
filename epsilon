@@ -2,36 +2,22 @@
 #
 # Epsilon command-line interface
 #
-# Works from fresh checkout (development mode) or system installation.
+# Works from fresh checkout or system installation.
 # Requires SBCL to be installed and available in PATH.
 #
 
-set -e
+set -eu
 
-# Get the directory where this script is located
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# The user's working directory
+export EPSILON_USER="$PWD"
+# The directory where epsilon is located
+export EPSILON_HOME="$(cd "$(dirname "$0")" && pwd)"
+EPSILON_BOOT="$EPSILON_HOME/scripts/epsilon.lisp"
 
-# Detect if we're running from development directory or installed
-if [ -f "$SCRIPT_DIR/scripts/epsilon.lisp" ]; then
-    # Development mode - running from source checkout
-    EPSILON_MODE="development"
-    EPSILON_BOOT="$SCRIPT_DIR/scripts/epsilon.lisp"
-else
-    # Installed mode - use system installation
-    EPSILON_MODE="installed"
-    # Find epsilon installation directory
-    if [ -n "$EPSILON_HOME" ]; then
-        EPSILON_ROOT="$EPSILON_HOME"
-    elif [ -f "/usr/local/share/epsilon/epsilon.core" ]; then
-        EPSILON_ROOT="/usr/local/share/epsilon"
-    elif [ -f "/opt/epsilon/epsilon.core" ]; then
-        EPSILON_ROOT="/opt/epsilon"
-    else
-        echo "Error: Epsilon installation not found" >&2
-        echo "Set EPSILON_HOME or install to /usr/local/share/epsilon" >&2
-        exit 1
-    fi
-    EPSILON_BOOT="$EPSILON_ROOT/epsilon.core"
+# Detect boot script
+if ! [ -f "$EPSILON_BOOT" ]; then
+    echo "Error: epsilon boot script not found in $EPSILON_HOME" >&2
+    exit 1
 fi
 
 # Check if SBCL is available
@@ -41,48 +27,50 @@ if ! command -v sbcl >/dev/null 2>&1; then
     exit 1
 fi
 
-# Parse debug flag before passing to SBCL
+# Parse debug and rebuild flags before passing to SBCL
 DEBUG_MODE="false"
-FILTERED_ARGS=""
+REBUILD_BOOT="false"
+# Use array to preserve argument boundaries
+declare -a FILTERED_ARGS=()
 for arg in "$@"; do
-    if [ "$arg" = "--debug" ]; then
-        DEBUG_MODE="true"
-    else
-        FILTERED_ARGS="$FILTERED_ARGS $arg"
-    fi
+    case "$arg" in
+        --debug)
+            DEBUG_MODE="true"
+            ;;
+        --rebuild)
+            REBUILD_BOOT="true"
+            ;;
+        *)
+            FILTERED_ARGS+=("$arg")
+            ;;
+    esac
 done
 
-# Common SBCL runtime arguments
+# Force rebuild of bootstrap.fasl if requested
+if [ "$REBUILD_BOOT" = "true" ]; then
+    echo "Forcing rebuild of bootstrap cache..."
+    rm -f "$EPSILON_HOME/src/core/target/bootstrap.fasl"
+fi
+
 SBCL_RUNTIME_ARGS="--noinform"
-# Common SBCL toplevel arguments  
 if [ "$DEBUG_MODE" = "true" ]; then
     SBCL_TOPLEVEL_ARGS="--no-sysinit --no-userinit --quit"
 else
     SBCL_TOPLEVEL_ARGS="--no-sysinit --no-userinit --disable-debugger --quit"
 fi
 
-case "$EPSILON_MODE" in
-    development)
-        # Development mode: load from source
-        # Save the user's current directory for commands like 'run'
-        export EPSILON_USER_DIR="$(pwd)"
-        cd "$SCRIPT_DIR"
-        exec sbcl $SBCL_RUNTIME_ARGS \
-            $SBCL_TOPLEVEL_ARGS \
-            --load "$EPSILON_BOOT" \
-            --eval "(epsilon.tool.dev:main)" \
-            -- $FILTERED_ARGS
-        ;;
-    installed)
-        # Installed mode: load from core image
-        exec sbcl $SBCL_RUNTIME_ARGS \
-            --core "$EPSILON_BOOT" \
-            $SBCL_TOPLEVEL_ARGS \
-            --eval "(epsilon.tool.dev:main)" \
-            -- $FILTERED_ARGS
-        ;;
-    *)
-        echo "Error: Unknown mode $EPSILON_MODE" >&2
-        exit 1
-        ;;
-esac
+cd "$EPSILON_HOME"
+# Note: SBCL args must be unquoted, user args must be quoted
+if [ ${#FILTERED_ARGS[@]} -eq 0 ]; then
+    exec sbcl $SBCL_RUNTIME_ARGS \
+         $SBCL_TOPLEVEL_ARGS \
+         --load "$EPSILON_BOOT" \
+         --eval "(epsilon.main:cli-run)" \
+         --
+else
+    exec sbcl $SBCL_RUNTIME_ARGS \
+         $SBCL_TOPLEVEL_ARGS \
+         --load "$EPSILON_BOOT" \
+         --eval "(epsilon.main:cli-run)" \
+         -- "${FILTERED_ARGS[@]}"
+fi

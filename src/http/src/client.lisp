@@ -9,8 +9,10 @@
    (#:str #:epsilon.string)
    (#:seq #:epsilon.sequence)
    (#:map #:epsilon.map)
-   (#:base64 #:epsilon.base64)
-   (#:tls #:epsilon.tls))
+   ;; TODO: Fix load order for base64 and tls
+   ;; (#:base64 #:epsilon.base64)
+   ;; (#:tls #:epsilon.tls)
+   )
   (:export
    #:request
    #:http-get
@@ -34,9 +36,8 @@
   "Create an HTTP connection using platform-specific epsilon.net"
   (let* ((socket (net:socket-connect host port))
          (tls-conn (when ssl-p
-                     (let ((tls-ctx (tls:create-tls-context :server-p nil)))
-                       (tls:set-verify-mode tls-ctx tls:+tls-verify-none+)
-                       (tls:tls-connect socket tls-ctx)))))
+                     ;; TODO: Fix TLS load order
+                     (error "TLS not yet implemented"))))
     (make-instance 'http-connection
                    :socket socket
                    :host host
@@ -51,7 +52,9 @@
           (progn ,@body)
        (progn
          (when (connection-tls-connection ,conn)
-           (tls:tls-close (connection-tls-connection ,conn)))
+           ;; TODO: Fix TLS load order
+           ;; (tls:tls-close (connection-tls-connection ,conn))
+           )
          (when (connection-socket ,conn)
            (net:socket-close (connection-socket ,conn)))))))
 
@@ -133,7 +136,8 @@
                           (format-headers final-headers) #\Return #\Linefeed
                           body)))
     (let ((stream (if (connection-ssl-p connection)
-                      (tls:tls-stream (connection-tls-connection connection))
+                      ;; TODO: Fix TLS load order
+                      (error "TLS streams not yet implemented")
                       (net:socket-stream (connection-socket connection)))))
       (write-string request stream)
       (force-output stream))))
@@ -141,7 +145,8 @@
 (defun read-response (connection)
   "Read HTTP response from connection"
   (let* ((stream (if (connection-ssl-p connection)
-                     (tls:tls-stream (connection-tls-connection connection))
+                     ;; TODO: Fix TLS load order
+                     (error "TLS streams not yet implemented")
                      (net:socket-stream (connection-socket connection))))
          (response-lines '())
          (line nil))

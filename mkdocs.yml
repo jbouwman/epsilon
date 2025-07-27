@@ -10,125 +10,53 @@ edit_uri: edit/main/docs/
 docs_dir: docs
 theme:
   name: material
-  font:
-    text: 'IBM Plex Mono'
-    code: 'IBM Plex Mono'
-  palette:
-    # Dark mode - default terminal aesthetic
-    - scheme: slate
-      primary: blue grey
-      accent: amber
-      toggle:
-        icon: material/brightness-7
-        name: Switch to light mode
-    # Light mode - technical documentation  
-    - scheme: default
-      primary: blue grey
-      accent: deep orange
-      toggle:
-        icon: material/brightness-4
-        name: Switch to dark mode
   features:
-    - navigation.tabs
-    - navigation.sections
-    - navigation.indexes
-    - navigation.top
-    - toc.integrate
-    - search.suggest
-    - search.highlight
     - content.code.copy
-    - content.action.edit
-    - content.tabs.link
-  icon:
-    repo: fontawesome/brands/github
-    edit: material/pencil
-    view: material/eye
 
-extra_css:
-  - stylesheets/epsilon.css
-
-extra_javascript:
-  - javascripts/lisp.js
 
 plugins:
-  - search:
-      lang: en
-  - mermaid2:
-      version: 10.4.0
+  - search
 
 markdown_extensions:
-  - pymdownx.highlight:
-      anchor_linenums: true
-      use_pygments: true
-      pygments_lang_class: true
-  - pymdownx.inlinehilite
-  - pymdownx.snippets
-  - pymdownx.superfences:
-      custom_fences:
-        - name: mermaid
-          class: mermaid
-          format: !!python/name:mermaid2.fence_mermaid
-  - pymdownx.tabbed:
-      alternate_style: true
-      slugify: !!python/object/apply:pymdownx.slugs.slugify
-        kwds:
-          case: lower
-  - pymdownx.details
-  - pymdownx.keys
-  - pymdownx.mark
-  - pymdownx.tilde
   - admonition
   - tables
-  - attr_list
-  - md_in_html
-  - def_list
-  - footnotes
   - toc:
-      permalink: "¶"
-      toc_depth: 3
+      permalink: true
 
 nav:
-  - Introduction:
-    - Home: index.md
-    - Module Catalog: module-dependencies.md
+  - Home: index.md
   - Development:
     - Overview: development/index.md
     - Getting Started: development/getting-started.md
     - Installation: development/installation.md
     - App Development: development/app-development-guide.md
     - Examples: development/examples.md
-  - Projects:
-    - Overview: projects/index.md
-    - 1 - LSP: projects/1_lsp.md
-    - 2 - Testing: projects/2_testing_framework.md
-    - 3 - Interactive Dev: projects/3_interactive_development.md
-    - 4 - Module System: projects/4_module_system.md
-    - 5 - Async Networking: projects/5_async_networking.md
-    - 6 - Package Registry: projects/6_package_registry.md
-    - 7 - Functional Extensions: projects/7_functional_extensions.md
-    - Wishlist: projects/wishlist.md
+  - API Reference:
+    - Overview: api/index.md
+    - epsilon.argparse: api/epsilon.argparse/index.md
   - Architecture:
     - Overview: architecture/index.md
     - Data Structures: architecture/data-structures.md
     - Module Management: architecture/module-management.md
     - Package Format: architecture/package-format.md
-    - Binary Streams: architecture/binary-stream-proposal.md
-    - Boot Optimization: architecture/boot-optimization.md
-    - Codec Analysis: architecture/codec-modularization-analysis.md
-    - JSON & YAML: architecture/json-yaml.md
     - Maps: architecture/map.md
     - Sequences: architecture/sequence.md
     - Sets: architecture/set.md
     - Strings: architecture/string.md
     - URI: architecture/uri.md
-    - Digest: architecture/digest.md
-    - Parser: architecture/epsilon_lib_parser.md
-    - Regex Plan: architecture/regex-simplification-plan.md
   - Operations:
     - Overview: operations/index.md
-    - Build Guide: operations/build.md
-    - CI/CD Process: operations/ci-release-process.md
+    - Build: operations/build.md
+    - CI/CD: operations/ci-cd.md
     - Distribution: operations/distribution.md
+  - Projects:
+    - Overview: projects/index.md
+    - LSP: projects/1_lsp.md
+    - Testing Framework: projects/2_testing_framework.md
+    - Interactive Development: projects/3_interactive_development.md
+    - Module System: projects/4_module_system.md
+    - Async Networking: projects/5_async_networking.md
+    - Package Registry: projects/6_package_registry.md
 
 extra:
   version:

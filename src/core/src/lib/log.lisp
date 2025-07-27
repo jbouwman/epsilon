@@ -1,35 +1,33 @@
 (defpackage epsilon.log
   (:use cl)
-  (:shadow #:log #:trace #:debug #:warn)
+  (:shadow
+   error log trace debug warn)
   (:local-nicknames
-   (#:map #:epsilon.map)
-   (#:str #:epsilon.string)
-   (#:seq #:epsilon.sequence))
+   (map epsilon.map)
+   (str epsilon.string)
+   (seq epsilon.sequence))
   (:export
-   ;; Log levels
-   #:trace #:debug #:info #:warn #:error #:fatal
-   
-   ;; Main logging macros
-   #:log #:trace #:debug #:info #:warn #:log-error #:fatal
+   ;; Main logging macros and log levels
+   log trace debug info warn error fatal
    
    ;; Configuration
-   #:configure #:configure-from-string #:reset-configuration
-   #:set-level #:get-level #:logger-enabled-p
+   configure configure-from-string reset-configuration
+   set-level get-level logger-enabled-p
    
    ;; Appenders
-   #:add-appender #:remove-appender #:console-appender #:file-appender
-   #:logger-appenders
+   add-appender remove-appender console-appender file-appender
+   logger-appenders
    
    ;; Structured logging
-   #:with-context #:add-context #:remove-context
+   with-context add-context remove-context
    
    ;; Loggers
-   #:get-logger #:make-logger
+   get-logger make-logger
    
    ;; Utilities
-   #:format-timestamp #:current-thread-name))
+   format-timestamp current-thread-name))
 
-(in-package :epsilon.log)
+(in-package epsilon.log)
 
 ;;; Log Levels
 
@@ -168,7 +166,7 @@
 (defmethod append-log ((appender file-appender) record)
   (let ((filename (file-appender-filename appender)))
     (unless filename
-      (error "file-appender filename is nil"))
+      (cl:error "file-appender filename is nil"))
     (unless (file-appender-stream appender)
       (setf (file-appender-stream appender)
             (open filename
@@ -262,7 +260,7 @@
 (defmacro warn (format-string &rest args)
   `(log :warn ,format-string ,@args))
 
-(defmacro log-error (format-string &rest args)
+(defmacro error (format-string &rest args)
   `(log :error ,format-string ,@args))
 
 (defmacro fatal (format-string &rest args)

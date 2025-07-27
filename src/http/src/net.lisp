@@ -6,6 +6,7 @@
 
 (defpackage :epsilon.http.net
   (:use :cl)
+  (:local-nicknames (#:log #:epsilon.log))
   (:export
    #:socket-connect
    #:socket-listen
@@ -28,19 +29,27 @@
 
 (defun socket-listen (address port)
   "Create a listening socket on address:port"
+  (log:info "Creating listening socket on ~A:~A" address port)
   (let ((socket (make-instance 'sb-bsd-sockets:inet-socket 
                                :type :stream 
                                :protocol :tcp)))
+    (log:debug "Socket created: ~A" socket)
     (setf (sb-bsd-sockets:sockopt-reuse-address socket) t)
+    (log:debug "Binding socket...")
     (sb-bsd-sockets:socket-bind socket 
                                 (sb-bsd-sockets:make-inet-address address)
                                 port)
+    (log:debug "Socket bound, calling listen...")
     (sb-bsd-sockets:socket-listen socket 5)
+    (log:info "Socket listening on ~A:~A" address port)
     socket))
 
 (defun socket-accept (listening-socket)
   "Accept a connection on listening socket"
-  (sb-bsd-sockets:socket-accept listening-socket))
+  (log:debug "socket-accept called, waiting for connection...")
+  (let ((connection (sb-bsd-sockets:socket-accept listening-socket)))
+    (log:info "Connection accepted: ~A" connection)
+    connection))
 
 (defun socket-close (socket)
   "Close a socket"
@@ -48,7 +57,11 @@
 
 (defun socket-stream (socket)
   "Get stream for socket I/O"
-  (sb-bsd-sockets:socket-make-stream socket
-                                     :input t 
-                                     :output t
-                                     :element-type 'character))
+  (log:debug "Creating stream for socket: ~A" socket)
+  (let ((stream (sb-bsd-sockets:socket-make-stream socket
+                                                   :input t 
+                                                   :output t
+                                                   :element-type 'character
+                                                   :timeout 10)))
+    (log:debug "Stream created: ~A" stream)
+    stream))

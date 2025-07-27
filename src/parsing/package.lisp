@@ -1,5 +1,4 @@
 (:name "epsilon.parsing"
- :version "1.0.0"
- :author "Jesse Bouwman"
  :description "Parsing and lexing utilities"
+ :version "1.0.0"
  :dependencies ("epsilon.core"))

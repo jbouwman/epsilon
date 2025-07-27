@@ -40,7 +40,19 @@
    kevent-struct
    timespec-struct
    make-kevent-struct
-   make-timespec-struct))
+   make-timespec-struct
+   
+   ;; kevent-struct accessors
+   kevent-struct-ident
+   kevent-struct-filter
+   kevent-struct-flags
+   kevent-struct-fflags
+   kevent-struct-data
+   kevent-struct-udata
+   
+   ;; timespec-struct accessors
+   timespec-struct-tv-sec
+   timespec-struct-tv-nsec))
 
 (in-package epsilon.kqueue)
 

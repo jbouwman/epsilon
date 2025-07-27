@@ -5,10 +5,9 @@
   (:use
    cl
    epsilon.tool.common)
-  (:shadow
-   *modules*)
   (:local-nicknames
    (pkg epsilon.sys.pkg)
+   (env epsilon.sys.env)
    (fs epsilon.sys.fs)
    (digest epsilon.digest)
    (fn epsilon.function)
@@ -17,126 +16,173 @@
    (seq epsilon.sequence)
    (str epsilon.string)
    (path epsilon.path)
-   (log epsilon.log))
+   (log epsilon.log)
+   (proto epsilon.build.protocol)
+   (build-env epsilon.tool.build-environment))
   (:export
    ;; Core build functions
    build
+   build-with-environment
+   load-package
+   get-test-files
+   get-resource-files
+   local-packages
+   
+   ;; Environment management
+   make-build-environment
+   current-environment
+   ensure-package-source
+   add-package-repo
+
+   ;; Package registry
+   get-package
+   list-available-packages
+   list-packages
+   register-package
+   mark-package-loaded
+   is-package-loaded
+   ;; Package info accessors
+   package-loaded-p
+   package-uri
+   ;; Test compilation
+   compile-tests
    build-tests
-   detect-platform
-   configure-build-logging
-   ;; Module registry
-   register-module
-   register-modules
-   get-module
-   list-modules
-   list-all-modules-with-status
-   ;; Module info
-   module-info
-   module-name
-   module-uri
-   module-loaded-p
-   mark-module-loaded
-   is-module-loaded
-   ;; Module search
-   search-modules
-   describe-module
+   ;; Package search
+   search-packages
+   describe-package
    find-provider-for-dependency
    resolve-virtual-dependency
    ;; Build state
    dump-build-state
-   ;; Global variables
-   *modules*
-   *build-timeout*
-   *error-behavior*
-   *warning-behavior*
+   ;; Environment management  
+   *current-environment*
+   *default-environment*
+   ;; Package source
+   ensure-package-source
+   *package-source*
    ;; Project/source info
+   project
    project-name
+   project-version
+   project-author
+   project-description
+   project-platform
+   project-sources
+   project-tests
+   project-benchmarks
+   project-examples
+   project-experiments
+   project-docs
+   project-data
+   project-dependencies
+   project-provides
+   project-resources
    project-uri
    path
    locatable
-   hashable))
+   hashable
+   ;; Internal - for parallel-build
+   source-info
+   source-info-defines
+   source-info-requires
+   target-uri
+   source-uri
+   build-result
+   start-time
+   end-time
+   compilation-errors
+   compilation-warnings
+   compilation-status
+   build-input-status
+   load-source
+   compile-source))
 
 (in-package :epsilon.tool.build)
 
 ;; Create build logger
-(defparameter *build-logger* (log:get-logger "epsilon.tool.build")
+(defparameter *log* (log:get-logger "epsilon.tool.build")
   "Logger for build system messages")
 
-;; Configure build logging
-(defun configure-build-logging (&key (level :info) (verbose nil))
-  "Configure logging for build operations.
-   LEVEL - Log level (:trace :debug :info :warn :error)
-   VERBOSE - If true, use debug level and show more details"
-  (when verbose
-    (setf level :debug))
-  (log:set-level "epsilon.tool.build" level))
+;; Global default environment for backward compatibility
+(defvar *default-environment* nil
+  "Default build environment for backward compatibility")
 
-(defclass module-info ()
-  ((name :initarg :name :accessor module-name :type string)
-   (uri :initarg :uri :accessor module-uri :type string)
-   (project :initarg :project :accessor module-project :initform nil)
-   (loaded :initarg :loaded :accessor module-loaded-p :initform nil :type boolean)
-   (load-time :initarg :load-time :accessor module-load-time :initform nil)))
+(defvar *current-environment* nil
+  "The current build environment (dynamically bound during builds)")
 
-(defvar *modules*
-  map:+empty+
-  "Registry of known modules as a map from module name to module-info objects")
-
+;; Backward compatibility variables
 (defvar *error-behavior* :halt
-  "How to handle compilation errors: :halt, :ignore, or :print")
+  "How to handle compilation errors (DEPRECATED - use environment)")
 
-(defvar *warning-behavior* :ignore  
-  "How to handle compilation warnings: :halt, :ignore, or :print")
+(defvar *warning-behavior* :ignore
+  "How to handle compilation warnings (DEPRECATED - use environment)")
 
-(defun detect-platform ()
-  "Detect current platform"
-  #+darwin :darwin
-  #+linux :linux
-  #+win32 :windows
-  #-(or darwin linux win32) :unknown)
+(defvar *parallel-compilation* nil
+  "Whether to use parallel compilation (DEPRECATED - use environment)")
 
-(defun make-module-info (name uri &optional project)
-  "Create a new module-info instance"
-  (make-instance 'module-info
-                 :name name
-                 :uri uri
-                 :project project
-                 :loaded nil))
+;; Re-export key functions from build-environment
+(defun make-build-environment (&rest args)
+  "Create a new build environment"
+  (apply #'build-env:make-build-environment args))
 
-(defun get-module (name &key (error-p nil))
-  "Get module-info for a given module name, or NIL if not found"
-  (or (map:get *modules* name)
-      (and error-p
-           (error "Module not found: ~A" name))))
+(defun current-environment ()
+  "Get the current build environment, creating default if needed"
+  (or *current-environment*
+      *default-environment*
+      (setf *default-environment* (make-build-environment))))
 
-(defun register-module-info (module-info)
-  "Register a module-info in the global registry"
-  (map:assoc! *modules* (module-name module-info) module-info))
+(defun local-packages ()
+  (proto:make-filesystem-source (path::user-directory)))
 
-(defun mark-module-loaded (module-name)
-  "Mark a module as loaded with current timestamp"
-  (let ((info (get-module module-name)))
-    (when info
-      (setf (module-loaded-p info) t
-            (module-load-time info) (get-internal-real-time)))))
+;; Backward compatibility delegating to current environment
+(defun ensure-package-source ()
+  "Ensure package source is initialized for the current environment"
+  (build-env:ensure-package-source (current-environment)))
 
-(defun is-module-loaded (module-name)
-  "Check if a module is already loaded"
-  (let ((info (get-module module-name)))
-    (and info (module-loaded-p info))))
+(defun add-package-repo (path)
+  "Add an additional package repository to current environment"
+  (build-env:add-package-repo (current-environment) path))
+
+;; Module registry - delegating to current environment
+(defun get-package (name &key (error-p nil))
+  "Get package-info for a given package name, or NIL if not found"
+  (build-env:get-package (current-environment) name :error-p error-p))
+
+(defun register-package (name location &key project)
+  "Register a package in the current environment"
+  (build-env:register-package (current-environment) name location :project project))
+
+(defun mark-package-loaded (package-name)
+  "Mark a package as loaded with current timestamp"
+  (build-env:mark-package-loaded (current-environment) package-name))
+
+(defun is-package-loaded (package-name)
+  "Check if a package is already loaded"
+  (build-env:is-package-loaded (current-environment) package-name))
+
+(defun list-packages ()
+  "List all registered packages"
+  (map:keys (build-env:environment-loaded-packages (current-environment))))
+
+;; Re-export package-info accessors
+(defun package-loaded-p (package-info)
+  (build-env:package-loaded-p package-info))
+
+(defun package-uri (package-info)
+  (build-env:package-location package-info))
 
 (defun find-provider-for-dependency (dep-name)
   "Find a module that provides the given dependency name.
    Returns the module name that provides it, or NIL if none found."
-  (let ((current-platform (string-downcase (detect-platform))))
+  (let ((current-platform (string-downcase (env::platform))))
     ;; First, check if the dependency is directly available as a module
-    (if (map:contains-p *modules* dep-name)
+    (if (is-package-loaded dep-name)
         dep-name
         ;; Otherwise, look for a platform-specific module that provides it
-        (loop for module-name in (map:keys *modules*)
-              for module-info = (get-module module-name)
-              for module-dir = (module-uri module-info)
-              for package-file = (path:uri-merge module-dir "package.lisp")
+        (loop for package-name in (list-packages)
+              for package-info = (get-package package-name)
+              for package-dir = (package-uri package-info)
+              for package-file = (path:uri-merge package-dir "package.lisp")
               when (fs:exists-p package-file)
                 do (let* ((plist (with-open-file (stream (path:path-from-uri package-file))
                                    (read stream)))
@@ -147,14 +193,14 @@
                                 (or (not platform) ; platform-agnostic
                                     (string= platform current-platform)) ; matches current platform
                                 (member dep-name provides :test #'string=))
-                       (return module-name)))))))
+                       (return package-name)))))))
 
 (defun resolve-virtual-dependency (dep-name)
   "Resolve a virtual dependency to an actual module name that provides it"
   (or (find-provider-for-dependency dep-name)
       dep-name)) ; Return original name if no provider found
 
-(defun search-modules (&key name provides requires platform author description
+(defun search-packages (&key name provides requires platform author description
                            name-pattern provides-pattern requires-pattern
                            loaded-only unloaded-only)
   "Search for modules matching the given criteria.
@@ -176,109 +222,95 @@
    - LOADED-ONLY: Only return loaded modules
    - UNLOADED-ONLY: Only return unloaded modules
    
-   Returns a list of module-info objects matching all specified criteria."
-  (let ((results '()))
-    (loop for module-name in (map:keys *modules*)
-          for module-info = (get-module module-name)
-          for module-dir = (module-uri module-info)
-          for package-file = (path:uri-merge module-dir "package.lisp")
-          when (fs:exists-p package-file)
-            do (let* ((plist (with-open-file (stream (path:path-from-uri package-file))
-                               (read stream)))
-                      (module-provides (getf plist :provides))
-                      (module-requires (getf plist :dependencies))
-                      (module-platform (getf plist :platform))
-                      (module-author (getf plist :author))
-                      (module-desc (getf plist :description))
-                      (module-loaded (module-loaded-p module-info))
-                      (matches t))
-                 
-                 ;; Check exact matches
-                 (when (and name (not (string= name module-name)))
-                   (setf matches nil))
-                 
-                 (when (and provides matches)
-                   (unless (and module-provides
-                                (member provides module-provides :test #'string=))
-                     (setf matches nil)))
-                 
-                 (when (and requires matches)
-                   (unless (and module-requires
-                                (member requires module-requires :test #'string=))
-                     (setf matches nil)))
-                 
-                 (when (and platform matches)
-                   (unless (and module-platform
-                                (string= platform module-platform))
-                     (setf matches nil)))
-                 
-                 (when (and author matches)
-                   (unless (and module-author
-                                (string= author module-author))
-                     (setf matches nil)))
-                 
-                 ;; Check pattern matches (case-insensitive)
-                 (when (and name-pattern matches)
-                   (unless (search (string-downcase name-pattern)
-                                   (string-downcase module-name))
-                     (setf matches nil)))
-                 
-                 (when (and provides-pattern matches module-provides)
-                   (unless (some (lambda (p)
-                                   (search (string-downcase provides-pattern)
-                                           (string-downcase p)))
-                                 module-provides)
-                     (setf matches nil)))
-                 
-                 (when (and requires-pattern matches module-requires)
-                   (unless (some (lambda (r)
-                                   (search (string-downcase requires-pattern)
-                                           (string-downcase r)))
-                                 module-requires)
-                     (setf matches nil)))
-                 
-                 (when (and description matches module-desc)
-                   (unless (search (string-downcase description)
-                                   (string-downcase module-desc))
-                     (setf matches nil)))
-                 
-                 ;; Check load status filters
-                 (when (and loaded-only matches (not module-loaded))
-                   (setf matches nil))
-                 
-                 (when (and unloaded-only matches module-loaded)
-                   (setf matches nil))
-                 
-                 ;; Add to results if all criteria match
-                 (when matches
-                   (push module-info results))))
+   Returns a list of package descriptors matching all specified criteria."
+  (let* ((source (ensure-package-source))
+         (all-packages (proto:list-packages source))
+         (results '()))
+    
+    (dolist (package-name all-packages)
+      (let* ((metadata (proto:load-package-metadata source package-name))
+             (module-provides (getf metadata :provides))
+             (module-requires (getf metadata :dependencies))
+             (module-platform (getf metadata :platform))
+             (module-author (getf metadata :author))
+             (module-desc (getf metadata :description))
+             (package-info (get-package package-name))
+             (package-loaded (and package-info (package-loaded-p package-info)))
+             (matches t))
+        
+        ;; Check exact matches
+        (when (and name (not (string= name package-name)))
+          (setf matches nil))
+        
+        (when (and provides matches)
+          (unless (and module-provides
+                       (member provides module-provides :test #'string=))
+            (setf matches nil)))
+        
+        (when (and requires matches)
+          (unless (and module-requires
+                       (member requires module-requires :test #'string=))
+            (setf matches nil)))
+        
+        (when (and platform matches)
+          (unless (and module-platform
+                       (string= platform module-platform))
+            (setf matches nil)))
+        
+        (when (and author matches)
+          (unless (and module-author
+                       (string= author module-author))
+            (setf matches nil)))
+        
+        ;; Check pattern matches (case-insensitive)
+        (when (and name-pattern matches)
+          (unless (search (string-downcase name-pattern)
+                          (string-downcase package-name))
+            (setf matches nil)))
+        
+        (when (and provides-pattern matches module-provides)
+          (unless (some (lambda (p)
+                          (search (string-downcase provides-pattern)
+                                  (string-downcase p)))
+                        module-provides)
+            (setf matches nil)))
+        
+        (when (and requires-pattern matches module-requires)
+          (unless (some (lambda (r)
+                          (search (string-downcase requires-pattern)
+                                  (string-downcase r)))
+                        module-requires)
+            (setf matches nil)))
+        
+        (when (and description matches module-desc)
+          (unless (search (string-downcase description)
+                          (string-downcase module-desc))
+            (setf matches nil)))
+        
+        ;; Check load status filters
+        (when (and loaded-only matches (not package-loaded))
+          (setf matches nil))
+        
+        (when (and unloaded-only matches package-loaded)
+          (setf matches nil))
+        
+        ;; Add to results if all criteria match
+        (when matches
+          (push (append metadata (list :name package-name :loaded package-loaded)) results))))
+    
     (nreverse results)))
 
-(defun describe-module (module-name)
-  "Return a detailed description of a module's metadata"
-  (let ((module-info (get-module module-name)))
-    (if module-info
-        (let* ((module-dir (module-uri module-info))
-               (package-file (path:uri-merge module-dir "package.lisp")))
-          (if (fs:exists-p package-file)
-              (let* ((plist (with-open-file (stream (path:path-from-uri package-file))
-                              (read stream))))
-                (list :name module-name
-                      :uri module-dir
-                      :loaded (module-loaded-p module-info)
-                      :version (getf plist :version)
-                      :author (getf plist :author)
-                      :description (getf plist :description)
-                      :platform (getf plist :platform)
-                      :provides (getf plist :provides)
-                      :dependencies (getf plist :dependencies)
-                      :sources (getf plist :sources)
-                      :tests (getf plist :tests)))
-              (list :name module-name
-                    :uri module-dir
-                    :loaded (module-loaded-p module-info)
-                    :error "Package file not found")))
-        nil)))
+(defun describe-package (package-name)
+  "Return a detailed description of a package's metadata"
+  (let* ((source (ensure-package-source))
+         (metadata (proto:load-package-metadata source package-name))
+         (location (proto:resolve-package-location source package-name))
+         (package-info (get-package package-name)))
+    (when metadata
+      (append metadata
+              (list :name package-name
+                    :location (when location (path:path-string location))
+                    :loaded (and package-info (package-loaded-p package-info)))))))
 
 (defclass locatable ()
   ((uri :initarg :uri :accessor uri)))
@@ -375,6 +407,11 @@
    (platform :initarg :platform :accessor project-platform)
    (sources :initarg :sources :accessor project-sources)
    (tests :initarg :tests :accessor project-tests)
+   (benchmarks :initarg :benchmarks :accessor project-benchmarks :initform nil)
+   (examples :initarg :examples :accessor project-examples :initform nil)
+   (experiments :initarg :experiments :accessor project-experiments :initform nil)
+   (docs :initarg :docs :accessor project-docs :initform nil)
+   (data :initarg :data :accessor project-data :initform nil)
    (dependencies :initarg :dependencies :accessor project-dependencies)
    (provides :initarg :provides :accessor project-provides)
    (modules :initarg :modules :accessor project-modules)))
@@ -404,21 +441,31 @@
            (author (getf plist :author))
            (source-paths (or (getf plist :sources) '("src")))
            (test-paths (or (getf plist :tests) '("tests")))
+           (benchmark-paths (getf plist :benchmarks))
+           (example-paths (getf plist :examples))
+           (experiment-paths (getf plist :experiments))
+           (doc-paths (getf plist :docs))
+           (data-paths (getf plist :data))
            (dependencies-list (getf plist :dependencies))
            (provides-list (getf plist :provides))
            (platform (getf plist :platform))
-           (sources (sort-sources (mapcan (lambda (source-path)
-                                            (let ((full-uri (path:uri-merge uri source-path)))
-                                              (if (probe-file (path:path-from-uri full-uri))
-                                                  (find-source-info full-uri)
-                                                  '())))
-                                          source-paths)))
-           (tests (sort-sources (mapcan (lambda (test-path)
-                                          (let ((full-uri (path:uri-merge uri test-path)))
+           ;; Helper function to load resources from paths
+           (load-resources (lambda (paths)
+                             (when paths
+                               (sort-sources 
+                                (mapcan (lambda (resource-path)
+                                          (let ((full-uri (path:uri-merge uri resource-path)))
                                             (if (probe-file (path:path-from-uri full-uri))
                                                 (find-source-info full-uri)
                                                 '())))
-                                        test-paths))))
+                                        paths)))))
+           (sources (funcall load-resources source-paths))
+           (tests (funcall load-resources test-paths))
+           (benchmarks (funcall load-resources benchmark-paths))
+           (examples (funcall load-resources example-paths))
+           (experiments (funcall load-resources experiment-paths))
+           (docs (funcall load-resources doc-paths))
+           (data (funcall load-resources data-paths)))
       
       (let ((project (make-instance 'project
                                     :uri uri
@@ -429,11 +476,16 @@
                                     :platform platform
                                     :sources sources
                                     :tests tests
+                                    :benchmarks benchmarks
+                                    :examples examples
+                                    :experiments experiments
+                                    :docs docs
+                                    :data data
                                     :dependencies dependencies-list
                                     :provides provides-list
                                     :modules map:+empty+)))
-        (let ((module-info (make-module-info name uri project)))
-          (register-module-info module-info))
+        ;; Register this package in the environment
+        (register-package name uri :project project)
         project))))
 
 (defun find-source-info (uri)
@@ -451,9 +503,9 @@
     (dolist (dep-name (project-dependencies project))
       (cond
         ;; If it's already registered, load its project
-        ((map:contains-p *modules* dep-name)
-         (let* ((module-info (map:get *modules* dep-name))
-                (dep-dir (module-uri module-info)))
+        ((is-package-loaded dep-name)
+         (let* ((package-info (get-package dep-name))
+                (dep-dir (package-uri package-info)))
            (push (load-project dep-dir) resolved-deps)))
         
         ;; If it's epsilon.core, load it from current directory
@@ -513,13 +565,19 @@
                  :project project
                  :source-info source-info))
 
-(defmethod build-order ((project project) &key include-tests)
+(defmethod build-order ((project project) &key)
   (multiple-value-bind (all-sources all-tests)
       (collect-all-sources project)
+    (declare (ignore all-tests))
     (seq:map (fn:partial #'%make-build-input project)
-             (seq:seq (if include-tests
-                          (append all-sources all-tests)
-                          all-sources)))))
+             (seq:seq all-sources))))
+
+(defmethod test-build-order ((project project))
+  (multiple-value-bind (all-sources all-tests)
+      (collect-all-sources project)
+    (declare (ignore all-sources))
+    (seq:map (fn:partial #'%make-build-input project)
+             (seq:seq all-tests))))
 
 (defun read-first-form (uri)
   (with-open-file (stream (path:path-from-uri uri))
@@ -674,13 +732,12 @@
      (print-build-output result))
     (:ignore nil)))
 
-(defvar *build-timeout* 60
-  "Timeout in seconds for individual file operations")
 
 (defun dump-build-state ()
   "Force dump current build state - useful for debugging hangs"
   (format *error-output* "~%=== BUILD STATE DUMP (MANUAL) ===~%")
-  (format *error-output* "Build timeout: ~D seconds~%" *build-timeout*)
+  (format *error-output* "Build timeout: ~D seconds~%" 
+          (build-env:option-timeout (build-env:environment-options (current-environment))))
   (format *error-output* "Error behavior: ~A~%" *error-behavior*)
   (format *error-output* "Warning behavior: ~A~%" *warning-behavior*)
   (format *error-output* "=== END BUILD STATE DUMP ===~%")
@@ -715,9 +772,12 @@
                                (setf completed t))
                              :name "build-operation")))
                  (sleep 0.1) ; Give thread a moment to start
-                 (let ((timeout-count 0))
+                 (let ((timeout-count 0)
+                       (timeout-secs (build-env:option-timeout 
+                                      (build-env:environment-options 
+                                       (current-environment)))))
                    (loop while (and (sb-thread:thread-alive-p thread) 
-                                    (< timeout-count (* *build-timeout* 10)))
+                                    (< timeout-count (* timeout-secs 10)))
                          do (sleep 0.1)
                             (incf timeout-count))
                    (when (sb-thread:thread-alive-p thread)
@@ -725,7 +785,10 @@
                      (setf (stdout-output result) (get-output-stream-string stdout-stream)
                            (stderr-output result) (get-output-stream-string stderr-stream))
                      (sb-thread:terminate-thread thread)
-                     (error "Build operation timed out after ~D seconds" *build-timeout*))
+                     (error "Build operation timed out after ~D seconds" 
+                            (build-env:option-timeout 
+                             (build-env:environment-options 
+                              (current-environment)))))
                    (sb-thread:join-thread thread))))))
       (setf (end-time result) (get-internal-real-time))
       ;; Always capture final output
@@ -797,29 +860,37 @@
 
 ;;; TODO unify %build and %build-test
 
-(defun %build (project &key force include-tests)
+(defun %build (project &key force)
   "Build the given build-inputs, optionally forcing compilation of all steps"
   
   (let* ((build (make-instance 'project-build
                                :project project
                                :results '()))
-         (build-inputs (build-order project :include-tests include-tests)))
-    (let* ((index 0)
-           (results (seq:map (lambda (build-input)
-                              (incf index)
-                              (let ((result (if force
-                                                (compile-source build-input)
-                                                (case (build-input-status build-input)
-                                                  ((:target-missing
-                                                    :source-newer)
-                                                   (compile-source build-input))
-                                                  (t
-                                                   (load-source build-input))))))
-                                (when (compilation-errors result)
-                                  (log:log-error "Compilation failed: ~A" 
-                                                 (path (source-info (build-input result)))))
-                                result))
-                            build-inputs)))
+         (build-inputs (build-order project)))
+    (let* ((results (if *parallel-compilation*
+                       ;; Use parallel compilation if enabled
+                       (progn
+                         (unless (find-package :epsilon.tool.parallel-build)
+                           (error "Parallel compilation requires epsilon.tool.parallel-build to be loaded"))
+                         (funcall (find-symbol "COMPILE-PARALLEL" :epsilon.tool.parallel-build)
+                                 build-inputs :force force :parallel t))
+                       ;; Sequential compilation (existing behavior)
+                       (let ((index 0))
+                         (seq:map (lambda (build-input)
+                                   (incf index)
+                                   (let ((result (if force
+                                                     (compile-source build-input)
+                                                     (case (build-input-status build-input)
+                                                       ((:target-missing
+                                                         :source-newer)
+                                                        (compile-source build-input))
+                                                       (t
+                                                        (load-source build-input))))))
+                                     (when (compilation-errors result)
+                                       (log:error "Compilation failed: ~A" 
+                                                  (path (source-info (build-input result)))))
+                                     result))
+                                 build-inputs)))))
       (setf (slot-value build 'results) results)
       (setf (end-time build) (get-internal-real-time))
       
@@ -882,8 +953,8 @@
                                                  (force-output)
                                                  nil)))))
                               (when (and result (compilation-errors result))
-                                (log:log-error "Compilation failed: ~A" 
-                                               (path (source-info (build-input result)))))
+                                (log:error "Compilation failed: ~A" 
+                                           (path (source-info (build-input result)))))
                               (push result results)))
                         (error (e)
                           (format t "~&;;; FATAL ERROR processing test file ~D: ~A~%" index e)
@@ -897,255 +968,242 @@
       (setf (end-time build) (get-internal-real-time))
       build)))
 
-(defun build (module &key force 
-                      (error-behavior :halt) 
-                      (warning-behavior :ignore)
-                      include-tests)
-  "Build module sources and optionally tests.
-  
-  MODULE - Module name to build (e.g., 'epsilon.core', 'http'). Looks up module directory from registry.
-  FORCE - Force compilation of all build steps regardless of timestamps
-  ERROR-BEHAVIOR - How to handle compilation errors: :halt (default), :ignore, :print
-  WARNING-BEHAVIOR - How to handle compilation warnings: :ignore (default), :halt, :print
-  INCLUDE-TESTS - Also build test files (default NIL)"
-  (let* ((module-info (get-module module))
-         (module-dir (if module-info
-                         (module-uri module-info)
-                         (error "Unknown module: ~A. Available modules: ~A" 
-                                module (map:keys *modules*))))
-         (project (load-project module-dir))
-         (*error-behavior* error-behavior)
-         (*warning-behavior* warning-behavior))
+(defgeneric build-with-environment (environment package &key force)
+  (:documentation "Build a package using the specified environment"))
+
+(defmethod build-with-environment ((env build-env:build-environment) package &key force)
+  "Build package sources using the given environment"
+  (let* ((source (build-env:ensure-package-source env))
+         (location (proto:resolve-package-location source package))
+         (package-dir (if location
+                          (path:path-string location)
+                          (error "Unknown package: ~A. Available packages: ~A" 
+                                 package (proto:list-packages source))))
+         (project (load-project package-dir))
+         ;; Bind dynamic variables for backward compatibility
+         (*error-behavior* (build-env:policy-error-behavior 
+                            (build-env:environment-policies env)))
+         (*warning-behavior* (build-env:policy-warning-behavior 
+                              (build-env:environment-policies env)))
+         (*parallel-compilation* (build-env:option-parallel 
+                                  (build-env:environment-options env)))
+         (*current-environment* env))
+    ;; Build dependencies first
     (dolist (dep-name (project-dependencies project))
       (let ((resolved-dep (resolve-virtual-dependency dep-name)))
         (when (not (string= resolved-dep dep-name))
           (log:debug "Resolved virtual dependency ~A to ~A" dep-name resolved-dep))
-        (when (and (map:contains-p *modules* resolved-dep)
-                   (not (is-module-loaded resolved-dep))) ; Skip if already loaded
-          ;; Recursively build the dependency (which handles its own dependencies)
-          (build resolved-dep :force force :include-tests nil)
-          (mark-module-loaded resolved-dep))))
+        (unless (build-env:is-package-loaded env resolved-dep)
+          (let* ((dep-location (proto:resolve-package-location source resolved-dep)))
+            (when dep-location
+              (build-with-environment env resolved-dep :force force)
+              (build-env:mark-package-loaded env resolved-dep))))))
     
     ;; Now try to load concatenated FASL if dependencies are resolved and it's up-to-date
-    (unless force
+    (unless (or force (build-env:option-force (build-env:environment-options env)))
       (when (load-concatenated-fasl project)
-        (return-from build t)))
+        (return-from build-with-environment t)))
     
-    (let ((build-result (%build project :force force :include-tests include-tests)))
+    (let ((build-result (%build project :force (or force (build-env:option-force 
+                                                           (build-env:environment-options env))))))
       (when build-result
-        (mark-module-loaded module))
+        (build-env:mark-package-loaded env package))
       build-result)))
 
-(defun build-tests (module &key force 
-                           (error-behavior :halt) 
-                           (warning-behavior :ignore))
-  "Build only the test files for a module.
+(defun build (package &key force 
+                      (error-behavior :halt) 
+                      (warning-behavior :ignore)
+                      parallel
+                      &allow-other-keys)
+  "Build package sources only.
   
-  MODULE - Module name whose tests to build (e.g., 'epsilon.core', 'http').
+  PACKAGE - Package name to build (e.g., 'epsilon.core', 'http'). Looks up package from package source.
+  FORCE - Force compilation of all build steps regardless of timestamps
+  ERROR-BEHAVIOR - How to handle compilation errors: :halt (default), :ignore, :print
+  WARNING-BEHAVIOR - How to handle compilation warnings: :ignore (default), :halt, :print
+  PARALLEL - Use parallel compilation (experimental)"
+  (let ((env (current-environment)))
+    ;; Configure environment based on arguments
+    (setf (build-env:policy-error-behavior (build-env:environment-policies env)) error-behavior
+          (build-env:policy-warning-behavior (build-env:environment-policies env)) warning-behavior
+          (build-env:option-parallel (build-env:environment-options env)) parallel
+          (build-env:option-force (build-env:environment-options env)) force)
+    (build-with-environment env package :force force)))
+
+(defun build-tests (package &key force 
+                           (error-behavior :halt) 
+                           (warning-behavior :ignore)
+                           parallel)
+  "Build only the test files for a package.
+  
+  PACKAGE - Package name whose tests to build (e.g., 'epsilon.core', 'http').
   FORCE - Force compilation of all test files regardless of timestamps
   ERROR-BEHAVIOR - How to handle compilation errors: :halt (default), :ignore, :print
-  WARNING-BEHAVIOR - How to handle compilation warnings: :ignore (default), :halt, :print"
-  (let* ((module-info (get-module module))
-         (module-dir (if module-info
-                         (module-uri module-info)
-                         (error "Unknown module: ~A. Available modules: ~A" 
-                                module (map:keys *modules*))))
+  WARNING-BEHAVIOR - How to handle compilation warnings: :ignore (default), :halt, :print
+  PARALLEL - Use parallel compilation (experimental)"
+  (let* ((source (ensure-package-source))
+         (location (proto:resolve-package-location source package))
+         (module-dir (if location
+                         (path:path-string location)
+                         (error "Unknown module: ~A. Available packages: ~A" 
+                                package (proto:list-packages source))))
          (project (load-project module-dir))
          (*error-behavior* error-behavior)
-         (*warning-behavior* warning-behavior))
-    ;; Ensure the module itself is built first since test files depend on it
-    (unless (is-module-loaded module)
-      (build module :force force :include-tests nil)
-      (mark-module-loaded module))
+         (*warning-behavior* warning-behavior)
+         (*parallel-compilation* parallel))
+    ;; Ensure the module itself is built and loaded first since test files depend on it
+    (unless (is-package-loaded package)
+      (build package :force force :parallel parallel)
+      (load-package package))
     
-    ;; Ensure epsilon.test is built first since test files depend on it
-    (when (and (map:contains-p *modules* "epsilon.test")
-               (not (is-module-loaded "epsilon.test")))
-      (build "epsilon.test" :force force :include-tests nil)
-      (mark-module-loaded "epsilon.test"))
+    ;; Ensure epsilon.test is built and loaded first since test files depend on it
+    (let* ((source (ensure-package-source))
+           (test-location (proto:resolve-package-location source "epsilon.test")))
+      (when (and test-location (not (is-package-loaded "epsilon.test")))
+        (build "epsilon.test" :force force :parallel parallel)
+        (load-package "epsilon.test")))
     
     (dolist (dep-name (project-dependencies project))
-      (when (and (map:contains-p *modules* dep-name)
-                 (not (string= dep-name "epsilon.core")) ; core is already loaded
-                 (not (string= dep-name "epsilon.test")) ; test is already loaded above
-                 (not (is-module-loaded dep-name))) ; Skip if already loaded
-        (build dep-name :force force :include-tests nil)
-        (mark-module-loaded dep-name)))
+      (unless (or (string= dep-name "epsilon.core") ; core is already loaded
+                  (string= dep-name "epsilon.test") ; test is already loaded above
+                  (is-package-loaded dep-name)) ; Skip if already loaded
+        (let* ((source (ensure-package-source))
+               (dep-location (proto:resolve-package-location source dep-name)))
+          (when dep-location
+            (build dep-name :force force :parallel parallel)
+            (load-package dep-name)))))
     (%build-tests project :force force)))
 
-;;; Module registration
+(defun load-package (package)
+  "Load a package that has already been built.
+  Returns T if successfully loaded, NIL otherwise."
+  (let* ((source (ensure-package-source))
+         (location (proto:resolve-package-location source package))
+         (package-dir (if location
+                         (path:path-string location)
+                         (error "Unknown package: ~A" package)))
+         (project (load-project package-dir)))
+    ;; Load dependencies first
+    (dolist (dep (project-dependencies project))
+      (unless (or (string= dep "epsilon.core") ; core is already loaded
+                  (is-package-loaded dep))
+        (build dep)
+        (load-package dep)))
+    ;; Now load this package
+    (when (load-concatenated-fasl project)
+      (mark-package-loaded package)
+      t)))
 
-(defun find-module-directories (base-dir)
-  "Find all directories containing package.lisp files under base-dir/src/
-   Returns a list of directory path strings suitable for register-module"
-  (let* ((module-base (path:uri-merge base-dir "src/"))
-         ;; On Windows, try a more direct approach if the first one fails
-         (module-base-path (or (ignore-errors (path:path-from-uri module-base))
-                               #+win32 (merge-pathnames "src/" (pathname base-dir))
-                               #-win32 nil))
-         (module-dirs '()))
-    ;; Debug output for Windows
-    #+win32 (format t ";;; Module base URI: ~A~%" module-base)
-    #+win32 (format t ";;; Module base path: ~A~%" module-base-path)
-    #+win32 (format t ";;; Module base exists: ~A~%" (when module-base-path (probe-file module-base-path)))
-    (when (and module-base-path (probe-file module-base-path))
-      ;; Debug output for Windows
-      #+win32 (format t ";;; Searching for modules in: ~A~%" module-base-path)
-      ;; List all entries in the module directory
-      (dolist (entry-name (fs:list-dir module-base-path))
-        (let* ((entry-path (path:string-path-join "src" entry-name))
-               (entry-uri (path:uri-merge base-dir entry-path))
-               (package-file (path:uri-merge entry-uri "package.lisp")))
-          (when (and (fs:dir-p (path:path-from-uri entry-uri))
-                     (fs:exists-p package-file))
-            (push entry-path module-dirs)))))
-    (nreverse module-dirs)))
+(defun get-test-files (package)
+  "Get test file information for a package.
+  Returns a list of build-input objects for test files."
+  (let* ((source (ensure-package-source))
+         (location (proto:resolve-package-location source package))
+         (package-dir (if location
+                          (path:path-string location)
+                          (error "Unknown package: ~A" package)))
+         (project (load-project package-dir)))
+    (test-build-order project)))
 
-(defun module-applicable-p (module-dir)
-  "Check if module is applicable to current platform"
-  (let* ((package-file (path:uri-merge module-dir "package.lisp")))
-    (when (fs:exists-p package-file)
-      ;; TODO validating module loader. Read a sexp into a hamt +
-      ;; vector structure, and check it using catalog.
-      (let* ((plist (with-open-file (stream (path:path-from-uri package-file))
-                      (read stream)))
-             (platform (getf plist :platform)))
-        ;; Module is applicable if:
-        ;; 1. No platform specified (platform-agnostic)
-        ;; 2. Platform matches current platform
-        (or (not platform)
-            (string= platform (string-downcase (detect-platform))))))))
+(defgeneric project-resources (project resource-type)
+  (:documentation "Get resources of the specified type from the project.
+  Resource types: :sources :tests :benchmarks :examples :experiments :docs :data"))
 
-(defun register-modules (&key base-dir)
-  "Discover and register all applicable modules found under base-dir/src/"
-  ;; Default base-dir at runtime, not compile time
-  (unless base-dir
-    (setf base-dir (path:make-path
-                    #+win32 (namestring (truename *default-pathname-defaults*))
-                    #-win32 (sb-unix:posix-getcwd))))
+(defmethod project-resources ((project project) (resource-type (eql :sources)))
+  (project-sources project))
+
+(defmethod project-resources ((project project) (resource-type (eql :tests)))
+  (project-tests project))
+
+(defmethod project-resources ((project project) (resource-type (eql :benchmarks)))
+  (project-benchmarks project))
+
+(defmethod project-resources ((project project) (resource-type (eql :examples)))
+  (project-examples project))
+
+(defmethod project-resources ((project project) (resource-type (eql :experiments)))
+  (project-experiments project))
+
+(defmethod project-resources ((project project) (resource-type (eql :docs)))
+  (project-docs project))
+
+(defmethod project-resources ((project project) (resource-type (eql :data)))
+  (project-data project))
+
+(defun get-resource-files (package resource-type)
+  "Get resource file information for a package.
+  Returns a list of source-info objects for the specified resource type."
+  (let* ((source (ensure-package-source))
+         (location (proto:resolve-package-location source package))
+         (package-dir (if location
+                          (path:path-string location)
+                          (error "Unknown package: ~A" package)))
+         (project (load-project package-dir)))
+    (project-resources project resource-type)))
+
+(defun compile-tests (package &key force parallel)
+  "Compile test files for a package without running them.
   
-  (let ((module-paths (find-module-directories base-dir))
-        (registered-count 0)
-        (skipped-count 0))
-    ;; Debug output for Windows
-    #+win32 (format t ";;; Base directory: ~A~%" base-dir)
-    #+win32 (format t ";;; Found module paths: ~A~%" module-paths)
-    
-    ;; Register each module using register-module for list-modules functionality
-    (dolist (module-path module-paths)
-      (handler-case 
-          (progn
-            (register-module module-path :silent t)
-            (incf registered-count))
-        (error ()
-          ;; Skip modules that can't be registered (e.g., malformed package.lisp)
-          (incf skipped-count))))
-    
-    ;; Return count of successfully registered modules
-    registered-count))
+  PACKAGE - Package name whose tests to compile (e.g., 'epsilon.core', 'http').
+  FORCE - Force compilation of all test files regardless of timestamps
+  PARALLEL - Use parallel compilation (experimental)"
+  (let* ((source (ensure-package-source))
+         (location (proto:resolve-package-location source package))
+         (package-dir (if location
+                          (path:path-string location)
+                          (error "Unknown package: ~A" package)))
+         (project (load-project package-dir))
+         (*parallel-compilation* parallel))
+    ;; Ensure the package itself is built first since test files depend on it
+    (unless (is-package-loaded package)
+      (build package :force force :parallel parallel)
+      (mark-package-loaded package))
+    ;; Now compile just the test files
+    (let* ((build (make-instance 'project-build
+                                :project project
+                                :results '()))
+           (test-inputs (test-build-order project)))
+      (when test-inputs
+        (let ((results (if *parallel-compilation*
+                          (progn
+                            (unless (find-package :epsilon.tool.parallel-build)
+                              (error "Parallel compilation requires epsilon.tool.parallel-build to be loaded"))
+                            (funcall (find-symbol "COMPILE-PARALLEL" :epsilon.tool.parallel-build)
+                                    test-inputs :force force :parallel t))
+                          (seq:map (lambda (build-input)
+                                    (compile-source build-input))
+                                  test-inputs))))
+          (setf (slot-value build 'results) (seq:seq results))
+          (setf (end-time build) (get-internal-real-time))
+          build)))))
 
-(defun register-module (module-spec &key silent)
-  "Register a single module regardless of platform compatibility.
-   
-   MODULE-SPEC can be:
-   - A string pathname to a directory containing package.lisp
-   
-   SILENT suppresses individual registration messages."
-  (let* ((module-dir-path (cond
-                           ((stringp module-spec)
-                            (if (or (char= (char module-spec 0) #\/)
-                                    #+(or windows win32)
-                                    (and (>= (length module-spec) 3)
-                                         (char= (char module-spec 1) #\:)
-                                         (member (char module-spec 2) '(#\/ #\\))))
-                                (substitute #\/ #\\ module-spec)  ; absolute path - normalize separators
-                                (let ((cwd #+win32 (substitute #\/ #\\ (sb-ext:native-namestring (truename ".")))
-                                           #-win32 (sb-unix:posix-getcwd)))
-                                  (path:string-path-join cwd (substitute #\/ #\\ module-spec))))) ; relative path - normalize separators
-                           (t 
-                            (error "Unsupported module-spec type: ~A" module-spec))))
-         (module-dir (path:make-path module-dir-path))
-         (package-file (path:uri-merge module-dir "package.lisp")))
-    
-    ;; Validate package file exists
-    (unless package-file
-      (error "Package file not found: ~A" (path:path-from-uri package-file)))
-    
-    ;; Parse package file and register module (skip platform check)
-    (let* ((plist (with-open-file (stream (path:path-from-uri package-file))
-                    (read stream)))
-           (module-name (getf plist :name)))
-      (unless module-name
-        (error "Module name not found in package file: ~A" (path:path-from-uri package-file)))
-      
-      ;; Register the module regardless of platform compatibility
-      (let ((module-info (make-module-info module-name module-dir)))
-        (register-module-info module-info))
-      (unless silent
-        (let ((platform (getf plist :platform))
-              (applicable (module-applicable-p module-dir)))
-          (format t ";;   Registered module: ~a -> ~a~@[ (~A~@[, unsupported~])~]~%" 
-                  module-name 
-                  (path:path-from-uri module-dir)
-                  platform
-                  (not applicable))))
-      
-      ;; Return the module name
-      module-name)))
-
-(defun list-modules (&key include-platform)
-  "List all registered modules.
+(defun list-available-packages (&key include-platform)
+  "List all available modules from the package source.
    
    INCLUDE-PLATFORM - When T, show platform-specific modules too"
-  (let ((all-modules (seq:seq (map:keys *modules*)))
-        (platform-modules '()))
+  (let* ((source (ensure-package-source))
+         (all-packages (proto:list-packages source))
+         (platform-packages '()))
     
-    ;; Sort modules alphabetically - convert to list, sort, then back to seq
-    (setf all-modules (seq:from-list (sort (seq:realize all-modules) #'string<)))
+    (log:debug *log* "Package source: ~A" source)
+    (log:debug *log* "Raw packages found: ~A" all-packages)
     
-    ;; Filter out platform-specific modules unless requested
+    ;; Sort packages alphabetically
+    (setf all-packages (sort all-packages #'string<))
+    
+    ;; Filter out platform-specific packages unless requested
     (unless include-platform
-      (setf all-modules
-            (seq:filter (lambda (module-name)
-                          (let* ((module-info (get-module module-name))
-                                 (module-dir (module-uri module-info))
-                                 (package-file (path:uri-merge module-dir "package.lisp"))
-                                 (plist (with-open-file (stream (path:path-from-uri package-file))
-                                          (read stream)))
-                                 (platform (getf plist :platform)))
-                            (if platform
-                                (progn
-                                  (push (cons module-name platform) platform-modules)
-                                  nil)
-                                t)))
-                        all-modules)))
+      (setf all-packages
+            (remove-if (lambda (package-name)
+                         (let* ((metadata (proto:load-package-metadata source package-name))
+                                (platform (getf metadata :platform)))
+                           (when platform
+                             (push (cons package-name platform) platform-packages)
+                             t)))
+                       all-packages)))
+    
+    (log:debug *log* "Filtered packages: ~A" all-packages)
+    (log:debug *log* "Platform packages: ~A" platform-packages)
     
     ;; Return the list
-    (values (seq:realize all-modules)
-            platform-modules)))
-
-(defun list-all-modules-with-status ()
-  "List all modules with their platform compatibility status.
-   Returns a list of (name . status) where status is :supported, :unsupported, or :unknown"
-  (let ((all-modules (seq:seq (map:keys *modules*)))
-        (current-platform (detect-platform))
-        (module-status '()))
-    
-    ;; Sort modules alphabetically
-    (setf all-modules (seq:from-list (sort (seq:realize all-modules) #'string<)))
-    
-    ;; Check each module's platform compatibility
-    (dolist (module-name (seq:realize all-modules))
-      (let* ((module-info (get-module module-name))
-             (module-dir (module-uri module-info))
-             (package-file (path:uri-merge module-dir "package.lisp"))
-             (plist (with-open-file (stream (path:path-from-uri package-file))
-                      (read stream)))
-             (platform (getf plist :platform))
-             (status (cond
-                       ((not platform) :supported)  ; platform-agnostic
-                       ((string= platform (string-downcase current-platform)) :supported)
-                       (t :unsupported))))
-        (push (cons module-name status) module-status)))
-    
-    (nreverse module-status)))
+    (values all-packages platform-packages)))

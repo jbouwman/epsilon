@@ -10,11 +10,11 @@
    (map epsilon.map)
    (str epsilon.string)
    (path epsilon.path)
-   (build epsilon.tool.build))
+   (build epsilon.tool.build)
+   (proto epsilon.build.protocol))
   (:export
    list-packages
    install-package
-   uninstall-package
    verify-package
    search-packages
    package-info
@@ -60,33 +60,36 @@
   "List packages based on filter criteria"
   (initialize-package-manager)
   
-  (cond
-    (installed-only
-     ;; List only installed packages
-     (map:keys *installed-packages*))
-    (available-only
-     ;; List only available (not installed) packages
-     (let ((available (build:list-modules))
-           (installed (map:keys *installed-packages*)))
-       (remove-if (lambda (pkg) (member pkg installed :test #'string=)) available)))
-    (t
-     ;; List all packages with status
-     (let ((all-modules (build:list-modules)))
-       (mapcar (lambda (module)
-                 (if (map:contains-p *installed-packages* module)
-                     (cons module :installed)
-                     (cons module :available)))
-               all-modules)))))
+  (let* ((source (build:ensure-package-source))
+         (all-packages (proto:list-packages source)))
+    (cond
+      (installed-only
+       ;; List only installed packages
+       (map:keys *installed-packages*))
+      (available-only
+       ;; List only available (not installed) packages
+       (let ((installed (map:keys *installed-packages*)))
+         (remove-if (lambda (pkg) (member pkg installed :test #'string=)) all-packages)))
+      (t
+       ;; List all packages with status
+       (mapcar (lambda (package-name)
+                 (if (map:contains-p *installed-packages* package-name)
+                     (cons package-name :installed)
+                     (cons package-name :available)))
+               all-packages)))))
 
 (defun package-info (package-name)
   "Get information about a package"
   (initialize-package-manager)
   
-  (let ((module-desc (build:describe-module package-name))
-        (installed-info (map:get *installed-packages* package-name)))
+  (let* ((source (build:ensure-package-source))
+         (metadata (proto:load-package-metadata source package-name))
+         (location (proto:resolve-package-location source package-name))
+         (installed-info (map:get *installed-packages* package-name)))
     
-    (when module-desc
-      (append module-desc
+    (when metadata
+      (append metadata
+              (list :location (when location (path:path-string location)))
               (when installed-info
                 (list :installed t
                       :install-date (map:get installed-info "install-date")
@@ -102,8 +105,9 @@
     (error "Package ~A is already installed. Use :force t to reinstall." package-name))
   
   ;; Verify package exists
-  (unless (build:get-module package-name)
-    (error "Package ~A not found in available modules." package-name))
+  (let ((source (build:ensure-package-source)))
+    (unless (proto:package-exists-p source package-name)
+      (error "Package ~A not found in available packages." package-name)))
   
   (when verbose
     (format t ";;; Installing package: ~A~%" package-name))
@@ -129,29 +133,6 @@
       (format *error-output* ";;; Failed to install package ~A: ~A~%" package-name e)
       nil)))
 
-(defun uninstall-package (package-name &key verbose)
-  "Uninstall a package"
-  (initialize-package-manager)
-  
-  (unless (map:contains-p *installed-packages* package-name)
-    (error "Package ~A is not installed." package-name))
-  
-  (when verbose
-    (format t ";;; Uninstalling package: ~A~%" package-name))
-  
-  ;; Remove from installed packages
-  (setf *installed-packages* (map:dissoc *installed-packages* package-name))
-  (save-installed-packages-index)
-  
-  ;; Mark module as not loaded
-  (when (build:is-module-loaded package-name)
-    (let ((module-info (build:get-module package-name)))
-      (when module-info
-        (setf (build:module-loaded-p module-info) nil))))
-  
-  (when verbose
-    (format t ";;; Package ~A uninstalled~%" package-name))
-  t)
 
 (defun verify-package (package-name &key verbose)
   "Verify package integrity"
@@ -166,7 +147,7 @@
     
     ;; Basic verification - check if module can be described
     (handler-case
-        (let ((desc (build:describe-module package-name)))
+        (let ((desc (build:describe-package package-name)))
           (when verbose
             (format t ";;;   Package ~A verified successfully~%" package-name))
           desc)
@@ -179,13 +160,14 @@
   "Search for packages matching query"
   (initialize-package-manager)
   
-  (let ((all-modules (build:list-modules))
-        (matches '()))
+  (let* ((source (build:ensure-package-source))
+         (all-packages (proto:list-packages source))
+         (matches '()))
     
-    (dolist (module all-modules)
-      (let* ((desc (build:describe-module module))
-             (name (getf desc :name ""))
-             (description (getf desc :description "")))
+    (dolist (package-name all-packages)
+      (let* ((metadata (proto:load-package-metadata source package-name))
+             (name (or package-name ""))
+             (description (or (getf metadata :description) "")))
         
         (when (or (and (or (not name-only) (not description-only))
                        (or (search (string-downcase query) (string-downcase name))
@@ -194,7 +176,7 @@
                        (search (string-downcase query) (string-downcase name)))
                   (and description-only
                        (search (string-downcase query) (string-downcase description))))
-          (push desc matches))))
+          (push (append metadata (list :name package-name)) matches))))
     
     (nreverse matches)))
 

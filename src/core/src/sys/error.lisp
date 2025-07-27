@@ -1,14 +1,12 @@
-(defpackage #:epsilon.sys.error
+(defpackage epsilon.sys.error
   (:use
-   #:cl)
+   cl)
   (:export
-   #:thread-exit
-   #:thread-exit-condition
-   #:thread-error))
+   thread-exit
+   thread-exit-condition
+   thread-error))
 
-(in-package #:epsilon.sys.error)
-
-(defun bool (thing) (if thing t nil))
+(in-package epsilon.sys.error)
 
 (define-condition thread-error (error)
   ((message :initarg :message :reader message))
