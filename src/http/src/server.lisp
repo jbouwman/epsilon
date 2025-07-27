@@ -1,24 +1,24 @@
-(defpackage :epsilon.http.server
-  (:use :cl)
+(defpackage epsilon.http.server
+  (:use cl)
   (:local-nicknames
-   (#:net #:epsilon.http.net)
-   (#:str #:epsilon.string)
-   (#:map #:epsilon.map)
-   (#:time #:epsilon.time)
-   (#:request #:epsilon.http.request)
-   (#:response #:epsilon.http.response)
-   (#:tls #:epsilon.tls))
+   (net epsilon.http.net)
+   (str epsilon.string)
+   (map epsilon.map)
+   (time epsilon.time)
+   (request epsilon.http.request)
+   (response epsilon.http.response)
+   (tls epsilon.tls))
   (:export
-   #:start-server
-   #:stop-server
-   #:define-handler
-   #:with-server
-   #:*default-port*))
+   start-server
+   stop-server
+   with-server
+   *default-port*
+   wrap-middleware))
 
 (in-package :epsilon.http.server)
 
 (defparameter *default-port* 8080)
-(defvar *handlers* map:+empty+)
+
 (defvar *servers* map:+empty+)
 
 (defclass http-server ()
@@ -27,7 +27,9 @@
    (thread :initarg :thread :accessor server-thread)
    (running-p :initform t :accessor server-running-p)
    (tls-context :initarg :tls-context :accessor server-tls-context :initform nil)
-   (ssl-p :initarg :ssl-p :accessor server-ssl-p :initform nil)))
+   (ssl-p :initarg :ssl-p :accessor server-ssl-p :initform nil)
+   (application :initarg :application :accessor server-application
+                :documentation "Middleware pipeline function to handle requests")))
 
 (defun read-http-request (connection ssl-p)
   "Read HTTP request from connection and return request object"
@@ -60,25 +62,13 @@
         (write-string response-text stream)
         (force-output stream)))))
 
-(defun find-handler (method path)
-  "Find handler for method and path"
-  (map:get *handlers* (format nil "~A ~A" method path)))
-
-(defun handle-client (connection ssl-p)
-  "Handle a client connection"
+(defun handle-client (connection ssl-p application)
+  "Handle a client connection using application pipeline"
   (handler-case
       (let ((req (read-http-request connection ssl-p)))
         (if req
-            (let ((handler (find-handler (request:request-method req) 
-                                         (request:request-path req))))
-              (if handler
-                  (let ((response (funcall handler req)))
-                    (send-http-response connection response ssl-p))
-                  (send-http-response connection 
-                                      (response:html-response 
-                                       "<h1>404 Not Found</h1>"
-                                       :status 404)
-                                      ssl-p)))
+            (let ((response (funcall application req)))
+              (send-http-response connection response ssl-p))
             (send-http-response connection 
                                 (response:html-response 
                                  "<h1>400 Bad Request</h1>"
@@ -106,19 +96,20 @@
                    (let ((connection (if (server-ssl-p server)
                                          (tls:tls-accept raw-connection 
                                                          (server-tls-context server))
-                                         raw-connection)))
+                                         raw-connection))
+                         (app (server-application server)))
                      (sb-thread:make-thread 
                       (lambda () 
-                        (handle-client connection (server-ssl-p server)))
+                        (handle-client connection (server-ssl-p server) app))
                       :name "HTTP client handler"))))
              (error (e)
                (declare (ignore e))  ; Log errors in production
                (unless (server-running-p server)
                  (return))))))
 
-(defun start-server (&key (port *default-port*) (address "0.0.0.0") 
-                           tls-context ssl-p cert-file key-file)
-  "Start HTTP server on specified port"
+(defun start-server (application &key (port *default-port*) (address "0.0.0.0") 
+                                   tls-context ssl-p cert-file key-file)
+  "Start HTTP server with middleware application"
   (when (map:get *servers* port)
     (error "Server already running on port ~D" port))
   
@@ -137,7 +128,8 @@
                                 :port port
                                 :socket listener
                                 :tls-context tls-context
-                                :ssl-p (or ssl-p (not (null tls-context))))))
+                                :ssl-p (or ssl-p (not (null tls-context)))
+                                :application application)))
     (setf (server-thread server)
           (sb-thread:make-thread 
            (lambda () 
@@ -159,15 +151,18 @@
       (setf *servers* (map:dissoc *servers* (server-port server)))
       t)))
 
-(defmacro with-server ((server &key (port *default-port*)) &body body)
+(defmacro with-server ((server application &key (port *default-port*)) &body body)
   "Execute body with HTTP server running"
-  `(let ((,server (start-server :port ,port)))
+  `(let ((,server (start-server ,application :port ,port)))
      (unwind-protect
           (progn ,@body)
        (stop-server ,server))))
 
-(defmacro define-handler ((method path) (request-var) &body handler-body)
-  "Define an HTTP request handler"
-  `(setf *handlers* (map:assoc *handlers* (format nil "~A ~A" ',method ,path)
-                               (lambda (,request-var)
-                                 ,@handler-body))))
+(defun wrap-middleware (handler &rest middlewares)
+  "Wrap handler with multiple middleware functions"
+  (if middlewares
+      ;; Apply middleware functions in reverse order (innermost first)
+      (reduce (lambda (h mw) (funcall mw h))
+              (reverse middlewares)
+              :initial-value handler)
+      handler))

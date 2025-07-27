@@ -1,6 +1,10 @@
 ;;;; This module provides lazy, immutable sequences with delayed evaluation.
 ;;;; Sequences are computed on-demand and cached.
 
+;;;; TODO
+;;;;
+;;;; - The 'seq' function is the same as 'from-list' (which is preferred)
+
 (defpackage :epsilon.sequence
   (:use
    cl
@@ -82,8 +86,6 @@
   "Returns true if OBJ is a lazy sequence"
   (or (cons-p obj)
       (eq obj *empty*)))
-
-;; TODO -- update all useages then remove
 
 (defun seq (list)
   (labels ((convert (remaining)

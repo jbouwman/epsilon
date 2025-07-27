@@ -1,54 +1,59 @@
-(defpackage :epsilon.web
-  (:use :cl)
+;;;; TODO
+;;;;
+;;;; - Add a test for wrap-middleware
+;;;; - middleware is an annoying term
+
+(defpackage epsilon.web
+  (:use cl)
   (:local-nicknames
-   (#:str #:epsilon.string)
-   (#:seq #:epsilon.sequence)
-   (#:map #:epsilon.map)
-   (#:json #:epsilon.json)
-   (#:log #:epsilon.log)
-   (#:request #:epsilon.http.request)
-   (#:response #:epsilon.http.response)
-   (#:server #:epsilon.http.server)
-   (#:client #:epsilon.http.client))
+   (str epsilon.string)
+   (seq epsilon.sequence)
+   (map epsilon.map)
+   (json epsilon.json)
+   (log epsilon.log)
+   (request epsilon.http.request)
+   (response epsilon.http.response)
+   (server epsilon.http.server)
+   (client epsilon.http.client))
   (:export
    ;; Request helpers
-   #:json-request-p
-   #:parse-query-string
-   #:request-param
-   #:request-header
-   #:with-json-body
+   json-request-p
+   parse-query-string
+   request-param
+   request-header
+   with-json-body
    
    ;; Response builders
-   #:json
-   #:html
-   #:text
-   #:redirect
-   #:not-found
-   #:bad-request
-   #:internal-error
+   json
+   html
+   text
+   redirect
+   not-found
+   bad-request
+   internal-error
    
    ;; Route definition
-   #:defroutes
-   #:defhandler
-   #:handle-routes
-   #:route
-   #:make-route
-   #:route-method
-   #:route-path
-   #:route-handler
+   defroutes
+   defhandler
+   handle-routes
+   route
+   make-route
+   route-method
+   route-path
+   route-handler
    
    ;; Server control
-   #:start-server
-   #:stop-server
-   #:with-server
+   start-server
+   stop-server
+   with-server
    
    ;; Middleware
-   #:defmiddleware
-   #:wrap-middleware
-   #:logging-middleware
-   #:json-errors-middleware))
+   defmiddleware
+   wrap-middleware
+   logging-middleware
+   json-errors-middleware))
 
-(in-package :epsilon.web)
+(in-package epsilon.web)
 
 ;;;; Request Helpers
 
@@ -151,6 +156,7 @@
 (defmacro defhandler (name (request-var) &body body)
   "Define a handler with automatic error handling"
   `(defun ,name (,request-var)
+     (declare (ignorable ,request-var))
      (handler-case
          (progn ,@body)
        (error (e)
@@ -177,25 +183,21 @@
 
 ;;;; Server Control
 
-(defun start-server (routes &key (port 8080) (address "0.0.0.0"))
-  "Start web server with routes"
-  ;; Register route handlers
-  (dolist (route routes)
-    (server:define-handler 
-        ((intern (route-method route) :keyword) (route-path route))
-        (req)
-      (funcall (route-handler route) req)))
-  
-  ;; Start server
-  (server:start-server :port port :address address))
+(defun start-server (routes &key (port 8080) (address "0.0.0.0") middleware)
+  "Start web server with routes and optional middleware"
+  (let* ((route-handler (handle-routes routes))
+         (app (if middleware
+                  (apply #'wrap-middleware route-handler middleware)
+                  route-handler)))
+    (server:start-server app :port port :address address)))
 
 (defun stop-server (server-or-port)
   "Stop web server"
   (server:stop-server server-or-port))
 
-(defmacro with-server ((server routes &key (port 8080)) &body body)
+(defmacro with-server ((server routes &key (port 8080) middleware) &body body)
   "Execute body with a temporary web server"
-  `(let ((,server (start-server ,routes :port ,port)))
+  `(let ((,server (start-server ,routes :port ,port :middleware ,middleware)))
      (unwind-protect
           (progn ,@body)
        (stop-server ,server))))
@@ -212,7 +214,7 @@
 (defun wrap-middleware (handler &rest middlewares)
   "Wrap handler with multiple middleware functions"
   (seq:reduce (lambda (h mw) (funcall mw h))
-              middlewares
+              (seq:from-list middlewares)
               :initial-value handler))
 
 ;;;; Built-in Middleware
