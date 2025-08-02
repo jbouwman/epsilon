@@ -70,28 +70,6 @@ target/
 └── epsilon-linux-x86_64.tar.gz
 ```
 
-### Core Image Creation
-
-`scripts/build-core.lisp`:
-```lisp
-;; Load Epsilon
-(load "scripts/boot.lisp")
-(epsilon.tool.boot:boot)
-
-;; Save core image
-(sb-ext:save-lisp-and-die 
-  "target/epsilon-core"
-  :toplevel #'epsilon-toplevel
-  :executable nil
-  :compression t)
-```
-
-The core image includes:
-- All Epsilon core modules
-- Compiled FASL files
-- Package definitions
-- No user code
-
 ### Wrapper Script
 
 `epsilon` wrapper handles platform differences:

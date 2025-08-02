@@ -305,7 +305,7 @@
 
 (defun make-diagnostic (position message &optional (severity :error))
   "Create a diagnostic entry."
-  (make-diagnostic :position position :message message :severity severity))
+  (make-instance 'diagnostic :position position :message message :severity severity))
 
 ;;; Advanced Analysis Functions
 

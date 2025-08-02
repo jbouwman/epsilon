@@ -1,24 +1,25 @@
-(defpackage :epsilon.http.server
-  (:use :cl)
+(defpackage epsilon.http.server
+  (:use cl)
   (:local-nicknames
-   (#:net #:epsilon.http.net)
-   (#:str #:epsilon.string)
-   (#:map #:epsilon.map)
-   (#:time #:epsilon.time)
-   (#:request #:epsilon.http.request)
-   (#:response #:epsilon.http.response)
-   (#:tls #:epsilon.tls))
+   (net epsilon.http.net)
+   (str epsilon.string)
+   (map epsilon.map)
+   (time epsilon.time)
+   (request epsilon.http.request)
+   (response epsilon.http.response)
+   (tls epsilon.tls)
+   (log epsilon.log))
   (:export
-   #:start-server
-   #:stop-server
-   #:define-handler
-   #:with-server
-   #:*default-port*))
+   start-server
+   stop-server
+   with-server
+   *default-port*
+   wrap-middleware))
 
 (in-package :epsilon.http.server)
 
 (defparameter *default-port* 8080)
-(defvar *handlers* map:+empty+)
+
 (defvar *servers* map:+empty+)
 
 (defclass http-server ()
@@ -27,98 +28,138 @@
    (thread :initarg :thread :accessor server-thread)
    (running-p :initform t :accessor server-running-p)
    (tls-context :initarg :tls-context :accessor server-tls-context :initform nil)
-   (ssl-p :initarg :ssl-p :accessor server-ssl-p :initform nil)))
+   (ssl-p :initarg :ssl-p :accessor server-ssl-p :initform nil)
+   (application :initarg :application :accessor server-application
+                :documentation "Middleware pipeline function to handle requests")))
+
+(defun read-http-headers (stream)
+  "Read HTTP headers from stream until double CRLF is found"
+  (log:debug "read-http-headers called")
+  (let ((request-text "")
+        (char-count 0)
+        (max-chars 8192))  ; Limit request size
+    (loop for char = (handler-case 
+                         (progn
+                           (log:trace "Reading char from stream...")
+                           (read-char stream nil nil))
+                       (error (e) 
+                         (log:error "Error reading char: ~A" e)
+                         nil))
+          while (and char (< char-count max-chars))
+          do (progn
+               (incf char-count)
+               (when (= (mod char-count 100) 0)
+                 (log:trace "Read ~A chars so far" char-count))
+               (setf request-text (concatenate 'string request-text (string char)))
+               ;; Check for double CRLF (end of headers)
+               (when (and (>= (length request-text) 4)
+                          (string= (subseq request-text (- (length request-text) 4))
+                                   (format nil "~C~C~C~C" #\Return #\Newline #\Return #\Newline)))
+                 (log:debug "Found end of headers after ~A chars" char-count)
+                 (return request-text))))
+    (log:debug "Finished reading headers, total chars: ~A" (length request-text))
+    (if (> (length request-text) 0)
+        request-text
+      nil)))
 
 (defun read-http-request (connection ssl-p)
   "Read HTTP request from connection and return request object"
+  (log:debug "read-http-request called, ssl-p: ~A" ssl-p)
   (let ((stream (if ssl-p
                     (tls:tls-stream connection)
-                    (net:socket-stream connection))))
+                  (net:socket-stream connection))))
+    (log:debug "Got stream: ~A" stream)
     (when stream
-      (let ((request-text ""))
-        ;; Read request line and headers
-        (loop for line = (read-line stream nil nil)
-              while (and line (> (length line) 0))
-              do (setf request-text (concatenate 'string request-text line 
-                                                 (format nil "~C~C" #\Return #\Newline))))
-        
-        ;; Add final CRLF to mark end of headers
-        (setf request-text (concatenate 'string request-text 
-                                        (format nil "~C~C" #\Return #\Newline)))
-        
-        ;; Parse the complete request
-        (when (> (length request-text) 0)
-          (request:parse-http-request request-text))))))
+      (handler-case
+          (progn
+            (log:debug "Reading HTTP headers...")
+            (let ((request-text (read-http-headers stream)))
+              (log:debug "Request text: ~A" request-text)
+              ;; Parse the complete request
+              (when request-text
+                (request:parse-http-request request-text))))
+        (error (e)
+               (log:error "Error reading HTTP request: ~A" e)
+               nil)))))  ; Return nil on any error
 
 (defun send-http-response (connection response-obj ssl-p)
   "Send HTTP response object to connection"
   (let ((stream (if ssl-p
                     (tls:tls-stream connection)
-                    (net:socket-stream connection))))
+                  (net:socket-stream connection))))
     (when stream
       (let ((response-text (response:response-to-string response-obj)))
         (write-string response-text stream)
         (force-output stream)))))
 
-(defun find-handler (method path)
-  "Find handler for method and path"
-  (map:get *handlers* (format nil "~A ~A" method path)))
-
-(defun handle-client (connection ssl-p)
-  "Handle a client connection"
+(defun handle-client (connection ssl-p application)
+  "Handle a client connection using application pipeline"
+  (log:info "Handle-client called with connection: ~A, ssl-p: ~A" connection ssl-p)
   (handler-case
-      (let ((req (read-http-request connection ssl-p)))
-        (if req
-            (let ((handler (find-handler (request:request-method req) 
-                                         (request:request-path req))))
-              (if handler
-                  (let ((response (funcall handler req)))
-                    (send-http-response connection response ssl-p))
-                  (send-http-response connection 
-                                      (response:html-response 
-                                       "<h1>404 Not Found</h1>"
-                                       :status 404)
-                                      ssl-p)))
-            (send-http-response connection 
-                                (response:html-response 
-                                 "<h1>400 Bad Request</h1>"
-                                 :status 400)
-                                ssl-p)))
+      (progn
+        (log:debug "Reading HTTP request...")
+        (let ((req (read-http-request connection ssl-p)))
+          (log:info "Request read: ~A" req)
+          (if req
+              (progn
+                (log:debug "Calling application with request...")
+                (let ((response (funcall application req)))
+                  (log:info "Application returned response: ~A" response)
+	          (send-http-response connection response ssl-p)))
+            (progn
+              (log:warn "No request read, sending 400")
+              (send-http-response connection 
+                                  (response:html-response 
+                                   "<h1>400 Bad Request</h1>"
+                                   :status 400)
+                                  ssl-p)))))
     (error (e)
-      (ignore-errors
-        (send-http-response connection 
-                            (response:html-response 
-                             (format nil "<h1>500 Internal Server Error</h1><p>~A</p>" e)
-                             :status 500)
-                            ssl-p))))
+           (log:error "Error handling client: ~A" e)
+	   (ignore-errors
+             (send-http-response connection 
+				 (response:html-response 
+				  (format nil "<h1>500 Internal Server Error</h1><p>~A</p>" e)
+				  :status 500)
+				 ssl-p))))
   
   ;; Close connection properly
+  (log:debug "Closing connection...")
   (if ssl-p
       (tls:tls-close connection)
-      (net:socket-close connection)))
+    (net:socket-close connection))
+  (log:debug "Connection closed"))
 
 (defun server-loop (server)
   "Main server loop"
+  (log:info "Server loop started for port ~A" (server-port server))
   (loop while (server-running-p server)
         do (handler-case
-               (let ((raw-connection (net:socket-accept (server-socket server))))
-                 (when raw-connection
-                   (let ((connection (if (server-ssl-p server)
-                                         (tls:tls-accept raw-connection 
-                                                         (server-tls-context server))
-                                         raw-connection)))
-                     (sb-thread:make-thread 
-                      (lambda () 
-                        (handle-client connection (server-ssl-p server)))
-                      :name "HTTP client handler"))))
+	       (progn
+                 (log:debug "Waiting for connection on port ~A..." (server-port server))
+                 (let ((raw-connection (net:socket-accept (server-socket server))))
+                   (log:info "Accepted connection: ~A" raw-connection)
+                   (when raw-connection
+                     (let ((connection (if (server-ssl-p server)
+                                           (tls:tls-accept raw-connection 
+                                                           (server-tls-context server))
+                                         raw-connection))
+                           (app (server-application server)))
+                       (log:debug "Creating client handler thread...")
+                       (sb-thread:make-thread 
+		        (lambda () 
+                          (log:debug "Client handler thread started")
+                          (handle-client connection (server-ssl-p server) app)
+                          (log:debug "Client handler thread finished"))
+		        :name "HTTP client handler")))))
              (error (e)
-               (declare (ignore e))  ; Log errors in production
-               (unless (server-running-p server)
-                 (return))))))
+		    (log:error "Error in server loop: ~A" e)
+		    (unless (server-running-p server)
+		      (return))))))
 
-(defun start-server (&key (port *default-port*) (address "0.0.0.0") 
-                           tls-context ssl-p cert-file key-file)
-  "Start HTTP server on specified port"
+(defun start-server (application &key (port *default-port*) (address "0.0.0.0") 
+                                 tls-context ssl-p cert-file key-file)
+  "Start HTTP server with middleware application"
+  (log:info "Starting server on ~A:~A" address port)
   (when (map:get *servers* port)
     (error "Server already running on port ~D" port))
   
@@ -137,7 +178,8 @@
                                 :port port
                                 :socket listener
                                 :tls-context tls-context
-                                :ssl-p (or ssl-p (not (null tls-context))))))
+                                :ssl-p (or ssl-p (not (null tls-context)))
+                                :application application)))
     (setf (server-thread server)
           (sb-thread:make-thread 
            (lambda () 
@@ -151,7 +193,7 @@
   "Stop HTTP server"
   (let ((server (if (typep port-or-server 'http-server)
                     port-or-server
-                    (map:get *servers* port-or-server))))
+                  (map:get *servers* port-or-server))))
     (when server
       (setf (server-running-p server) nil)
       (net:socket-close (server-socket server))
@@ -159,15 +201,18 @@
       (setf *servers* (map:dissoc *servers* (server-port server)))
       t)))
 
-(defmacro with-server ((server &key (port *default-port*)) &body body)
+(defmacro with-server ((server application &key (port *default-port*)) &body body)
   "Execute body with HTTP server running"
-  `(let ((,server (start-server :port ,port)))
+  `(let ((,server (start-server ,application :port ,port)))
      (unwind-protect
-          (progn ,@body)
+         (progn ,@body)
        (stop-server ,server))))
 
-(defmacro define-handler ((method path) (request-var) &body handler-body)
-  "Define an HTTP request handler"
-  `(setf *handlers* (map:assoc *handlers* (format nil "~A ~A" ',method ,path)
-                               (lambda (,request-var)
-                                 ,@handler-body))))
+(defun wrap-middleware (handler &rest middlewares)
+  "Wrap handler with multiple middleware functions"
+  (if middlewares
+      ;; Apply middleware functions in reverse order (innermost first)
+      (reduce (lambda (h mw) (funcall mw h))
+	      (reverse middlewares)
+	      :initial-value handler)
+    handler))

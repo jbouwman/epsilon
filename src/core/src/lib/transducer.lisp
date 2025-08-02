@@ -319,9 +319,19 @@
       (if input-p
           (cond
             ((listp input)
-             (reduce rf input :initial-value result))
+             (loop with acc = result
+                   for item in input
+                   do (setf acc (funcall rf acc item))
+                   when (reduced-p acc)
+                     return acc
+                   finally (return acc)))
             ((vectorp input)
-             (reduce rf input :initial-value result))
+             (loop with acc = result
+                   for item across input
+                   do (setf acc (funcall rf acc item))
+                   when (reduced-p acc)
+                     return acc
+                   finally (return acc)))
             (t
              (funcall rf result input)))
           (funcall rf result)))))
@@ -332,16 +342,20 @@
   "Compose transducers right-to-left (same order as function composition)"
   (lambda (rf)
     (reduce (lambda (rf xf) (funcall xf rf))
-            xforms
-            :initial-value rf
-            :from-end t)))
+            (reverse xforms)
+            :initial-value rf)))
 
 ;;; Reduction functions
 
 (defun transduce (xform f init coll)
   "Transform coll with xform, then reduce with f starting with init"
-  (let ((rf (funcall xform f))
-        (result init))
+  ;; Wrap the user function to handle the completion arity
+  (let* ((wrapped-f (lambda (result &optional (input nil input-p))
+                      (if input-p
+                          (funcall f result input)
+                          result)))
+         (rf (funcall xform wrapped-f))
+         (result init))
     (if (listp coll)
         ;; Handle regular Lisp lists
         (dolist (item coll)
@@ -358,17 +372,41 @@
 
 (defun into (to xform from)
   "Transform elements from FROM with XFORM and add to TO"
-  (transduce xform
-             (lambda (result &optional (input nil input-p))
-               (if input-p
-                   (cons input result)
-                   result))
-             to
-             from))
+  (let ((rf (make-collection-reducer to)))
+    (transduce xform rf to from)))
+
+(defun make-collection-reducer (to)
+  "Create a reducing function appropriate for the target collection type"
+  (typecase to
+    (vector
+     (lambda (result &optional (input nil input-p))
+       (if input-p
+           (let ((new-vec (make-array (1+ (length result))
+                                     :element-type (array-element-type result)
+                                     :initial-contents (concatenate 'list result (list input)))))
+             new-vec)
+           result)))
+    ((satisfies map:map-p)
+     (lambda (result &optional (input nil input-p))
+       (if input-p
+           (if (and (listp input) (= (length input) 2))
+               (map:assoc result (first input) (second input))
+               (error "Map transducer must produce key-value pairs"))
+           result)))
+    (list
+     (lambda (result &optional (input nil input-p))
+       (if input-p
+           (cons input result)
+           result)))
+    (t
+     (lambda (result &optional (input nil input-p))
+       (if input-p
+           (cons input result)
+           result)))))
 
 (defun sequence (xform coll)
   "Create a sequence by transforming coll with xform"
-  (reverse (into '() xform coll)))
+  (seq:seq (reverse (into '() xform coll))))
 
 ;;; Eduction - lazy computation construct
 

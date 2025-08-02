@@ -79,13 +79,15 @@ Lazy sequences support functional operations:
 
 ## Writing Programs
 
+FIXME: out of date
+
 Create `hello.lisp`:
 
 ```lisp
 #!/usr/bin/env sbcl --script
 
 (load "scripts/boot.lisp")
-(epsilon.tool.boot:boot)
+(boot)
 
 (defpackage :hello
   (:use :cl)

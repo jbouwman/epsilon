@@ -4,5 +4,6 @@
  :description "HTTP client and server implementation"
  :sources ("src")
  :tests ("tests")
- :dependencies ("epsilon.core" "epsilon.json" "epsilon.tls")
+ :data ("tests/certs")
+ :dependencies ("epsilon.core" "epsilon.json" "epsilon.tls" "epsilon.crypto")
  :provides ("epsilon.http"))

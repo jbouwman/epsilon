@@ -16,14 +16,14 @@
   "Test creating type fields"
   (let ((field (catalog:make-type-field 
                  '(:name "id" :type "integer" :description "User ID"))))
-    (is (typep field 'catalog:type-definition))
+    (is (typep field 'catalog:type-field))
     (is-equal "id" (slot-value field 'catalog::name))
     (is-equal "integer" (slot-value field 'catalog::type)))
   
   ;; Test error cases
-  (is-thrown-p 'error
+  (is-thrown (error)
     (catalog:make-type-field '(:name 123 :type "string")))
-  (is-thrown-p 'error
+  (is-thrown (error)
     (catalog:make-type-field '(:name "field" :type 456))))
 
 (deftest test-make-type-definition ()
@@ -38,7 +38,7 @@
     (is-equal 2 (length (slot-value typedef 'catalog::fields))))
   
   ;; Test error case
-  (is-thrown-p 'error
+  (is-thrown (error)
     (catalog:make-type-definition '(:name 123 :fields ()))))
 
 (deftest test-parse-reference ()
@@ -62,8 +62,11 @@
 
 (deftest test-sha-256 ()
   "Test SHA-256 hashing"
-  (let ((data #(0 1 2 3 4 5 6 7 8 9)))
-    (is (typep (catalog:sha-256 data) '(vector (unsigned-byte 8))))
-    (is-equal 32 (length (catalog:sha-256 data)))))
-
-(register-test-package :epsilon.tool.catalog.tests)
+  ;; Test with string input which gets converted
+  (let ((result (catalog:sha-256 "test")))
+    (is (typep result '(vector (unsigned-byte 8))))
+    (is-equal 32 (length result)))
+  ;; Test with empty input
+  (let ((result (catalog:sha-256 "")))
+    (is (typep result '(vector (unsigned-byte 8))))
+    (is-equal 32 (length result))))

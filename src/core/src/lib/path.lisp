@@ -8,6 +8,7 @@
    ;; Core path type
    :path
    :make-path
+   :ensure-path
    :path-string
    :path-absolute-p
    :path-segments
@@ -145,6 +146,15 @@
                      (reduce (lambda (a b) (concatenate 'string a *separator* b))
                              segments)
                      ""))))
+
+(defun ensure-path (path-or-string)
+  "Coerce input to a path object. If already a path, return as-is. 
+   If a string, convert to path. If NIL, return NIL."
+  (cond
+    ((null path-or-string) nil)
+    ((typep path-or-string 'path) path-or-string)
+    ((stringp path-or-string) (make-path path-or-string))
+    (t (error "Cannot coerce ~S to path" path-or-string))))
 
 ;;;; ==========================================================================
 ;;;; Path Manipulation
@@ -289,6 +299,13 @@
    #+win32 (namestring (truename "."))
    #-win32 (namestring (truename "."))))
 
+(defun user-directory ()
+  (let ((home (sb-ext:posix-getenv "EPSILON_USER")))
+    (cond (home
+           (make-path home))
+          (t
+           (current-directory)))))
+
 (defun temp-directory ()
   "Get system temporary directory as path"
   (make-path
@@ -352,9 +369,21 @@
         
         (handler-case
             (dolist (entry (directory search-pattern))
-              (let ((name (file-namestring entry)))
-                (unless (or (string= name ".") (string= name ".."))
-                  (let ((full-path (path-join dir-path name)))
+              (let* ((entry-pathname (pathname entry))
+                     (entry-name (if (pathname-name entry-pathname)
+                                     ;; It's a file
+                                     (if (pathname-type entry-pathname)
+                                         (concatenate 'string 
+                                                      (pathname-name entry-pathname)
+                                                      "."
+                                                      (pathname-type entry-pathname))
+                                         (pathname-name entry-pathname))
+                                     ;; It's a directory - get last directory component
+                                     (car (last (pathname-directory entry-pathname))))))
+                (when (and entry-name
+                           (not (string= entry-name "."))
+                           (not (string= entry-name "..")))
+                  (let ((full-path (path-join dir-path entry-name)))
                     (case type
                       (:all (push full-path results))
                       (:files (when (path-file-p full-path)

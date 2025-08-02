@@ -4590,10 +4590,10 @@ match.
                              ,target-string ,replacement ,@rest))
         (t form)))
 
-(let* ((*use-bmh-matchers* nil)
-       (non-word-char-scanner (compile "[^a-zA-Z_0-9]")))
-  (defun quote-meta-chars (string &key (start 0) (end (length string)))
-    "Quote, i.e. prefix with #\\\\, all non-word characters in STRING."
+(defun quote-meta-chars (string &key (start 0) (end (length string)))
+  "Quote, i.e. prefix with #\\\\, all non-word characters in STRING."
+  (let* ((*use-bmh-matchers* nil)
+         (non-word-char-scanner (compile "[^a-zA-Z_0-9]")))
     (regex-replace-all non-word-char-scanner string "\\\\\\&"
                        :start start :end end)))
 

@@ -93,14 +93,6 @@ plugins:
       enable_creation_date: true
       type: timeago
 
-# Custom CSS and JavaScript
-extra_css:
-  - stylesheets/epsilon.css
-  - stylesheets/lisp-syntax.css
-
-extra_javascript:
-  - javascripts/epsilon.js
-
 # Navigation structure
 nav:
   - Home: index.md

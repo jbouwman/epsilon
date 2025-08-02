@@ -178,7 +178,7 @@
   (let* ((method (if client-p (%tls-client-method) (%tls-server-method)))
          (ssl-ctx (%ssl-ctx-new method)))
     
-    (when (sb-alien:null-alien ssl-ctx)
+    (when (zerop (sb-sys:sap-int (sb-alien:alien-sap ssl-ctx)))
       (error "Failed to create SSL context"))
     
     (let ((ctx (make-instance 'tls-context
@@ -233,7 +233,7 @@
 
 (defun set-verify-mode (context mode)
   "Set certificate verification mode"
-  (%ssl-ctx-set-verify (context-ssl-ctx context) mode (sb-alien:null-alien))
+  (%ssl-ctx-set-verify (context-ssl-ctx context) mode (sb-sys:int-sap 0))
   (setf (context-verify-mode context) mode))
 
 (defun tls-connect (context socket)
@@ -241,7 +241,7 @@
   (let* ((ssl (%ssl-new (context-ssl-ctx context)))
          (socket-fd (epsilon.net:socket-handle socket)))
     
-    (when (sb-alien:null-alien ssl)
+    (when (zerop (sb-sys:sap-int (sb-alien:alien-sap ssl)))
       (error "Failed to create SSL connection"))
     
     (let ((result (%ssl-set-fd ssl socket-fd)))
@@ -268,7 +268,7 @@
   (let* ((ssl (%ssl-new (context-ssl-ctx context)))
          (socket-fd (epsilon.net:socket-handle socket)))
     
-    (when (sb-alien:null-alien ssl)
+    (when (zerop (sb-sys:sap-int (sb-alien:alien-sap ssl)))
       (error "Failed to create SSL connection"))
     
     (let ((result (%ssl-set-fd ssl socket-fd)))
@@ -349,7 +349,7 @@
 (defun tls-get-cipher (connection)
   "Get current cipher name"
   (let ((cipher (%ssl-get-current-cipher (connection-ssl connection))))
-    (unless (sb-alien:null-alien cipher)
+    (unless (zerop (sb-sys:sap-int (sb-alien:alien-sap cipher)))
       (%ssl-cipher-get-name cipher))))
 
 ;;;; Integration with epsilon.net

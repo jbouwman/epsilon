@@ -1,10 +1,3 @@
-(defpackage epsilon.tool.boot
-  (:use cl)
-  (:export boot))
-
-(in-package :epsilon.tool.boot)
-
-#-win32
 (require :sb-posix)
 #-win32
 (require :sb-bsd-sockets)
@@ -38,8 +31,17 @@
     "lib/digest/public"
     "lib/hex"
     "lib/url"
-    "lib/uuid"
-    "tool/build"))
+    "lib/protocol"
+    "tool/build-protocol"
+    "tool/build-environment"
+    "tool/build"
+    "tool/parallel-build"
+    "tool/package"
+    "tool/dev"
+    "tool/package-command"
+    "tool/test"
+    "tool/build-cmd"
+    "tool/package-cmd"))
 
 (defparameter *boot-fasl*
   #+win32 "src\\core\\target\\bootstrap.fasl"
@@ -93,7 +95,6 @@
 
 (defun concat-fasls (fasl-files output-file)
   "Create a single FASL file from individual FASL files"
-  (format t "~&;;; Creating bootstrap FASL: ~A~%" output-file)
   (with-open-file (output output-file :direction :output
                                       :element-type '(unsigned-byte 8)
                                       :if-exists :supersede

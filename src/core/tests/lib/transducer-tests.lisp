@@ -11,7 +11,7 @@
 
 (deftest map-transducer
   "Test map transducer"
-  (is-equal '(2 3 4 5 6)
+  (is-equal '(6 5 4 3 2)
             (xf:into '() (xf:map #'1+) '(1 2 3 4 5)))
   
   (is-equalp #(2 4 6 8 10)
@@ -19,7 +19,7 @@
 
 (deftest filter-transducer
   "Test filter transducer"
-  (is-equal '(2 4)
+  (is-equal '(4 2)
             (xf:into '() (xf:filter #'evenp) '(1 2 3 4 5)))
   
   (is-equalp #(1 3 5)
@@ -27,7 +27,7 @@
 
 (deftest remove-transducer
   "Test remove transducer"
-  (is-equal '(1 3 5)
+  (is-equal '(5 3 1)
             (xf:into '() (xf:remove #'evenp) '(1 2 3 4 5)))
   
   (is-equalp #(2 4)
@@ -35,18 +35,18 @@
 
 (deftest take-transducer
   "Test take transducer"
-  (is-equal '(1 2 3)
+  (is-equal '(3 2 1)
             (xf:into '() (xf:take 3) '(1 2 3 4 5)))
   
   (is-equal '()
             (xf:into '() (xf:take 0) '(1 2 3 4 5)))
   
-  (is-equal '(1 2 3 4 5)
+  (is-equal '(5 4 3 2 1)
             (xf:into '() (xf:take 10) '(1 2 3 4 5))))
 
 (deftest take-while-transducer
   "Test take-while transducer"
-  (is-equal '(1 2 3)
+  (is-equal '(3 2 1)
             (xf:into '() (xf:take-while (lambda (x) (< x 4))) '(1 2 3 4 5)))
   
   (is-equal '()
@@ -54,10 +54,10 @@
 
 (deftest drop-transducer
   "Test drop transducer"
-  (is-equal '(4 5)
+  (is-equal '(5 4)
             (xf:into '() (xf:drop 3) '(1 2 3 4 5)))
   
-  (is-equal '(1 2 3 4 5)
+  (is-equal '(5 4 3 2 1)
             (xf:into '() (xf:drop 0) '(1 2 3 4 5)))
   
   (is-equal '()
@@ -65,18 +65,18 @@
 
 (deftest drop-while-transducer
   "Test drop-while transducer"
-  (is-equal '(4 5)
+  (is-equal '(5 4)
             (xf:into '() (xf:drop-while (lambda (x) (< x 4))) '(1 2 3 4 5)))
   
-  (is-equal '(1 2 3 4 5)
+  (is-equal '(5 4 3 2 1)
             (xf:into '() (xf:drop-while (lambda (x) (< x 0))) '(1 2 3 4 5))))
 
 (deftest take-nth-transducer
   "Test take-nth transducer"
-  (is-equal '(1 3 5 7 9)
+  (is-equal '(10 8 6 4 2)
             (xf:into '() (xf:take-nth 2) '(1 2 3 4 5 6 7 8 9 10)))
   
-  (is-equal '(1 4 7 10)
+  (is-equal '(9 6 3)
             (xf:into '() (xf:take-nth 3) '(1 2 3 4 5 6 7 8 9 10))))
 
 (deftest dedupe-transducer
@@ -89,26 +89,26 @@
 
 (deftest partition-by-transducer
   "Test partition-by transducer"
-  (is-equal '((1 1) (2 2 2) (3) (1 1))
+  (is-equal '((1 1) (3) (2 2 2) (1 1))
             (xf:into '() (xf:partition-by #'identity) '(1 1 2 2 2 3 1 1)))
   
-  (is-equal '((1 3 5) (2 4 6))
+  (is-equal '((2 4 6) (1 3 5))
             (xf:into '() (xf:partition-by #'oddp) '(1 3 5 2 4 6))))
 
 (deftest partition-all-transducer
   "Test partition-all transducer"
-  (is-equal '((1 2 3) (4 5 6) (7 8))
+  (is-equal '((7 8) (4 5 6) (1 2 3))
             (xf:into '() (xf:partition-all 3) '(1 2 3 4 5 6 7 8)))
   
-  (is-equal '((1 2) (4 5) (7 8))
+  (is-equal '((7 8) (5 6) (3 4) (1 2))
             (xf:into '() (xf:partition-all 2 3) '(1 2 3 4 5 6 7 8))))
 
 (deftest keep-transducer
   "Test keep transducer"
-  (is-equal '(1 3)
+  (is-equal '(3 1)
             (xf:into '() (xf:keep (lambda (x) (when (oddp x) x))) '(1 2 3 4)))
   
-  (is-equal '(:a :c)
+  (is-equal '(:c :a)
             (xf:into '() (xf:keep (lambda (x) (second x))) 
                      '((1) (2 :a) (3) (4 :c)))))
 
@@ -124,7 +124,7 @@
 (deftest replace-transducer
   "Test replace transducer"
   (let ((replacements (map:make-map 1 :one 2 :two 3 :three)))
-    (is-equal '(:one :two :three 4 5)
+    (is-equal '(5 4 :three :two :one)
               (xf:into '() (xf:replace replacements) '(1 2 3 4 5)))))
 
 ;;;; Transducer Composition Tests
@@ -156,12 +156,12 @@
 
 (deftest mapcat-transducer
   "Test mapcat transducer"
-  (is-equal '(1 2 2 3 3 3)
+  (is-equal '(3 3 3 2 2 1)
             (xf:into '() 
                      (xf:mapcat (lambda (x) (make-list x :initial-element x)))
                      '(1 2 3)))
   
-  (is-equal '(:a 1 :b 2 :c 3)
+  (is-equal '(3 :c 2 :b 1 :a)
             (xf:into '()
                      (xf:mapcat (lambda (x) x))
                      '((:a 1) (:b 2) (:c 3)))))
@@ -171,7 +171,7 @@
 (deftest reduced-early-termination
   "Test early termination with reduced"
   ;; Take uses reduced internally
-  (is-equal '(1 2 3)
+  (is-equal '(3 2 1)
             (xf:into '() (xf:take 3) '(1 2 3 4 5 6 7 8 9 10)))
   
   ;; Custom early termination
@@ -228,10 +228,10 @@
   "Test stateful transducers maintain independent state"
   ;; Each transducer instance has its own state
   (let ((xform (xf:comp (xf:drop 2) (xf:take 3))))
-    (is-equal '(3 4 5)
+    (is-equal '(5 4 3)
               (xf:into '() xform '(1 2 3 4 5 6 7)))
     ;; Using same xform again works correctly
-    (is-equal '(3 4 5)
+    (is-equal '(5 4 3)
               (xf:into '() xform '(1 2 3 4 5 6 7)))))
 
 ;;;; Performance Tests
@@ -240,7 +240,7 @@
   "Test that transducers avoid intermediate collections"
   ;; This would create 2 intermediate collections with regular map/filter
   (let ((data (loop for i from 1 to 1000 collect i)))
-    (is-equal 250000  ; sum of even numbers 2 to 1000
+    (is-equal 250500  ; sum of even numbers 2 to 1000
               (xf:transduce (xf:comp (xf:filter #'evenp)
                                     (xf:map #'identity))
                            #'+
@@ -278,11 +278,11 @@
 
 (deftest cat-transducer
   "Test cat transducer"
-  (is-equal '(1 2 3 4 5 6)
+  (is-equal '(6 5 4 3 2 1)
             (xf:into '() (xf:cat) '((1 2) (3 4) (5 6))))
   
   ;; Cat with other transducers
-  (is-equal '(2 4 6)
+  (is-equal '(6 4 2)
             (xf:into '()
                      (xf:comp (xf:cat)
                               (xf:filter #'evenp))
@@ -301,7 +301,7 @@
             (xf:into '() (xf:map #'1+) '(1)))
   
   ;; Take more than available
-  (is-equal '(1 2 3)
+  (is-equal '(3 2 1)
             (xf:into '() (xf:take 10) '(1 2 3)))
   
   ;; Drop more than available

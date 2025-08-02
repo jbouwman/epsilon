@@ -22,9 +22,11 @@
    #:print-usage
    
    ;; Parser accessors
-   #:parser-prog
+   #:parser-command
    #:parser-description
    #:parser-epilog
+   #:parser-handler
+   #:parser-commands
    
    ;; Argument types
    #:argument
@@ -45,9 +47,12 @@
    #:parsed-options
    #:parsed-positionals
    #:parsed-remaining
+   #:parsed-subresult
    
    ;; Conditions
    #:argument-error
+   #:error-message
+   #:error-parser
    #:unknown-argument-error
    #:missing-argument-error
    #:invalid-choice-error
@@ -58,7 +63,8 @@
 ;;; Conditions
 
 (define-condition argument-error (error)
-  ((message :initarg :message :reader error-message))
+  ((message :initarg :message :reader error-message)
+   (parser :initarg :parser :reader error-parser :initform nil))
   (:report (lambda (condition stream)
              (format stream "~A" (error-message condition)))))
 
@@ -122,10 +128,10 @@
           (argument-name arg))))
 
 (defclass parser ()
-  ((prog :initarg :prog :accessor parser-prog :initform nil
-         :documentation "Program name")
+  ((command :initarg :command :accessor parser-command :initform nil
+         :documentation "Command name")
    (description :initarg :description :accessor parser-description :initform ""
-                :documentation "Program description")
+                :documentation "Command description")
    (epilog :initarg :epilog :accessor parser-epilog :initform ""
            :documentation "Text to display after help")
    (arguments :initform '() :accessor parser-arguments
@@ -133,27 +139,33 @@
    (commands :initform (map:make-map) :accessor parser-commands
              :documentation "Map of subcommand names to parsers")
    (parent :initarg :parent :accessor parser-parent :initform nil
-           :documentation "Parent parser for subcommands")))
+           :documentation "Parent parser for subcommands")
+   (handler :initarg :handler :accessor parser-handler :initform nil
+            :documentation "Function to handle this command")))
 
-(defun make-parser (&key prog description epilog)
+(defun make-parser (&key command description epilog handler)
   "Create a new argument parser"
-  (make-instance 'parser :prog prog :description description :epilog epilog))
+  (make-instance 'parser :command command :description description :epilog epilog :handler handler))
 
 (defun add-argument (parser name &rest args)
   "Add an argument to the parser"
   (let* ((action (getf args :action 'store))
+         ;; Normalize action to keyword
+         (action-keyword (intern (string action) :keyword))
          ;; Set implicit defaults for store-true/store-false if not provided
-         (args (if (and (member action '(store-true store-false))
+         (args (if (and (member action-keyword '(:store-true :store-false))
                         (not (member :default args)))
-                   (append args (list :default (if (eq action 'store-true) nil t)))
+                   (append args (list :default (if (eq action-keyword :store-true) nil t)))
                    args))
          (argument (apply #'make-argument name args)))
     (push argument (parser-arguments parser))
     argument))
 
-(defun add-command (parser name &key description help)
+(defun add-command (parser name &key description help handler)
   "Add a subcommand to the parser"
-  (let ((subparser (make-parser :prog name :description (or description help))))
+  (let ((subparser (make-parser :command name 
+                                :description (or description help)
+                                :handler handler)))
     (setf (parser-parent subparser) parser)
     (setf (parser-commands parser) 
           (map:assoc (parser-commands parser) name subparser))
@@ -169,7 +181,9 @@
    (positionals :initarg :positionals :accessor parsed-positionals :initform '()
                 :documentation "List of positional argument values")
    (remaining :initarg :remaining :accessor parsed-remaining :initform '()
-              :documentation "Remaining unparsed arguments")))
+              :documentation "Remaining unparsed arguments")
+   (subresult :initarg :subresult :accessor parsed-subresult :initform nil
+              :documentation "Isolated parsing result for subcommand")))
 
 ;;; Type Conversion
 
@@ -209,15 +223,11 @@
           (if subparser
               (progn
                 (setf (parsed-command result) command-name)
-                ;; Parse subcommand arguments
+                ;; Parse subcommand arguments in isolated context
                 (let ((sub-result (parse-args subparser post-command)))
-                  ;; Merge subcommand results
-                  (setf (parsed-options result) 
-                        (map:merge (parsed-options result) 
-                                  (parsed-options sub-result)))
-                  (setf (parsed-positionals result)
-                        (append (parsed-positionals result)
-                               (parsed-positionals sub-result)))
+                  ;; Store subcommand result separately instead of merging
+                  (setf (parsed-subresult result) sub-result)
+                  ;; Only propagate remaining args from subcommand
                   (setf (parsed-remaining result)
                         (parsed-remaining sub-result))))
               ;; Unknown command - treat as positional
@@ -226,8 +236,14 @@
     ;; Validate required arguments
     (validate-required parser result)
     
+    ;; Validate no unknown options in remaining
+    (validate-no-unknown-options parser result)
+    
     ;; Apply defaults
     (apply-defaults parser result)
+    
+    ;; Reverse positionals since they were built with push
+    (setf (parsed-positionals result) (nreverse (parsed-positionals result)))
     
     result))
 
@@ -270,13 +286,34 @@
                (t
                 (if (< positional-index (length positional-args))
                     (let* ((pos-arg (nth positional-index positional-args))
-                           (converted (convert-value arg (argument-type pos-arg))))
-                      (push arg (parsed-positionals result))
-                      (setf (parsed-options result)
-                            (map:assoc (parsed-options result)
-                                      (argument-key pos-arg)
-                                      converted))
-                      (incf positional-index))
+                           (nargs (argument-nargs pos-arg)))
+                      (cond
+                        ;; nargs = '*' or '+' - consume all remaining positional args
+                        ((or (eq nargs '*) (eq nargs '+))
+                         (let ((values (list arg)))
+                           ;; Collect all remaining positional arguments
+                           (loop while (and args 
+                                           (not (str:starts-with-p (first args) "-")))
+                                 do (push (pop args) values))
+                           (setf values (nreverse values))
+                           ;; Store all values in positionals
+                           (dolist (val values)
+                             (push val (parsed-positionals result)))
+                           ;; Store collected values in options under the argument key
+                           (setf (parsed-options result)
+                                 (map:assoc (parsed-options result)
+                                           (argument-key pos-arg)
+                                           values))
+                           (incf positional-index)))
+                        ;; nargs = nil (single value) - existing behavior
+                        (t
+                         (let ((converted (convert-value arg (argument-type pos-arg))))
+                           (push arg (parsed-positionals result))
+                           (setf (parsed-options result)
+                                 (map:assoc (parsed-options result)
+                                           (argument-key pos-arg)
+                                           converted))
+                           (incf positional-index)))))
                     (push arg remaining)))))
     
     (setf (parsed-remaining result) (nreverse remaining))
@@ -295,42 +332,58 @@
     (unless argument
       (return-from parse-option (values 0 nil)))
     
-    (let ((key (argument-key argument)))
-      (case (argument-action argument)
-        (store-true
+    (let ((key (argument-key argument))
+          (action (argument-action argument)))
+      ;; Normalize action symbol to handle package differences
+      (case (intern (string action) :keyword)
+        (:store-true
          (setf (parsed-options result) (map:assoc (parsed-options result) key t))
          (values 0 t))
         
-        (store-false
+        (:store-false
          (setf (parsed-options result) (map:assoc (parsed-options result) key nil))
          (values 0 t))
         
-        (store
-         (let ((value (or option-value
-                         (when (and args (not (str:starts-with-p (first args) "-")))
-                           (first args)))))
-           (unless value
-             (error 'missing-argument-error
-                    :message (format nil "Option ~A requires an argument" option-name)
-                    :argument argument))
+        (:store
+         (let* ((nargs (argument-nargs argument))
+                (has-next-arg (and args (not (str:starts-with-p (first args) "-"))))
+                (value (or option-value
+                          (when has-next-arg (first args)))))
            
-           ;; Validate choice if specified
-           (when (argument-choices argument)
-             (unless (member value (argument-choices argument) :test #'string=)
-               (error 'invalid-choice-error
-                      :message (format nil "Invalid choice '~A' for ~A (choose from ~{~A~^, ~})"
-                                     value option-name (argument-choices argument))
-                      :value value
-                      :choices (argument-choices argument))))
-           
-           ;; Convert type
-           (let ((converted (convert-value value (argument-type argument))))
-             (setf (parsed-options result) 
-                   (map:assoc (parsed-options result) key converted)))
-           
-           (values (if option-value 0 1) t)))
+           ;; Handle nargs='? - optional argument
+           (cond
+             ((eq (intern (string nargs) :keyword) :?)
+              ;; For optional arguments, if no value is provided, use empty string
+              (let ((actual-value (or value "")))
+                (let ((converted (convert-value actual-value (argument-type argument))))
+                  (setf (parsed-options result) 
+                        (map:assoc (parsed-options result) key converted)))
+                (values (if (and has-next-arg value) 1 0) t)))
+             
+             ;; Regular store - value is required
+             (t
+              (unless value
+                (error 'missing-argument-error
+                       :message (format nil "Option ~A requires an argument" option-name)
+                       :argument argument))
+              
+              ;; Validate choice if specified
+              (when (argument-choices argument)
+                (unless (member value (argument-choices argument) :test #'string=)
+                  (error 'invalid-choice-error
+                         :message (format nil "Invalid choice '~A' for ~A (choose from ~{~A~^, ~})"
+                                        value option-name (argument-choices argument))
+                         :value value
+                         :choices (argument-choices argument))))
+              
+              ;; Convert type
+              (let ((converted (convert-value value (argument-type argument))))
+                (setf (parsed-options result) 
+                      (map:assoc (parsed-options result) key converted)))
+              
+              (values (if option-value 0 1) t)))))
         
-        (append
+        (:append
          (let ((value (or option-value
                          (when (and args (not (str:starts-with-p (first args) "-")))
                            (first args)))))
@@ -345,7 +398,11 @@
                    (map:assoc (parsed-options result) key 
                              (append current (list converted)))))
            
-           (values (if option-value 0 1) t)))))))
+           (values (if option-value 0 1) t)))
+        
+        (otherwise
+         ;; This shouldn't happen - return nil to indicate not handled
+         (values 0 nil))))))
 
 (defun find-argument (parser name)
   "Find an argument by name"
@@ -363,15 +420,29 @@
                             (argument-name arg))
              :argument arg))))
 
+(defun validate-no-unknown-options (parser result)
+  "Check for unknown options in remaining arguments"
+  (dolist (arg (parsed-remaining result))
+    (when (str:starts-with-p arg "-")
+      (error 'unknown-argument-error
+             :message (format nil "Unknown option: ~A" arg)
+             :argument arg
+             :parser parser))))
+
 (defun apply-defaults (parser result)
   "Apply default values for missing arguments"
   (dolist (arg (parser-arguments parser))
     (let ((key (argument-key arg)))
       (unless (map:contains-p (parsed-options result) key)
-        (when (argument-default arg)
-          (setf (parsed-options result)
-                (map:assoc (parsed-options result) key 
-                          (argument-default arg))))))))
+        ;; Apply default value if explicitly provided
+        ;; Don't auto-add nil defaults for store-true actions to keep options map clean
+        (let ((default-value (argument-default arg))
+              (action-keyword (intern (string (argument-action arg)) :keyword)))
+          (when (and default-value 
+                     (not (and (eq action-keyword :store-true) 
+                               (null default-value))))
+            (setf (parsed-options result)
+                  (map:assoc (parsed-options result) key default-value))))))))
 
 ;;; Help Generation
 
@@ -417,16 +488,31 @@
 
 (defun print-usage (parser &optional (stream *standard-output*))
   "Print usage line for parser"
-  (format stream "Usage: ~A" (or (parser-prog parser) "prog"))
-  
-  ;; Add parent command chain
-  (when (parser-parent parser)
-    (let ((chain '()))
-      (loop for p = parser then (parser-parent p)
-            while (parser-parent p)
-            do (push (parser-prog p) chain))
-      (dolist (cmd chain)
-        (format stream " ~A" cmd))))
+  ;; Build command chain from current command up through parents
+  (let ((chain '()))
+    (loop for p = parser then (parser-parent p)
+          while p
+          do (push (parser-command p) chain))
+    
+    ;; Handle special cases for proper usage display
+    (cond
+      ;; No chain means standalone command
+      ((null chain)
+       (format stream "Usage: command"))
+      ;; Single command - could be top-level epsilon command
+      ((= (length chain) 1)
+       (let ((cmd (first chain)))
+         (if (string= cmd "epsilon")
+             (format stream "Usage: epsilon")
+             ;; Assume it's a subcommand under epsilon
+             (format stream "Usage: epsilon ~A" cmd))))
+      ;; Multiple commands - build proper hierarchy
+      (t
+       ;; Chain is built as: [parent, current] by pushing during traversal
+       ;; So for "list" under "package": chain = (package list)
+       ;; We want: epsilon package list
+       (let ((cmd-list (cons "epsilon" chain)))
+         (format stream "Usage: ~{~A~^ ~}" cmd-list)))))
   
   ;; Global options indicator
   (when (some #'argument-is-option-p (parser-arguments parser))
@@ -455,7 +541,8 @@
     ;; Argument name(s) and metavar
     (format stream "  ~A" names)
     (when (and (argument-is-option-p arg)
-               (not (member (argument-action arg) '(store-true store-false))))
+               (let ((action-keyword (intern (string (argument-action arg)) :keyword)))
+                 (not (member action-keyword '(:store-true :store-false)))))
       (format stream " ~A" metavar))
     
     ;; Help text

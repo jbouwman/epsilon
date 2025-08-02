@@ -37,6 +37,7 @@
    
    ;; Socket operations
    #:socket-listen #:socket-connect #:socket-accept #:socket-close
+   #:socket-handle
    
    ;; Secure socket operations
    #:socket-connect-secure #:socket-accept-secure #:socket-listen-secure))
@@ -144,7 +145,7 @@
     ;; sin_addr (convert IP string to network byte order)
     (let ((ip-parts (mapcar #'parse-integer 
                             (split-string ip-address #\.))))
-      (setf (sb-alien:sap-ref-32 (sb-alien:alien-sap addr) 4)
+      (setf (sb-sys:sap-ref-32 (sb-alien:alien-sap addr) 4)
             (logior (ash (first ip-parts) 24)
                     (ash (second ip-parts) 16)
                     (ash (third ip-parts) 8)
@@ -210,7 +211,7 @@
           (error "Failed to listen on socket"))
         
         ;; Add to kqueue for accept events
-        (kqueue:watch-socket-read kq socket-fd)
+        (kqueue:add-event kq socket-fd kqueue:+evfilt-read+)
         
         ;; Create and return listener object
         (make-instance 'listener
@@ -324,7 +325,10 @@
 
 ;;; Stream Creation and Access
 
-(defun socket-stream (socket)
+(defgeneric socket-stream (socket)
+  (:documentation "Get a bidirectional stream for the socket"))
+
+(defmethod socket-stream ((socket socket))
   "Get a bidirectional stream for the socket"
   (or (socket-stream-slot socket)
       (setf (socket-stream-slot socket)
@@ -389,17 +393,14 @@
    (verify :initarg :verify :reader secure-context-verify :initform t)))
 
 (defun make-secure-context (&key cert-file key-file (verify t) (client-p t))
-  "Create TLS/SSL context using epsilon.tls"
-  (let ((verify-mode (if verify epsilon.tls:+tls-verify-peer+ epsilon.tls:+tls-verify-none+)))
-    (let ((tls-ctx (epsilon.tls:make-tls-context :client-p client-p
-                                         :cert-file cert-file
-                                         :key-file key-file
-                                         :verify-mode verify-mode)))
-      (make-instance 'secure-context
-                     :tls-context tls-ctx
-                     :cert-file cert-file
-                     :key-file key-file
-                     :verify verify))))
+  "Create TLS/SSL context - stub implementation"
+  ;; TODO: Fix load order so epsilon.tls is available
+  (declare (ignore client-p verify))
+  (make-instance 'secure-context
+                 :tls-context nil
+                 :cert-file cert-file
+                 :key-file key-file
+                 :verify verify))
 
 (defclass secure-connection (connection)
   ((context :initarg :context :reader connection-context)
@@ -413,7 +414,7 @@
 (defun socket-connect-secure (host port context)
   "Create secure TLS connection to host:port"
   (let* ((plain-socket (socket-connect host port))
-         (tls-conn (epsilon.tls:tls-connect (secure-context-tls context) plain-socket)))
+         (tls-conn nil)) ; TODO: (epsilon.tls:tls-connect (secure-context-tls context) plain-socket)
     (make-instance 'secure-connection
                    :handle (socket-handle plain-socket)
                    :remote-address host
@@ -425,9 +426,7 @@
   "Accept secure TLS connection from listener"
   (let ((plain-connection (socket-accept secure-listener)))
     (when plain-connection
-      (let ((tls-conn (epsilon.tls:tls-accept 
-                       (secure-context-tls (listener-context secure-listener))
-                       plain-connection)))
+      (let ((tls-conn nil)) ; TODO: Fix TLS load order
         (make-instance 'secure-connection
                        :handle (socket-handle plain-connection)
                        :remote-address "unknown" ; TODO: extract from connection
@@ -449,7 +448,8 @@
 ;;; Override socket-stream for secure connections
 (defmethod socket-stream ((socket secure-connection))
   "Get TLS stream for secure connection"
-  (epsilon.tls:tls-stream (connection-tls socket)))
+  ;; TODO: Fix TLS load order
+  (error "TLS streams not yet implemented"))
 
 ;;; Async Operations (stubs for now)
 

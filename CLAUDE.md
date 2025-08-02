@@ -90,3 +90,7 @@ Core dependency hierarchy:
 ```
 
 Run with `(epsilon.test:run)` or via command line.
+
+## Known Implementation Details
+
+- Package definitions are in Lisp, not EDN

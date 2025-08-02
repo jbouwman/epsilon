@@ -51,8 +51,8 @@
 (in-package epsilon.test)
 
 (defun project-file (project-name relative-path)
-  (let ((module (build:get-module project-name :error-p t)))
-    (path:string-path-join (path::path-from-uri (build::module-uri module)) relative-path)))
+  (let ((package (build:get-package project-name :error-p t)))
+    (path:string-path-join (path::path-from-uri (build::package-uri package)) relative-path)))
 
 (defmacro deftest (name &body body)
   (let ((docstring (when (and (stringp (first body))
@@ -85,6 +85,8 @@ If FILE is provided, write the report to the named file."
   (when module
     (format t "~&;;; Building module: ~A~%" module)
     (build:build module)  ; Build the module itself (without tests)
+    (format t "~&;;; Loading module: ~A~%" module)
+    (build:load-package module)  ; Load the package and its dependencies
     (format t "~&;;; Loading tests for module: ~A~%" module)
     (build:build-tests module))  ; Build and load just the tests
   
@@ -119,7 +121,7 @@ If FILE is provided, write the report to the named file."
   INCLUDE-PLATFORM - Also test platform-specific modules (default NIL)"
   
   ;; Get list of all modules to test
-  (let* ((all-modules (build:list-modules :include-platform include-platform))
+  (let* ((all-modules (build:list-available-packages :include-platform include-platform))
          (total-failures 0)
          (total-errors 0)
          (total-tests 0)
@@ -273,7 +275,6 @@ If REGEX is provided, the condition's printed representation must match it."
          (target-package (or (map:get options "package") 
                              (map:get options "module") 
                              (first args)))
-         (package (map:get options "package"))
          (name (map:get options "name"))
          (format-str (or (map:get options "format") "shell"))
          (format (cond
@@ -285,11 +286,6 @@ If REGEX is provided, the condition's printed representation must match it."
     
     ;; Check if 'all' is specified
     (cond
-      ((and target-package (string= target-package "all"))
-       ;; Run tests for all packages
-       (run-all :format format
-                :file file
-                :include-platform include-platform))
       (target-package
        ;; Run tests for specific package
        (format t "~&;;; Test main called with package: ~A~%" target-package)
