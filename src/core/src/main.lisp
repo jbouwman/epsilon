@@ -260,7 +260,7 @@
           (when (and eval-option (not (eq eval-option :not-provided)))
             ;; Evaluation mode
             (let ((expression-string
-                   (if (or (null eval-option) (equal eval-option ""))
+                   (if (equal eval-option "")
                        ;; --eval with no value: read from stdin
                        (with-output-to-string (str)
                          (loop for line = (read-line *standard-input* nil nil)
