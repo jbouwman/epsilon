@@ -1,5 +1,9 @@
+;;;; epoll.lisp - Linux epoll implementation using epsilon.foreign
+
 (defpackage :epsilon.sys.epoll
   (:use :cl)
+  (:local-nicknames
+   (lib epsilon.foreign))
   (:export
    ;; Core epoll operations  
    #:epoll-create
@@ -77,29 +81,27 @@
 ;; epoll_create1 flags
 (defconstant +epoll-cloexec+ #o2000000) ; Set FD_CLOEXEC
 
-;;;; FFI Bindings using direct SBCL alien functions
+;;;; FFI Function Definitions using epsilon.foreign
 
-;; Define alien functions for epoll system calls
-(sb-alien:define-alien-routine ("epoll_create" %epoll-create) sb-alien:int
-  (size sb-alien:int))
+(lib:defshared %epoll-create "epoll_create" "libc" :int
+  (size :int)
+  :documentation "Create epoll file descriptor (legacy)")
 
-(sb-alien:define-alien-routine ("epoll_create1" %epoll-create1) sb-alien:int
-  (flags sb-alien:int))
+(lib:defshared %epoll-create1 "epoll_create1" "libc" :int
+  (flags :int)
+  :documentation "Create epoll file descriptor with flags")
 
-(sb-alien:define-alien-routine ("epoll_ctl" %epoll-ctl) sb-alien:int
-  (epfd sb-alien:int)
-  (op sb-alien:int)
-  (fd sb-alien:int)
-  (event sb-alien:system-area-pointer))
+(lib:defshared %epoll-ctl "epoll_ctl" "libc" :int
+  (epfd :int) (op :int) (fd :int) (event :pointer)
+  :documentation "Control epoll file descriptor")
 
-(sb-alien:define-alien-routine ("epoll_wait" %epoll-wait) sb-alien:int
-  (epfd sb-alien:int)
-  (events sb-alien:system-area-pointer)
-  (maxevents sb-alien:int)
-  (timeout sb-alien:int))
+(lib:defshared %epoll-wait "epoll_wait" "libc" :int
+  (epfd :int) (events :pointer) (maxevents :int) (timeout :int)
+  :documentation "Wait for events on epoll file descriptor")
 
-(sb-alien:define-alien-routine ("close" %close) sb-alien:int
-  (fd sb-alien:int))
+(lib:defshared %close "close" "libc" :int
+  (fd :int)
+  :documentation "Close file descriptor")
 
 ;;;; epoll_event Structure
 
@@ -122,7 +124,7 @@
 
 (defun epoll-event-size ()
   "Size of epoll_event structure in bytes"
-  ;; events (4 bytes) + data (8 bytes) = 12 bytes, but padded to 16 on x64
+  ;; events (4 bytes) + padding (4 bytes) + data (8 bytes) = 16 bytes on x64
   16)
 
 (defun pack-epoll-event (event buffer offset)
@@ -167,7 +169,6 @@
   "Extract 64-bit value from epoll_data_t"
   data)
 
-
 ;;;; High-Level epoll Interface
 
 (defun epoll-create (&optional (size 1))
@@ -191,13 +192,12 @@
 (defun epoll-ctl (epfd operation fd event)
   "Control epoll file descriptor"
   (if event
-      (sb-alien:with-alien ((event-buf (sb-alien:array sb-alien:char 16)))
-        (let ((sap (sb-alien:alien-sap event-buf)))
-          (pack-epoll-event event sap 0)
-          (let ((result (%epoll-ctl epfd operation fd sap)))
-            (when (= result -1)
-              (error "epoll_ctl failed for operation ~A on fd ~A" operation fd))
-            result)))
+      (lib:with-foreign-memory ((event-buf 16))
+        (pack-epoll-event event event-buf 0)
+        (let ((result (%epoll-ctl epfd operation fd event-buf)))
+          (when (= result -1)
+            (error "epoll_ctl failed for operation ~A on fd ~A" operation fd))
+          result))
       (let ((result (%epoll-ctl epfd operation fd (sb-sys:int-sap 0))))
         (when (= result -1)
           (error "epoll_ctl failed for operation ~A on fd ~A" operation fd))
@@ -206,16 +206,15 @@
 (defun epoll-wait (epfd max-events timeout)
   "Wait for events on epoll file descriptor"
   (let ((buf-size (* max-events (epoll-event-size))))
-    (sb-alien:with-alien ((events-buf (sb-alien:array sb-alien:char 1024))) ; Max 64 events (64*16=1024)
-      (when (> buf-size 1024)
-        (error "Too many events requested (max 64)"))
-      (let ((sap (sb-alien:alien-sap events-buf)))
-        (let ((result (%epoll-wait epfd sap max-events timeout)))
-          (when (= result -1)
-            (error "epoll_wait failed"))
-          ;; Unpack returned events
-          (loop for i from 0 below result
-                collect (unpack-epoll-event sap (* i (epoll-event-size)))))))))
+    (when (> buf-size 1024)
+      (error "Too many events requested (max 64)"))
+    (lib:with-foreign-memory ((events-buf 1024))
+      (let ((result (%epoll-wait epfd events-buf max-events timeout)))
+        (when (= result -1)
+          (error "epoll_wait failed"))
+        ;; Unpack returned events
+        (loop for i from 0 below result
+              collect (unpack-epoll-event events-buf (* i (epoll-event-size))))))))
 
 (defmacro with-epoll ((epfd-var &optional (flags 0)) &body body)
   "Execute body with epoll fd, automatically closing on exit"

@@ -1,427 +1,305 @@
-;;;; This module provides networking primitives for Linux systems
-;;;; using epoll for event notification.
+;;;; core.lisp - Linux network implementation using epsilon.foreign
 
-(defpackage #:epsilon.net
-  (:use #:cl)
+(defpackage :epsilon.net.core
+  (:use :cl)
   (:local-nicknames
-   (#:epoll #:epsilon.sys.epoll))
-  (:shadow #:listen #:close)
+   (lib epsilon.foreign)
+   (seq epsilon.sequence))
   (:export
-   ;; Core types & conditions
-   #:socket #:listener #:connection
-   #:network-error #:connection-error #:timeout-error
-   
-   ;; High-level operations
-   #:with-connection #:with-listener #:with-timeout
-   
-   ;; Async
-   #:async-connect #:async-accept #:async-read #:async-write
-   #:future #:await #:select
-   
-   ;; Address handling
-   #:address #:resolve #:parse-address
-   #:ipv4 #:ipv6 #:hostname
-   
-   ;; Options & configuration
-   #:socket-option #:set-socket-option #:get-socket-option
-   #:keep-alive #:no-delay #:reuse-addr #:recv-buffer #:send-buffer
-   
-   ;; Socket stream access
-   #:socket-stream #:socket-from-stream
-   #:socket-peer-address
-   
-   ;; TLS/SSL
-   #:secure-context #:make-secure-context
-   #:secure-connection #:secure-listener
-   
    ;; Socket operations
-   #:socket-listen #:socket-connect #:socket-accept #:socket-close))
+   #:socket-create
+   #:socket-bind
+   #:socket-listen
+   #:socket-accept
+   #:socket-connect
+   #:socket-send
+   #:socket-recv
+   #:socket-close
+   
+   ;; Address creation
+   #:make-inet-address
+   #:make-inet6-address
+   
+   ;; Socket options
+   #:set-socket-option
+   #:get-socket-option
+   
+   ;; High-level API
+   #:with-socket
+   #:with-server-socket
+   #:with-client-socket
+   
+   ;; Constants
+   #:+AF-INET+
+   #:+AF-INET6+
+   #:+AF-UNIX+
+   #:+SOCK-STREAM+
+   #:+SOCK-DGRAM+
+   #:+SOCK-RAW+
+   #:+IPPROTO-TCP+
+   #:+IPPROTO-UDP+
+   #:+SOL-SOCKET+
+   #:+SO-REUSEADDR+
+   #:+SO-KEEPALIVE+
+   #:+SO-BROADCAST+
+   #:+SO-RCVBUF+
+   #:+SO-SNDBUF+))
 
-(in-package :epsilon.net)
+(in-package :epsilon.net.core)
 
-(require :sb-bsd-sockets)
-
-;;; Conditions
-
-(define-condition network-error (error) 
-  ((message :initarg :message :reader error-message)))
-
-(define-condition connection-error (network-error)
-  ())
-
-(define-condition timeout-error (network-error)
-  ())
-
-;;; Core Types
-
-(defclass socket ()
-  ((handle :initarg :handle :reader socket-handle)
-   (stream :initarg :stream :initform nil :accessor socket-stream-slot)
-   (options :initform (make-hash-table) :reader socket-options)))
-
-(defclass listener (socket) 
-  ((backlog :initarg :backlog :reader listener-backlog)
-   (address :initarg :address :reader listener-address)
-   (port :initarg :port :reader listener-port)
-   (epoll :initarg :epoll :reader listener-epoll)))
-
-(defclass connection (socket)
-  ((remote-address :initarg :remote-address :accessor connection-remote-address)
-   (remote-port :initarg :remote-port :accessor connection-remote-port)))
-
-;;; Socket Constants (Linux-specific)
+;;;; Constants
 
 ;; Address families
-(defconstant +af-inet+ 2)
-(defconstant +af-inet6+ 10)
+(defconstant +AF-UNIX+  1)   ; Unix domain sockets
+(defconstant +AF-INET+  2)   ; Internet IP Protocol
+(defconstant +AF-INET6+ 10)  ; IP version 6
 
 ;; Socket types
-(defconstant +sock-stream+ 1)
-(defconstant +sock-dgram+ 2)
+(defconstant +SOCK-STREAM+ 1) ; TCP
+(defconstant +SOCK-DGRAM+  2) ; UDP  
+(defconstant +SOCK-RAW+    3) ; Raw protocol
 
-;; Protocols
-(defconstant +ipproto-tcp+ 6)
-(defconstant +ipproto-udp+ 17)
+;; Protocol numbers
+(defconstant +IPPROTO-TCP+ 6)
+(defconstant +IPPROTO-UDP+ 17)
 
-;;; Socket FFI Bindings using direct SBCL alien functions
+;; Socket option levels
+(defconstant +SOL-SOCKET+ 1)
 
-(sb-alien:define-alien-routine ("socket" %socket) sb-alien:int
-  (domain sb-alien:int) (type sb-alien:int) (protocol sb-alien:int))
+;; Socket options
+(defconstant +SO-REUSEADDR+ 2)
+(defconstant +SO-KEEPALIVE+ 9)
+(defconstant +SO-BROADCAST+ 6)
+(defconstant +SO-RCVBUF+ 8)
+(defconstant +SO-SNDBUF+ 7)
 
-(sb-alien:define-alien-routine ("bind" %bind) sb-alien:int
-  (sockfd sb-alien:int) (addr sb-alien:system-area-pointer) (addrlen sb-alien:unsigned-int))
+;;;; FFI Function Definitions using epsilon.foreign
 
-(sb-alien:define-alien-routine ("listen" %listen) sb-alien:int
-  (sockfd sb-alien:int) (backlog sb-alien:int))
+(lib:defshared %socket "socket" "libc" :int
+  (domain :int) (type :int) (protocol :int)
+  :documentation "Create a socket")
 
-(sb-alien:define-alien-routine ("accept" %accept) sb-alien:int
-  (sockfd sb-alien:int) (addr sb-alien:system-area-pointer) (addrlen sb-alien:system-area-pointer))
+(lib:defshared %bind "bind" "libc" :int
+  (sockfd :int) (addr :pointer) (addrlen :unsigned-int)
+  :documentation "Bind socket to address")
 
-(sb-alien:define-alien-routine ("connect" %connect) sb-alien:int
-  (sockfd sb-alien:int) (addr sb-alien:system-area-pointer) (addrlen sb-alien:unsigned-int))
+(lib:defshared %listen "listen" "libc" :int
+  (sockfd :int) (backlog :int)
+  :documentation "Listen for connections")
 
-(sb-alien:define-alien-routine ("send" %send) sb-alien:long
-  (sockfd sb-alien:int) (buf sb-alien:system-area-pointer) (len sb-alien:unsigned-long) (flags sb-alien:int))
+(lib:defshared %accept "accept" "libc" :int
+  (sockfd :int) (addr :pointer) (addrlen :pointer)
+  :documentation "Accept a connection")
 
-(sb-alien:define-alien-routine ("recv" %recv) sb-alien:long
-  (sockfd sb-alien:int) (buf sb-alien:system-area-pointer) (len sb-alien:unsigned-long) (flags sb-alien:int))
+(lib:defshared %connect "connect" "libc" :int
+  (sockfd :int) (addr :pointer) (addrlen :unsigned-int)
+  :documentation "Connect to a socket")
 
-(sb-alien:define-alien-routine ("close" %net-close) sb-alien:int
-  (fd sb-alien:int))
+(lib:defshared %send "send" "libc" :long
+  (sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int)
+  :documentation "Send data on socket")
 
-;;; Address Handling (Linux sockaddr_in)
+(lib:defshared %recv "recv" "libc" :long
+  (sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int)
+  :documentation "Receive data from socket")
+
+(lib:defshared %close "close" "libc" :int
+  (fd :int)
+  :documentation "Close socket")
+
+(lib:defshared %setsockopt "setsockopt" "libc" :int
+  (sockfd :int) (level :int) (optname :int) (optval :pointer) (optlen :unsigned-int)
+  :documentation "Set socket option")
+
+(lib:defshared %getsockopt "getsockopt" "libc" :int
+  (sockfd :int) (level :int) (optname :int) (optval :pointer) (optlen :pointer)
+  :documentation "Get socket option")
+
+;; Network byte order functions
+(lib:defshared %htons "htons" "libc" :unsigned-short
+  (hostshort :unsigned-short)
+  :documentation "Host to network short")
+
+(lib:defshared %htonl "htonl" "libc" :unsigned-int
+  (hostlong :unsigned-int)
+  :documentation "Host to network long")
+
+(lib:defshared %ntohs "ntohs" "libc" :unsigned-short
+  (netshort :unsigned-short)
+  :documentation "Network to host short")
+
+(lib:defshared %ntohl "ntohl" "libc" :unsigned-int
+  (netlong :unsigned-int)
+  :documentation "Network to host long")
+
+;;;; Address Structure Helpers
 
 ;; struct sockaddr_in {
 ;;     sa_family_t    sin_family; /* address family: AF_INET */
 ;;     in_port_t      sin_port;   /* port in network byte order */
 ;;     struct in_addr sin_addr;   /* internet address */
-;;     char           sin_zero[8]; /* pad to sizeof(struct sockaddr) */
+;;     char           sin_zero[8]; /* pad to size of struct sockaddr */
 ;; };
 
-(defun make-sockaddr-in (ip-address port)
-  "Create sockaddr_in structure for IPv4 (Linux version)"
-  (sb-alien:with-alien ((addr (sb-alien:array sb-alien:char 16)))
-    (let ((sap (sb-alien:alien-sap addr)))
-      ;; sin_family (2 bytes)
-      (setf (sb-sys:sap-ref-16 sap 0) +af-inet+)
-      ;; sin_port (2 bytes, network byte order)
-      (setf (sb-sys:sap-ref-16 sap 2)
-            (logior (ash (logand port #xff) 8)
-                    (ash (logand port #xff00) -8)))
-      ;; sin_addr (4 bytes, network byte order)
-      (let ((ip-parts (mapcar #'parse-integer 
-                              (split-string ip-address #\.))))
-        (setf (sb-sys:sap-ref-32 sap 4)
-              (logior (ash (first ip-parts) 24)
-                      (ash (second ip-parts) 16)
-                      (ash (third ip-parts) 8)
-                      (fourth ip-parts))))
-      ;; sin_zero (8 bytes of zeros)
-      (loop for i from 8 to 15
-            do (setf (sb-sys:sap-ref-8 sap i) 0))
-      sap)))
+(defun pack-sockaddr-in (buffer family port address)
+  "Pack sockaddr_in structure into buffer"
+  ;; sin_family (2 bytes)
+  (setf (sb-sys:sap-ref-16 buffer 0) family)
+  ;; sin_port (2 bytes) - network byte order
+  (setf (sb-sys:sap-ref-16 buffer 2) (%htons port))
+  ;; sin_addr (4 bytes) - already in network byte order
+  (setf (sb-sys:sap-ref-32 buffer 4) address)
+  ;; sin_zero (8 bytes) - zero padding
+  (loop for i from 8 below 16
+        do (setf (sb-sys:sap-ref-8 buffer i) 0)))
 
-(defun split-string (string delimiter)
-  "Split string by delimiter"
-  (let ((parts '())
-        (start 0))
-    (loop for pos = (position delimiter string :start start)
-          while pos
-          do (push (subseq string start pos) parts)
-             (setf start (1+ pos))
-          finally (push (subseq string start) parts))
-    (nreverse parts)))
+(defun make-inet-address (ip-string port)
+  "Create an IPv4 socket address"
+  (let ((addr (lib:foreign-alloc 16))) ; sockaddr_in size
+    ;; Parse IP address
+    (let ((parts (loop for part in (seq:realize (epsilon.string:split #\. ip-string))
+                       collect (parse-integer part))))
+      (unless (= (length parts) 4)
+        (error "Invalid IPv4 address: ~A" ip-string))
+      (let ((ip-value (logior (ash (first parts) 24)
+                              (ash (second parts) 16)
+                              (ash (third parts) 8)
+                              (fourth parts))))
+        ;; Pack the structure
+        (pack-sockaddr-in addr +AF-INET+ port (%htonl ip-value))
+        addr))))
 
-;;; Socket Helper Functions
+(defun make-inet6-address (ip-string port)
+  "Create an IPv6 socket address (stub)"
+  ;; TODO: Implement IPv6 address creation
+  (error "IPv6 not yet implemented"))
 
-(defun create-tcp-socket ()
-  "Create TCP socket"
-  (let ((sock (%socket +af-inet+ +sock-stream+ +ipproto-tcp+)))
-    (when (= sock -1)
-      (error "Failed to create TCP socket"))
-    sock))
+;;;; Socket Operations
 
-(defun create-udp-socket ()
-  "Create UDP socket"
-  (let ((sock (%socket +af-inet+ +sock-dgram+ +ipproto-udp+)))
-    (when (= sock -1)
-      (error "Failed to create UDP socket"))
-    sock))
+(defun socket-create (domain type protocol)
+  "Create a new socket"
+  (let ((sockfd (%socket domain type protocol)))
+    (when (< sockfd 0)
+      (error "Failed to create socket"))
+    sockfd))
 
-(defun close-socket (socket-fd)
-  "Close socket"
-  (%net-close socket-fd))
+(defun socket-bind (socket address address-len)
+  "Bind socket to address"
+  (let ((result (%bind socket address address-len)))
+    (when (< result 0)
+      (error "Failed to bind socket"))
+    result))
 
-;;; Core Socket Operations using epoll
+(defun socket-listen (socket backlog)
+  "Listen for connections on socket"
+  (let ((result (%listen socket backlog)))
+    (when (< result 0)
+      (error "Failed to listen on socket"))
+    result))
 
-(defun socket-listen (address port &key (reuse-address t) (backlog 5) type)
-  "Create a listening socket on the given address and port using epoll"
-  (declare (ignore type reuse-address)) ;; TODO: implement socket options
-  (handler-case
-      (let* ((socket-fd (create-tcp-socket))
-             (epfd (epoll:epoll-create1))
-             (host (if (or (string= address "0.0.0.0") (string= address "*"))
-                       "0.0.0.0"
-                       address)))
-        
-        ;; Bind socket
-        (sb-alien:with-alien ((addr (sb-alien:array sb-alien:char 16)))
-          (let ((sockaddr (make-sockaddr-in host port)))
-            (loop for i from 0 to 15
-                  do (setf (sb-alien:deref addr i) (sb-alien:deref sockaddr i)))
-            (when (= (%bind socket-fd addr 16) -1)
-              (error "Failed to bind socket"))))
-        
-        ;; Listen
-        (when (= (%listen socket-fd backlog) -1)
-          (error "Failed to listen on socket"))
-        
-        ;; Add to epoll for accept events
-        (epoll:add-event epfd socket-fd epoll:+epollin+)
-        
-        ;; Create and return listener object
-        (make-instance 'listener
-                       :handle socket-fd
-                       :backlog backlog
-                       :address address
-                       :port port
-                       :epoll epfd))
-    (error (e)
-      (error 'network-error :message (format nil "Error creating listener: ~A" e)))))
+(defun socket-accept (socket)
+  "Accept a connection on socket"
+  (lib:with-foreign-memory ((addr 16)    ; sockaddr_in
+                            (addrlen 4))  ; socklen_t
+    (setf (sb-sys:sap-ref-32 addrlen 0) 16)
+    (let ((newsock (%accept socket addr addrlen)))
+      (when (< newsock 0)
+        (error "Failed to accept connection"))
+      newsock)))
 
-(defun socket-connect (host port &key (timeout 30) type)
-  "Connect to a remote host and port using epoll"
-  (declare (ignore type timeout)) ;; TODO: implement timeout
-  (handler-case
-      (let ((socket-fd (create-tcp-socket)))
-        
-        ;; Connect
-        (sb-alien:with-alien ((addr (sb-alien:array sb-alien:char 16)))
-          (let ((sockaddr (make-sockaddr-in host port)))
-            (loop for i from 0 to 15
-                  do (setf (sb-alien:deref addr i) (sb-alien:deref sockaddr i)))
-            (when (= (%connect socket-fd addr 16) -1)
-              (error "Failed to connect"))))
-        
-        ;; Create and return connection object
-        (make-instance 'connection
-                       :handle socket-fd
-                       :remote-address host
-                       :remote-port port))
-    (error (e)
-      (error 'network-error :message (format nil "Error connecting to ~A:~A - ~A" host port e)))))
+(defun socket-connect (socket address address-len)
+  "Connect socket to address"
+  (let ((result (%connect socket address address-len)))
+    (when (< result 0)
+      (error "Failed to connect socket"))
+    result))
 
-(defun socket-accept (listener)
-  "Accept a connection from a listener using epoll"
-  (handler-case
-      (let ((epfd (listener-epoll listener)))
-        ;; Wait for accept event
-        (let ((events (epoll:wait-for-events epfd 1 0))) ; Non-blocking check
-          (when events
-            (sb-alien:with-alien ((addr (sb-alien:array sb-alien:char 16))
-                                  (addrlen sb-alien:int))
-              (setf addrlen 16)
-              (let ((client-fd (%accept (socket-handle listener) 
-                                        (sb-alien:alien-sap addr) 
-                                        (sb-alien:addr addrlen))))
-                (when (= client-fd -1)
-                  (error "Failed to accept connection"))
-                
-                ;; Extract remote address info (simplified)
-                (make-instance 'connection
-                               :handle client-fd
-                               :remote-address "unknown" ; TODO: extract from addr
-                               :remote-port 0))))))           ; TODO: extract from addr
-    (error (e)
-      (error 'network-error :message (format nil "Error accepting connection: ~A" e)))))
+(defun socket-send (socket data &key (flags 0))
+  "Send data on socket"
+  (etypecase data
+    (string
+     ;; Simple ASCII conversion for now
+     (let ((bytes (make-array (length data) :element-type '(unsigned-byte 8))))
+       (loop for i from 0 below (length data)
+             do (setf (aref bytes i) (char-code (char data i))))
+       (socket-send socket bytes :flags flags)))
+    ((simple-array (unsigned-byte 8) (*))
+     (lib:with-foreign-memory ((buffer (length data)))
+       (loop for i from 0 below (length data)
+             do (setf (sb-sys:sap-ref-8 buffer i) (aref data i)))
+       (let ((sent (%send socket buffer (length data) flags)))
+         (when (< sent 0)
+           (error "Failed to send data"))
+         sent)))))
+
+(defun socket-recv (socket size &key (flags 0))
+  "Receive data from socket"
+  (lib:with-foreign-memory ((buffer size))
+    (let ((received (%recv socket buffer size flags)))
+      (cond
+        ((< received 0)
+         (error "Failed to receive data"))
+        ((= received 0)
+         nil) ; Connection closed
+        (t
+         ;; Convert to byte array
+         (let ((data (make-array received :element-type '(unsigned-byte 8))))
+           (loop for i from 0 below received
+                 do (setf (aref data i) (sb-sys:sap-ref-8 buffer i)))
+           data))))))
 
 (defun socket-close (socket)
   "Close a socket"
-  (handler-case
-      (progn
-        ;; Close the stream if it exists
-        (when (socket-stream-slot socket)
-          (close (socket-stream-slot socket))
-          (setf (socket-stream-slot socket) nil))
-        
-        ;; Close epoll if it's a listener
-        (when (and (typep socket 'listener) (listener-epoll socket))
-          (epoll:epoll-close (listener-epoll socket)))
-        
-        ;; Close the socket
-        (close-socket (socket-handle socket)))
-    (error (e)
-      (error 'network-error :message (format nil "Error closing socket: ~A" e)))))
+  (%close socket))
 
-;;; Context Managers
+(defun set-socket-option (socket level option value)
+  "Set a socket option"
+  (lib:with-foreign-memory ((optval 4))
+    (setf (sb-sys:sap-ref-32 optval 0) value)
+    (let ((result (%setsockopt socket level option optval 4)))
+      (when (< result 0)
+        (error "Failed to set socket option"))
+      result)))
 
-(defmacro with-connection ((var address port &rest options) &body body)
-  "Establish connection with automatic cleanup"
-  `(let ((,var (socket-connect ,address ,port ,@options)))
+(defun get-socket-option (socket level option)
+  "Get a socket option"
+  (lib:with-foreign-memory ((optval 4)
+                            (optlen 4))
+    (setf (sb-sys:sap-ref-32 optlen 0) 4)
+    (let ((result (%getsockopt socket level option optval optlen)))
+      (when (< result 0)
+        (error "Failed to get socket option"))
+      (sb-sys:sap-ref-32 optval 0))))
+
+;;;; High-level API
+
+(defmacro with-socket ((socket-var domain type protocol) &body body)
+  "Create and automatically close a socket"
+  `(let ((,socket-var (socket-create ,domain ,type ,protocol)))
      (unwind-protect
           (progn ,@body)
-       (when ,var
-         (socket-close ,var)))))
+       (socket-close ,socket-var))))
 
-(defmacro with-listener ((var address port &rest options) &body body)
-  "Create listener with automatic cleanup"
-  `(let ((,var (socket-listen ,address ,port ,@options)))
-     (unwind-protect
-          (progn ,@body)
-       (when ,var
-         (socket-close ,var)))))
+(defmacro with-server-socket ((socket-var port &key (backlog 5) (reuse-addr t)) 
+                              &body body)
+  "Create a TCP server socket bound to port"
+  `(with-socket (,socket-var +AF-INET+ +SOCK-STREAM+ 0)
+     (when ,reuse-addr
+       (set-socket-option ,socket-var +SOL-SOCKET+ +SO-REUSEADDR+ 1))
+     (let ((addr (make-inet-address "0.0.0.0" ,port)))
+       (unwind-protect
+            (progn
+              (socket-bind ,socket-var addr 16)
+              (socket-listen ,socket-var ,backlog)
+              ,@body)
+         (lib:foreign-free addr)))))
 
-(defmacro with-timeout ((seconds) &body body)
-  "Execute body with timeout"
-  (let ((deadline (gensym "DEADLINE-"))
-        (now (gensym "NOW-"))
-        (result (gensym "RESULT-")))
-    `(let ((,deadline (+ (get-internal-real-time) 
-                        (* ,seconds internal-time-units-per-second))))
-       (block timeout-block
-         (tagbody
-          retry
-            (let ((,now (get-internal-real-time)))
-              (when (> ,now ,deadline)
-                (error 'timeout-error :message "Operation timed out"))
-              (let ((,result
-                     (handler-case 
-                         (progn ,@body)
-                       (timeout-error () 
-                         (go retry)))))
-                (return-from timeout-block ,result))))))))
-
-;;; Stream Creation and Access
-
-(defun socket-stream (socket)
-  "Get a bidirectional stream for the socket"
-  (or (socket-stream-slot socket)
-      (setf (socket-stream-slot socket)
-            (sb-bsd-sockets:socket-make-stream 
-             (socket-handle socket)
-             :input t :output t :buffering :full))))
-
-(defun socket-from-stream (stream)
-  "Get the socket object associated with a stream"
-  (declare (ignore stream))
-  (error "Not implemented - socket-from-stream function"))
-
-(defun socket-peer-address (socket)
-  "Get the peer address of a socket"
-  (values (connection-remote-address socket)
-          (connection-remote-port socket)))
-
-;;; Stub implementations for compatibility
-
-(defun get-socket-option (socket option-name)
-  "Get socket option value"
-  (declare (ignore socket option-name))
-  (error "Not implemented - get-socket-option"))
-
-(defun set-socket-option (socket option-name value)
-  "Set socket option value"
-  (declare (ignore socket option-name value))
-  (error "Not implemented - set-socket-option"))
-
-(defun socket-option (socket option-name &optional (value nil value-provided))
-  "Get or set a socket option"
-  (if value-provided
-      (set-socket-option socket option-name value)
-      (get-socket-option socket option-name)))
-
-;;; Address Handling
-
-(defclass address ()
-  ((host :initarg :host :reader address-host)
-   (port :initarg :port :reader address-port)))
-
-(defun resolve (hostname &key (family :any))
-  "Resolve hostname to address(es)"
-  (declare (ignore family))
-  (error "Not implemented - resolve"))
-
-(defun parse-address (string)
-  "Parse address from string form"
-  (let* ((colon-pos (position #\: string))
-         (host (if colon-pos (subseq string 0 colon-pos) string))
-         (port (if colon-pos 
-                   (parse-integer (subseq string (1+ colon-pos)))
-                   80)))
-    (make-instance 'address :host host :port port)))
-
-;;; TLS/SSL Support
-
-(defclass secure-context ()
-  ((cert-file :initarg :cert-file)
-   (key-file :initarg :key-file)
-   (verify :initarg :verify :initform t)))
-
-(defun make-secure-context (&key cert-file key-file (verify t))
-  "Create TLS/SSL context"
-  (make-instance 'secure-context
-                 :cert-file cert-file
-                 :key-file key-file
-                 :verify verify))
-
-(defclass secure-connection (connection)
-  ((context :initarg :context :reader connection-context)))
-
-(defclass secure-listener (listener)
-  ((context :initarg :context :reader listener-context)))
-
-;;; Async Operations (stubs for now)
-
-(defun async-connect (host port &key callback)
-  "Asynchronously connect to host:port"
-  (declare (ignore host port callback))
-  (error "Not implemented - async-connect"))
-
-(defun async-accept (listener &key callback)
-  "Asynchronously accept connection"
-  (declare (ignore listener callback))
-  (error "Not implemented - async-accept"))
-
-(defun async-read (socket buffer &key callback)
-  "Asynchronously read from socket"
-  (declare (ignore socket buffer callback))
-  (error "Not implemented - async-read"))
-
-(defun async-write (socket buffer &key callback)
-  "Asynchronously write to socket"
-  (declare (ignore socket buffer callback))
-  (error "Not implemented - async-write"))
-
-(defun future (&rest args)
-  "Create a future"
-  (declare (ignore args))
-  (error "Not implemented - future"))
-
-(defun await (future)
-  "Wait for future completion"
-  (declare (ignore future))
-  (error "Not implemented - await"))
-
-(defun select (&rest futures)
-  "Wait for any future to complete"
-  (declare (ignore futures))
-  (error "Not implemented - select"))
+(defmacro with-client-socket ((socket-var host port) &body body)
+  "Create a TCP client socket connected to host:port"
+  `(with-socket (,socket-var +AF-INET+ +SOCK-STREAM+ 0)
+     (let ((addr (make-inet-address ,host ,port)))
+       (unwind-protect
+            (progn
+              (socket-connect ,socket-var addr 16)
+              ,@body)
+         (lib:foreign-free addr)))))
