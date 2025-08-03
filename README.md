@@ -42,10 +42,10 @@ Download the appropriate release for your platform from [GitHub Releases](https:
 epsilon
 
 # Evaluate expressions  
-epsilon --eval "(format t \"Hello, Epsilon!\")" --eval "(sb-ext:quit)"
+epsilon --eval "(format t \"Hello, Epsilon!\")"
 
 # Use Epsilon libraries
-epsilon --eval "(epsilon.lib.map:make-map :a 1 :b 2)" --eval "(sb-ext:quit)"
+epsilon --eval "(epsilon.lib.map:make-map :a 1 :b 2)"
 ```
 
 #### Windows
@@ -54,10 +54,10 @@ epsilon --eval "(epsilon.lib.map:make-map :a 1 :b 2)" --eval "(sb-ext:quit)"
 .\epsilon.exe
 
 # Evaluate expressions
-.\epsilon.exe --eval "(format t \"Hello, Epsilon!\")" --eval "(sb-ext:quit)"
+.\epsilon.exe --eval "(format t \"Hello, Epsilon!\")"
 
 # Use Epsilon libraries  
-.\epsilon.exe --eval "(epsilon.lib.map:make-map :a 1 :b 2)" --eval "(sb-ext:quit)"
+.\epsilon.exe --eval "(epsilon.lib.map:make-map :a 1 :b 2)"
 ```
 
 ## Documentation

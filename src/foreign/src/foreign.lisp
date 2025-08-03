@@ -25,6 +25,10 @@
    with-foreign-memory
    register-finalizer
    
+   ;; Helper functions
+   make-epoll-data
+   epoll-data-fd
+   
    ;; Structure Discovery
    grovel-struct
    grovel-lib
@@ -57,7 +61,13 @@
   "Cache of function pointers keyed by (library-name function-name)")
 
 (defvar *library-search-paths* 
-  '("/usr/lib" "/usr/local/lib" "/lib" "/opt/lib")
+  (append
+   ;; Check for Nix store paths
+   (when (probe-file "/nix/store/")
+     (list "/nix/store/qdcbgcj27x2kpxj2sf9yfvva7qsgg64g-glibc-2.38-77/lib"))
+   ;; Standard paths
+   '("/usr/lib" "/usr/local/lib" "/lib" "/lib64" 
+     "/usr/lib/x86_64-linux-gnu" "/lib/x86_64-linux-gnu" "/opt/lib"))
   "Default paths to search for shared libraries")
 
 ;; Platform-specific library handling
@@ -78,8 +88,12 @@
   (cond
     ((string-suffix-p ".so" name) name)
     ((find #\. name) name) ; Has version number
+    ((string= name "libc") "libc.so.6")
+    ((string= name "libm") "libm.so.6")
+    ((string= name "libpthread") "libpthread.so.0")
     (t (concatenate 'string "lib" name ".so")))
-  ;; Default fallback
+  ;; Default fallback for other platforms
+  #-(or darwin linux)
   name)
 
 (defun string-suffix-p (suffix string)
@@ -182,6 +196,223 @@
                  (sb-alien:sap-alien 
                   (sb-sys:int-sap ,function-address)
                   (sb-alien:function sb-alien:int sb-alien:int))
+                 ,@converted-args))))
+      
+      ;; strlen-style functions: unsigned-long fn(string)
+      ((and (eq return-type :unsigned-long) (equal arg-types '(:string)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:unsigned-long sb-alien:c-string))
+                 ,@converted-args))))
+      
+      ;; malloc-style functions: pointer fn(unsigned-long)
+      ((and (eq return-type :pointer) (equal arg-types '(:unsigned-long)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:system-area-pointer sb-alien:unsigned-long))
+                 ,@converted-args))))
+      
+      ;; free-style functions: void fn(pointer)
+      ((and (eq return-type :void) (equal arg-types '(:pointer)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:void sb-alien:system-area-pointer))
+                 ,@converted-args))))
+      
+      ;; clock_gettime style: int fn(int, pointer)
+      ((and (eq return-type :int) (equal arg-types '(:int :pointer)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:int sb-alien:int sb-alien:system-area-pointer))
+                 ,@converted-args))))
+      
+      ;; qsort style: void fn(pointer, unsigned-long, unsigned-long, pointer)
+      ((and (eq return-type :void) 
+            (equal arg-types '(:pointer :unsigned-long :unsigned-long :pointer)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:void 
+                                     sb-alien:system-area-pointer
+                                     sb-alien:unsigned-long
+                                     sb-alien:unsigned-long
+                                     sb-alien:system-area-pointer))
+                 ,@converted-args))))
+      
+      ;; getenv style: pointer fn(string)
+      ((and (eq return-type :pointer) (equal arg-types '(:string)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:system-area-pointer sb-alien:c-string))
+                 ,@converted-args))))
+      
+      ;; setenv style: int fn(string, string, int)
+      ((and (eq return-type :int) (equal arg-types '(:string :string :int)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:int sb-alien:c-string sb-alien:c-string sb-alien:int))
+                 ,@converted-args))))
+      
+      ;; pipe style: int fn(pointer)  
+      ((and (eq return-type :int) (equal arg-types '(:pointer)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:int sb-alien:system-area-pointer))
+                 ,@converted-args))))
+      
+      ;; listen style: int fn(int, int)
+      ((and (eq return-type :int) (equal arg-types '(:int :int)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:int sb-alien:int sb-alien:int))
+                 ,@converted-args))))
+      
+      ;; write/read style: long fn(int, pointer, unsigned-long)
+      ((and (eq return-type :long) (equal arg-types '(:int :pointer :unsigned-long)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:long sb-alien:int sb-alien:system-area-pointer 
+                                     sb-alien:unsigned-long))
+                 ,@converted-args))))
+      
+      ;; socket style: int fn(int, int, int)
+      ((and (eq return-type :int) (equal arg-types '(:int :int :int)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:int sb-alien:int sb-alien:int sb-alien:int))
+                 ,@converted-args))))
+      
+      ;; bind/connect style: int fn(int, pointer, unsigned-int)
+      ((and (eq return-type :int) (equal arg-types '(:int :pointer :unsigned-int)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:int sb-alien:int 
+                                     sb-alien:system-area-pointer sb-alien:unsigned-int))
+                 ,@converted-args))))
+      
+      ;; accept style: int fn(int, pointer, pointer)
+      ((and (eq return-type :int) (equal arg-types '(:int :pointer :pointer)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:int sb-alien:int 
+                                     sb-alien:system-area-pointer sb-alien:system-area-pointer))
+                 ,@converted-args))))
+      
+      ;; send/recv style: long fn(int, pointer, unsigned-long, int)
+      ((and (eq return-type :long) 
+            (equal arg-types '(:int :pointer :unsigned-long :int)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:long sb-alien:int 
+                                     sb-alien:system-area-pointer 
+                                     sb-alien:unsigned-long sb-alien:int))
+                 ,@converted-args))))
+      
+      ;; setsockopt style: int fn(int, int, int, pointer, unsigned-int)
+      ((and (eq return-type :int) 
+            (equal arg-types '(:int :int :int :pointer :unsigned-int)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:int sb-alien:int sb-alien:int sb-alien:int
+                                     sb-alien:system-area-pointer sb-alien:unsigned-int))
+                 ,@converted-args))))
+      
+      ;; getsockopt style: int fn(int, int, int, pointer, pointer)
+      ((and (eq return-type :int) 
+            (equal arg-types '(:int :int :int :pointer :pointer)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:int sb-alien:int sb-alien:int sb-alien:int
+                                     sb-alien:system-area-pointer sb-alien:system-area-pointer))
+                 ,@converted-args))))
+      
+      ;; htons/ntohs style: unsigned-short fn(unsigned-short)
+      ((and (eq return-type :unsigned-short) (equal arg-types '(:unsigned-short)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:unsigned-short sb-alien:unsigned-short))
+                 ,@converted-args))))
+      
+      ;; htonl/ntohl style: unsigned-int fn(unsigned-int)
+      ((and (eq return-type :unsigned-int) (equal arg-types '(:unsigned-int)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:unsigned-int sb-alien:unsigned-int))
+                 ,@converted-args))))
+      
+      ;; socketpair style: int fn(int, int, int, pointer)
+      ((and (eq return-type :int) (equal arg-types '(:int :int :int :pointer)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:int sb-alien:int sb-alien:int 
+                                     sb-alien:int sb-alien:system-area-pointer))
+                 ,@converted-args))))
+      
+      ;; epoll_wait style: int fn(int, pointer, int, int)
+      ((and (eq return-type :int) (equal arg-types '(:int :pointer :int :int)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:int sb-alien:int sb-alien:system-area-pointer 
+                                     sb-alien:int sb-alien:int))
                  ,@converted-args))))
       
       (t
@@ -508,6 +739,21 @@
 ;;; *primitive-type-map* - Variable holding primitive type mappings
 ;;; Maps Lisp primitive types to their C equivalents
 ;;; Used by shared-call for efficient type conversion
+
+;; Helper functions for epoll data handling (reused from epsilon.linux)
+
+(defun make-epoll-data (&key fd ptr u32 u64)
+  "Create epoll_data_t union value"
+  (cond
+    (fd (logand fd #xffffffff))            ; Store fd as lower 32 bits
+    (ptr ptr)                              ; Store pointer value
+    (u32 (logand u32 #xffffffff))         ; Store 32-bit value
+    (u64 (logand u64 #xffffffffffffffff)) ; Store 64-bit value
+    (t 0)))
+
+(defun epoll-data-fd (data)
+  "Extract file descriptor from epoll_data_t"
+  (logand data #xffffffff))
 
 (defvar *primitive-type-map*)
 
