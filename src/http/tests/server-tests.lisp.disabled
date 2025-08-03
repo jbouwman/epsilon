@@ -1,0 +1,281 @@
+;;;; HTTP Server Test Suite
+;;;;
+;;;; Comprehensive tests for HTTP server functionality
+
+(defpackage :epsilon.http.server.tests
+  (:use :cl :epsilon.test)
+  (:local-nicknames
+   (#:server #:epsilon.http.server)
+   (#:request #:epsilon.http.request)
+   (#:response #:epsilon.http.response)
+   (#:client #:epsilon.http.client)
+   (#:map #:epsilon.map)
+   (#:str #:epsilon.string)))
+
+(in-package :epsilon.http.server.tests)
+
+(defparameter *test-port* 18080
+  "Port to use for testing (avoid conflicts with running servers)")
+
+(defun find-free-port (&optional (start-port 18080))
+  "Find a free port starting from start-port"
+  (loop for port from start-port to (+ start-port 100)
+        do (handler-case
+               (let ((test-server (server:start-server 
+                                   (lambda (req) 
+                                     (response:text-response "test"))
+                                   :port port)))
+                 (server:stop-server test-server)
+                 (return port))
+             (error () nil))
+        finally (error "No free port found")))
+
+(defmacro with-test-server ((server-var app &key (port '*test-port*)) &body body)
+  "Run tests with a temporary server"
+  `(let ((,server-var nil)
+         (actual-port (if (numberp ,port) ,port (find-free-port))))
+     (unwind-protect
+          (progn
+            (setf ,server-var (server:start-server ,app :port actual-port))
+            (let ((*test-port* actual-port))
+              ;; Give server time to start
+              (sleep 0.1)
+              ,@body))
+       (when ,server-var
+         (server:stop-server ,server-var)))))
+
+(deftest test-server-start-stop ()
+  "Test basic server start and stop"
+  (let ((port (find-free-port)))
+    (let ((server (server:start-server 
+                   (lambda (req) (response:text-response "Hello"))
+                   :port port)))
+      (is (typep server 'server::http-server))
+      (is-equal port (server::server-port server))
+      (is (server::server-running-p server))
+      (is (server:stop-server server))
+      (is-not (server::server-running-p server)))))
+
+(deftest test-server-double-start ()
+  "Test that starting server on same port fails"
+  (with-test-server (server1 (lambda (req) (response:text-response "Server 1")))
+    (is-thrown 'error
+               (server:start-server 
+                (lambda (req) (response:text-response "Server 2"))
+                :port *test-port*))))
+
+(deftest test-simple-get-request ()
+  "Test handling simple GET request"
+  (with-test-server (server
+                     (lambda (req)
+                       (response:text-response 
+                        (format nil "Method: ~A, Path: ~A" 
+                                (request:request-method req)
+                                (request:request-path req)))))
+    (multiple-value-bind (status headers body)
+        (client:http-get (format nil "http://localhost:~A/test" *test-port*))
+      (is-equal 200 status)
+      (is (search "Method: GET, Path: /test" body)))))
+
+(deftest test-post-request-with-body ()
+  "Test handling POST request with body"
+  (with-test-server (server
+                     (lambda (req)
+                       (response:text-response 
+                        (format nil "Body: ~A" (request:request-body req)))))
+    (multiple-value-bind (status headers body)
+        (client:http-post (format nil "http://localhost:~A/data" *test-port*)
+                          :body "test data"
+                          :headers (map:make-map "Content-Type" "text/plain"))
+      (is-equal 200 status)
+      (is (search "Body: test data" body)))))
+
+(deftest test-request-headers ()
+  "Test request header handling"
+  (with-test-server (server
+                     (lambda (req)
+                       (let ((user-agent (map:get (request:request-headers req) "user-agent")))
+                         (response:text-response 
+                          (format nil "User-Agent: ~A" user-agent)))))
+    (multiple-value-bind (status headers body)
+        (client:http-get (format nil "http://localhost:~A/" *test-port*)
+                         :headers (map:make-map "User-Agent" "TestClient/1.0"))
+      (is-equal 200 status)
+      (is (search "User-Agent: TestClient/1.0" body)))))
+
+(deftest test-query-parameters ()
+  "Test query parameter parsing"
+  (with-test-server (server
+                     (lambda (req)
+                       (let ((name (map:get (request:request-params req) "name"))
+                             (age (map:get (request:request-params req) "age")))
+                         (response:text-response 
+                          (format nil "Name: ~A, Age: ~A" name age)))))
+    (multiple-value-bind (status headers body)
+        (client:http-get (format nil "http://localhost:~A/user?name=John&age=30" *test-port*))
+      (is-equal 200 status)
+      (is (search "Name: John, Age: 30" body)))))
+
+(deftest test-404-not-found ()
+  "Test 404 response"
+  (with-test-server (server
+                     (lambda (req)
+                       (if (string= (request:request-path req) "/exists")
+                           (response:text-response "Found")
+                           (response:text-response "Not Found" :status 404))))
+    (multiple-value-bind (status headers body)
+        (client:http-get (format nil "http://localhost:~A/missing" *test-port*))
+      (is-equal 404 status)
+      (is (search "Not Found" body)))))
+
+(deftest test-json-response-handling ()
+  "Test JSON response"
+  (with-test-server (server
+                     (lambda (req)
+                       (response:json-response 
+                        (map:make-map "message" "success" "count" 42))))
+    (multiple-value-bind (status headers body)
+        (client:http-get (format nil "http://localhost:~A/api/data" *test-port*))
+      (is-equal 200 status)
+      (is-equal "application/json" (map:get headers "content-type"))
+      (is (search "\"message\"" body))
+      (is (search "\"success\"" body))
+      (is (search "\"count\"" body))
+      (is (search "42" body)))))
+
+(deftest test-redirect-response ()
+  "Test redirect response"
+  (with-test-server (server
+                     (lambda (req)
+                       (if (string= (request:request-path req) "/old")
+                           (response:redirect "/new")
+                           (response:text-response "New location"))))
+    (multiple-value-bind (status headers body)
+        (client:http-get (format nil "http://localhost:~A/old" *test-port*))
+      (is-equal 302 status)
+      (is-equal "/new" (map:get headers "location")))))
+
+(deftest test-middleware-composition ()
+  "Test middleware composition"
+  (labels ((logging-middleware (handler)
+             (lambda (req)
+               (let ((resp (funcall handler req)))
+                 (response:set-header resp "X-Logged" "true")
+                 resp)))
+           (auth-middleware (handler)
+             (lambda (req)
+               (if (map:get (request:request-headers req) "authorization")
+                   (funcall handler req)
+                   (response:text-response "Unauthorized" :status 401)))))
+    (with-test-server (server
+                       (server:wrap-middleware
+                        (lambda (req) (response:text-response "Protected"))
+                        #'logging-middleware
+                        #'auth-middleware))
+      ;; Test without auth
+      (multiple-value-bind (status headers body)
+          (client:http-get (format nil "http://localhost:~A/protected" *test-port*))
+        (is-equal 401 status)
+        (is-equal "true" (map:get headers "x-logged")))
+      ;; Test with auth
+      (multiple-value-bind (status headers body)
+          (client:http-get (format nil "http://localhost:~A/protected" *test-port*)
+                           :headers (map:make-map "Authorization" "Bearer token"))
+        (is-equal 200 status)
+        (is-equal "true" (map:get headers "x-logged"))
+        (is (search "Protected" body))))))
+
+(deftest test-error-handling ()
+  "Test server error handling"
+  (with-test-server (server
+                     (lambda (req)
+                       (if (string= (request:request-path req) "/error")
+                           (error "Intentional error")
+                           (response:text-response "OK"))))
+    ;; Normal request should work
+    (multiple-value-bind (status headers body)
+        (client:http-get (format nil "http://localhost:~A/ok" *test-port*))
+      (is-equal 200 status))
+    ;; Error request should return 500
+    (multiple-value-bind (status headers body)
+        (client:http-get (format nil "http://localhost:~A/error" *test-port*))
+      (is-equal 500 status)
+      (is (search "Internal Server Error" body)))))
+
+(deftest test-concurrent-requests ()
+  "Test handling concurrent requests"
+  (let ((counter 0)
+        (lock (sb-thread:make-mutex)))
+    (with-test-server (server
+                       (lambda (req)
+                         (sb-thread:with-mutex (lock)
+                           (incf counter))
+                         (sleep 0.01) ; Simulate work
+                         (response:text-response (format nil "Request ~A" counter))))
+      ;; Make multiple concurrent requests
+      (let ((threads (loop for i from 1 to 5
+                           collect (sb-thread:make-thread
+                                    (lambda ()
+                                      (client:http-get 
+                                       (format nil "http://localhost:~A/concurrent" *test-port*)))
+                                    :name (format nil "request-~A" i)))))
+        ;; Wait for all threads
+        (dolist (thread threads)
+          (sb-thread:join-thread thread))
+        ;; All requests should have been handled
+        (is-equal 5 counter)))))
+
+(deftest test-large-request-body ()
+  "Test handling large request bodies"
+  (let ((large-body (make-string 10000 :initial-element #\A)))
+    (with-test-server (server
+                       (lambda (req)
+                         (response:text-response 
+                          (format nil "Received ~A bytes" 
+                                  (length (request:request-body req))))))
+      (multiple-value-bind (status headers body)
+          (client:http-post (format nil "http://localhost:~A/upload" *test-port*)
+                            :body large-body)
+        (is-equal 200 status)
+        (is (search "Received 10000 bytes" body))))))
+
+(deftest test-custom-headers ()
+  "Test custom response headers"
+  (with-test-server (server
+                     (lambda (req)
+                       (let ((resp (response:text-response "Custom headers")))
+                         (response:set-header resp "X-Custom-Header" "test-value")
+                         (response:set-header resp "X-Request-Id" "12345")
+                         resp)))
+    (multiple-value-bind (status headers body)
+        (client:http-get (format nil "http://localhost:~A/custom" *test-port*))
+      (is-equal 200 status)
+      (is-equal "test-value" (map:get headers "x-custom-header"))
+      (is-equal "12345" (map:get headers "x-request-id")))))
+
+(deftest test-head-request ()
+  "Test HEAD request handling"
+  (with-test-server (server
+                     (lambda (req)
+                       (response:text-response "This is the body")))
+    (multiple-value-bind (status headers body)
+        (client:http-head (format nil "http://localhost:~A/resource" *test-port*))
+      (is-equal 200 status)
+      ;; HEAD should return headers but no body
+      (is (or (null body) (string= "" body)))
+      ;; But Content-Length should be set
+      (is (map:get headers "content-length")))))
+
+(deftest test-options-request ()
+  "Test OPTIONS request handling"
+  (with-test-server (server
+                     (lambda (req)
+                       (if (string= (request:request-method req) "OPTIONS")
+                           (let ((resp (response:make-response :status 200)))
+                             (response:set-header resp "Allow" "GET, POST, PUT, DELETE, OPTIONS")
+                             resp)
+                           (response:text-response "OK"))))
+    (multiple-value-bind (status headers body)
+        (client:http-options (format nil "http://localhost:~A/api" *test-port*))
+      (is-equal 200 status)
+      (is-equal "GET, POST, PUT, DELETE, OPTIONS" (map:get headers "allow")))))

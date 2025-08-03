@@ -31,7 +31,10 @@
    :whitespacep
    ;; String utilities
    :nsubseq
-   :string-list-to-simple-string))
+   :string-list-to-simple-string
+   ;; Byte conversion
+   :string-to-octets
+   :octets-to-string))
 
 (in-package :epsilon.string)
 
@@ -207,3 +210,15 @@ match [\\s] in Perl."
 (defun trim (string &optional (char-bag +whitespace-char-string+))
   "Remove whitespace (or CHAR-BAG characters) from both ends of STRING."
   (string-trim char-bag string))
+
+;;;; Byte conversion functions
+
+(defun string-to-octets (string &key (encoding :utf-8))
+  "Convert a string to a byte array using the specified encoding."
+  (declare (ignore encoding)) ; For now, assume UTF-8
+  (map 'vector #'char-code string))
+
+(defun octets-to-string (octets &key (encoding :utf-8))
+  "Convert a byte array to a string using the specified encoding."
+  (declare (ignore encoding)) ; For now, assume UTF-8
+  (map 'string #'code-char octets))

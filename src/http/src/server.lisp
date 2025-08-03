@@ -1,7 +1,7 @@
 (defpackage epsilon.http.server
   (:use cl)
   (:local-nicknames
-   (net epsilon.http.net)
+   (net epsilon.net)
    (str epsilon.string)
    (map epsilon.map)
    (time epsilon.time)
@@ -126,7 +126,7 @@
   (log:debug "Closing connection...")
   (if ssl-p
       (tls:tls-close connection)
-    (net:socket-close connection))
+    (net:close connection))
   (log:debug "Connection closed"))
 
 (defun server-loop (server)
@@ -136,7 +136,7 @@
         do (handler-case
 	       (progn
                  (log:debug "Waiting for connection on port ~A..." (server-port server))
-                 (let ((raw-connection (net:socket-accept (server-socket server))))
+                 (let ((raw-connection (net:accept (server-socket server))))
                    (log:info "Accepted connection: ~A" raw-connection)
                    (when raw-connection
                      (let ((connection (if (server-ssl-p server)
@@ -173,21 +173,25 @@
         (tls:load-key-file tls-context key-file))
       (tls:set-verify-mode tls-context tls:+tls-verify-none+)))
   
-  (let* ((listener (net:socket-listen address port))
-         (server (make-instance 'http-server
-                                :port port
-                                :socket listener
-                                :tls-context tls-context
-                                :ssl-p (or ssl-p (not (null tls-context)))
+  (let* ((listener (net:socket))
+         (addr (net:make-socket-address address port)))
+    (net:set-socket-option listener net:+socket-option-reuseaddr+ t)
+    (net:bind listener addr)
+    (net:listen listener)
+    (let ((server (make-instance 'http-server
+                                 :port port
+                                 :socket listener
+                                 :tls-context tls-context
+                                 :ssl-p (or ssl-p (not (null tls-context)))
                                 :application application)))
-    (setf (server-thread server)
-          (sb-thread:make-thread 
-           (lambda () 
-             (server-loop server))
-           :name (format nil "HTTP server on port ~D" port)))
-    
-    (setf *servers* (map:assoc *servers* port server))
-    server))
+      (setf (server-thread server)
+            (sb-thread:make-thread 
+             (lambda () 
+               (server-loop server))
+             :name (format nil "HTTP server on port ~D" port)))
+      
+      (setf *servers* (map:assoc *servers* port server))
+      server)))
 
 (defun stop-server (port-or-server)
   "Stop HTTP server"
@@ -196,7 +200,7 @@
                   (map:get *servers* port-or-server))))
     (when server
       (setf (server-running-p server) nil)
-      (net:socket-close (server-socket server))
+      (net:close (server-socket server))
       (sb-thread:join-thread (server-thread server))
       (setf *servers* (map:dissoc *servers* (server-port server)))
       t)))

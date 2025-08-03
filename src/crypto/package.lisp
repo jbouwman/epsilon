@@ -2,13 +2,25 @@
  :version "1.0.0"
  :author "Jesse Bouwman"
  :description "Cryptographic signatures and key management for Epsilon packages"
- :sources ("src/crypto/keys"
+ :sources ("src/package"
+           "src/checksum/generic"
+           "src/checksum/crc-32"
+           "src/checksum/adler-32"
+           "src/encoding/base64"
+           "src/encoding/uuid"
+           "src/crypto/keys"
            "src/crypto/keyring"
            "src/crypto/signatures"
-           "src/zzz-crypto")
+           "src/crypto")
  :tests ("tests")
  :dependencies ("epsilon.core")
- :provides ("epsilon.crypto.keys"
+ :provides ("epsilon.checksum"
+            "epsilon.checksum.generic"
+            "epsilon.checksum.crc-32"
+            "epsilon.checksum.adler-32"
+            "epsilon.base64"
+            "epsilon.uuid"
+            "epsilon.crypto.keys"
             "epsilon.crypto.keyring"
             "epsilon.crypto.signatures"
             "epsilon.crypto"))

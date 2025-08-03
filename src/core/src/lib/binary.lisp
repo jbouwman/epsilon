@@ -26,6 +26,12 @@
    from-bytes
    size
    
+   ;; Integer conversion
+   uint16-to-octets
+   octets-to-uint16
+   uint64-to-octets
+   octets-to-uint64
+   
    ;; type definition
    define-binary-type
    define-binary-struct
@@ -42,7 +48,10 @@
    ;; structure support
    binary-input-stream
    binary-output-stream
-   get-output-stream-bytes))
+   get-output-stream-bytes
+   
+   ;; convenience macros
+   with-output-to-octets))
 
 (in-package :epsilon.binary)
 
@@ -367,6 +376,12 @@
   `(let ((*default-endian* ,endian))
      ,@body))
 
+(defmacro with-output-to-octets ((stream-var) &body body)
+  "Execute BODY with STREAM-VAR bound to a binary output stream, return bytes"
+  `(let ((,stream-var (make-instance 'binary-output-stream)))
+     ,@body
+     (get-output-stream-bytes ,stream-var)))
+
 ;;; Type definition
 
 (defmacro define-binary-type (name size &body options)
@@ -507,6 +522,40 @@
   (:decoder
    (declare (ignore bytes offset))
    (error "f64 decoder not implemented")))
+
+;;; Integer conversion functions
+
+(defun uint16-to-octets (value &optional (endian :big-endian))
+  "Convert a 16-bit unsigned integer to a 2-byte array with specified endianness"
+  (let ((bytes (make-array 2 :element-type '(unsigned-byte 8)))
+        (endian (resolve-endian endian)))
+    (ecase endian
+      (:little-endian (set-bytes-le bytes 0 value 2))
+      (:big-endian (set-bytes-be bytes 0 value 2)))
+    bytes))
+
+(defun octets-to-uint16 (octets &optional (offset 0) (endian :big-endian))
+  "Convert a 2-byte array to a 16-bit unsigned integer with specified endianness"
+  (let ((endian (resolve-endian endian)))
+    (ecase endian
+      (:little-endian (get-bytes-le octets offset 2))
+      (:big-endian (get-bytes-be octets offset 2)))))
+
+(defun uint64-to-octets (value &optional (endian :big-endian))
+  "Convert a 64-bit unsigned integer to an 8-byte array with specified endianness"
+  (let ((bytes (make-array 8 :element-type '(unsigned-byte 8)))
+        (endian (resolve-endian endian)))
+    (ecase endian
+      (:little-endian (set-bytes-le bytes 0 value 8))
+      (:big-endian (set-bytes-be bytes 0 value 8)))
+    bytes))
+
+(defun octets-to-uint64 (octets &optional (offset 0) (endian :big-endian))
+  "Convert an 8-byte array to a 64-bit unsigned integer with specified endianness"
+  (let ((endian (resolve-endian endian)))
+    (ecase endian
+      (:little-endian (get-bytes-le octets offset 8))
+      (:big-endian (get-bytes-be octets offset 8)))))
 
 ;;; Type inference
 ;;; (moved earlier in file)

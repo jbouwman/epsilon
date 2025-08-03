@@ -557,3 +557,9 @@ with a #\Newline."
                  (integer int))
         (setf (schar str (- last-nonpad-char strpos))
               (schar encode-table 6bit-value))))))
+
+
+;;; Convenience function for WebSocket
+(defun octets-to-base64 (octets)
+  "Convert octets (unsigned-byte 8 array) to base64 string"
+  (usb8-array-to-base64-string octets))
