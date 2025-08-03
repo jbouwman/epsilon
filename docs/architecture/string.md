@@ -110,16 +110,6 @@ PREFIX whereby the elements are compared using TEST.
 
 ---
 
-### STRING-LIST-TO-SIMPLE-STRING
-
-**Type**: Function
-
-**Signature**: `(STRING-LIST-TO-SIMPLE-STRING STRING-LIST)`
-
-Concatenates a list of strings to one simple-string.
-
----
-
 ### STRIP
 
 **Type**: Function
