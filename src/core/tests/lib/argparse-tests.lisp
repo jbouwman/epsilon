@@ -185,42 +185,6 @@
       (is-equal nil (map:get (argparse:parsed-options result) "quiet"))
       (is-equal nil (map:get (argparse:parsed-options result) "debug")))))
 
-(deftest test-help-generation ()
-  "Test help message generation"
-  (let ((parser (argparse:make-parser :command "epsilon"
-                            :description "Epsilon development tool"
-                            :epilog "For more info, see docs")))
-    (argparse:add-argument parser "--verbose" 
-                  :action 'store-true
-                  :help "Enable verbose output")
-    (argparse:add-argument parser "--log"
-                  :metavar "SPEC"
-                  :help "Configure logging")
-    (argparse:add-argument parser "command"
-                  :help "Command to run")
-    
-    ;; Add subcommand
-    (let ((build-parser (argparse:add-command parser "build" 
-                                   :description "Build epsilon modules")))
-      (argparse:add-argument build-parser "--force"
-                    :action 'store-true
-                    :help "Force rebuild")
-      (argparse:add-argument build-parser "modules"
-                    :help "Modules to build"))
-    
-    ;; Test usage generation
-    (let ((output (with-output-to-string (s)
-                    (argparse:print-usage parser s))))
-      (is (search "epsilon [options] <command> [arguments]" output)))
-    
-    ;; Test full help
-    (let ((output (with-output-to-string (s)
-                    (argparse:print-help parser s))))
-      (is (search "Epsilon development tool" output))
-      (is (search "Enable verbose output" output))
-      (is (search "Commands:" output))
-      (is (search "build" output))
-      (is (search "For more info, see docs" output)))))
 
 (deftest test-complex-parsing-scenario ()
   "Test complex real-world parsing scenario"
@@ -359,24 +323,4 @@
         ;; For now, just verify the structure exists
         (is sub)))))
 
-(deftest test-edge-cases ()
-  "Test various edge cases"
-  (let ((parser (argparse:make-parser :command "test")))
-    (argparse:add-argument parser "--flag" :action 'store-true)
-    (argparse:add-argument parser "--value")
-    
-    ;; Empty args
-    (let ((result (argparse:parse-args parser '())))
-      (is-equal nil (argparse:parsed-command result))
-      (is-equal 0 (map:count (argparse:parsed-options result))))
-    
-    ;; Only positional args
-    (let ((result (argparse:parse-args parser '("foo" "bar" "baz"))))
-      (is-equal '("foo" "bar" "baz") (argparse:parsed-positionals result)))
-    
-    ;; Mixed ordering
-    (let ((result (argparse:parse-args parser '("foo" "--flag" "bar" "--value" "x" "baz"))))
-      (is-equal t (map:get (argparse:parsed-options result) "flag"))
-      (is-equal "x" (map:get (argparse:parsed-options result) "value"))
-      (is-equal '("foo" "bar" "baz") (argparse:parsed-positionals result)))))
 

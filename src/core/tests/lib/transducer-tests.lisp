@@ -114,8 +114,7 @@
 
 (deftest keep-indexed-transducer
   "Test keep-indexed transducer"
-  (skip)
-  (is-equal '((0 :a) (2 :c))
+  (is-equal '((2 :c) (0 :a))
             (xf:into '() 
                      (xf:keep-indexed (lambda (i x) 
                                        (when (evenp i) (list i x))))
@@ -132,22 +131,21 @@
 (deftest comp-transducers
   "Test transducer composition"
   ;; Filter then map
-  (skip)
-  (is-equal '(4 8)
+  (is-equal '(8 4)
             (xf:into '() 
                      (xf:comp (xf:filter #'evenp)
                               (xf:map (lambda (x) (* x 2))))
                      '(1 2 3 4 5)))
   
   ;; Map then filter
-  (is-equal '(4 6 8 10)
+  (is-equal '(10 8 6 4 2)
             (xf:into '() 
                      (xf:comp (xf:map (lambda (x) (* x 2)))
                               (xf:filter #'evenp))
                      '(1 2 3 4 5)))
   
   ;; Complex composition
-  (is-equal '(6 12)
+  (is-equal '(12 6)
             (xf:into '()
                      (xf:comp (xf:filter #'evenp)
                               (xf:map (lambda (x) (* x 3)))
@@ -188,19 +186,18 @@
 
 (deftest halt-when-transducer
   "Test halt-when transducer"
-  (skip)
-  (is-equal '(1 2 3)
+  (is-equal '(3 2 1)
             (xf:into '() 
                      (xf:halt-when (lambda (x) (= x 4)))
                      '(1 2 3 4 5 6)))
   
   ;; With return function
-  (is-equal '(1 2 3 :halted)
+  (is-equal '(:halted 3 2 1)
             (xf:into '()
                      (xf:halt-when (lambda (x) (= x 4))
                                   (lambda (result input)
                                     (declare (ignore input))
-                                    (append result '(:halted))))
+                                    (cons :halted result)))
                      '(1 2 3 4 5 6))))
 
 ;;;; Collection Support Tests
