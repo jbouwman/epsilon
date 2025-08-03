@@ -37,7 +37,7 @@
     "tool/build"
     "tool/parallel-build"
     "tool/package"
-    "tool/dev"
+    "main"
     "tool/package-command"
     "tool/test"
     "tool/build-cmd"
