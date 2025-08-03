@@ -55,8 +55,8 @@
 
 (defstruct keyring
   "Container for managing cryptographic keys"
-  (trusted-keys (map:make-map) :type map:map)
-  (revoked-keys (map:make-map) :type map:map)
+  (trusted-keys (map:make-map))
+  (revoked-keys (map:make-map))
   default-key)
 
 ;;;; Global Keyring

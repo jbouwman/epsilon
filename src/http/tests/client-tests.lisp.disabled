@@ -1,0 +1,337 @@
+;;;; HTTP Client Test Suite
+;;;;
+;;;; Comprehensive tests for HTTP client functionality
+
+(defpackage :epsilon.http.client.tests
+  (:use :cl :epsilon.test)
+  (:local-nicknames
+   (#:client #:epsilon.http.client)
+   (#:server #:epsilon.http.server)
+   (#:request #:epsilon.http.request)
+   (#:response #:epsilon.http.response)
+   (#:map #:epsilon.map)
+   (#:str #:epsilon.string)))
+
+(in-package :epsilon.http.client.tests)
+
+(defparameter *test-server* nil
+  "Test server instance")
+
+(defparameter *test-port* 18081
+  "Port for test server")
+
+(defun setup-test-server ()
+  "Setup test server with various endpoints"
+  (setf *test-server*
+        (server:start-server
+         (lambda (req)
+           (let ((path (request:request-path req))
+                 (method (request:request-method req)))
+             (cond
+               ;; Echo endpoint
+               ((string= path "/echo")
+                (response:json-response
+                 (map:make-map
+                  "method" method
+                  "path" path
+                  "headers" (request:request-headers req)
+                  "body" (request:request-body req)
+                  "params" (request:request-params req))))
+               
+               ;; Status code testing
+               ((str:starts-with-p path "/status/")
+                (let ((code (parse-integer (subseq path 8))))
+                  (response:text-response 
+                   (format nil "Status ~A" code) 
+                   :status code)))
+               
+               ;; Redirect testing
+               ((string= path "/redirect")
+                (let ((to (map:get (request:request-params req) "to")))
+                  (if to
+                      (response:redirect to)
+                      (response:redirect "/redirected"))))
+               
+               ;; Large response
+               ((string= path "/large")
+                (response:text-response
+                 (make-string 50000 :initial-element #\X)))
+               
+               ;; Slow response
+               ((string= path "/slow")
+                (sleep 0.5)
+                (response:text-response "Slow response"))
+               
+               ;; Header echo
+               ((string= path "/headers")
+                (response:json-response (request:request-headers req)))
+               
+               ;; Method testing
+               ((string= path "/methods")
+                (case (intern (string-upcase method) :keyword)
+                  (:GET (response:text-response "GET OK"))
+                  (:POST (response:text-response "POST OK"))
+                  (:PUT (response:text-response "PUT OK"))
+                  (:DELETE (response:text-response "DELETE OK"))
+                  (:HEAD (response:text-response "HEAD OK"))
+                  (:OPTIONS (response:text-response "OPTIONS OK"))
+                  (t (response:text-response "Method not allowed" :status 405))))
+               
+               ;; Default
+               (t (response:text-response "Not Found" :status 404)))))
+         :port *test-port*)))
+
+(defun teardown-test-server ()
+  "Stop test server"
+  (when *test-server*
+    (server:stop-server *test-server*)
+    (setf *test-server* nil)))
+
+;; Setup and teardown for test suite
+(defun run-client-tests ()
+  "Run all client tests with server setup/teardown"
+  (unwind-protect
+       (progn
+         (setup-test-server)
+         (sleep 0.1) ; Give server time to start
+         (run-package-tests :epsilon.http.client.tests))
+    (teardown-test-server)))
+
+(deftest test-url-parsing ()
+  "Test URL parsing edge cases"
+  ;; IPv4 address
+  (multiple-value-bind (scheme host port path query)
+      (client::parse-url "http://192.168.1.1:8080/api")
+    (is-equal "http" scheme)
+    (is-equal "192.168.1.1" host)
+    (is-equal 8080 port)
+    (is-equal "/api" path))
+  
+  ;; No scheme
+  (multiple-value-bind (scheme host port path query)
+      (client::parse-url "example.com/path")
+    (is-equal "http" scheme)
+    (is-equal "example.com" host)
+    (is-equal 80 port)
+    (is-equal "/path" path))
+  
+  ;; Query with multiple parameters
+  (multiple-value-bind (scheme host port path query)
+      (client::parse-url "https://api.example.com/search?q=test&page=1&limit=10")
+    (is-equal "https" scheme)
+    (is-equal "api.example.com" host)
+    (is-equal 443 port)
+    (is-equal "/search" path)
+    (is-equal "q=test&page=1&limit=10" query))
+  
+  ;; Port in URL with query
+  (multiple-value-bind (scheme host port path query)
+      (client::parse-url "http://localhost:3000/api?key=value")
+    (is-equal "http" scheme)
+    (is-equal "localhost" host)
+    (is-equal 3000 port)
+    (is-equal "/api" path)
+    (is-equal "key=value" query)))
+
+(deftest test-basic-get-request ()
+  "Test basic GET request"
+  (when *test-server*
+    (multiple-value-bind (status headers body)
+        (client:http-get (format nil "http://localhost:~A/echo" *test-port*))
+      (is-equal 200 status)
+      (is (stringp body))
+      ;; Parse JSON response
+      (is (search "\"method\":\"GET\"" body)))))
+
+(deftest test-post-with-body ()
+  "Test POST request with body"
+  (when *test-server*
+    (let ((test-body "This is test data"))
+      (multiple-value-bind (status headers body)
+          (client:http-post (format nil "http://localhost:~A/echo" *test-port*)
+                            :body test-body)
+        (is-equal 200 status)
+        (is (search "\"method\":\"POST\"" body))
+        (is (search test-body body))))))
+
+(deftest test-custom-headers ()
+  "Test requests with custom headers"
+  (when *test-server*
+    (let ((custom-headers (map:make-map
+                           "X-Custom-Header" "test-value"
+                           "Authorization" "Bearer token123")))
+      (multiple-value-bind (status headers body)
+          (client:http-get (format nil "http://localhost:~A/headers" *test-port*)
+                           :headers custom-headers)
+        (is-equal 200 status)
+        (is (search "x-custom-header" body))
+        (is (search "test-value" body))
+        (is (search "authorization" body))
+        (is (search "Bearer token123" body))))))
+
+(deftest test-query-parameters ()
+  "Test URL with query parameters"
+  (when *test-server*
+    (multiple-value-bind (status headers body)
+        (client:http-get (format nil "http://localhost:~A/echo?foo=bar&baz=qux" *test-port*))
+      (is-equal 200 status)
+      (is (search "\"foo\":\"bar\"" body))
+      (is (search "\"baz\":\"qux\"" body)))))
+
+(deftest test-all-http-methods ()
+  "Test all HTTP methods"
+  (when *test-server*
+    ;; GET
+    (multiple-value-bind (status headers body)
+        (client:http-get (format nil "http://localhost:~A/methods" *test-port*))
+      (is-equal 200 status)
+      (is (search "GET OK" body)))
+    
+    ;; POST
+    (multiple-value-bind (status headers body)
+        (client:http-post (format nil "http://localhost:~A/methods" *test-port*))
+      (is-equal 200 status)
+      (is (search "POST OK" body)))
+    
+    ;; PUT
+    (multiple-value-bind (status headers body)
+        (client:http-put (format nil "http://localhost:~A/methods" *test-port*))
+      (is-equal 200 status)
+      (is (search "PUT OK" body)))
+    
+    ;; DELETE
+    (multiple-value-bind (status headers body)
+        (client:http-delete (format nil "http://localhost:~A/methods" *test-port*))
+      (is-equal 200 status)
+      (is (search "DELETE OK" body)))
+    
+    ;; HEAD
+    (multiple-value-bind (status headers body)
+        (client:http-head (format nil "http://localhost:~A/methods" *test-port*))
+      (is-equal 200 status)
+      ;; HEAD should not return body
+      (is (or (null body) (string= "" body))))
+    
+    ;; OPTIONS
+    (multiple-value-bind (status headers body)
+        (client:http-options (format nil "http://localhost:~A/methods" *test-port*))
+      (is-equal 200 status)
+      (is (search "OPTIONS OK" body)))))
+
+(deftest test-status-codes ()
+  "Test various HTTP status codes"
+  (when *test-server*
+    ;; Test common status codes
+    (dolist (code '(200 201 204 301 302 400 401 403 404 500 503))
+      (multiple-value-bind (status headers body)
+          (client:http-get (format nil "http://localhost:~A/status/~A" *test-port* code))
+        (is-equal code status)))))
+
+(deftest test-redirects ()
+  "Test redirect handling"
+  (when *test-server*
+    (multiple-value-bind (status headers body)
+        (client:http-get (format nil "http://localhost:~A/redirect?to=/echo" *test-port*))
+      (is-equal 302 status)
+      (is-equal "/echo" (map:get headers "location")))))
+
+(deftest test-large-response ()
+  "Test handling large responses"
+  (when *test-server*
+    (multiple-value-bind (status headers body)
+        (client:http-get (format nil "http://localhost:~A/large" *test-port*))
+      (is-equal 200 status)
+      (is-equal 50000 (length body))
+      (is (every (lambda (ch) (char= ch #\X)) body)))))
+
+(deftest test-request-with-connection ()
+  "Test explicit connection management"
+  (when *test-server*
+    (client:with-connection (conn "localhost" *test-port*)
+      ;; Connection should be established
+      (is (client::connection-socket conn))
+      (is-equal "localhost" (client::connection-host conn))
+      (is-equal *test-port* (client::connection-port conn))
+      (is-not (client::connection-ssl-p conn)))))
+
+(deftest test-content-length-header ()
+  "Test Content-Length header handling"
+  (when *test-server*
+    (let ((body-content "Test content with specific length"))
+      (multiple-value-bind (status headers body)
+          (client:http-post (format nil "http://localhost:~A/echo" *test-port*)
+                            :body body-content)
+        (is-equal 200 status)
+        ;; Server should echo back our content
+        (is (search body-content body))))))
+
+(deftest test-empty-body-request ()
+  "Test requests with empty body"
+  (when *test-server*
+    (multiple-value-bind (status headers body)
+        (client:http-post (format nil "http://localhost:~A/echo" *test-port*)
+                          :body "")
+      (is-equal 200 status))
+    
+    (multiple-value-bind (status headers body)
+        (client:http-post (format nil "http://localhost:~A/echo" *test-port*)
+                          :body nil)
+      (is-equal 200 status))))
+
+(deftest test-parse-response ()
+  "Test response parsing"
+  (let ((response-string (format nil "HTTP/1.1 200 OK~C~CContent-Type: text/plain~C~CContent-Length: 11~C~C~C~CHello World"
+                                 #\Return #\Newline #\Return #\Newline 
+                                 #\Return #\Newline #\Return #\Newline)))
+    (multiple-value-bind (status headers body)
+        (client::parse-response response-string)
+      (is-equal 200 status)
+      (is-equal "text/plain" (map:get headers "Content-Type"))
+      (is-equal "11" (map:get headers "Content-Length"))
+      (is-equal "Hello World" body))))
+
+(deftest test-malformed-url ()
+  "Test handling of malformed URLs"
+  (when *test-server*
+    ;; Missing host
+    (is-thrown 'error
+               (client:http-get "http://"))
+    
+    ;; Invalid port
+    (is-thrown 'error
+               (client:http-get "http://localhost:999999/test"))
+    
+    ;; Invalid scheme (but should default to http)
+    (multiple-value-bind (scheme host port path query)
+        (client::parse-url "localhost:8080/test")
+      (is-equal "http" scheme)
+      (is-equal "localhost" host)
+      (is-equal 8080 port)
+      (is-equal "/test" path))))
+
+(deftest test-concurrent-requests ()
+  "Test multiple concurrent requests"
+  (when *test-server*
+    (let ((results (make-array 10 :initial-element nil))
+          (threads '()))
+      ;; Create 10 concurrent requests
+      (dotimes (i 10)
+        (push (sb-thread:make-thread
+               (lambda (index)
+                 (multiple-value-bind (status headers body)
+                     (client:http-get (format nil "http://localhost:~A/echo?id=~A" 
+                                              *test-port* index))
+                   (setf (aref results index) (list status body))))
+               :arguments (list i)
+               :name (format nil "request-~A" i))
+              threads))
+      
+      ;; Wait for all threads
+      (dolist (thread threads)
+        (sb-thread:join-thread thread))
+      
+      ;; Verify all requests succeeded
+      (dotimes (i 10)
+        (let ((result (aref results i)))
+          (is-equal 200 (first result))
+          (is (search (format nil "\"id\":\"~A\"" i) (second result))))))))

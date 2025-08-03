@@ -5,14 +5,11 @@
 (defpackage :epsilon.http.client
   (:use :cl)
   (:local-nicknames
-   (#:net #:epsilon.http.net)
+   (#:net #:epsilon.net)
    (#:str #:epsilon.string)
    (#:seq #:epsilon.sequence)
    (#:map #:epsilon.map)
-   ;; TODO: Fix load order for base64 and tls
-   ;; (#:base64 #:epsilon.base64)
-   ;; (#:tls #:epsilon.tls)
-   )
+   (#:tls #:epsilon.tls))
   (:export
    #:request
    #:http-get
@@ -22,6 +19,42 @@
    #:http-head
    #:http-options
    #:with-connection))
+
+;; Re-export security middleware
+(defpackage :epsilon.http
+  (:use)
+  (:import-from :epsilon.http.client
+                #:request #:http-get #:http-post #:http-put 
+                #:http-delete #:http-head #:http-options #:with-connection)
+  (:import-from :epsilon.http.server
+                #:start-server #:stop-server #:with-server #:wrap-middleware)
+  (:import-from :epsilon.http.request
+                #:make-request #:request-method #:request-path #:request-headers
+                #:request-params #:request-body #:parse-http-request)
+  (:import-from :epsilon.http.response
+                #:make-response #:response-status #:response-headers #:response-body
+                #:text-response #:html-response #:json-response #:redirect #:set-header)
+  (:import-from :epsilon.http.security
+                #:security-headers-middleware #:cors-middleware #:rate-limit-middleware
+                #:csrf-middleware #:basic-auth-middleware #:bearer-auth-middleware)
+  (:import-from :epsilon.http.validation
+                #:make-validator #:validate #:required #:string-type #:integer-type
+                #:email #:validate-request-params #:validate-request-body)
+  (:export
+   ;; Client
+   #:request #:http-get #:http-post #:http-put #:http-delete #:http-head #:http-options #:with-connection
+   ;; Server
+   #:start-server #:stop-server #:with-server #:wrap-middleware
+   ;; Request/Response
+   #:make-request #:request-method #:request-path #:request-headers #:request-params #:request-body
+   #:make-response #:response-status #:response-headers #:response-body
+   #:text-response #:html-response #:json-response #:redirect #:set-header
+   ;; Security
+   #:security-headers-middleware #:cors-middleware #:rate-limit-middleware
+   #:csrf-middleware #:basic-auth-middleware #:bearer-auth-middleware
+   ;; Validation
+   #:make-validator #:validate #:required #:string-type #:integer-type
+   #:email #:validate-request-params #:validate-request-body))
 
 (in-package :epsilon.http.client)
 
@@ -33,11 +66,14 @@
    (tls-connection :initarg :tls-connection :accessor connection-tls-connection :initform nil)))
 
 (defun make-http-connection (host port &key ssl-p)
-  "Create an HTTP connection using platform-specific epsilon.net"
-  (let* ((socket (net:socket-connect host port))
-         (tls-conn (when ssl-p
-                     ;; TODO: Fix TLS load order
-                     (error "TLS not yet implemented"))))
+  "Create an HTTP connection using epsilon.net"
+  (let* ((socket (net:socket))
+         (address (net:make-socket-address host port))
+         (tls-conn nil))
+    (net:connect socket address)
+    (when ssl-p
+      (let ((tls-context (tls:create-tls-context :server-p nil)))
+        (setf tls-conn (tls:tls-connect socket tls-context))))
     (make-instance 'http-connection
                    :socket socket
                    :host host
@@ -56,7 +92,7 @@
            ;; (tls:tls-close (connection-tls-connection ,conn))
            )
          (when (connection-socket ,conn)
-           (net:socket-close (connection-socket ,conn)))))))
+           (net:close (connection-socket ,conn)))))))
 
 (defun parse-url (url-string)
   "Parse URL into components - simple implementation"
