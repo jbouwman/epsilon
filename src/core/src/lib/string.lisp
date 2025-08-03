@@ -7,7 +7,9 @@
    :cl
    :epsilon.syntax)
   (:shadow
-   :digit-char-p)
+   :digit-char-p
+   :replace
+   :reverse)
   (:local-nicknames
    (:seq :epsilon.sequence))
   (:export
@@ -25,10 +27,39 @@
    :strip-right
    :contains-p
    :trim
+   ;; String replacement
+   :replace-all
+   :replace-first
+   :replace
+   ;; Case conversion
+   :upcase
+   :downcase
+   :capitalize
+   :titlecase
+   ;; Substring operations
+   :substring
+   :substring-before
+   :substring-after
+   :substring-between
+   ;; Search operations
+   :index-of
+   :last-index-of
+   :count-substring
    ;; Character classification
    :digit-char-p
    :word-char-p
    :whitespacep
+   :blank-p
+   ;; String comparison
+   :equals-ignore-case
+   :compare
+   :compare-ignore-case
+   ;; String transformation
+   :reverse
+   :repeat
+   :pad-left
+   :pad-right
+   :center
    ;; String utilities
    :nsubseq
    :string-list-to-simple-string
@@ -103,32 +134,26 @@
 (defun first-index (string char-fn)
   (loop :for i :from 0 :to (1- (length string))
         :when (funcall char-fn (aref string i))
-          :return (when (< 0 i)
-                    i)))
+          :return i))
 
 (defun last-index (string char-fn)
-  (loop :for i :from (length string) :downto 0
+  (loop :for i :from (length string) :downto 1
         :when (funcall char-fn (aref string (1- i)))
-          :return (when (< i (length string))
-                    i)))
+          :return i))
 
 (defun strip-right (string c)
   (let ((index (last-index string (lambda (test-c)
                                     (not (char= test-c c))))))
     (if index
         (subseq string 0 index)
-        string)))
-
-;; todo when-let
+        "")))  ; Return empty string when all characters match
 
 (defun strip-left (string c)
   (let ((index (first-index string (lambda (test-c)
                                     (not (char= test-c c))))))
     (if index
         (subseq string index)
-        string)))
-
-;; todo ->
+        "")))
 
 (defun strip (string c)
   (strip-right (strip-left string c) c))
@@ -184,25 +209,6 @@ match [\\s] in Perl."
               :displaced-to sequence
               :displaced-index-offset start))
 
-(defun string-list-to-simple-string (string-list)
-  "Concatenates a list of strings to one simple-string."
-  ;; this function provided by JP Massar; note that we can't use APPLY
-  ;; with CONCATENATE here because of CALL-ARGUMENTS-LIMIT
-  (let ((total-size 0))
-    (declare (fixnum total-size))
-    (dolist (string string-list)
-      (declare (string string))
-      (incf total-size (length string)))
-    (let ((result-string (make-sequence 'simple-string
-                                        total-size))
-          (curr-pos 0))
-      (declare (fixnum curr-pos))
-      (dolist (string string-list)
-        (declare (string string))
-        (replace result-string string :start1 curr-pos)
-        (incf curr-pos (length string)))
-      result-string)))
-
 (defun contains-p (haystack needle &key (test #'char=))
   "Returns true if HAYSTACK contains NEEDLE."
   (and (search needle haystack :test test) t))
@@ -210,6 +216,232 @@ match [\\s] in Perl."
 (defun trim (string &optional (char-bag +whitespace-char-string+))
   "Remove whitespace (or CHAR-BAG characters) from both ends of STRING."
   (string-trim char-bag string))
+
+;;;; String Replacement Functions
+
+(defun replace-all (string old new)
+  "Replace all occurrences of OLD with NEW in STRING."
+  (if (or (null string) (zerop (length old)))
+      string
+      (with-output-to-string (out)
+        (loop with old-len = (length old)
+              with start = 0
+              for pos = (search old string :start2 start)
+              while pos do
+                (write-string string out :start start :end pos)
+                (write-string new out)
+                (setf start (+ pos old-len))
+              finally (write-string string out :start start)))))
+
+(defun replace-first (string old new)
+  "Replace the first occurrence of OLD with NEW in STRING."
+  (if (null string)
+      string
+      (let ((pos (search old string)))
+        (if pos
+            (concatenate 'string
+                         (subseq string 0 pos)
+                         new
+                         (subseq string (+ pos (length old))))
+            string))))
+
+(defun replace (string old new &key (all nil) (count 1))
+  "Replace occurrences of OLD with NEW in STRING.
+   If :ALL is true, replace all occurrences.
+   Otherwise, replace up to :COUNT occurrences (default 1)."
+  (cond
+    ((null string) string)
+    (all (replace-all string old new))
+    ((zerop count) string)
+    (t
+     (with-output-to-string (out)
+       (loop with old-len = (length old)
+             with start = 0
+             with replacements = 0
+             for pos = (search old string :start2 start)
+             while (and pos (< replacements count)) do
+               (write-string string out :start start :end pos)
+               (write-string new out)
+               (setf start (+ pos old-len))
+               (incf replacements)
+             finally (write-string string out :start start))))))
+
+;;;; Case Conversion Functions
+
+(defun upcase (string)
+  "Convert STRING to uppercase."
+  (when string
+    (string-upcase string)))
+
+(defun downcase (string)
+  "Convert STRING to lowercase."
+  (when string
+    (string-downcase string)))
+
+(defun capitalize (string)
+  "Capitalize the first letter of each word in STRING."
+  (when string
+    (with-output-to-string (out)
+      (let ((in-word nil))
+        (loop for char across string do
+          (cond
+            ((alphanumericp char)
+             (write-char (if in-word
+                             (char-downcase char)
+                             (char-upcase char))
+                         out)
+             (setf in-word t))
+            (t
+             (write-char char out)
+             (setf in-word nil))))))))
+
+(defun titlecase (string)
+  "Convert STRING to title case (same as capitalize for now)."
+  (capitalize string))
+
+;;;; Substring Operations
+
+(defun substring (string start &optional end)
+  "Extract substring from STRING starting at START to END (or end of string)."
+  (when string
+    (let ((len (length string)))
+      (cond
+        ((>= start len) "")  ; If start is beyond string, return empty string
+        ((< start 0) nil)    ; If start is negative, return nil
+        (t
+         (if end
+             (subseq string start (min end len))
+             (subseq string start)))))))
+
+(defun substring-before (string delimiter)
+  "Return substring before first occurrence of DELIMITER, or NIL if not found."
+  (when string
+    (let ((pos (search delimiter string)))
+      (when pos
+        (subseq string 0 pos)))))
+
+(defun substring-after (string delimiter)
+  "Return substring after first occurrence of DELIMITER, or NIL if not found."
+  (when string
+    (let ((pos (search delimiter string)))
+      (when pos
+        (subseq string (+ pos (length delimiter)))))))
+
+(defun substring-between (string start-delim end-delim)
+  "Return substring between START-DELIM and END-DELIM."
+  (when string
+    (let ((start-pos (search start-delim string)))
+      (when start-pos
+        (let* ((content-start (+ start-pos (length start-delim)))
+               (end-pos (search end-delim string :start2 content-start)))
+          (when end-pos
+            (subseq string content-start end-pos)))))))
+
+;;;; Search Operations
+
+(defun index-of (string substring &key (start 0))
+  "Find index of first occurrence of SUBSTRING in STRING, starting from START."
+  (when (and string substring)
+    (search substring string :start2 start)))
+
+(defun last-index-of (string substring)
+  "Find index of last occurrence of SUBSTRING in STRING."
+  (when (and string substring)
+    (let ((last-pos nil))
+      (loop with start = 0
+            for pos = (search substring string :start2 start)
+            while pos do
+              (setf last-pos pos)
+              (setf start (1+ pos)))
+      last-pos)))
+
+(defun count-substring (string substring)
+  "Count non-overlapping occurrences of SUBSTRING in STRING."
+  (if (or (null string) (null substring) (zerop (length substring)))
+      0
+      (loop with count = 0
+            with start = 0
+            for pos = (search substring string :start2 start)
+            while pos do
+              (incf count)
+              (setf start (+ pos (length substring)))
+            finally (return count))))
+
+;;;; String Analysis
+
+(defun blank-p (string)
+  "Return T if STRING is NIL, empty, or contains only whitespace."
+  (or (null string)
+      (zerop (length string))
+      (every #'whitespacep string)))
+
+;;;; String Comparison
+
+(defun equals-ignore-case (string1 string2)
+  "Compare STRING1 and STRING2 case-insensitively."
+  (and string1 string2
+       (string-equal string1 string2)))
+
+(defun compare (string1 string2)
+  "Compare STRING1 and STRING2 lexicographically.
+   Returns -1 if STRING1 < STRING2, 0 if equal, 1 if STRING1 > STRING2."
+  (when (and string1 string2)
+    (cond
+      ((string< string1 string2) -1)
+      ((string> string1 string2) 1)
+      (t 0))))
+
+(defun compare-ignore-case (string1 string2)
+  "Compare STRING1 and STRING2 lexicographically, ignoring case."
+  (when (and string1 string2)
+    (compare (downcase string1) (downcase string2))))
+
+;;;; String Transformation
+
+(defun reverse (string)
+  "Reverse the characters in STRING."
+  (when string
+    (cl:reverse string)))
+
+(defun repeat (string n)
+  "Repeat STRING N times."
+  (when string
+    (apply #'concatenate 'string
+           (make-list n :initial-element string))))
+
+(defun pad-left (string width &optional (padding-char #\Space))
+  "Pad STRING on the left with PADDING-CHAR to reach WIDTH."
+  (when string
+    (let ((len (length string)))
+      (if (>= len width)
+          string
+          (concatenate 'string
+                       (make-string (- width len) :initial-element padding-char)
+                       string)))))
+
+(defun pad-right (string width &optional (padding-char #\Space))
+  "Pad STRING on the right with PADDING-CHAR to reach WIDTH."
+  (when string
+    (let ((len (length string)))
+      (if (>= len width)
+          string
+          (concatenate 'string
+                       string
+                       (make-string (- width len) :initial-element padding-char))))))
+
+(defun center (string width &optional (padding-char #\Space))
+  "Center STRING within WIDTH using PADDING-CHAR."
+  (when string
+    (let* ((len (length string))
+           (total-padding (- width len)))
+      (if (<= total-padding 0)
+          string
+          (let* ((left-padding (floor total-padding 2))
+                 (right-padding (- total-padding left-padding)))
+            (concatenate 'string
+                         (make-string left-padding :initial-element padding-char)
+                         string
+                         (make-string right-padding :initial-element padding-char)))))))
 
 ;;;; Byte conversion functions
 
