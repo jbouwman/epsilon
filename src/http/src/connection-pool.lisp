@@ -30,11 +30,20 @@
    #:*default-pool-size*
    #:*default-max-idle-time*
    #:*default-connection-timeout*
+   #:*global-connection-pool*
    
    ;; Pool information
    #:pool-active-count
    #:pool-idle-count
-   #:pool-total-count))
+   #:pool-total-count
+   
+   ;; Pool statistics
+   #:pool-stats
+   #:pool-stats-connections-created
+   #:pool-stats-connections-reused
+   #:pool-stats-connections-closed
+   #:pool-stats-pool-hits
+   #:pool-stats-pool-misses))
 
 (in-package :epsilon.http.connection-pool)
 

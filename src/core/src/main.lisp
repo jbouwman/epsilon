@@ -84,6 +84,10 @@
                           :action 'append
                           :metavar "PATH"
                           :help "Add package repository path")
+    ;; Add path option for direct package path
+    (argparse:add-argument parser "--path"
+                          :metavar "PATH"
+                          :help "Path to package directory (alternative to --repository)")
     ;; Add exec option
     (argparse:add-argument parser "--exec"
                           :metavar "PACKAGE:FUNCTION"
@@ -205,17 +209,55 @@
           (format *error-output* "~%Error in main function: ~A~%" e)
           (sb-ext:exit :code 1))))))
 
-(defun exec-package-function (exec-spec packages repos args)
+(defun find-package-directory (package-name)
+  "Try to find a package directory by searching common locations"
+  (let ((possible-paths (list
+                         ;; Current directory
+                         (merge-pathnames package-name (sb-posix:getcwd))
+                         ;; Parent directory
+                         (merge-pathnames (format nil "../~A" package-name) (sb-posix:getcwd))
+                         ;; Direct path if package-name is actually a path
+                         (when (or (search "/" package-name) (search "\\" package-name))
+                           (pathname package-name)))))
+    (loop for path in possible-paths
+          when (and path 
+                    (probe-file path)
+                    (probe-file (merge-pathnames "package.lisp" path)))
+          return (namestring path))))
+
+(defun exec-package-function (exec-spec packages repos package-path args)
   "Execute a package function with the given arguments.
    EXEC-SPEC should be in the format 'package:function' or just 'function'.
    PACKAGES is a list of packages to load before execution.
    REPOS is a list of repository paths to add.
+   PACKAGE-PATH is a direct path to a package directory.
    ARGS are the arguments to pass to the function."
   (let* ((env (build:make-build-environment))
-         (build:*current-environment* env))
+         (build:*current-environment* env)
+         (repos-to-add (or repos '())))
+    
+    ;; Handle --path option
+    (when package-path
+      (let ((parent-dir (directory-namestring (pathname package-path))))
+        (push parent-dir repos-to-add)))
+    
+    ;; If no repositories specified, try to auto-detect
+    (when (and (null repos-to-add) packages)
+      ;; Check current directory and parent for packages
+      (let ((cwd (sb-posix:getcwd))
+            (parent (namestring (make-pathname :directory (butlast (pathname-directory (sb-posix:getcwd)))))))
+        ;; Check if current directory contains package.lisp
+        (when (probe-file (merge-pathnames "package.lisp" cwd))
+          (push parent repos-to-add))
+        ;; Check if current directory has subdirectories with package.lisp
+        (when (directory (merge-pathnames "*/package.lisp" cwd))
+          (push cwd repos-to-add))
+        ;; Check parent directory for package.lisp files
+        (when (directory (merge-pathnames "*/package.lisp" parent))
+          (push parent repos-to-add))))
     
     ;; Add repositories
-    (dolist (repo repos)
+    (dolist (repo repos-to-add)
       (build-env:add-package-repo env repo))
     
     ;; Load packages
@@ -226,7 +268,9 @@
             (build:build-with-environment env pkg)
             (build:load-package pkg))
         (error (e)
-          (format *error-output* "Error loading package ~A: ~A~%" pkg e)
+          (format *error-output* "~%Error loading package ~A: ~A~%" pkg e)
+          (format *error-output* "~%Searched in repositories: ~{~A~^, ~}~%" repos-to-add)
+          (format *error-output* "Try specifying --repository or --path to indicate where to find the package.~%")
           (sb-ext:exit :code 1))))
     
     ;; Parse exec spec
@@ -242,11 +286,14 @@
                      (find-symbol (string-upcase function-spec) package))))
       
       (unless package
-        (error "Package ~A not found" package-spec))
+        (error "Package ~A not found.~%Make sure to load it with --package or that it's exported by a loaded package." package-spec))
       
       (unless symbol
-        (error "Function ~A not found in package ~A" 
-               function-spec (package-name package)))
+        (error "Function ~A not found in package ~A.~%Available exports: ~{~A~^, ~}" 
+               function-spec (package-name package)
+               (let ((exports '()))
+                 (do-external-symbols (s package exports)
+                   (push (symbol-name s) exports)))))
       
       (unless (fboundp symbol)
         (error "Symbol ~A is not a function" symbol))
@@ -351,10 +398,11 @@
         ;; Handle --exec
         (let ((exec-spec (map:get (argparse:parsed-options parsed-args) "exec"))
               (repositories (map:get (argparse:parsed-options parsed-args) "repository"))
-              (packages (map:get (argparse:parsed-options parsed-args) "package")))
+              (packages (map:get (argparse:parsed-options parsed-args) "package"))
+              (package-path (map:get (argparse:parsed-options parsed-args) "path")))
           (when exec-spec
             (exec-package-function exec-spec (or packages nil) (or repositories nil) 
-                                  (or passthrough-args nil))
+                                  package-path (or passthrough-args nil))
             (sb-ext:exit :code 0)))
         
         ;; Set up build environment with repositories if specified
