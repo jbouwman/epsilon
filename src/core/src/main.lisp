@@ -79,6 +79,15 @@
                           :action 'append
                           :metavar "PACKAGE"
                           :help "Load specified package before evaluation")
+    ;; Add repository option
+    (argparse:add-argument parser "--repository"
+                          :action 'append
+                          :metavar "PATH"
+                          :help "Add package repository path")
+    ;; Add exec option
+    (argparse:add-argument parser "--exec"
+                          :metavar "PACKAGE:FUNCTION"
+                          :help "Execute a package function with remaining args")
     parser))
 
 (defun register-command (command-class)
@@ -196,12 +205,74 @@
           (format *error-output* "~%Error in main function: ~A~%" e)
           (sb-ext:exit :code 1))))))
 
+(defun exec-package-function (exec-spec packages repos args)
+  "Execute a package function with the given arguments.
+   EXEC-SPEC should be in the format 'package:function' or just 'function'.
+   PACKAGES is a list of packages to load before execution.
+   REPOS is a list of repository paths to add.
+   ARGS are the arguments to pass to the function."
+  (let* ((env (build:make-build-environment))
+         (build:*current-environment* env))
+    
+    ;; Add repositories
+    (dolist (repo repos)
+      (build-env:add-package-repo env repo))
+    
+    ;; Load packages
+    (dolist (pkg packages)
+      (handler-case
+          (progn
+            (log:info "Loading package ~A..." pkg)
+            (build:build-with-environment env pkg)
+            (build:load-package pkg))
+        (error (e)
+          (format *error-output* "Error loading package ~A: ~A~%" pkg e)
+          (sb-ext:exit :code 1))))
+    
+    ;; Parse exec spec
+    (let* ((colon-pos (position #\: exec-spec))
+           (package-spec (when colon-pos (subseq exec-spec 0 colon-pos)))
+           (function-spec (if colon-pos 
+                             (subseq exec-spec (1+ colon-pos))
+                             exec-spec))
+           (package (if package-spec
+                       (find-package (string-upcase package-spec))
+                       *package*))
+           (symbol (when package
+                     (find-symbol (string-upcase function-spec) package))))
+      
+      (unless package
+        (error "Package ~A not found" package-spec))
+      
+      (unless symbol
+        (error "Function ~A not found in package ~A" 
+               function-spec (package-name package)))
+      
+      (unless (fboundp symbol)
+        (error "Symbol ~A is not a function" symbol))
+      
+      ;; Call the function with args
+      (log:info "Executing ~A with args: ~S" exec-spec args)
+      (handler-case
+          (apply symbol args)
+        (error (e)
+          (format *error-output* "~%Error executing ~A: ~A~%" exec-spec e)
+          (sb-ext:exit :code 1))))))
+
 (defun run (args)
   "Dispatch to the appropriate command handler"
   (unless *main-parser*
     (setf *main-parser* (initialize-parser)))
   
-  ;; Check if help is requested for a command or subcommand
+  ;; Split args at "--" to separate epsilon args from passthrough args
+  (let* ((double-dash-pos (position "--" args :test #'string=))
+         (epsilon-args (if double-dash-pos
+                          (subseq args 0 double-dash-pos)
+                          args))
+         (passthrough-args (when double-dash-pos
+                            (subseq args (1+ double-dash-pos)))))
+    
+    ;; Check if help is requested for a command or subcommand
   (let ((help-pos (position "--help" args :test #'string=)))
     (when help-pos
       (cond
@@ -229,9 +300,9 @@
              (let ((parser (argument-parser instance)))
                (argparse:print-help parser)
                (sb-ext:exit :code 0))))))))
-  
-  (handler-case
-      (let ((parsed-args (argparse:parse-args *main-parser* args)))
+    
+    (handler-case
+        (let ((parsed-args (argparse:parse-args *main-parser* epsilon-args)))
         ;; Check global options
         (when (map:get (argparse:parsed-options parsed-args) "log")
           (log:configure-from-string (map:get (argparse:parsed-options parsed-args) "log")))
@@ -277,6 +348,22 @@
               (evaluate-expression expression-string (or packages nil))
               (sb-ext:exit :code 0))))
         
+        ;; Handle --exec
+        (let ((exec-spec (map:get (argparse:parsed-options parsed-args) "exec"))
+              (repositories (map:get (argparse:parsed-options parsed-args) "repository"))
+              (packages (map:get (argparse:parsed-options parsed-args) "package")))
+          (when exec-spec
+            (exec-package-function exec-spec (or packages nil) (or repositories nil) 
+                                  (or passthrough-args nil))
+            (sb-ext:exit :code 0)))
+        
+        ;; Set up build environment with repositories if specified
+        (let ((repositories (map:get (argparse:parsed-options parsed-args) "repository")))
+          (when repositories
+            (let ((env (build:current-environment)))
+              (dolist (repo repositories)
+                (build-env:add-package-repo env repo)))))
+        
         ;; Check for command
         (let ((command-name (argparse:parsed-command parsed-args))
               (positionals (argparse:parsed-positionals parsed-args)))
@@ -303,7 +390,7 @@
         (if error-parser
             (argparse:print-help error-parser)
             (argparse:print-help *main-parser*)))
-      (sb-ext:exit :code 1))))
+      (sb-ext:exit :code 1)))))
 
 (defun cli-run (&optional args)
   "Main entry point from from epsilon script"
