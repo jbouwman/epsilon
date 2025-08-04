@@ -20,7 +20,7 @@
    
    ;; Rate Limiting
    #:rate-limit-middleware
-   #:make-rate-limiter
+   #:create-rate-limiter
    
    ;; Input Validation
    #:validate-request-size
@@ -209,8 +209,8 @@
                     (map:assoc requests identifier (cons current-time timestamps)))
               (funcall handler request)))))))
 
-(defun make-rate-limiter (&key (window-seconds 60) (max-requests 60) 
-                              (identifier-fn #'get-client-ip))
+(defun create-rate-limiter (&key (window-seconds 60) (max-requests 60) 
+                                (identifier-fn #'get-client-ip))
   "Create a new rate limiter"
   (make-rate-limiter :window-seconds window-seconds
                      :max-requests max-requests

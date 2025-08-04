@@ -75,15 +75,16 @@
 
 ;;;; OpenSSL Library FFI Bindings
 
-;; SSL Library initialization
-(lib:defshared %ssl-library-init "SSL_library_init" "libssl" :int ()
-  :documentation "Initialize SSL library")
-
-(lib:defshared %ssl-load-error-strings "SSL_load_error_strings" "libssl" :void ()
-  :documentation "Load SSL error strings")
-
-(lib:defshared %openssl-add-all-algorithms "OpenSSL_add_all_algorithms" "libssl" :void ()
-  :documentation "Add all algorithms")
+;; SSL Library initialization - Not needed in OpenSSL 3.x (automatic initialization)
+;; Legacy initialization functions are deprecated and may not be available
+;; (lib:defshared %ssl-library-init "SSL_library_init" "libssl" :int ()
+;;   :documentation "Initialize SSL library (deprecated)")
+;; 
+;; (lib:defshared %ssl-load-error-strings "SSL_load_error_strings" "libssl" :void ()
+;;   :documentation "Load SSL error strings (deprecated)")
+;; 
+;; (lib:defshared %openssl-add-all-algorithms "OpenSSL_add_all_algorithms" "libssl" :void ()
+;;   :documentation "Add all algorithms (deprecated)")
 
 ;; SSL Context management
 (lib:defshared %tls-client-method "TLS_client_method" "libssl" :pointer ()
@@ -186,10 +187,17 @@
 (defun ensure-ssl-initialized ()
   "Ensure SSL library is initialized"
   (unless *ssl-initialized*
-    (%ssl-library-init)
-    (%ssl-load-error-strings)
-    (%openssl-add-all-algorithms)
-    (setf *ssl-initialized* t)))
+    ;; For OpenSSL 3.x, initialization is automatic and not required
+    ;; We just check that we can create a context to verify the library works
+    (handler-case
+        (let ((method (%tls-client-method)))
+          (when method
+            (let ((ctx (%ssl-ctx-new method)))
+              (when ctx
+                (%ssl-ctx-free ctx)
+                (setf *ssl-initialized* t)))))
+      (error (e)
+        (error "Failed to initialize SSL library: ~A" e)))))
 
 (defclass openssl-context ()
   ((ssl-ctx :initarg :ssl-ctx :accessor context-ssl-ctx)
@@ -216,7 +224,7 @@
   (let* ((method (if server-p (%tls-server-method) (%tls-client-method)))
          (ssl-ctx (%ssl-ctx-new method)))
     
-    (when (zerop (sb-sys:sap-int (sb-alien:alien-sap ssl-ctx)))
+    (when (or (not ssl-ctx) (zerop (sb-sys:sap-int ssl-ctx)))
       (error "Failed to create SSL context"))
     
     (let ((ctx (make-instance 'openssl-context

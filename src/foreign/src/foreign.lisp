@@ -65,6 +65,11 @@
    ;; Check for Nix store paths
    (when (probe-file "/nix/store/")
      (list "/nix/store/qdcbgcj27x2kpxj2sf9yfvva7qsgg64g-glibc-2.38-77/lib"))
+   ;; Homebrew paths on macOS
+   #+darwin
+   (remove-if-not #'probe-file
+     '("/opt/homebrew/lib" "/opt/homebrew/opt/openssl@3/lib" "/opt/homebrew/opt/openssl/lib"
+       "/usr/local/lib" "/usr/local/opt/openssl@3/lib" "/usr/local/opt/openssl/lib"))
    ;; Standard paths
    '("/usr/lib" "/usr/local/lib" "/lib" "/lib64" 
      "/usr/lib/x86_64-linux-gnu" "/lib/x86_64-linux-gnu" "/opt/lib"))
@@ -82,6 +87,12 @@
     ((string= name "libc") "/usr/lib/libSystem.B.dylib")
     ((string= name "libm") "/usr/lib/libSystem.B.dylib")
     ((string= name "libpthread") "/usr/lib/libSystem.B.dylib")
+    ;; Handle special case for system SSL/crypto libraries
+    ((string= name "libssl") "libssl.dylib")
+    ((string= name "libcrypto") "libcrypto.dylib")
+    ;; Don't double-prefix names that already start with "lib"
+    ((and (>= (length name) 3) (string= (subseq name 0 3) "lib"))
+     (concatenate 'string name ".dylib"))
     (t (concatenate 'string "lib" name ".dylib")))
   ;; Linux
   #+linux
@@ -91,6 +102,12 @@
     ((string= name "libc") "libc.so.6")
     ((string= name "libm") "libm.so.6")
     ((string= name "libpthread") "libpthread.so.0")
+    ;; Handle special case for system SSL/crypto libraries
+    ((string= name "libssl") "libssl.so")
+    ((string= name "libcrypto") "libcrypto.so")
+    ;; Don't double-prefix names that already start with "lib"
+    ((and (>= (length name) 3) (string= (subseq name 0 3) "lib"))
+     (concatenate 'string name ".so"))
     (t (concatenate 'string "lib" name ".so")))
   ;; Default fallback for other platforms
   #-(or darwin linux)
@@ -413,6 +430,96 @@
                   (sb-sys:int-sap ,function-address)
                   (sb-alien:function sb-alien:int sb-alien:int sb-alien:system-area-pointer 
                                      sb-alien:int sb-alien:int))
+                 ,@converted-args))))
+      
+      ;; OpenSSL-specific signatures
+      
+      ;; pointer fn() - e.g., TLS_client_method
+      ((and (eq return-type :pointer) (null arg-types))
+       (eval `(sb-alien:alien-funcall 
+               (sb-alien:sap-alien 
+                (sb-sys:int-sap ,function-address)
+                (sb-alien:function sb-alien:system-area-pointer)))))
+      
+      ;; pointer fn(pointer) - e.g., SSL_CTX_new, SSL_new
+      ((and (eq return-type :pointer) (equal arg-types '(:pointer)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:system-area-pointer sb-alien:system-area-pointer))
+                 ,@converted-args))))
+      
+      ;; int fn(pointer, string, int) - e.g., SSL_CTX_use_certificate_file
+      ((and (eq return-type :int) (equal arg-types '(:pointer :string :int)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:int sb-alien:system-area-pointer 
+                                     sb-alien:c-string sb-alien:int))
+                 ,@converted-args))))
+      
+      ;; int fn(pointer, string) - e.g., SSL_CTX_set_cipher_list
+      ((and (eq return-type :int) (equal arg-types '(:pointer :string)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:int sb-alien:system-area-pointer sb-alien:c-string))
+                 ,@converted-args))))
+      
+      ;; void fn(pointer, int, pointer) - e.g., SSL_CTX_set_verify
+      ((and (eq return-type :void) (equal arg-types '(:pointer :int :pointer)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:void sb-alien:system-area-pointer 
+                                     sb-alien:int sb-alien:system-area-pointer))
+                 ,@converted-args))))
+      
+      ;; int fn(pointer, pointer, int) - e.g., SSL_read, SSL_write
+      ((and (eq return-type :int) (equal arg-types '(:pointer :pointer :int)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:int sb-alien:system-area-pointer 
+                                     sb-alien:system-area-pointer sb-alien:int))
+                 ,@converted-args))))
+      
+      ;; string fn(pointer) - e.g., SSL_CIPHER_get_name, SSL_get_version
+      ((and (eq return-type :string) (equal arg-types '(:pointer)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:c-string sb-alien:system-area-pointer))
+                 ,@converted-args))))
+      
+      ;; unsigned-long fn() - e.g., ERR_get_error
+      ((and (eq return-type :unsigned-long) (null arg-types))
+       (eval `(sb-alien:alien-funcall 
+               (sb-alien:sap-alien 
+                (sb-sys:int-sap ,function-address)
+                (sb-alien:function sb-alien:unsigned-long)))))
+      
+      ;; void fn(unsigned-long, pointer, size) - e.g., ERR_error_string_n
+      ((and (eq return-type :void) (equal arg-types '(:unsigned-long :pointer :size)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:void sb-alien:unsigned-long 
+                                     sb-alien:system-area-pointer sb-alien:unsigned-long))
                  ,@converted-args))))
       
       (t
