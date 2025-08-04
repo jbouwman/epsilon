@@ -6,9 +6,24 @@
    (#:stream #:epsilon.stream))
   (:export
    #:jsonrpc-request
+   #:jsonrpc-request-p
+   #:jsonrpc-request-id
+   #:jsonrpc-request-method
+   #:jsonrpc-request-params
    #:jsonrpc-response
+   #:jsonrpc-response-p
+   #:jsonrpc-response-id
+   #:jsonrpc-response-result
    #:jsonrpc-notification
+   #:jsonrpc-notification-p
+   #:jsonrpc-notification-method
+   #:jsonrpc-notification-params
    #:jsonrpc-error
+   #:jsonrpc-error-p
+   #:jsonrpc-error-id
+   #:jsonrpc-error-code
+   #:jsonrpc-error-message
+   #:jsonrpc-error-data
    #:make-request
    #:make-response
    #:make-notification
@@ -16,7 +31,15 @@
    #:parse-message
    #:serialize-message
    #:read-message
-   #:write-message))
+   #:write-message
+   #:+parse-error+
+   #:+invalid-request+
+   #:+method-not-found+
+   #:+invalid-params+
+   #:+internal-error+
+   #:+server-not-initialized+
+   #:+unknown-error-code+
+   #:add-content-length-header))
 
 (in-package #:epsilon.lsp.protocol.jsonrpc)
 
@@ -46,13 +69,13 @@
   data)
 
 ;;; Error Codes (LSP specification)
-(defconstant +parse-error+ -32700)
-(defconstant +invalid-request+ -32600)
-(defconstant +method-not-found+ -32601)
-(defconstant +invalid-params+ -32602)
-(defconstant +internal-error+ -32603)
-(defconstant +server-not-initialized+ -32002)
-(defconstant +unknown-error-code+ -32001)
+(defparameter +parse-error+ -32700)
+(defparameter +invalid-request+ -32600)
+(defparameter +method-not-found+ -32601)
+(defparameter +invalid-params+ -32602)
+(defparameter +internal-error+ -32603)
+(defparameter +server-not-initialized+ -32002)
+(defparameter +unknown-error-code+ -32001)
 
 ;;; Message Construction
 
@@ -110,7 +133,8 @@
                         "error" error-map)))
                     
                     (t (error "Unknown message type: ~A" message)))))
-    (json:encode json-map)))
+    (with-output-to-string (stream)
+      (json:encode json-map stream))))
 
 (defun parse-message (json-string)
   "Parse a JSON-RPC message from JSON string."

@@ -5,9 +5,16 @@
   (:local-nicknames
    (frame epsilon.websocket.frame)
    (str epsilon.string)
-   (bin epsilon.binary)))
+   (bin epsilon.binary)
+   (stream epsilon.stream)
+   (map epsilon.map)))
 
 (in-package epsilon.websocket.frame.tests)
+
+;;; Test helper - convert octets to stream for testing
+(defun octets-to-stream (octets)
+  "Convert byte array to input stream for testing"
+  (stream:make-input-stream octets))
 
 (deftest frame-creation
   "Test basic frame creation"
@@ -30,7 +37,7 @@
   "Test frame serialization and parsing"
   (let* ((original-frame (frame:make-text-frame "Test message"))
          (serialized (frame:serialize-frame original-frame))
-         (parsed-frame (frame:parse-frame (bin:octets-to-stream serialized))))
+         (parsed-frame (frame:parse-frame (octets-to-stream serialized))))
     
     (is (frame:websocket-frame-p parsed-frame))
     (is-equal (frame:websocket-frame-fin original-frame)
@@ -72,7 +79,7 @@
   (let* ((large-payload (make-array 1000 :element-type '(unsigned-byte 8) :initial-element 65))
          (frame (frame:make-binary-frame large-payload))
          (serialized (frame:serialize-frame frame))
-         (parsed (frame:parse-frame (bin:octets-to-stream serialized))))
+         (parsed (frame:parse-frame (octets-to-stream serialized))))
     
     (is-= (length (frame:websocket-frame-payload parsed)) 1000)
     (is-equalp large-payload (frame:websocket-frame-payload parsed)))
@@ -81,7 +88,7 @@
   (let* ((small-payload (make-array 50 :element-type '(unsigned-byte 8) :initial-element 66))
          (frame (frame:make-binary-frame small-payload))
          (serialized (frame:serialize-frame frame))
-         (parsed (frame:parse-frame (bin:octets-to-stream serialized))))
+         (parsed (frame:parse-frame (octets-to-stream serialized))))
     
     (is-= (length (frame:websocket-frame-payload parsed)) 50)
     (is-equalp small-payload (frame:websocket-frame-payload parsed))))
@@ -90,7 +97,7 @@
   "Test close frame creation and parsing"
   (let* ((close-frame (frame:make-close-frame frame:+close-normal+ "Test reason"))
          (serialized (frame:serialize-frame close-frame))
-         (parsed (frame:parse-frame (bin:octets-to-stream serialized))))
+         (parsed (frame:parse-frame (octets-to-stream serialized))))
     
     (multiple-value-bind (code reason)
         (frame:parse-close-frame parsed)
@@ -144,7 +151,7 @@
   (let* ((binary-data #(0 1 2 3 4 5 255 254 253))
          (frame (frame:make-binary-frame binary-data))
          (serialized (frame:serialize-frame frame))
-         (parsed (frame:parse-frame (bin:octets-to-stream serialized))))
+         (parsed (frame:parse-frame (octets-to-stream serialized))))
     
     (is-= (frame:websocket-frame-opcode parsed) frame:+opcode-binary+)
     (is-equalp binary-data (frame:websocket-frame-payload parsed))))
@@ -162,7 +169,7 @@
     ;; Test serialization/parsing of empty frames
     (dolist (frame (list empty-text empty-binary empty-ping))
       (let* ((serialized (frame:serialize-frame frame))
-             (parsed (frame:parse-frame (bin:octets-to-stream serialized))))
+             (parsed (frame:parse-frame (octets-to-stream serialized))))
         (is-= (length (frame:websocket-frame-payload parsed)) 0)))))
 
 (deftest reserved-bits

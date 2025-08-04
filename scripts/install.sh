@@ -14,11 +14,7 @@ INSTALL_DIR="${EPSILON_HOME:-$HOME/.epsilon}"
 BINARY_DIR="${EPSILON_BIN:-$HOME/.local/bin}"
 GITHUB_API_URL="https://api.github.com/repos/$GITHUB_REPO/releases/latest"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# Remove colors - plain text output only
 
 # Platform detection
 detect_platform() {
@@ -36,7 +32,7 @@ detect_platform() {
             platform="windows"
             ;;
         *)
-            echo -e "${RED}Error: Unsupported platform: $platform${NC}"
+            echo "Error: Unsupported platform: $platform"
             exit 1
             ;;
     esac
@@ -49,7 +45,7 @@ detect_platform() {
             arch="arm64"
             ;;
         *)
-            echo -e "${RED}Error: Unsupported architecture: $arch${NC}"
+            echo "Error: Unsupported architecture: $arch"
             exit 1
             ;;
     esac
@@ -68,7 +64,7 @@ get_latest_release() {
     elif command -v wget >/dev/null 2>&1; then
         release_info=$(wget -qO- "$GITHUB_API_URL")
     else
-        echo -e "${RED}Error: curl or wget is required${NC}"
+        echo "Error: curl or wget is required"
         exit 1
     fi
     
@@ -85,8 +81,8 @@ get_latest_release() {
     download_url=$(echo "$release_info" | grep -o "\"browser_download_url\":[[:space:]]*\"[^\"]*epsilon-${platform_arch}\.${file_extension}\"" | sed 's/.*"browser_download_url":[[:space:]]*"\([^"]*\)".*/\1/')
     
     if [ -z "$download_url" ]; then
-        echo -e "${RED}Error: Could not find release for platform: $platform_arch${NC}"
-        echo -e "${YELLOW}Available releases:${NC}"
+        echo "Error: Could not find release for platform: $platform_arch"
+        echo "Available releases:"
         echo "$release_info" | grep -o '"name":[[:space:]]*"[^"]*"' | sed 's/.*"name":[[:space:]]*"\([^"]*\)".*/  \1/'
         exit 1
     fi
@@ -99,7 +95,7 @@ download_and_extract() {
     local download_url="$1"
     local platform_arch="$2"
     
-    echo -e "${YELLOW}Downloading Epsilon runtime...${NC}"
+    echo "Downloading Epsilon runtime..."
     
     # Create directories
     mkdir -p "$INSTALL_DIR"
@@ -121,7 +117,7 @@ download_and_extract() {
     fi
     
     # Extract
-    echo -e "${YELLOW}Installing to $INSTALL_DIR...${NC}"
+    echo "Installing to $INSTALL_DIR..."
     if [ "$file_extension" = "zip" ]; then
         unzip "$temp_file" -d "$INSTALL_DIR"
     else
@@ -141,12 +137,12 @@ download_and_extract() {
     # Cleanup
     rm -f "$temp_file"
     
-    echo -e "${GREEN}Epsilon installed successfully!${NC}"
+    echo "Epsilon installed successfully!"
 }
 
 # Verify installation
 verify_installation() {
-    echo -e "${YELLOW}Verifying installation...${NC}"
+    echo "Verifying installation..."
     
     local epsilon_cmd="$BINARY_DIR/epsilon"
     if [ "$platform_arch" != "${platform_arch#*windows}" ]; then
@@ -154,16 +150,16 @@ verify_installation() {
     fi
     
     if "$epsilon_cmd" --eval "(format t \"Epsilon ~A installed successfully!~%\" (lisp-implementation-version))" --eval "(sb-ext:quit)" 2>/dev/null; then
-        echo -e "${GREEN}Installation verified!${NC}"
+        echo "Installation verified!"
     else
-        echo -e "${RED}Installation verification failed${NC}"
+        echo "Installation verification failed"
         exit 1
     fi
 }
 
 # Show usage information
 show_usage() {
-    echo -e "${GREEN}Epsilon Installation Complete!${NC}"
+    echo "Epsilon Installation Complete!"
     echo
     echo "Installation directory: $INSTALL_DIR"
     echo "Binary location: $BINARY_DIR/epsilon"
@@ -172,25 +168,25 @@ show_usage() {
     echo "  epsilon --eval \"(format t \\\"Hello, Epsilon!\\\")\" --eval \"(sb-ext:quit)\""
     echo "  epsilon [sbcl-options...]"
     echo
-    echo -e "${YELLOW}Note: Make sure $BINARY_DIR is in your PATH${NC}"
+    echo "Note: Make sure $BINARY_DIR is in your PATH"
     echo "Add this to your shell profile if needed:"
     echo "  export PATH=\"$BINARY_DIR:\$PATH\""
 }
 
 # Main installation flow
 main() {
-    echo -e "${GREEN}Installing Epsilon - A Common Lisp Programming Environment${NC}"
+    echo "Installing Epsilon - A Common Lisp Programming Environment"
     echo
     
     # Detect platform
     local platform_arch
     platform_arch=$(detect_platform)
-    echo -e "${YELLOW}Detected platform: $platform_arch${NC}"
+    echo "Detected platform: $platform_arch"
     
     # Get latest release
     local download_url
     download_url=$(get_latest_release "$platform_arch")
-    echo -e "${YELLOW}Download URL: $download_url${NC}"
+    echo "Download URL: $download_url"
     
     # Download and install
     download_and_extract "$download_url" "$platform_arch"

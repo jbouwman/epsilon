@@ -31,6 +31,10 @@
    :current-directory
 
    :read-file
+   :read-file-string
+   :read-file-bytes
+   :write-file-string
+   :write-file-bytes
  
    :create-symbolic-link
    :delete-directory
@@ -219,6 +223,27 @@
       (read-sequence contents stream)
       contents)))
 
+(defun read-file-string (filename)
+  "Read file contents as a string (alias for read-file)"
+  (read-file filename))
+
+(defun read-file-bytes (filename)
+  "Read file contents as a byte array (vector of unsigned-byte 8)"
+  (with-open-file (stream filename :direction :input :element-type '(unsigned-byte 8))
+    (let ((contents (make-array (file-length stream) :element-type '(unsigned-byte 8))))
+      (read-sequence contents stream)
+      contents)))
+
+(defun write-file-string (filename content)
+  "Write string content to file"
+  (with-open-file (stream filename :direction :output :if-exists :supersede)
+    (write-string content stream)))
+
+(defun write-file-bytes (filename content)
+  "Write byte array content to file"
+  (with-open-file (stream filename :direction :output :if-exists :supersede :element-type '(unsigned-byte 8))
+    (write-sequence content stream)))
+
 (defun make-dirs (path-string)
   (let ((full-path (normalize-path-separators (if (stringp path-string)
                                                   path-string
@@ -298,7 +323,8 @@
   (cond ((dir-p file)
          (delete-directory file))
         (t
-         (delete-file file))))
+         (cl:delete-file file))))
+
 
 (defmacro with-u8-in ((f in) &body body)
   `(with-open-file (,f ,in :element-type 'u8)

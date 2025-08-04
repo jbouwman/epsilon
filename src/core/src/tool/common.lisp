@@ -6,8 +6,7 @@
   (:export 
    #:event
    #:find-local-package-file
-   #:read-local-package-definition
-   #:read-local-package-name))
+   #:read-local-package-definition))
 
 (in-package epsilon.tool.common)
 
@@ -61,10 +60,4 @@
               nil))))
     (error ()
       nil)))
-
-(defun read-local-package-name ()
-  "Read package name from package.lisp in current directory, return nil if not found"
-  (let ((package-def (read-local-package-definition)))
-    (when package-def
-      (getf package-def :name))))
 

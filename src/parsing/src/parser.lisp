@@ -12,13 +12,31 @@
    ;; Parser type and state
    :parser
    :parse-state
+   :parse-state-p
    :make-parse-state
+   :parse-state-p
+   :parse-state-position
+   :parse-state-remaining
+   :parse-state-context
+   :parse-state-consumed-p
+   
+   ;; Result structures
    :success-p
    :success-value
+   :success-state
+   :make-success
+   :failure-p
    :failure-message
+   :failure-state
+   :failure-expected
+   :make-failure
    :parse-position
    :parse-remaining
    :parse-context
+   :parse-state-position
+   :parse-state-remaining
+   :parse-state-context
+   :parse-state-consumed-p
    
    ;; Core combinators
    :bind

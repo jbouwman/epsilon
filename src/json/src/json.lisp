@@ -8,6 +8,7 @@
    (lexer epsilon.lexer))
   (:export
    encode
+   decode
    tokenize
    parse))
 
@@ -233,6 +234,10 @@
         (p:success-value result)
         (error 'json-parse-error :message
                (p:failure-message result)))))
+
+(defun decode (input)
+  "Parse JSON from character sequence or string (alias for parse)"
+  (parse input))
 
 (defun parse-file (filename)
   "Parse JSON from a file."

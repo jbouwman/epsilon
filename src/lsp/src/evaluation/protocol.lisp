@@ -31,6 +31,12 @@
    #:make-notification
    #:make-progress-notification
    
+   ;; Request creation helpers
+   #:make-init-request
+   #:make-evaluate-request
+   #:make-complete-request
+   #:make-inspect-request
+   
    ;; Message handling
    #:parse-message
    #:message-type
@@ -60,26 +66,26 @@
 
 ;;; Constants
 
-(defconstant +message-type-request+ "request")
-(defconstant +message-type-response+ "response")
-(defconstant +message-type-notification+ "notification")
-(defconstant +message-type-error+ "error")
+(defparameter +message-type-request+ "request")
+(defparameter +message-type-response+ "response")
+(defparameter +message-type-notification+ "notification")
+(defparameter +message-type-error+ "error")
 
-(defconstant +request-init+ "init")
-(defconstant +request-evaluate+ "evaluate")
-(defconstant +request-complete+ "complete")
-(defconstant +request-inspect+ "inspect")
-(defconstant +request-shutdown+ "shutdown")
+(defparameter +request-init+ "init")
+(defparameter +request-evaluate+ "evaluate")
+(defparameter +request-complete+ "complete")
+(defparameter +request-inspect+ "inspect")
+(defparameter +request-shutdown+ "shutdown")
 
 ;;; Error codes (matching JSON-RPC where applicable)
 
-(defconstant +error-parse-error+ -32700)
-(defconstant +error-invalid-request+ -32600)
-(defconstant +error-method-not-found+ -32601)
-(defconstant +error-invalid-params+ -32602)
-(defconstant +error-internal-error+ -32603)
-(defconstant +error-timeout+ -32000)
-(defconstant +error-evaluation-error+ -32001)
+(defparameter +error-parse-error+ -32700)
+(defparameter +error-invalid-request+ -32600)
+(defparameter +error-method-not-found+ -32601)
+(defparameter +error-invalid-params+ -32602)
+(defparameter +error-internal-error+ -32603)
+(defparameter +error-timeout+ -32000)
+(defparameter +error-evaluation-error+ -32001)
 
 ;;; Message Creation
 

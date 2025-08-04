@@ -41,7 +41,21 @@
    #:tls-handshake
    #:tls-version
    #:tls-cipher
-   #:get-peer-certificate))
+   #:get-peer-certificate
+   
+   ;; Test mocking
+   #:with-mock-tls
+   #:enable-mock-mode
+   #:disable-mock-mode
+   #:simulate-tls-handshake
+   #:mock-tls-read
+   #:mock-tls-write
+   #:create-mock-connection
+   #:inject-mock-data
+   #:get-mock-written-data
+   #:clear-mock-buffers
+   #:get-mock-certificate-data
+   #:mock-performance-metrics))
 
 (in-package :epsilon.tls)
 

@@ -255,6 +255,16 @@
                   (sb-alien:function sb-alien:int sb-alien:int sb-alien:system-area-pointer))
                  ,@converted-args))))
       
+      ;; bind/connect style: int fn(int, pointer, unsigned-int)
+      ((and (eq return-type :int) (equal arg-types '(:int :pointer :unsigned-int)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:int sb-alien:int sb-alien:system-area-pointer sb-alien:unsigned-int))
+                 ,@converted-args))))
+      
       ;; qsort style: void fn(pointer, unsigned-long, unsigned-long, pointer)
       ((and (eq return-type :void) 
             (equal arg-types '(:pointer :unsigned-long :unsigned-long :pointer)))

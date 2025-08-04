@@ -6,4 +6,4 @@
  :tests ("tests")
  :dependencies ("epsilon.core" "epsilon.foreign")
  :platform "darwin"
- :provides ("epsilon.darwin" "epsilon.kqueue" "epsilon.net"))
+ :provides ("epsilon.kqueue" "epsilon.net"))

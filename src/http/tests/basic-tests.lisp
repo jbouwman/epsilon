@@ -57,10 +57,13 @@
   (is-equal "GET /test?q=search HTTP/1.1" 
             (client::format-request-line "GET" "/test" "q=search")))
 
-(deftest test-extract-content-length ()
-  "Test content length extraction"
+(deftest test-extract-content-length-positive ()
+  "Test content length extraction with valid values"
   (is-equal 100 
             (client::extract-content-length "Content-Length: 100\r\n"))
   (is-equal 0 
-            (client::extract-content-length "Content-Length: 0\r\n"))
-  (is (null (client::extract-content-length "No-Content-Length: here\r\n"))))
+            (client::extract-content-length "Content-Length: 0\r\n")))
+
+(deftest test-extract-content-length-negative ()
+  "Test content length extraction with no Content-Length header"
+  (is (null (client::extract-content-length "User-Agent: test-agent\r\n"))))

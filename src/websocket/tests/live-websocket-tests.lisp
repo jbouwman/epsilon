@@ -8,6 +8,7 @@
    (#:ws #:epsilon.websocket)
    (#:net #:epsilon.net)
    (#:str #:epsilon.string)
+   (#:map #:epsilon.map)
    (#:binary #:epsilon.binary)))
 
 (in-package :epsilon.websocket.live.tests)

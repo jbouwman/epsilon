@@ -165,17 +165,6 @@ For development of local packages without full module builds:
 #  :main "package-name:main")
 ```
 
-### With REPL
-
-During development:
-```lisp
-;; Rebuild current module
-(epsilon.tool.build:build (epsilon.sys.package:current-module))
-
-;; Watch for changes
-(epsilon.tool.build:watch "mymodule")
-```
-
 ## Troubleshooting
 
 ### Common Issues
@@ -202,7 +191,7 @@ Check function definitions and package exports.
 
 ```bash
 # Maximum verbosity
-./epsilon --log 'trace:epsilon.tool.build' build epsilon.core
+./epsilon --log 'trace:epsilon.tool.build' --build epsilon.core
 
 # Show dependency graph
 ./epsilon build --show-deps epsilon.core

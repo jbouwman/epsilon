@@ -129,7 +129,6 @@
         (and ecl ironclad-assembly))
   (ldb (byte 32 0) (ash num count)))
 
-#+sbcl
 (define-compiler-macro mod32ash (num count)
   ;; work around SBCL optimizing bug as described by APD:
   ;;  http://www.caddr.com/macho/archives/sbcl-devel/2004-8/3877.html
@@ -147,7 +146,6 @@
         (and ecl ironclad-assembly))
   (ldb (byte 32 0) (lognot num)))
 
-#+sbcl
 (define-compiler-macro mod32lognot (num)
   `(ldb (byte 32 0) (lognot ,num)))
 
@@ -176,7 +174,6 @@
         (and ecl ironclad-assembly uint64-t))
   (ldb (byte 64 0) (+ a b)))
 
-#+sbcl
 (define-compiler-macro mod64+ (a b)
   `(ldb (byte 64 0) (+ ,a ,b)))
 
@@ -189,7 +186,6 @@
         (and ecl ironclad-assembly uint64-t))
   (ldb (byte 64 0) (- a b)))
 
-#+sbcl
 (define-compiler-macro mod64- (a b)
   `(ldb (byte 64 0) (- ,a ,b)))
 
@@ -202,7 +198,6 @@
         (and ecl ironclad-assembly uint64-t))
   (ldb (byte 64 0) (* a b)))
 
-#+sbcl
 (define-compiler-macro mod64* (a b)
   `(ldb (byte 64 0) (* ,a ,b)))
 
@@ -219,7 +214,6 @@
         (and ecl ironclad-assembly uint64-t))
   (ldb (byte 64 0) (ash num count)))
 
-#+sbcl
 (define-compiler-macro mod64ash (num count)
   ;; work around SBCL optimizing bug as described by APD:
   ;;  http://www.caddr.com/macho/archives/sbcl-devel/2004-8/3877.html
@@ -237,7 +231,6 @@
         (and ecl ironclad-assembly uint64-t))
   (ldb (byte 64 0) (lognot num)))
 
-#+sbcl
 (define-compiler-macro mod64lognot (num)
   `(ldb (byte 64 0) (lognot ,num)))
 

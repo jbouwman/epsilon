@@ -5,4 +5,4 @@
  :dependencies ("epsilon.core" "epsilon.test")
  :sources ("src")
  :tests ("tests")
- :provides ("epsilon.monitor"))
+)

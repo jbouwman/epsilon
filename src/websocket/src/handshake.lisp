@@ -13,7 +13,9 @@
    (base64 epsilon.base64)
    (uuid epsilon.uuid)
    (http epsilon.http.request)
-   (resp epsilon.http.response))
+   (resp epsilon.http.response)
+   (map epsilon.map)
+   (url epsilon.url))
   (:export
    ;; Constants
    +websocket-magic-string+
@@ -31,6 +33,13 @@
    ;; Protocol negotiation
    negotiate-subprotocol
    negotiate-extensions
+   parse-extensions
+   
+   ;; Utility functions
+   websocket-request-p
+   extract-websocket-key
+   extract-subprotocols
+   extract-extensions
    
    ;; Errors
    websocket-handshake-error))
@@ -39,7 +48,7 @@
 
 ;;; Constants
 
-(defconstant +websocket-magic-string+ "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+(define-constant +websocket-magic-string+ "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
   "WebSocket GUID as defined in RFC 6455")
 
 ;;; Conditions
@@ -78,13 +87,13 @@
              :message (format nil "Invalid method: ~A (expected GET)" method)))
     
     ;; Must have Upgrade: websocket
-    (let ((upgrade (http:get-header headers "upgrade")))
+    (let ((upgrade (map:get headers "upgrade")))
       (unless (and upgrade (string-equal upgrade "websocket"))
         (error 'websocket-handshake-error
                :message "Missing or invalid Upgrade header")))
     
     ;; Must have Connection: Upgrade
-    (let ((connection (http:get-header headers "connection")))
+    (let ((connection (map:get headers "connection")))
       (unless (and connection 
                    (find "upgrade" (str:split #\, connection)
                          :test #'string-equal :key #'str:trim))
@@ -92,13 +101,13 @@
                :message "Missing or invalid Connection header")))
     
     ;; Must have Sec-WebSocket-Version: 13
-    (let ((version (http:get-header headers "sec-websocket-version")))
+    (let ((version (map:get headers "sec-websocket-version")))
       (unless (string= version "13")
         (error 'websocket-handshake-error
                :message (format nil "Unsupported WebSocket version: ~A" version))))
     
     ;; Must have Sec-WebSocket-Key
-    (let ((key (http:get-header headers "sec-websocket-key")))
+    (let ((key (map:get headers "sec-websocket-key")))
       (unless (and key (= (length (base64:base64-to-octets key)) 16))
         (error 'websocket-handshake-error
                :message "Missing or invalid Sec-WebSocket-Key")))
@@ -112,7 +121,7 @@
   (validate-websocket-request request)
   
   (let* ((headers (http:request-headers request))
-         (websocket-key (http:get-header headers "sec-websocket-key"))
+         (websocket-key (map:get headers "sec-websocket-key"))
          (accept-key (generate-accept-key websocket-key))
          (response-headers (list (cons "Upgrade" "websocket")
                                 (cons "Connection" "Upgrade")
@@ -127,7 +136,6 @@
       (push (cons "Sec-WebSocket-Extensions" extensions) response-headers))
     
     (resp:make-response :status 101
-                       :reason "Switching Protocols"
                        :headers response-headers)))
 
 ;;; Client-side handshake
@@ -135,7 +143,7 @@
 (defun create-upgrade-request (uri &key subprotocols extensions host)
   "Create HTTP upgrade request to establish WebSocket connection"
   (let* ((websocket-key (generate-websocket-key))
-         (headers (list (cons "Host" (or host (http:uri-host uri)))
+         (headers (list (cons "Host" (or host (url:url-host (url:parse-url uri))))
                        (cons "Upgrade" "websocket")
                        (cons "Connection" "Upgrade")
                        (cons "Sec-WebSocket-Key" websocket-key)
@@ -154,8 +162,8 @@
       (push (cons "Sec-WebSocket-Extensions" extensions) headers))
     
     (values 
-     (http:make-request :method "GET"
-                       :uri uri
+     (http:make-request "GET"
+                       (url:url-path (url:parse-url uri))
                        :headers headers)
      websocket-key)))
 
@@ -170,13 +178,13 @@
              :message (format nil "Invalid status code: ~D" status)))
     
     ;; Must have Upgrade: websocket
-    (let ((upgrade (resp:get-header headers "upgrade")))
+    (let ((upgrade (map:get headers "upgrade")))
       (unless (and upgrade (string-equal upgrade "websocket"))
         (error 'websocket-handshake-error
                :message "Missing or invalid Upgrade header")))
     
     ;; Must have Connection: Upgrade
-    (let ((connection (resp:get-header headers "connection")))
+    (let ((connection (map:get headers "connection")))
       (unless (and connection
                    (find "upgrade" (str:split #\, connection)
                          :test #'string-equal :key #'str:trim))
@@ -184,7 +192,7 @@
                :message "Missing or invalid Connection header")))
     
     ;; Must have correct Sec-WebSocket-Accept
-    (let ((accept (resp:get-header headers "sec-websocket-accept"))
+    (let ((accept (map:get headers "sec-websocket-accept"))
           (expected-accept (generate-accept-key expected-key)))
       (unless (string= accept expected-accept)
         (error 'websocket-handshake-error
@@ -239,15 +247,15 @@
 
 (defun extract-websocket-key (request)
   "Extract Sec-WebSocket-Key from request headers"
-  (http:get-header (http:request-headers request) "sec-websocket-key"))
+  (map:get (http:request-headers request) "sec-websocket-key"))
 
 (defun extract-subprotocols (request)
   "Extract requested subprotocols from request headers"
-  (let ((protocol-header (http:get-header (http:request-headers request) 
-                                         "sec-websocket-protocol")))
+  (let ((protocol-header (map:get (http:request-headers request) 
+                                  "sec-websocket-protocol")))
     (when protocol-header
       (mapcar #'str:trim (str:split #\, protocol-header)))))
 
 (defun extract-extensions (request)
   "Extract requested extensions from request headers"
-  (http:get-header (http:request-headers request) "sec-websocket-extensions"))
+  (map:get (http:request-headers request) "sec-websocket-extensions"))

@@ -43,7 +43,7 @@
 (defun start-lsp-server (&key (host "127.0.0.1") (port 7888) (protocol :json-rpc))
   "Start the LSP server."
   (let* ((protocol-handler (case protocol
-                             (:json-rpc (protocol:make-jsonrpc-handler))
+                             (:json-rpc :json-rpc)  ; Just use a simple keyword for now
                              (t (error "Unsupported protocol: ~A" protocol))))
          (server (make-lsp-server
                   :host host
@@ -254,7 +254,7 @@
     
     ;; Remove from open documents
     (setf (lsp-server-open-documents server)
-          (map:remove (lsp-server-open-documents server) uri))
+          (map:dissoc (lsp-server-open-documents server) uri))
     
     ;; Remove from workspace
     (workspace:workspace-remove-document (lsp-server-workspace server) uri)
@@ -288,12 +288,12 @@
                       (map:make-map
                        "uri" uri
                        "range" (map:make-map
-                                 "start" (map:make-map
-                                           "line" (1- (car def-pos))
-                                           "character" (1- (cdr def-pos)))
-                                 "end" (map:make-map
-                                         "line" (1- (car (cdr def-range)))
-                                         "character" (cdr (cdr def-range))))))
+                                "start" (map:make-map
+                                         "line" (1- (car def-pos))
+                                         "character" (1- (cdr def-pos)))
+                                "end" (map:make-map
+                                       "line" (1- (car (cdr def-range)))
+                                       "character" (cdr (cdr def-range))))))
                     'null))
               'null))
         'null)))
@@ -333,8 +333,8 @@
         (let* ((content (analysis:document-analysis-content doc-analysis))
                (prefix (extract-completion-prefix content line character))
                (completions (analysis:get-completions doc-analysis 
-                                                       (cons line character) 
-                                                       prefix)))
+                                                      (cons line character) 
+                                                      prefix)))
           (map:make-map
            "isIncomplete" nil
            "items" completions))
@@ -353,12 +353,12 @@
                                                 (or (char= c #\Space)
                                                     (char= c #\()
                                                     (char= c #\)))
-                                              current-line
-                                              :from-end t
-                                              :end prefix-end)
-                                 -1)))
+                                                current-line
+                                                :from-end t
+                                                :end prefix-end)
+                                              -1)))
           (subseq current-line (1+ prefix-start) prefix-end))
-        "")))
+        ""))))
 
 ;;; Diagnostic Support
 
@@ -385,20 +385,20 @@
             (if (analysis:diagnostic-p error)
                 (map:make-map
                  "range" (map:make-map
-                           "start" (map:make-map "line" 0 "character" 0)
-                           "end" (map:make-map "line" 0 "character" 0))
+                          "start" (map:make-map "line" 0 "character" 0)
+                          "end" (map:make-map "line" 0 "character" 0))
                  "severity" (case (analysis:diagnostic-severity error)
-                               (:error 1)
-                               (:warning 2)
-                               (:information 3)
-                               (:hint 4)
-                               (t 1))
+                              (:error 1)
+                              (:warning 2)
+                              (:information 3)
+                              (:hint 4)
+                              (t 1))
                  "message" (analysis:diagnostic-message error))
                 ;; Handle string errors (legacy)
                 (map:make-map
                  "range" (map:make-map
-                           "start" (map:make-map "line" 0 "character" 0)
-                           "end" (map:make-map "line" 0 "character" 0))
+                          "start" (map:make-map "line" 0 "character" 0)
+                          "end" (map:make-map "line" 0 "character" 0))
                  "severity" 1
                  "message" (if (stringp error) error (format nil "~A" error)))))
           errors))
@@ -425,19 +425,19 @@
      "name" (analysis:symbol-info-name symbol)
      "kind" (symbol-type-to-lsp-kind (analysis:symbol-info-type symbol))
      "range" (map:make-map
-               "start" (map:make-map 
-                         "line" (1- (car pos))
-                         "character" (1- (cdr pos)))
-               "end" (map:make-map
-                       "line" (1- (car (cdr range)))
-                       "character" (cdr (cdr range))))
+              "start" (map:make-map 
+                       "line" (1- (car pos))
+                       "character" (1- (cdr pos)))
+              "end" (map:make-map
+                     "line" (1- (car (cdr range)))
+                     "character" (cdr (cdr range))))
      "selectionRange" (map:make-map
-                        "start" (map:make-map 
-                                  "line" (1- (car pos))
-                                  "character" (1- (cdr pos)))
-                        "end" (map:make-map
-                                "line" (1- (car (cdr range)))
-                                "character" (cdr (cdr range))))
+                       "start" (map:make-map 
+                                "line" (1- (car pos))
+                                "character" (1- (cdr pos)))
+                       "end" (map:make-map
+                              "line" (1- (car (cdr range)))
+                              "character" (cdr (cdr range))))
      "detail" (format nil "~A" (analysis:symbol-info-type symbol)))))
 
 (defun symbol-type-to-lsp-kind (symbol-type)
@@ -484,13 +484,13 @@
                             (map:make-map
                              "uri" uri
                              "range" (map:make-map
-                                        "start" (map:make-map
-                                                   "line" (1- (car ref-pos))
-                                                   "character" (1- (cdr ref-pos)))
-                                        "end" (map:make-map
-                                                "line" (1- (car ref-pos))
-                                                "character" (+ (1- (cdr ref-pos))
-                                                                (length (analysis:symbol-info-name ref))))))))
+                                      "start" (map:make-map
+                                               "line" (1- (car ref-pos))
+                                               "character" (1- (cdr ref-pos)))
+                                      "end" (map:make-map
+                                             "line" (1- (car ref-pos))
+                                             "character" (+ (1- (cdr ref-pos))
+                                                            (length (analysis:symbol-info-name ref))))))))
                         references))
               '()))
         '())))

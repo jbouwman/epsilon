@@ -6,4 +6,4 @@
  :tests ("tests")
  :data ("tests/certs")
  :dependencies ("epsilon.core" "epsilon.json" "epsilon.tls" "epsilon.net")
- :provides ("epsilon.http"))
+)

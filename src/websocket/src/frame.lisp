@@ -32,11 +32,17 @@
   (:export
    ;; Frame structure
    websocket-frame
+   websocket-frame-p
    make-frame
-   frame-fin
-   frame-opcode
-   frame-masked
-   frame-payload
+   make-websocket-frame
+   websocket-frame-fin
+   websocket-frame-rsv1
+   websocket-frame-rsv2
+   websocket-frame-rsv3
+   websocket-frame-opcode
+   websocket-frame-masked
+   websocket-frame-mask
+   websocket-frame-payload
    
    ;; Opcodes
    +opcode-continuation+
@@ -49,8 +55,18 @@
    ;; Frame operations
    parse-frame
    serialize-frame
+   validate-frame
+   parse-close-frame
    mask-payload
    unmask-payload
+   
+   ;; Frame creation helpers
+   make-text-frame
+   make-binary-frame
+   make-close-frame
+   make-ping-frame
+   make-pong-frame
+   frame-text
    
    ;; Close codes
    +close-normal+
@@ -67,23 +83,23 @@
 
 ;;; Constants
 
-(defconstant +opcode-continuation+ #x0 "Continuation frame")
-(defconstant +opcode-text+         #x1 "Text frame")
-(defconstant +opcode-binary+       #x2 "Binary frame")
-(defconstant +opcode-close+        #x8 "Connection close")
-(defconstant +opcode-ping+         #x9 "Ping")
-(defconstant +opcode-pong+         #xa "Pong")
+(define-constant +opcode-continuation+ #x0 "Continuation frame")
+(define-constant +opcode-text+         #x1 "Text frame")
+(define-constant +opcode-binary+       #x2 "Binary frame")
+(define-constant +opcode-close+        #x8 "Connection close")
+(define-constant +opcode-ping+         #x9 "Ping")
+(define-constant +opcode-pong+         #xa "Pong")
 
 ;;; Close codes (RFC 6455 Section 7.4.1)
-(defconstant +close-normal+                1000 "Normal closure")
-(defconstant +close-going-away+            1001 "Endpoint going away")
-(defconstant +close-protocol-error+        1002 "Protocol error") 
-(defconstant +close-unsupported-data+      1003 "Unsupported data type")
-(defconstant +close-invalid-frame-payload+ 1007 "Invalid frame payload")
-(defconstant +close-policy-violation+      1008 "Policy violation")
-(defconstant +close-message-too-big+       1009 "Message too big")
-(defconstant +close-mandatory-extension+   1010 "Mandatory extension missing")
-(defconstant +close-internal-error+        1011 "Internal server error")
+(define-constant +close-normal+                1000 "Normal closure")
+(define-constant +close-going-away+            1001 "Endpoint going away")
+(define-constant +close-protocol-error+        1002 "Protocol error") 
+(define-constant +close-unsupported-data+      1003 "Unsupported data type")
+(define-constant +close-invalid-frame-payload+ 1007 "Invalid frame payload")
+(define-constant +close-policy-violation+      1008 "Policy violation")
+(define-constant +close-message-too-big+       1009 "Message too big")
+(define-constant +close-mandatory-extension+   1010 "Mandatory extension missing")
+(define-constant +close-internal-error+        1011 "Internal server error")
 
 ;;; Frame structure
 

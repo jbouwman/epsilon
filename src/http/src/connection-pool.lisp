@@ -102,8 +102,8 @@
 ;;;; Pool Management
 
 (defun create-connection-pool (&key (max-size *default-pool-size*)
-                                   (max-idle-time *default-max-idle-time*)
-                                   (connection-timeout *default-connection-timeout*))
+                                 (max-idle-time *default-max-idle-time*)
+                                 (connection-timeout *default-connection-timeout*))
   "Create a new connection pool"
   (make-connection-pool :max-size max-size
                         :max-idle-time max-idle-time
@@ -120,60 +120,59 @@
     (map:each 
      (lambda (key connections)
        (let ((active-connections
-              (remove-if 
-               (lambda (conn)
-                 (let ((idle-time (- current-time (pooled-connection-last-used-time conn))))
-                   (when (or (> idle-time max-idle)
-                             (not (pooled-connection-alive-p conn)))
-                     ;; Close expired/dead connection
-                     (ignore-errors
+               (remove-if 
+                (lambda (conn)
+                  (let ((idle-time (- current-time (pooled-connection-last-used-time conn))))
+                    (when (or (> idle-time max-idle)
+                              (not (pooled-connection-alive-p conn)))
+                      ;; Close expired/dead connection
+                      (ignore-errors
                        (when (pooled-connection-tls-connection conn)
                          (tls:tls-close (pooled-connection-tls-connection conn)))
                        (when (pooled-connection-socket conn)
-                         (net:close (pooled-connection-socket conn))))
-                     (incf (pool-stats-connections-closed (connection-pool-stats pool)))
-                     t)))
-               connections)))
-         (setf (connection-pool-pools pool)
-               (if active-connections
-                   (map:assoc (connection-pool-pools pool) key active-connections)
-                   (map:dissoc (connection-pool-pools pool) key)))))
-     (connection-pool-pools pool))))
+                         (net:tcp-shutdown (pooled-connection-socket conn) :both))))
+                    (incf (pool-stats-connections-closed (connection-pool-stats pool)))
+                    t))
+                connections))
+             (setf (connection-pool-pools pool)
+                   (if active-connections
+                       (map:assoc (connection-pool-pools pool) key active-connections)
+                       (map:dissoc (connection-pool-pools pool) key)))))
+       (connection-pool-pools pool)))))
 
 (defun create-new-connection (host port ssl-p timeout)
   "Create a new HTTP connection"
-  (let* ((socket (net:socket))
-         (address (net:make-socket-address host port))
+  (let* ((address (net:make-socket-address host port))
          (current-time (get-universal-time)))
     
-    ;; Set socket timeout
-    (when timeout
-      (net:set-socket-option socket :timeout timeout))
-    
-    ;; Connect to host
-    (handler-case
-        (net:connect socket address)
-      (error (e)
-        (net:close socket)
-        (error "Failed to connect to ~A:~D: ~A" host port e)))
-    
-    ;; Create TLS connection if needed
-    (let ((tls-conn nil))
-      (when ssl-p
-        (handler-case
-            (let ((tls-context (tls:create-tls-context :server-p nil)))
-              (setf tls-conn (tls:tls-connect socket tls-context)))
-          (error (e)
-            (net:close socket)
-            (error "TLS handshake failed for ~A:~D: ~A" host port e))))
+    ;; Connect to host 
+    (let ((socket (handler-case
+                      (net:tcp-connect address)
+                    (error (e)
+                      (error "Failed to connect to ~A:~D: ~A" host port e)))))
       
-      (make-pooled-connection :socket socket
-                              :tls-connection tls-conn
-                              :host host
-                              :port port
-                              :ssl-p ssl-p
-                              :created-time current-time
-                              :last-used-time current-time))))
+      ;; Set socket timeout if needed
+      (when timeout
+        (net:set-socket-option socket :recv-timeout timeout)
+        (net:set-socket-option socket :send-timeout timeout))
+      
+      ;; Create TLS connection if needed
+      (let ((tls-conn nil))
+        (when ssl-p
+          (handler-case
+              (let ((tls-context (tls:create-tls-context :server-p nil)))
+                (setf tls-conn (tls:tls-connect socket tls-context)))
+            (error (e)
+              (net:tcp-shutdown socket :both)
+              (error "TLS handshake failed for ~A:~D: ~A" host port e))))
+        
+        (make-pooled-connection :socket socket
+                                :tls-connection tls-conn
+                                :host host
+                                :port port
+                                :ssl-p ssl-p
+                                :created-time current-time
+                                :last-used-time current-time)))))
 
 (defun get-connection (host port &key ssl-p (pool *global-connection-pool*))
   "Get a connection from the pool"
@@ -211,13 +210,13 @@
          (incf (pool-stats-connections-created (connection-pool-stats pool)))
          
          (create-new-connection host port ssl-p 
-                               (connection-pool-connection-timeout pool)))))))
+                                (connection-pool-connection-timeout pool)))))))
 
 (defun connection-alive-p (conn)
   "Check if connection is still alive"
   (handler-case
       (and (pooled-connection-socket conn)
-           (net:socket-connected-p (pooled-connection-socket conn))
+           (net:tcp-connected-p (pooled-connection-socket conn))
            ;; TODO: Send a simple probe to verify connection
            t)
     (error () nil)))
@@ -233,10 +232,10 @@
       ;; Close connection
       (progn
         (ignore-errors
-          (when (pooled-connection-tls-connection conn)
-            (tls:tls-close (pooled-connection-tls-connection conn)))
-          (when (pooled-connection-socket conn)
-            (net:close (pooled-connection-socket conn))))
+         (when (pooled-connection-tls-connection conn)
+           (tls:tls-close (pooled-connection-tls-connection conn)))
+         (when (pooled-connection-socket conn)
+           (net:tcp-shutdown (pooled-connection-socket conn) :both)))
         (sb-thread:with-mutex ((connection-pool-lock pool))
           (incf (pool-stats-connections-closed (connection-pool-stats pool)))))
       
@@ -256,10 +255,10 @@
               ;; Pool full, close connection
               (progn
                 (ignore-errors
-                  (when (pooled-connection-tls-connection conn)
-                    (tls:tls-close (pooled-connection-tls-connection conn)))
-                  (when (pooled-connection-socket conn)
-                    (net:close (pooled-connection-socket conn))))
+                 (when (pooled-connection-tls-connection conn)
+                   (tls:tls-close (pooled-connection-tls-connection conn)))
+                 (when (pooled-connection-socket conn)
+                   (net:tcp-shutdown (pooled-connection-socket conn) :both)))
                 (incf (pool-stats-connections-closed (connection-pool-stats pool)))))))))
 
 (defmacro with-pooled-connection ((conn-var host port &key ssl-p pool) &body body)
@@ -303,10 +302,10 @@
        (declare (ignore key))
        (dolist (conn connections)
          (ignore-errors
-           (when (pooled-connection-tls-connection conn)
-             (tls:tls-close (pooled-connection-tls-connection conn)))
-           (when (pooled-connection-socket conn)
-             (net:close (pooled-connection-socket conn))))
+          (when (pooled-connection-tls-connection conn)
+            (tls:tls-close (pooled-connection-tls-connection conn)))
+          (when (pooled-connection-socket conn)
+            (net:tcp-shutdown (pooled-connection-socket conn) :both)))
          (incf (pool-stats-connections-closed (connection-pool-stats pool)))))
      (connection-pool-pools pool))
     (setf (connection-pool-pools pool) (map:make-map))))
@@ -324,16 +323,19 @@
   "Get stream for pooled connection"
   (if (pooled-connection-ssl-p conn)
       (tls:tls-stream (pooled-connection-tls-connection conn))
-      (net:socket-stream (pooled-connection-socket conn))))
+      ;; Return a bidirectional stream
+      (let ((socket (pooled-connection-socket conn)))
+        (make-two-way-stream (net:tcp-stream-reader socket)
+                             (net:tcp-stream-writer socket)))))
 
 (defun send-http-request-pooled (conn method path headers body query)
   "Send HTTP request using pooled connection"
   (let* ((stream (pooled-socket-stream conn))
          (request-line (format nil "~A ~A~@[?~A~] HTTP/1.1" method path query))
          (default-headers (map:make-map 
-                          "Host" (pooled-connection-host conn)
-                          "User-Agent" "epsilon.http/1.0"
-                          "Connection" "keep-alive"))
+                           "Host" (pooled-connection-host conn)
+                           "User-Agent" "epsilon.http/1.0"
+                           "Connection" "keep-alive"))
          (all-headers (map:merge default-headers (or headers (map:make-map))))
          (final-headers (if body
                             (map:assoc all-headers 
@@ -392,12 +394,12 @@
           (sb-thread:make-thread
            (lambda ()
              (loop
-               (sleep *cleanup-interval*)
-               (when *global-connection-pool*
-                 (handler-case
-                     (cleanup-expired-connections *global-connection-pool*)
-                   (error (e)
-                     (warn "Connection pool cleanup error: ~A" e))))))
+              (sleep *cleanup-interval*)
+              (when *global-connection-pool*
+                (handler-case
+                    (cleanup-expired-connections *global-connection-pool*)
+                  (error (e)
+                    (warn "Connection pool cleanup error: ~A" e))))))
            :name "HTTP connection pool cleanup"))))
 
 (defun stop-cleanup-thread ()

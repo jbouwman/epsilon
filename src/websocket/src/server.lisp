@@ -8,7 +8,7 @@
    cl
    epsilon.syntax)
   (:local-nicknames
-   (net epsilon.net)
+   (net epsilon.http.net)
    (str epsilon.string)
    (thread epsilon.sys.thread)
    (map epsilon.map)
@@ -30,6 +30,8 @@
    make-server-options
    
    ;; Handler registration
+   websocket-handler
+   make-websocket-handler
    register-handler
    unregister-handler
    
@@ -41,7 +43,12 @@
    
    ;; HTTP integration
    websocket-upgrade-handler
-   add-websocket-to-http-server))
+   add-websocket-to-http-server
+   
+   ;; Convenience
+   with-websocket-server
+   make-echo-handler
+   run-echo-server))
 
 (in-package epsilon.websocket.server)
 
@@ -195,14 +202,25 @@
 
 (defun handle-client-connection (server client-socket)
   "Handle individual client connection"
-  (let ((stream (net:socket-stream client-socket :binary t)))
+  (let ((stream (net:socket-stream client-socket)))
     (unwind-protect
          (progn
-           ;; Parse HTTP request
-           (let ((request (req:parse-request stream)))
-             (if (handshake:websocket-request-p request)
-                 (handle-websocket-upgrade server stream request)
-                 (send-bad-request stream))))
+           ;; Read HTTP request from stream
+           (let* ((request-lines '())
+                  (line ""))
+             ;; Read headers until empty line
+             (loop do 
+               (setf line (read-line stream nil))
+               (when (or (null line) (string= line "") (string= line (string #\Return)))
+                 (return))
+               (push line request-lines))
+             
+             ;; Parse HTTP request
+             (let ((request-string (str:join (reverse request-lines) (string #\Newline))))
+               (let ((request (req:parse-http-request request-string)))
+                 (if (handshake:websocket-request-p request)
+                     (handle-websocket-upgrade server stream request)
+                     (send-bad-request stream))))))
       
       ;; Cleanup
       (when client-socket
@@ -224,25 +242,25 @@
       
       ;; Create handshake response
       (let ((response (handshake:create-handshake-response 
-                      request 
-                      :subprotocol subprotocol)))
+                       request 
+                       :subprotocol subprotocol)))
         
         ;; Send response
-        (let ((response-data (resp:serialize-response response)))
-          (write-sequence response-data stream)
+        (let ((response-data (resp:response-to-string response)))
+          (write-sequence (str:string-to-octets response-data) stream)
           (force-output stream))
         
         ;; Create WebSocket connection
         (let* ((connection (conn:make-connection 
-                           stream
-                           :client-side nil
-                           :subprotocol subprotocol
-                           :on-message (websocket-handler-on-message handler)
-                           :on-close (lambda (conn code reason)
-                                      (handle-connection-close server conn code reason handler))
-                           :on-error (websocket-handler-on-error handler)
-                           :on-ping (websocket-handler-on-ping handler)
-                           :on-pong (websocket-handler-on-pong handler)))
+                            stream
+                            :client-side nil
+                            :subprotocol subprotocol
+                            :on-message (websocket-handler-on-message handler)
+                            :on-close (lambda (conn code reason)
+                                        (handle-connection-close server conn code reason handler))
+                            :on-error (websocket-handler-on-error handler)
+                            :on-ping (websocket-handler-on-ping handler)
+                            :on-pong (websocket-handler-on-pong handler)))
                (connection-id (add-connection server connection)))
           
           ;; Call connection handler
@@ -287,42 +305,36 @@
 (defun send-bad-request (stream)
   "Send 400 Bad Request response"
   (let ((response (resp:make-response 
-                  :status 400
-                  :reason "Bad Request"
-                  :headers '(("Content-Type" . "text/plain"))
-                  :body "Bad Request")))
-    (write-sequence (resp:serialize-response response) stream)
+                   :status 400
+                   :headers (map:make-map "Content-Type" "text/plain")
+                   :body "Bad Request")))
+    (write-sequence (str:string-to-octets (resp:response-to-string response)) stream)
     (force-output stream)))
 
 (defun send-not-found (stream)
   "Send 404 Not Found response"
   (let ((response (resp:make-response
-                  :status 404
-                  :reason "Not Found"
-                  :headers '(("Content-Type" . "text/plain"))
-                  :body "Not Found")))
-    (write-sequence (resp:serialize-response response) stream)
+                   :status 404
+                   :headers (map:make-map "Content-Type" "text/plain")
+                   :body "Not Found")))
+    (write-sequence (str:string-to-octets (resp:response-to-string response)) stream)
     (force-output stream)))
 
 ;;; Broadcasting
 
-(defun broadcast-text (server text &key path)
-  "Broadcast text message to all connections (optionally filtered by path)"
+(defun broadcast-text (server text)
+  "Broadcast text message to all connections"
   (dolist (connection (get-connections server))
-    (when (and (conn:connection-open-p connection)
-               (or (null path) 
-                   (string= path (conn:websocket-connection-path connection))))
+    (when (conn:connection-open-p connection)
       (handler-case
           (conn:send-text connection text)
         (error (e)
           (format t "Error broadcasting to connection: ~A~%" e))))))
 
-(defun broadcast-binary (server data &key path)
-  "Broadcast binary message to all connections (optionally filtered by path)"
+(defun broadcast-binary (server data)
+  "Broadcast binary message to all connections"
   (dolist (connection (get-connections server))
-    (when (and (conn:connection-open-p connection)
-               (or (null path)
-                   (string= path (conn:websocket-connection-path connection))))
+    (when (conn:connection-open-p connection)
       (handler-case
           (conn:send-binary connection data)
         (error (e)
@@ -346,7 +358,10 @@
 
 (defun add-websocket-to-http-server (http-server websocket-server &key (path "/ws"))
   "Add WebSocket support to existing HTTP server"
-  (http:add-handler http-server path (websocket-upgrade-handler websocket-server)))
+  ;; TODO: The HTTP server doesn't currently support adding handlers
+  ;; This would need to be implemented as middleware in the HTTP server
+  (declare (ignore http-server websocket-server path))
+  (error "HTTP server integration not yet implemented. Use standalone WebSocket server instead."))
 
 ;;; Convenience functions
 

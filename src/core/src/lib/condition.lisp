@@ -2,6 +2,7 @@
   (:use
    cl)
   (:export
+   define-condition
    ignore-some-conditions
    simple-style-warning
    unwind-protect-case))

@@ -7,23 +7,31 @@
    cl
    epsilon.syntax)
   (:local-nicknames
-   (net epsilon.net)
-   (uri epsilon.uri)
+   (net epsilon.http.net)
+   (url epsilon.url)
    (str epsilon.string)
+   (map epsilon.map)
+   (thread epsilon.sys.thread)
    (http epsilon.http.client)
+   (req epsilon.http.request)
+   (resp epsilon.http.response)
    (handshake epsilon.websocket.handshake)
    (conn epsilon.websocket.connection))
   (:export
    ;; Client connection
    connect
    connect-async
+   with-websocket-connection
    
    ;; Client options
    websocket-client-options
    make-client-options
    
    ;; Client utilities
-   parse-websocket-uri))
+   parse-websocket-uri
+   send-text-message
+   send-binary-message
+   echo-client))
 
 (in-package epsilon.websocket.client)
 
@@ -54,15 +62,15 @@
 
 (defun parse-websocket-uri (uri-string)
   "Parse WebSocket URI and return (values host port path secure-p)"
-  (let ((uri (uri:parse-uri uri-string)))
-    (unless (member (uri:uri-scheme uri) '("ws" "wss") :test #'string=)
-      (error "Invalid WebSocket URI scheme: ~A" (uri:uri-scheme uri)))
+  (let ((uri (url:parse-url uri-string)))
+    (unless (member (url:url-scheme uri) '("ws" "wss") :test #'string=)
+      (error "Invalid WebSocket URI scheme: ~A" (url:url-scheme uri)))
     
-    (let ((host (uri:uri-host uri))
-          (port (or (uri:uri-port uri)
-                    (if (string= (uri:uri-scheme uri) "wss") 443 80)))
-          (path (or (uri:uri-path uri) "/"))
-          (secure-p (string= (uri:uri-scheme uri) "wss")))
+    (let ((host (url:url-host uri))
+          (port (or (url:url-port uri)
+                    (if (string= (url:url-scheme uri) "wss") 443 80)))
+          (path (or (url:url-path uri) "/"))
+          (secure-p (string= (url:url-scheme uri) "wss")))
       
       (values host port path secure-p))))
 
@@ -74,22 +82,22 @@
       (parse-websocket-uri uri-string)
     
     ;; Establish TCP connection
-    (let ((socket (net:socket-connect host port :timeout (websocket-client-options-timeout options))))
+    (let ((socket (net:socket-connect host port)))
       (unwind-protect
-           (let ((stream (net:socket-stream socket :binary t)))
+           (let ((stream (net:socket-stream socket)))
              ;; Perform WebSocket handshake
              (perform-handshake stream host path options)
              
              ;; Create WebSocket connection
              (let ((connection (conn:make-connection 
-                               stream
-                               :client-side t
-                               :on-open (websocket-client-options-on-open options)
-                               :on-message (websocket-client-options-on-message options)
-                               :on-close (websocket-client-options-on-close options)
-                               :on-error (websocket-client-options-on-error options)
-                               :on-ping (websocket-client-options-on-ping options)
-                               :on-pong (websocket-client-options-on-pong options))))
+                                stream
+                                :client-side t
+                                :on-open (websocket-client-options-on-open options)
+                                :on-message (websocket-client-options-on-message options)
+                                :on-close (websocket-client-options-on-close options)
+                                :on-error (websocket-client-options-on-error options)
+                                :on-ping (websocket-client-options-on-ping options)
+                                :on-pong (websocket-client-options-on-pong options))))
                
                ;; Start ping timer if configured
                (when (websocket-client-options-ping-interval options)
@@ -116,26 +124,58 @@
          :subprotocols (websocket-client-options-subprotocols options)
          :extensions (websocket-client-options-extensions options))
       
-      ;; Add additional headers
-      (dolist (header (websocket-client-options-headers options))
-        (http:add-header request (car header) (cdr header)))
-      
-      ;; Send HTTP request
-      (let ((request-data (http:serialize-request request)))
-        (write-sequence request-data stream)
-        (force-output stream))
-      
-      ;; Read HTTP response
-      (let ((response (http:parse-response stream)))
-        ;; Validate handshake response
-        (handshake:validate-handshake-response response websocket-key)
+      ;; Get existing headers from request
+      (let ((headers (req:request-headers request)))
         
-        ;; Extract negotiated protocols
-        (let ((subprotocol (http:get-header (http:response-headers response) 
-                                           "sec-websocket-protocol"))
-              (extensions (http:get-header (http:response-headers response)
-                                          "sec-websocket-extensions")))
-          (values subprotocol extensions))))))
+        ;; Add additional headers from options
+        (dolist (header (websocket-client-options-headers options))
+          (setf headers (map:assoc headers (car header) (cdr header))))
+        
+        ;; Build HTTP request string manually
+        (let ((request-string 
+                (format nil "GET ~A HTTP/1.1~C~C" 
+                        (req:request-path request) #\Return #\Newline)))
+          
+          ;; Add headers
+          (map:each (lambda (name value)
+                      (setf request-string 
+                            (concatenate 'string request-string
+                                         (format nil "~A: ~A~C~C" name value #\Return #\Newline))))
+                    headers)
+          
+          ;; Add final CRLF
+          (setf request-string 
+                (concatenate 'string request-string (format nil "~C~C" #\Return #\Newline)))
+          
+          ;; Send HTTP request
+          (write-string request-string stream)
+          (force-output stream)
+          
+          ;; Read HTTP response - simplified response parsing
+          (let ((response-line (read-line stream)))
+            (unless (search "101" response-line)
+              (error "WebSocket upgrade failed: ~A" response-line))
+            
+            ;; Read headers until empty line
+            (let ((response-headers map:+empty+))
+              (loop for line = (read-line stream)
+                    while (and line (> (length line) 0) (not (string= line (string #\Return))))
+                    do (let ((colon-pos (position #\: line)))
+                         (when colon-pos
+                           (let ((header-name (string-downcase (str:trim (subseq line 0 colon-pos))))
+                                 (header-value (str:trim (subseq line (1+ colon-pos)))))
+                             (setf response-headers (map:assoc response-headers header-name header-value))))))
+              
+              ;; Create mock response for handshake validation
+              (let ((response (resp:make-response :status 101 :headers response-headers)))
+                ;; Validate handshake response
+                (handshake:validate-handshake-response response websocket-key)
+                
+                ;; Extract negotiated protocols
+                (let ((subprotocol (map:get response-headers "sec-websocket-protocol"))
+                      (extensions (map:get response-headers "sec-websocket-extensions")))
+                  
+                  (values subprotocol extensions))))))))))
 
 ;;; Asynchronous connection
 
@@ -172,20 +212,20 @@
 ;;; Connection utilities
 
 (defun connect-with-retry (uri-string &key (options (make-client-options)) 
-                                          (max-retries 3) (retry-delay 1))
+                                        (max-retries 3) (retry-delay 1))
   "Connect to WebSocket server with automatic retry"
   (let ((retries 0))
     (loop
-      (handler-case
-          (return (connect uri-string :options options))
-        (error (e)
-          (incf retries)
-          (if (>= retries max-retries)
-              (error "Failed to connect after ~D retries: ~A" max-retries e)
-              (progn
-                (when (websocket-client-options-on-error options)
-                  (funcall (websocket-client-options-on-error options) nil e))
-                (sleep retry-delay))))))))
+     (handler-case
+         (return (connect uri-string :options options))
+       (error (e)
+         (incf retries)
+         (if (>= retries max-retries)
+             (error "Failed to connect after ~D retries: ~A" max-retries e)
+             (progn
+               (when (websocket-client-options-on-error options)
+                 (funcall (websocket-client-options-on-error options) nil e))
+               (sleep retry-delay))))))))
 
 ;;; High-level client interface
 
