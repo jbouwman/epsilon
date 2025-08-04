@@ -273,7 +273,7 @@
       (progn
         ;; Close the stream if it exists
         (when (socket-stream-slot socket)
-          (close (socket-stream-slot socket))
+          (cl:close (socket-stream-slot socket))
           (setf (socket-stream-slot socket) nil))
         
         ;; Close kqueue if it's a listener
@@ -372,7 +372,7 @@
 
 (defun resolve (hostname &key (family :any))
   "Resolve hostname to address(es)"
-  (declare (ignore family))
+  (declare (ignore hostname family))
   (error "Not implemented - resolve"))
 
 (defun parse-address (string)
@@ -395,7 +395,7 @@
 (defun make-secure-context (&key cert-file key-file (verify t) (client-p t))
   "Create TLS/SSL context - stub implementation"
   ;; TODO: Fix load order so epsilon.tls is available
-  (declare (ignore client-p verify))
+  (declare (ignore client-p))
   (make-instance 'secure-context
                  :tls-context nil
                  :cert-file cert-file

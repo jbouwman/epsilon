@@ -216,7 +216,7 @@
   "Test HTTP requests using connection pooling"
   (start-test-server)
   (unwind-protect
-       (pool:with-connection-pool (test-pool :max-size 3 :max-idle-time 30)
+       (pooled:with-connection-pool (test-pool :max-size 3 :max-idle-time 30)
          ;; Make multiple requests to same host
          (dotimes (i 5)
            (multiple-value-bind (status headers body)
@@ -237,7 +237,7 @@
   "Test that connections are properly reused"
   (start-test-server)
   (unwind-protect
-       (pool:with-connection-pool (test-pool :max-size 2)
+       (pooled:with-connection-pool (test-pool :max-size 2)
          ;; Make requests to same host
          (dotimes (i 10)
            (pooled:pooled-http-get 
@@ -368,7 +368,7 @@
   "Test that connections are properly cleaned up"
   (start-test-server)
   (unwind-protect
-       (pool:with-connection-pool (test-pool :max-size 2 :max-idle-time 1)
+       (pooled:with-connection-pool (test-pool :max-size 2 :max-idle-time 1)
          ;; Create some connections
          (dotimes (i 5)
            (pooled:pooled-http-get 

@@ -20,7 +20,7 @@
    
    ;; Rate Limiting
    #:rate-limit-middleware
-   #:make-rate-limiter
+   #:create-rate-limiter
    
    ;; Input Validation
    #:validate-request-size
@@ -155,9 +155,14 @@
 
 ;;;; Rate Limiting
 
-(defstruct rate-limiter
+;; Define the struct with a completely unique name
+(defstruct (http-security-rate-limiter (:constructor %make-security-rate-limiter
+                                        (&key (requests (map:make-map))
+                                              (window-seconds 60)
+                                              (max-requests 60)
+                                              (identifier-fn #'get-client-ip))))
   "Rate limiter state"
-  (requests (map:make-map) :type map:map)
+  (requests (map:make-map))  ; No type declaration as map:map type doesn't exist
   (window-seconds 60 :type integer)
   (max-requests 60 :type integer)
   (identifier-fn #'get-client-ip :type function))
@@ -170,21 +175,21 @@
 
 (defun clean-old-requests (limiter current-time)
   "Remove requests older than the time window"
-  (let ((cutoff (- current-time (rate-limiter-window-seconds limiter)))
+  (let ((cutoff (- current-time (http-security-rate-limiter-window-seconds limiter)))
         (new-requests (map:make-map)))
     (map:each (lambda (ip timestamps)
                 (let ((recent (remove-if (lambda (ts) (< ts cutoff)) timestamps)))
                   (when recent
                     (setf new-requests (map:assoc new-requests ip recent)))))
-              (rate-limiter-requests limiter))
-    (setf (rate-limiter-requests limiter) new-requests)))
+              (http-security-rate-limiter-requests limiter))
+    (setf (http-security-rate-limiter-requests limiter) new-requests)))
 
 (defun rate-limit-middleware (handler limiter)
   "Rate limiting middleware"
   (lambda (request)
     (let* ((current-time (get-universal-time))
-           (identifier (funcall (rate-limiter-identifier-fn limiter) request))
-           (requests (rate-limiter-requests limiter)))
+           (identifier (funcall (http-security-rate-limiter-identifier-fn limiter) request))
+           (requests (http-security-rate-limiter-requests limiter)))
       
       ;; Clean old requests periodically
       (when (zerop (mod current-time 60))
@@ -194,27 +199,27 @@
       (let* ((timestamps (or (map:get requests identifier) '()))
              (recent-count (count-if (lambda (ts) 
                                        (>= ts (- current-time 
-                                                 (rate-limiter-window-seconds limiter))))
+                                                 (http-security-rate-limiter-window-seconds limiter))))
                                      timestamps)))
         
-        (if (>= recent-count (rate-limiter-max-requests limiter))
+        (if (>= recent-count (http-security-rate-limiter-max-requests limiter))
             ;; Rate limit exceeded
             (let ((resp (response:text-response "Rate limit exceeded" :status 429)))
               (response:set-header resp "Retry-After" 
-                                   (format nil "~D" (rate-limiter-window-seconds limiter)))
+                                   (format nil "~D" (http-security-rate-limiter-window-seconds limiter)))
               resp)
             ;; Allow request and record timestamp
             (progn
-              (setf (rate-limiter-requests limiter)
+              (setf (http-security-rate-limiter-requests limiter)
                     (map:assoc requests identifier (cons current-time timestamps)))
               (funcall handler request)))))))
 
-(defun make-rate-limiter (&key (window-seconds 60) (max-requests 60) 
-                              (identifier-fn #'get-client-ip))
+(defun create-rate-limiter (&key (window-seconds 60) (max-requests 60) 
+                                (identifier-fn #'get-client-ip))
   "Create a new rate limiter"
-  (make-rate-limiter :window-seconds window-seconds
-                     :max-requests max-requests
-                     :identifier-fn identifier-fn))
+  (%make-security-rate-limiter :window-seconds window-seconds
+                               :max-requests max-requests
+                               :identifier-fn identifier-fn))
 
 ;;;; Input Validation
 
