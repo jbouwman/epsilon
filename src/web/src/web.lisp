@@ -59,7 +59,7 @@
 
 (defun json-request-p (request)
   "Check if request has JSON content type"
-  (let ((content-type (map:get (request:request-headers request) "Content-Type" "")))
+  (let ((content-type (map:get (request:request-headers request) "content-type" "")))
     (search "application/json" content-type)))
 
 (defun parse-query-string (query-string)
@@ -99,7 +99,10 @@
     `(let ((,req-var ,request))
        (if (json-request-p ,req-var)
            (handler-case
-               (let ((,var (json:parse (request:request-body ,req-var))))
+               (let* ((parsed-json (json:parse (request:request-body ,req-var)))
+                      (,var (if (listp parsed-json)
+                                (map:from-pairs parsed-json)
+                                parsed-json)))
                  ,@body)
              (error (e)
                (bad-request (format nil "Invalid JSON: ~A" e))))

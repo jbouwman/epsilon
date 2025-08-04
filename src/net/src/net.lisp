@@ -88,7 +88,7 @@
 (defclass socket ()
   ((handle :initarg :handle :accessor socket-handle)
    (type :initarg :type :accessor socket-type)
-   (connected-p :initform nil :accessor socket-connected-p)))
+   (connected-p :initarg :connected-p :initform nil :accessor socket-connected-p)))
 
 ;;; Platform detection and implementation loading
 

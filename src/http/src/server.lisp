@@ -77,7 +77,27 @@
               (log:debug "Request text: ~A" request-text)
               ;; Parse the complete request
               (when request-text
-                (request:parse-http-request request-text))))
+                ;; First parse headers to get content-length
+                (let ((parsed-request (request:parse-http-request request-text)))
+                  (when parsed-request
+                    ;; Read body if content-length is specified
+                    (let ((content-length-str (map:get (request:request-headers parsed-request) "content-length")))
+                      (when content-length-str
+                        (let ((content-length (ignore-errors (parse-integer content-length-str))))
+                          (when (and content-length (> content-length 0))
+                            (log:debug "Reading body of ~A bytes" content-length)
+                            (let ((body-chars (make-string content-length)))
+                              (read-sequence body-chars stream)
+                              (log:debug "Read body: ~S" body-chars)
+                              ;; Create new request with body
+                              (setf parsed-request
+                                    (request:make-request 
+                                     (request:request-method parsed-request)
+                                     (request:request-path parsed-request)
+                                     :headers (request:request-headers parsed-request)
+                                     :body body-chars
+                                     :params (request:request-params parsed-request))))))))
+                    parsed-request)))))
         (error (e)
                (log:error "Error reading HTTP request: ~A" e)
                nil)))))  ; Return nil on any error
