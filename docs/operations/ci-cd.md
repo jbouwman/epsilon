@@ -100,7 +100,7 @@ Epsilon uses GitHub Actions for:
 ### Test Discovery
 
 The test system automatically discovers tests by:
-1. Finding all `package.lisp` files
+1. Finding all `module.lisp` files
 2. Loading test files from `tests/` directories
 3. Running all functions defined with `deftest`
 

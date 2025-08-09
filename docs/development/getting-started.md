@@ -18,7 +18,7 @@ Run a local package during development:
 ./epsilon run [args...]
 ```
 
-This auto-detects and runs the package defined in the current directory's `package.lisp`.
+This auto-detects and runs the package defined in the current directory's `module.lisp`.
 
 ## Basic Usage
 

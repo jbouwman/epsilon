@@ -69,40 +69,40 @@ echo
 run_test "help flag" "./epsilon --help" 0 "Epsilon development environment"
 run_test "version flag" "./epsilon --version" 0 "EPSILON"
 
-# Package operations
-run_test "list packages" "./epsilon --packages" 0 "epsilon.core"
-run_test "list packages (finds epsilon.test)" "./epsilon --packages" 0 "epsilon.test"
+# Module operations
+run_test "list modules" "./epsilon --modules" 0 "epsilon.core"
+run_test "list modules (finds epsilon.test)" "./epsilon --modules" 0 "epsilon.test"
 
 # Build operations
-run_test "load epsilon.json" "./epsilon --package epsilon.json --eval t" 0 "Successfully loaded epsilon.json"
-run_test "load invalid package" "./epsilon --package nonexistent.package" 1 "Unknown package"
+run_test "load epsilon.json" "./epsilon --module epsilon.json --eval \'success" 0 "SUCCESS"
+run_test "load invalid module" "./epsilon --module nonexistent.module" 1 "Unknown module"
 
 # Test operations
 echo
 echo "=== Testing --test flag ==="
 run_test "test epsilon.core" "./epsilon --test epsilon.json" 0 "test"
-run_test "test invalid package" "./epsilon --test nonexistent.package" 1 "Unknown"
+run_test "test invalid module" "./epsilon --test nonexistent.module" 1 "Unknown"
 
 # Eval operations
 run_test "eval simple expression" "./epsilon --eval '(+ 1 2)'" 0 "3"
-run_test "eval with package load" "./epsilon --package epsilon.core --eval '(epsilon.map:make-map)'" 0
+run_test "eval with module load" "./epsilon --module epsilon.core --eval '(epsilon.map:make-map)'" 0
 
 # Path operations
-TEST_PKG_DIR="$TEST_DIR/test-package"
+TEST_PKG_DIR="$TEST_DIR/test-module"
 mkdir -p "$TEST_PKG_DIR"
-cat > "$TEST_PKG_DIR/package.lisp" << 'EOF'
-(:name "test.package"
+cat > "$TEST_PKG_DIR/module.lisp" << 'EOF'
+(:name "test.module"
  :version "1.0.0"
  :author "Test"
- :description "Test package"
+ :description "Test module"
  :sources ("src")
  :dependencies ())
 EOF
 mkdir -p "$TEST_PKG_DIR/src"
-echo "(defpackage test.package)" > "$TEST_PKG_DIR/src/main.lisp"
+echo "(defpackage test.module)" > "$TEST_PKG_DIR/src/main.lisp"
 
-run_test "path to package" "./epsilon --path $TEST_PKG_DIR --packages" 0 "test.package"
-run_test "path without package.lisp" "./epsilon --path /tmp --packages" 1 "No package.lisp found"
+run_test "path to module" "./epsilon --path $TEST_PKG_DIR --modules" 0 "test.module"
+run_test "path without module.lisp" "./epsilon --path /tmp --modules" 1 "No module.lisp found"
 
 # Combined operations
 run_test "build and eval" "./epsilon --build epsilon.core --eval '(format t \"built\")'" 0 "built"
