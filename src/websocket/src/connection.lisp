@@ -16,11 +16,23 @@
    ;; Connection structure
    websocket-connection
    make-connection
-   connection-stream
-   connection-state
-   connection-subprotocol
-   connection-extensions
-   connection-client-side
+   websocket-connection-stream
+   websocket-connection-state
+   websocket-connection-subprotocol
+   websocket-connection-extensions
+   websocket-connection-client-side
+   websocket-connection-close-code
+   websocket-connection-close-reason
+   websocket-connection-ping-payload
+   websocket-connection-message-buffer
+   websocket-connection-message-type
+   websocket-connection-lock
+   websocket-connection-on-open
+   websocket-connection-on-message
+   websocket-connection-on-close
+   websocket-connection-on-error
+   websocket-connection-on-ping
+   websocket-connection-on-pong
    
    ;; Connection states
    +state-connecting+

@@ -1,30 +1,46 @@
-(defpackage #:epsilon.lsp.analysis
-  (:use #:common-lisp)
+(defpackage epsilon.lsp.analysis
+  (:use common-lisp)
   (:local-nicknames
-   (#:map #:epsilon.map)
-   (#:str #:epsilon.string)
-   (#:seq #:epsilon.sequence)
-   (#:fs #:epsilon.sys.fs)
-   (#:path #:epsilon.path)
-   (#:build #:epsilon.tool.build))
+   (map epsilon.map)
+   (str epsilon.string)
+   (seq epsilon.sequence)
+   (fs epsilon.sys.fs)
+   (path epsilon.path))
   (:export
-   #:analyze-document
-   #:find-definition
-   #:find-references
-   #:get-symbols
-   #:get-hover-info
-   #:get-completions
-   #:document-analysis
-   #:make-document-analysis
-   #:extract-symbols
-   #:check-syntax-errors
-   #:position-to-offset
-   #:offset-to-position
-   #:symbol-at-position
-   #:completion-items
-   #:diagnostic-info))
+   analyze-document
+   find-definition
+   find-references
+   get-symbols
+   get-hover-info
+   get-completions
+   document-analysis
+   make-document-analysis
+   document-analysis-symbols
+   document-analysis-uri
+   document-analysis-content
+   document-analysis-errors
+   symbol-info-name
+   symbol-info-position
+   symbol-info-range
+   symbol-info-type
+   extract-symbols
+   check-syntax-errors
+   position-to-offset
+   offset-to-position
+   symbol-at-position
+   completion-items
+   diagnostic-info
+   diagnostic
+   diagnostic-p
+   diagnostic-position
+   diagnostic-message
+   diagnostic-severity
+   document-analysis-p
+   document-analysis-definitions
+   document-analysis-references
+   make-completion-item))
 
-(in-package #:epsilon.lsp.analysis)
+(in-package epsilon.lsp.analysis)
 
 (defstruct document-analysis
   "Analysis result for a document."
@@ -89,24 +105,24 @@
     (handler-case
         (with-input-from-string (stream content)
           (loop
-            (let ((start-pos (file-position stream)))
-              (multiple-value-bind (form condition)
-                  (ignore-errors (read stream nil :eof))
-                (cond
-                  ((eq form :eof)
-                   (return))
-                  (condition
-                   (push (format nil "Parse error at position ~D: ~A" start-pos condition) errors)
-                   (return))
-                  (t
-                   (let ((end-pos (file-position stream)))
-                     (multiple-value-bind (start-line start-col)
-                         (offset-to-position content start-pos)
-                       (multiple-value-bind (end-line end-col)
-                           (offset-to-position content end-pos)
-                         (push (list form start-line start-col end-line end-col) forms))))))))) 
+           (let ((start-pos (file-position stream)))
+             (multiple-value-bind (form condition)
+                 (ignore-errors (read stream nil :eof))
+               (cond
+                 ((eq form :eof)
+                  (return))
+                 (condition
+                  (push (format nil "Parse error at position ~D: ~A" start-pos condition) errors)
+                  (return))
+                 (t
+                  (let ((end-pos (file-position stream)))
+                    (multiple-value-bind (start-line start-col)
+                        (offset-to-position content start-pos)
+                      (multiple-value-bind (end-line end-col)
+                          (offset-to-position content end-pos)
+                        (push (list form start-line start-col end-line end-col) forms))))))))))
       (error (e)
-        (push (format nil "Document parse error: ~A" e) errors)))
+             (push (format nil "Document parse error: ~A" e) errors)))
     
     (values (nreverse forms) errors)))
 
@@ -121,6 +137,12 @@
                 (setf symbols (append extracted symbols))
                 (push extracted symbols))))))
     (nreverse symbols)))
+
+(defun extract-symbols (content)
+  "Extract all symbols from content."
+  (multiple-value-bind (forms errors) (parse-document-forms content)
+    (declare (ignore errors))
+    (extract-symbols-from-forms forms content)))
 
 (defun analyze-form (form start-line start-col end-line end-col content)
   "Analyze a single form and extract symbol information."
@@ -282,19 +304,19 @@
     (handler-case
         (with-input-from-string (stream content)
           (loop 
-            (let ((pos (file-position stream)))
-              (handler-case
-                  (let ((form (read stream nil :eof)))
-                    (when (eq form :eof)
-                      (return)))
-                (end-of-file ()
-                  (push (make-diagnostic pos "Unexpected end of file") errors)
-                  (return))
-                (reader-error (e)
-                  (push (make-diagnostic pos (format nil "Reader error: ~A" e)) errors)
-                  (return))))))
+           (let ((pos (file-position stream)))
+             (handler-case
+                 (let ((form (read stream nil :eof)))
+                   (when (eq form :eof)
+                     (return)))
+               (end-of-file ()
+                 (push (make-diagnostic :position pos :message "Unexpected end of file" :severity :error) errors)
+                 (return))
+               (reader-error (e)
+                 (push (make-diagnostic :position pos :message (format nil "Reader error: ~A" e) :severity :error) errors)
+                 (return))))))
       (error (e)
-        (push (make-diagnostic 0 (format nil "Parse error: ~A" e)) errors)))
+        (push (make-diagnostic :position 0 :message (format nil "Parse error: ~A" e) :severity :error) errors)))
     errors))
 
 (defstruct diagnostic
@@ -303,9 +325,6 @@
   message
   severity)  ; :error, :warning, :information, :hint
 
-(defun make-diagnostic (position message &optional (severity :error))
-  "Create a diagnostic entry."
-  (make-instance 'diagnostic :position position :message message :severity severity))
 
 ;;; Advanced Analysis Functions
 
@@ -462,26 +481,26 @@
 ;;; Utility Functions
 
 (defun position-to-offset (content line column)
-  "Convert line/column position (1-based) to character offset."
-  (let ((lines (str:split content #\Newline))
+  "Convert line/column position (1-based line, 0-based column) to character offset."
+  (let ((lines (seq:realize (str:split #\Newline content)))
         (offset 0))
     (dotimes (i (1- line))
       (when (< i (length lines))
         (incf offset (length (nth i lines)))
         (incf offset 1))) ; newline character
-    (+ offset (1- column)))) ; Convert to 0-based column
+    (+ offset column)))
 
 (defun offset-to-position (content offset)
-  "Convert character offset to line/column position (1-based)."
+  "Convert character offset to line/column position (1-based line, 0-based column)."
   (let ((line 1)
-        (column 1)
+        (column 0)
         (current-offset 0))
     (loop for char across content
           while (< current-offset offset)
           do (if (char= char #\Newline)
                  (progn
                    (incf line)
-                   (setf column 1))
+                   (setf column 0))
                  (incf column))
              (incf current-offset))
-    (values line column)))
+    (cons line column)))

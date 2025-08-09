@@ -42,6 +42,9 @@
    #:add-event
    #:modify-event
    #:delete-event
+   #:epoll-add
+   #:epoll-modify
+   #:epoll-delete
    #:wait-for-events
    
    ;; Utility functions
@@ -232,6 +235,19 @@
                 :data (or data (make-epoll-data :fd fd)))))
     (epoll-ctl epfd +epoll-ctl-add+ fd event)))
 
+(defun epoll-add (epfd fd events-list)
+  "Add file descriptor to epoll with event list"
+  (let ((events 0))
+    (dolist (evt events-list)
+      (setf events (logior events
+                          (ecase evt
+                            (:in +epollin+)
+                            (:out +epollout+)
+                            (:err +epollerr+)
+                            (:hup +epollhup+)
+                            (:et +epollet+)))))
+    (add-event epfd fd events)))
+
 (defun modify-event (epfd fd events &key data)
   "Modify file descriptor in epoll"
   (let ((event (make-epoll-event
@@ -239,9 +255,26 @@
                 :data (or data (make-epoll-data :fd fd)))))
     (epoll-ctl epfd +epoll-ctl-mod+ fd event)))
 
+(defun epoll-modify (epfd fd events-list)
+  "Modify file descriptor in epoll with event list"
+  (let ((events 0))
+    (dolist (evt events-list)
+      (setf events (logior events
+                          (ecase evt
+                            (:in +epollin+)
+                            (:out +epollout+)
+                            (:err +epollerr+)
+                            (:hup +epollhup+)
+                            (:et +epollet+)))))
+    (modify-event epfd fd events)))
+
 (defun delete-event (epfd fd)
   "Delete file descriptor from epoll"
   (epoll-ctl epfd +epoll-ctl-del+ fd nil))
+
+(defun epoll-delete (epfd fd)
+  "Delete file descriptor from epoll (alias)"
+  (delete-event epfd fd))
 
 (defun wait-for-events (epfd max-events &optional (timeout -1))
   "Wait for events (timeout in milliseconds, -1 = block indefinitely)"

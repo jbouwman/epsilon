@@ -57,9 +57,9 @@
 (defmethod fmt:to-ir ((object symbol))
   "Convert symbol to JSON based on type"
   (cond
-    ((eq object t) (fmt:make-ir-primitive "true"))
-    ((eq object nil) (fmt:make-ir-primitive "false"))
-    ((eq object :null) (fmt:make-ir-primitive "null"))
+    ((eq object t) (fmt:make-ir-primitive t))
+    ((eq object nil) (fmt:make-ir-primitive nil))
+    ((eq object :null) (fmt:make-ir-primitive nil))  ; JSON null
     (t (fmt:make-ir-primitive (string-downcase (symbol-name object))))))
 
 
@@ -81,7 +81,7 @@
 
 (defun load-test-resource (filename)
   "Load the contents of a test resource file"
-  (let ((path (project-file "epsilon.core" (path:string-path-join "tests/tool/format" filename))))
+  (let ((path (project-file "epsilon.format" (path:string-path-join "tests/format" filename))))
     (fs:read-file path)))
 
 (defun find-string-difference (str1 str2)
@@ -136,7 +136,6 @@
 ;; Test suite
 (deftest test-simple-map
   "Test formatting a simple epsilon map as JSON"
-  (skip)
   (let ((simple-map (map:make-map "name" "test" "value" 42))
         (expected (load-test-resource "simple-map.json")))
     (let ((result (format-to-string simple-map :line-limit 40)))
@@ -144,7 +143,6 @@
 
 (deftest test-simple-list
   "Test formatting a simple list as JSON array"
-  (skip)
   (let ((simple-list '(1 2 3 "hello" t nil))
         (expected (load-test-resource "simple-list.json")))
     (let ((result (format-to-string simple-list :line-limit 40)))
@@ -152,7 +150,6 @@
 
 (deftest test-nested-structures
   "Test formatting nested epsilon maps and lists"
-  (skip)
   (let ((data (make-test-data))
         (expected (load-test-resource "nested-structures.json")))
     (let ((result (format-to-string data :line-limit 80)))
@@ -170,19 +167,17 @@
 
 (deftest test-vector-formatting
 "Test that vectors format as JSON arrays"
-  (skip)
   (let* ((vec #(1 "two" 3.14 t nil))
          (expected (load-test-resource "vector-formatting.json"))
          (result (format-to-string vec)))
     (assert-strings-equal result expected "Vector formatting")))
 
 (deftest test-indentation
-  "Test proper indentation in expanded layout"  
-  (skip)
+  "Test proper indentation in expanded layout"
   (let ((data (make-test-data)))
     (let ((result (format-to-string data :indent-width 4 :line-limit 40)))
       ;; Check that indentation increases inside objects/arrays
-      (let ((lines (loop for line in (str:split #\Newline result)
+      (let ((lines (loop for line in (seq:realize (str:split #\Newline result))
                          collect line)))
         (is (some (lambda (line) 
                     (and (> (length line) 4)

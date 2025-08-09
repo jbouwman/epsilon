@@ -5,4 +5,4 @@
  :sources ("src")
  :tests ("tests")
  :dependencies ("epsilon.core" "epsilon.parsing")
- :provides ("epsilon.foreign" "epsilon.clang"))
+ :provides ("epsilon.clang"))

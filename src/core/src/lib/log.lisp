@@ -32,7 +32,10 @@
    get-logger make-logger
    
    ;; Utilities
-   format-timestamp current-thread-name))
+   format-timestamp current-thread-name
+   
+   ;; Source location
+   with-source-location))
 
 (in-package epsilon.log)
 
@@ -138,7 +141,9 @@
    (context :initarg :context :reader log-context)
    (fields :initarg :fields :reader log-fields :initform nil)
    (thread :initarg :thread :reader log-thread)
-   (package :initarg :package :reader log-package)))
+   (package :initarg :package :reader log-package)
+   (file :initarg :file :reader log-file :initform nil)
+   (line :initarg :line :reader log-line :initform nil)))
 
 (defun make-log-record (logger level message)
   "Create a log record"
@@ -151,7 +156,7 @@
                  :thread (current-thread-name)
                  :package (package-name *package*)))
 
-(defun make-log-record-with-context (logger level package-name message)
+(defun make-log-record-with-context (logger level package-name message &key file line)
   "Create a log record with explicit package context"
   (make-instance 'log-record
                  :timestamp (get-universal-time)
@@ -160,9 +165,11 @@
                  :message message
                  :context (copy-list *log-context*)
                  :thread (current-thread-name)
-                 :package package-name))
+                 :package package-name
+                 :file file
+                 :line line))
 
-(defun make-log-record-with-fields (logger level package-name message fields)
+(defun make-log-record-with-fields (logger level package-name message fields &key file line)
   "Create a log record with structured fields"
   (make-instance 'log-record
                  :timestamp (get-universal-time)
@@ -172,7 +179,9 @@
                  :context (copy-list *log-context*)
                  :fields fields
                  :thread (current-thread-name)
-                 :package package-name))
+                 :package package-name
+                 :file file
+                 :line line))
 
 ;;; Appenders
 
@@ -226,11 +235,20 @@
                                         (if (consp pair)
                                             (list (car pair) (cdr pair))
                                             (list pair "true")))
-                                      (log-fields record))))))
-    (format nil "[~A] ~A ~A: ~A~A" 
+                                      (log-fields record)))))
+        (location-str (cond
+                        ((and (log-file record) (log-line record))
+                         (format nil " [~A:~A]" 
+                                 (log-file record) 
+                                 (log-line record)))
+                        ((log-file record)
+                         (format nil " [~A]" (log-file record)))
+                        (t ""))))
+    (format nil "[~A] ~A ~A~A: ~A~A" 
             (format-timestamp (log-timestamp record))
             (string-upcase (log-level record))
             (logger-name (log-logger record))
+            location-str
             (log-message record)
             (or fields-str ""))))
 
@@ -244,13 +262,22 @@
                                         (if (consp pair)
                                             (list (car pair) (cdr pair))
                                             (list pair "true")))
-                                      (log-fields record))))))
-    (format nil "[~A] ~A ~A [~A@~A]: ~A~A~A"
+                                      (log-fields record)))))
+        (location-str (cond
+                        ((and (log-file record) (log-line record))
+                         (format nil " ~A:~A" 
+                                 (log-file record) 
+                                 (log-line record)))
+                        ((log-file record)
+                         (format nil " ~A" (log-file record)))
+                        (t ""))))
+    (format nil "[~A] ~A ~A [~A@~A~A]: ~A~A~A"
             (format-timestamp (log-timestamp record))
             (string-upcase (log-level record))
             (logger-name (log-logger record))
             (log-thread record)
             (log-package record)
+            location-str
             (log-message record)
             (or context-str "")
             (or fields-str ""))))
@@ -265,14 +292,20 @@
                                          (if (consp pair)
                                              (list (car pair) (cdr pair))
                                              (list pair "true")))
-                                       (log-fields record))))))
-    (format nil "{\"timestamp\":~S,\"level\":~S,\"logger\":~S,\"message\":~S,\"thread\":~S,\"package\":~S~A~A}"
+                                       (log-fields record)))))
+        (file-json (when (log-file record)
+                     (format nil ",\"file\":~S" (log-file record))))
+        (line-json (when (log-line record)
+                     (format nil ",\"line\":~D" (log-line record)))))
+    (format nil "{\"timestamp\":~S,\"level\":~S,\"logger\":~S,\"message\":~S,\"thread\":~S,\"package\":~S~A~A~A~A}"
             (format-timestamp (log-timestamp record))
             (string (log-level record))
             (logger-name (log-logger record))
             (log-message record)
             (log-thread record)
             (log-package record)
+            (or file-json "")
+            (or line-json "")
             (or context-json "")
             (or fields-json ""))))
 
@@ -284,16 +317,16 @@
     (let ((record (make-log-record logger level message)))
       (emit-to-appenders logger record))))
 
-(defun emit-log-with-context (logger level package-name message)
+(defun emit-log-with-context (logger level package-name message &key file line)
   "Emit a log message with explicit package context"
   (when (logger-enabled-p logger level)
-    (let ((record (make-log-record-with-context logger level package-name message)))
+    (let ((record (make-log-record-with-context logger level package-name message :file file :line line)))
       (emit-to-appenders logger record))))
 
-(defun emit-log-with-fields (logger level package-name message fields)
+(defun emit-log-with-fields (logger level package-name message fields &key file line)
   "Emit a log message with structured fields"
   (when (logger-enabled-p logger level)
-    (let ((record (make-log-record-with-fields logger level package-name message fields)))
+    (let ((record (make-log-record-with-fields logger level package-name message fields :file file :line line)))
       (emit-to-appenders logger record))))
 
 (defun emit-to-appenders (logger record)
@@ -306,15 +339,28 @@
 
 ;;; Public Logging Macros
 
+(defmacro with-source-location ((file-var line-var) &body body)
+  "Capture source location at macro expansion time"
+  `(let ((,file-var ,(or (when *compile-file-pathname* 
+                            (enough-namestring *compile-file-pathname*))
+                          (when *load-pathname*
+                            (enough-namestring *load-pathname*))
+                          nil))
+         (,line-var nil))  ; Line numbers require compiler cooperation
+     ,@body))
+
 (defmacro log (level format-string &rest args)
   "Log a message at the specified level"
   (let ((package-name (package-name *package*)))
-    `(let ((logger (get-logger ,package-name)))
-       (when (logger-enabled-p logger ,level)
-         (emit-log-with-context logger ,level ,package-name
-                               ,(if args
-                                    `(format nil ,format-string ,@args)
-                                    format-string))))))
+    `(with-source-location (file line)
+       (let ((logger (get-logger ,package-name)))
+         (when (logger-enabled-p logger ,level)
+           (emit-log-with-context logger ,level ,package-name
+                                 ,(if args
+                                      `(format nil ,format-string ,@args)
+                                      format-string)
+                                 :file file
+                                 :line line))))))
 
 (defmacro trace (format-string &rest args)
   `(log :trace ,format-string ,@args))
@@ -325,11 +371,21 @@
 (defmacro info (format-string &rest args)
   `(log :info ,format-string ,@args))
 
-(defmacro warn (format-string &rest args)
-  `(log :warn ,format-string ,@args))
+(defmacro warn (format-string-or-condition &rest args)
+  "Log a warning message. If first argument is a condition, logs it with context."
+  (let ((first-arg (gensym "FIRST-ARG")))
+    `(let ((,first-arg ,format-string-or-condition))
+       (if (typep ,first-arg 'condition)
+           (log :warn "~A" ,first-arg ,@args)
+           (log :warn ,first-arg ,@args)))))
 
-(defmacro error (format-string &rest args)
-  `(log :error ,format-string ,@args))
+(defmacro error (format-string-or-condition &rest args)
+  "Log an error message. If first argument is a condition, logs it with context."
+  (let ((first-arg (gensym "FIRST-ARG")))
+    `(let ((,first-arg ,format-string-or-condition))
+       (if (typep ,first-arg 'condition)
+           (log :error "~A" ,first-arg ,@args)
+           (log :error ,first-arg ,@args)))))
 
 (defmacro fatal (format-string &rest args)
   `(log :fatal ,format-string ,@args))
@@ -339,13 +395,16 @@
 (defmacro log-with-fields (level format-string fields &rest args)
   "Log a message with structured fields (key-value pairs)"
   (let ((package-name (package-name *package*)))
-    `(let ((logger (get-logger ,package-name)))
-       (when (logger-enabled-p logger ,level)
-         (emit-log-with-fields logger ,level ,package-name
-                              ,(if args
-                                   `(format nil ,format-string ,@args)
-                                   format-string)
-                              ,fields)))))
+    `(with-source-location (file line)
+       (let ((logger (get-logger ,package-name)))
+         (when (logger-enabled-p logger ,level)
+           (emit-log-with-fields logger ,level ,package-name
+                                ,(if args
+                                     `(format nil ,format-string ,@args)
+                                     format-string)
+                                ,fields
+                                :file file
+                                :line line))))))
 
 (defmacro info-with-fields (format-string fields &rest args)
   `(log-with-fields :info ,format-string ,fields ,@args))

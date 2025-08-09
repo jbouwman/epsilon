@@ -31,10 +31,9 @@
 
 (defun make-http-connection (host port &key ssl-p)
   "Create an HTTP connection using epsilon.net"
-  (let* ((socket (net:socket))
-         (address (net:make-socket-address host port))
+  (let* ((address (net:make-socket-address host port))
+         (socket (net:tcp-connect address))
          (tls-conn nil))
-    (net:connect socket address)
     (when ssl-p
       (let ((tls-context (tls:create-tls-context :server-p nil)))
         (setf tls-conn (tls:tls-connect socket tls-context))))
@@ -56,7 +55,7 @@
            ;; (tls:tls-close (connection-tls-connection ,conn))
            )
          (when (connection-socket ,conn)
-           (net:close (connection-socket ,conn)))))))
+           (net:tcp-shutdown (connection-socket ,conn) :both))))))
 
 (defun parse-url (url-string)
   "Parse URL into components - simple implementation"
@@ -138,7 +137,8 @@
     (let ((stream (if (connection-ssl-p connection)
                       ;; TODO: Fix TLS load order
                       (error "TLS streams not yet implemented")
-                      (net:socket-stream (connection-socket connection)))))
+                      (make-two-way-stream (net:tcp-stream-reader (connection-socket connection))
+                                           (net:tcp-stream-writer (connection-socket connection))))))
       (write-string request stream)
       (force-output stream))))
 
@@ -147,7 +147,8 @@
   (let* ((stream (if (connection-ssl-p connection)
                      ;; TODO: Fix TLS load order
                      (error "TLS streams not yet implemented")
-                     (net:socket-stream (connection-socket connection))))
+                     (make-two-way-stream (net:tcp-stream-reader (connection-socket connection))
+                                          (net:tcp-stream-writer (connection-socket connection)))))
          (response-lines '())
          (line nil))
     ;; Read status line and headers

@@ -76,7 +76,6 @@
          (wd (subprocess-working-directory subprocess)))
     
     (multiple-value-bind (output-stream error-stream process)
-        #+sbcl
         (sb-ext:run-program cmd args
                             :environment env
                             :directory wd
@@ -85,59 +84,29 @@
                             :error (subprocess-error subprocess)
                             :wait wait
                             :search t)
-        #+ccl
-        (ccl:run-program cmd args
-                         :environment env
-                         :directory wd
-                         :input (subprocess-input subprocess)
-                         :output (subprocess-output subprocess)
-                         :error (subprocess-error subprocess)
-                         :wait wait)
-        #-(or sbcl ccl)
-        (error "Process control not implemented for this Lisp implementation")
-      
       (setf (subprocess-process subprocess) process
             (subprocess-output-stream subprocess) output-stream
             (subprocess-error-stream subprocess) error-stream)
-      
       (when wait
         (setf (subprocess-exit-code subprocess)
-              #+sbcl (sb-ext:process-exit-code process)
-              #+ccl (ccl:external-process-status process)
-              #-(or sbcl ccl) 0))
-      
+              (sb-ext:process-exit-code process)))
       subprocess)))
 
 (defmethod stop ((subprocess subprocess))
   "Stop the subprocess."
   (when (subprocess-process subprocess)
-    #+sbcl
-    (sb-ext:process-kill (subprocess-process subprocess) sb-unix:sigterm)
-    #+ccl
-    (ccl:signal-external-process (subprocess-process subprocess) 15)
-    #-(or sbcl ccl)
-    (error "Process termination not implemented for this Lisp implementation"))
+    (sb-ext:process-kill (subprocess-process subprocess) sb-unix:sigterm))
   subprocess)
 
 (defmethod running-p ((subprocess subprocess))
   "Check if the subprocess is still running."
   (when (subprocess-process subprocess)
-    #+sbcl
-    (eq :running (sb-ext:process-status (subprocess-process subprocess)))
-    #+ccl
-    (eq :running (ccl:external-process-status (subprocess-process subprocess)))
-    #-(or sbcl ccl)
-    nil))
+    (eq :running (sb-ext:process-status (subprocess-process subprocess)))))
 
 (defun process-pid (subprocess)
   "Get the process ID of the subprocess."
   (when (subprocess-process subprocess)
-    #+sbcl
-    (sb-ext:process-pid (subprocess-process subprocess))
-    #+ccl
-    (ccl:external-process-id (subprocess-process subprocess))
-    #-(or sbcl ccl)
-    nil))
+    (sb-ext:process-pid (subprocess-process subprocess))))
 
 (defun process-output (subprocess)
   "Get the output stream of the subprocess."
@@ -154,12 +123,7 @@
 (defun kill-process (subprocess &optional (signal 15))
   "Kill the subprocess with the specified signal."
   (when (subprocess-process subprocess)
-    #+sbcl
-    (sb-ext:process-kill (subprocess-process subprocess) signal)
-    #+ccl
-    (ccl:signal-external-process (subprocess-process subprocess) signal)
-    #-(or sbcl ccl)
-    (error "Process signaling not implemented for this Lisp implementation")))
+    (sb-ext:process-kill (subprocess-process subprocess) signal)))
 
 (defun wait-for-process (subprocess &optional timeout)
   "Wait for the subprocess to complete, optionally with timeout."
@@ -171,18 +135,10 @@
                   when (> (- (get-universal-time) start-time) timeout)
                     do (error "Process timeout after ~A seconds" timeout)
                   do (sleep 0.1)))
-          (progn
-            #+sbcl
-            (sb-ext:process-wait process)
-            #+ccl
-            (ccl:external-process-wait process)
-            #-(or sbcl ccl)
-            (loop while (running-p subprocess) do (sleep 0.1))))
+          (sb-ext:process-wait process))
       
       (setf (subprocess-exit-code subprocess)
-            #+sbcl (sb-ext:process-exit-code process)
-            #+ccl (ccl:external-process-status process)
-            #-(or sbcl ccl) 0))
+            (sb-ext:process-exit-code process)))
     subprocess))
 
 (defun command-line-escape (string)
@@ -252,9 +208,7 @@
 (defmacro with-environment (environment &body body)
   "Execute body with modified environment variables."
   (let ((old-env (gensym "OLD-ENV")))
-    `(let ((,old-env (copy-list #+sbcl sb-ext:*posix-argv*
-                                #+ccl ccl:*command-line-argument-list*
-                                #-(or sbcl ccl) nil)))
+    `(let ((,old-env (copy-list sb-ext:*posix-argv*)))
        (unwind-protect
             (progn
               ,@(mapcar (lambda (env-pair)

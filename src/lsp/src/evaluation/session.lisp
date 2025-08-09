@@ -25,9 +25,11 @@
    #:session-created-at
    #:session-last-used
    #:session-restrictions
+   #:session-modules
    
    ;; Session manager
    #:session-manager
+   #:max-sessions-per-client
    #:create-session
    #:get-session
    #:list-sessions
@@ -45,19 +47,23 @@
    #:restriction-max-cpu-time
    #:restriction-allow-file-read
    #:restriction-allow-file-write
-   #:restriction-allow-network))
+   #:restriction-allow-network
+   
+   ;; Session I/O
+   #:write-message-to-session
+   #:read-message-from-session))
 
 (in-package #:epsilon.lsp.evaluation.session)
 
 ;;; Constants
 
-(defconstant +session-active+ :active
+(defparameter +session-active+ :active
   "Session is actively processing or ready for evaluation")
 
-(defconstant +session-idle+ :idle
+(defparameter +session-idle+ :idle
   "Session is idle but still alive")
 
-(defconstant +session-terminated+ :terminated
+(defparameter +session-terminated+ :terminated
   "Session has been terminated")
 
 ;;; Security Restrictions
@@ -197,7 +203,8 @@
         (error "Failed to initialize session: ~A" e)))
     
     ;; Register session
-    (setf (map:get (manager-sessions manager) (session-id session)) session)
+    (setf (manager-sessions manager) 
+          (map:assoc (manager-sessions manager) (session-id session) session))
     
     ;; Return session
     session))
@@ -260,9 +267,9 @@
                     "--no-userinit")))
     
     ;; Add memory limit if specified
-    (when (restriction-max-memory restrictions)
+    (when (and restrictions (evaluation-restrictions-max-memory restrictions))
       (push (format nil "--dynamic-space-size=~A" 
-                    (restriction-max-memory restrictions))
+                    (evaluation-restrictions-max-memory restrictions))
             args))
     
     ;; Add evaluation runner
@@ -302,20 +309,20 @@
 (defun restrictions-to-map (restrictions)
   "Convert restrictions struct to map for serialization"
   (map:make-map
-   "max-memory" (restriction-max-memory restrictions)
-   "max-cpu-time" (restriction-max-cpu-time restrictions)
-   "allow-file-read" (restriction-allow-file-read restrictions)
-   "allow-file-write" (restriction-allow-file-write restrictions)
-   "allow-network" (restriction-allow-network restrictions)
-   "allowed-paths" (restriction-allowed-paths restrictions)
-   "forbidden-functions" (restriction-forbidden-functions restrictions)))
+   "max-memory" (evaluation-restrictions-max-memory restrictions)
+   "max-cpu-time" (evaluation-restrictions-max-cpu-time restrictions)
+   "allow-file-read" (evaluation-restrictions-allow-file-read restrictions)
+   "allow-file-write" (evaluation-restrictions-allow-file-write restrictions)
+   "allow-network" (evaluation-restrictions-allow-network restrictions)
+   "allowed-paths" (evaluation-restrictions-allowed-paths restrictions)
+   "forbidden-functions" (evaluation-restrictions-forbidden-functions restrictions)))
 
 ;;; Session I/O
 
 (defun write-message-to-session (session message)
   "Write a message to the session subprocess"
   (let ((stream (session-input-stream session)))
-    (write-line (json:encode message) stream)
+    (write-line (with-output-to-string (s) (json:encode message s)) stream)
     (force-output stream)))
 
 (defun read-message-from-session (session &key (timeout 30))

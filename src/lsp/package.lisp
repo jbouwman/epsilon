@@ -5,4 +5,4 @@
  :sources ("src" "src/evaluation")
  :tests ("tests")
  :dependencies ("epsilon.core" "epsilon.parsing" "epsilon.json")
- :provides ("epsilon.lsp" "epsilon.lsp.evaluation.session" "epsilon.lsp.evaluation.protocol" "epsilon.lsp.evaluation.api" "epsilon.lsp.evaluation.runner" "epsilon.lsp.evaluation.integration"))
+)

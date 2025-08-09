@@ -5,4 +5,4 @@
  :sources ("src")
  :tests ("tests")
  :dependencies ("epsilon.core" "epsilon.foreign" "epsilon.net")
- :provides ("epsilon.tls"))
+)

@@ -67,7 +67,8 @@
   (log:debug "read-http-request called, ssl-p: ~A" ssl-p)
   (let ((stream (if ssl-p
                     (tls:tls-stream connection)
-                  (net:socket-stream connection))))
+                  (make-two-way-stream (net:tcp-stream-reader connection)
+                                       (net:tcp-stream-writer connection)))))
     (log:debug "Got stream: ~A" stream)
     (when stream
       (handler-case
@@ -106,7 +107,8 @@
   "Send HTTP response object to connection"
   (let ((stream (if ssl-p
                     (tls:tls-stream connection)
-                  (net:socket-stream connection))))
+                  (make-two-way-stream (net:tcp-stream-reader connection)
+                                       (net:tcp-stream-writer connection)))))
     (when stream
       (let ((response-text (response:response-to-string response-obj)))
         (write-string response-text stream)
@@ -146,7 +148,7 @@
   (log:debug "Closing connection...")
   (if ssl-p
       (tls:tls-close connection)
-    (net:close connection))
+    (net:tcp-shutdown connection :both))
   (log:debug "Connection closed"))
 
 (defun server-loop (server)
@@ -156,7 +158,7 @@
         do (handler-case
 	       (progn
                  (log:debug "Waiting for connection on port ~A..." (server-port server))
-                 (let ((raw-connection (net:accept (server-socket server))))
+                 (let ((raw-connection (net:tcp-accept (server-socket server))))
                    (log:info "Accepted connection: ~A" raw-connection)
                    (when raw-connection
                      (let ((connection (if (server-ssl-p server)
@@ -193,11 +195,9 @@
         (tls:load-key-file tls-context key-file))
       (tls:set-verify-mode tls-context tls:+tls-verify-none+)))
   
-  (let* ((listener (net:socket))
-         (addr (net:make-socket-address address port)))
-    (net:set-socket-option listener net:+socket-option-reuseaddr+ t)
-    (net:bind listener addr)
-    (net:listen listener)
+  (let* ((addr (net:make-socket-address address port))
+         (listener (net:tcp-bind addr)))
+    (net:set-socket-option listener :reuse-address t)
     (let ((server (make-instance 'http-server
                                  :port port
                                  :socket listener
@@ -220,7 +220,7 @@
                   (map:get *servers* port-or-server))))
     (when server
       (setf (server-running-p server) nil)
-      (net:close (server-socket server))
+      (net:tcp-shutdown (server-socket server) :both)
       (sb-thread:join-thread (server-thread server))
       (setf *servers* (map:dissoc *servers* (server-port server)))
       t)))

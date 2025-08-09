@@ -22,6 +22,7 @@
    :assoc!
    :assoc-in
    :contains-p
+   :contains-key-p
    :count
    :difference
    :dissoc
@@ -39,6 +40,7 @@
    :map=
    :map-p
    :merge
+   :put
    :reduce
    :select-keys
    :seq
@@ -132,6 +134,10 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
   (let ((not-found (gensym)))
     (not (eq (get map key not-found)
              not-found))))
+
+(defun contains-key-p (map key)
+  "Return true if map contains key (alias for contains-p)"
+  (contains-p map key))
 
 ;; FIXME rename to to-alist
 
@@ -431,6 +437,10 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
             (values (make-leaf-node :hash hash :key key :value value) t))
       (make-hamt new-root (+ (hamt-count map)
                              (if inserted 1 0))))))
+
+(defun put (map key value)
+  "Return a new map with key-value pair added/updated (alias for assoc)"
+  (assoc map key value))
 
 (defun assoc-in (map keys value)
   "Associate a value in a nested map structure, where keys is a sequence of keys

@@ -8,7 +8,9 @@
   (:local-nicknames
    (#:map #:epsilon.map)
    (#:api #:epsilon.lsp.evaluation.api)
-   (#:server #:epsilon.lsp.server))
+   (#:session #:epsilon.lsp.evaluation.session)
+   (#:server #:epsilon.lsp.server)
+   (#:jsonrpc #:epsilon.lsp.protocol.jsonrpc))
   (:export
    #:register-evaluation-handlers
    #:evaluation-middleware))
@@ -17,14 +19,14 @@
 
 ;;; LSP Method Names (using epsilon/ namespace for custom methods)
 
-(defconstant +method-create-session+ "epsilon/evaluation/createSession")
-(defconstant +method-list-sessions+ "epsilon/evaluation/listSessions")
-(defconstant +method-get-session+ "epsilon/evaluation/getSession")
-(defconstant +method-terminate-session+ "epsilon/evaluation/terminateSession")
-(defconstant +method-evaluate+ "epsilon/evaluation/evaluate")
-(defconstant +method-evaluate-selection+ "epsilon/evaluation/evaluateSelection")
-(defconstant +method-complete-in-session+ "epsilon/evaluation/complete")
-(defconstant +method-inspect-in-session+ "epsilon/evaluation/inspect")
+(defparameter +method-create-session+ "epsilon/evaluation/createSession")
+(defparameter +method-list-sessions+ "epsilon/evaluation/listSessions")
+(defparameter +method-get-session+ "epsilon/evaluation/getSession")
+(defparameter +method-terminate-session+ "epsilon/evaluation/terminateSession")
+(defparameter +method-evaluate+ "epsilon/evaluation/evaluate")
+(defparameter +method-evaluate-selection+ "epsilon/evaluation/evaluateSelection")
+(defparameter +method-complete-in-session+ "epsilon/evaluation/complete")
+(defparameter +method-inspect-in-session+ "epsilon/evaluation/inspect")
 
 ;;; Registration
 
@@ -134,8 +136,8 @@
     (if session-id
         (api:evaluate service session-id code :timeout timeout)
         (api:evaluate-in-new-session service code
-                                      :modules (map:get params "modules")
-                                      :owner (map:get params "workspace")))))
+                                     :modules (map:get params "modules")
+                                     :owner (map:get params "workspace")))))
 
 (defun handle-evaluate-selection (service params)
   "Handle epsilon/evaluation/evaluateSelection request"
@@ -151,8 +153,8 @@
       (if session-id
           (api:evaluate service session-id enhanced-code)
           (api:evaluate-in-new-session service enhanced-code
-                                        :modules (map:get params "modules")
-                                        :owner (map:get params "workspace"))))))
+                                       :modules (map:get params "modules")
+                                       :owner (map:get params "workspace"))))))
 
 (defun handle-complete (service params)
   "Handle epsilon/evaluation/complete request"
@@ -189,7 +191,7 @@
 (defun parse-restrictions (restrictions-map)
   "Parse restrictions from request into restriction struct"
   (when restrictions-map
-    (api:make-restrictions
+    (session:make-restrictions
      :max-memory (map:get restrictions-map "maxMemory")
      :max-cpu-time (map:get restrictions-map "maxCpuTime")
      :allow-file-read (map:get restrictions-map "allowFileRead")
@@ -221,17 +223,17 @@
   "Middleware that adds evaluation context to requests"
   (lambda (server message)
     ;; Check if this is an evaluation-related request
-    (let ((method (and (server:jsonrpc-request-p message)
-                       (server:jsonrpc-request-method message))))
+    (let ((method (and (jsonrpc:jsonrpc-request-p message)
+                       (jsonrpc:jsonrpc-request-method message))))
       (when (and method (string-prefix-p "epsilon/evaluation/" method))
         ;; Add workspace context if not present
-        (let ((params (server:jsonrpc-request-params message)))
+        (let ((params (jsonrpc:jsonrpc-request-params message)))
           (unless (map:get params "workspace")
             (setf params (map:assoc params "workspace" 
                                     (get-current-workspace server))))))
-    
-    ;; Call original handler
-    (funcall handler server message)))
+      
+      ;; Call original handler
+      (funcall handler server message))))
 
 (defun string-prefix-p (prefix string)
   "Check if STRING starts with PREFIX"

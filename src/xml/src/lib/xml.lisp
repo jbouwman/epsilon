@@ -9,7 +9,14 @@
    :element
    :attribute
    :text
-   :emit))
+   :emit
+   :xml-element
+   :xml-text
+   :xml-node
+   :tag
+   :attributes
+   :children
+   :content))
 
 (in-package #:epsilon.xml)
 

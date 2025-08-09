@@ -1,19 +1,17 @@
-(defpackage :epsilon.json.tests
+(defpackage epsilon.json.tests
   (:use
-   :cl
-   :epsilon.syntax
-   :epsilon.test)
+   cl
+   epsilon.syntax
+   epsilon.test)
   (:local-nicknames
-   (#:fs #:epsilon.sys.fs)
-   (#:json #:epsilon.json)
-   (#:p #:epsilon.parser)
-   (#:path #:epsilon.path)))
+   (fs epsilon.sys.fs)
+   (json epsilon.json)
+   (p epsilon.parser)
+   (path epsilon.path)))
 
-(in-package :epsilon.json.tests)
+(in-package epsilon.json.tests)
 
 ;; Helper function to load test JSON files
-;;
-;; TODO convert to URLs
 
 (defun load-test-json (filename)
   "Load a JSON test file from tests/lib/json/"

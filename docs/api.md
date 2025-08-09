@@ -1,10 +1,8 @@
 # API Reference
 
-Complete API documentation for Epsilon packages, organized by functional area.
+API documentation for Epsilon packages.
 
 ## Core Data Structures
-
-Epsilon's immutable, functional data structures provide the foundation for all data manipulation.
 
 ### Collections
 - **[Map](api/map.md)** - Immutable hash-array mapped trie (HAMT) implementation
@@ -15,33 +13,24 @@ Epsilon's immutable, functional data structures provide the foundation for all d
 - **[Sequence](api/sequence.md)** - Lazy sequences with functional operations
   - Lazy evaluation with memoization support
   - Infinite sequence capabilities
-  - Rich operation library: `map`, `filter`, `take`, `drop`
+  - Operation library: `map`, `filter`, `take`, `drop`
 
 - **[Set](api/set.md)** - Immutable sets based on HAMT structure
   - Mathematical set operations (union, intersection, difference)
-  - O(log n) membership testing and modifications
-
-- **List** - Extended operations on Common Lisp lists *(documentation pending)*
-  - Alist/plist conversion utilities
-  - Circular list detection and handling
-
-### Utilities
-- **Vector** - Vector operations and bounds checking *(documentation pending)*
-- **Collect** - Collection macros for efficient list building *(documentation pending)*
+  - O(log n) membership testing and modification
 
 ## Data Encoding & Serialization
 
 ### Text Formats
-- **JSON** - JSON encoding/decoding with Unicode support *(documentation pending)*
-  - Full JSON specification compliance
+- **JSON** - JSON encoding/decoding with Unicode support
   - Streaming parser for large documents
   - Configurable encoding options
 
-- **YAML** - YAML document processing *(documentation pending)*
+- **YAML** - YAML document processing
   - YAML 1.2 specification support
   - Document and stream processing
 
-- **XML** - XML parsing and generation *(documentation pending)*
+- **XML** - XML parsing and generation
 
 ### Binary Formats
 - **Base64** - Base64 encoding and decoding *(documentation pending)*
@@ -128,7 +117,7 @@ Epsilon's immutable, functional data structures provide the foundation for all d
 ## Usage Patterns
 
 ### Package Integration
-All API packages use local nicknames for clean integration:
+All API packages use local nicknames:
 
 ```lisp
 (defpackage #:my-application
@@ -141,7 +130,6 @@ All API packages use local nicknames for clean integration:
 
 (in-package #:my-application)
 
-;; Clean, readable code
 (let ((data (map:make-map :users (seq:from-list users))))
   (json:encode data))
 ```
@@ -185,5 +173,3 @@ The generator extracts:
 - Source code comments
 
 ---
-
-*For implementation examples and usage patterns, see [Examples](examples.md).*

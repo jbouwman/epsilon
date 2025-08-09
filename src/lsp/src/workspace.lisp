@@ -7,6 +7,7 @@
   (:export
    #:workspace
    #:make-workspace
+   #:create-workspace
    #:workspace-add-folder
    #:workspace-remove-folder
    #:workspace-add-document
@@ -14,7 +15,10 @@
    #:workspace-get-document
    #:workspace-update-document
    #:workspace-find-symbol
-   #:workspace-get-all-symbols))
+   #:workspace-get-all-symbols
+   #:symbol-location
+   #:symbol-location-uri
+   #:symbol-location-symbol-info))
 
 (in-package #:epsilon.lsp.workspace)
 
@@ -24,7 +28,7 @@
   documents        ; Map of URI -> document analysis
   symbol-index)    ; Map of symbol name -> list of locations
 
-(defun make-workspace (&optional folders)
+(defun create-workspace (&optional folders)
   "Create a new workspace with optional initial folders."
   (let ((ws (make-workspace
              :folders (or folders '())
@@ -50,10 +54,10 @@
         (remove folder-uri (workspace-folders workspace) :test #'string=))
   ;; Remove all documents from this folder
   (let ((documents-to-remove '()))
-    (map:do-map (lambda (uri analysis)
-                  (when (string-starts-with-p uri folder-uri)
-                    (push uri documents-to-remove)))
-                (workspace-documents workspace))
+    (map:each (lambda (uri analysis)
+                (when (string-starts-with-p uri folder-uri)
+                  (push uri documents-to-remove)))
+              (workspace-documents workspace))
     (dolist (uri documents-to-remove)
       (workspace-remove-document workspace uri))))
 
@@ -72,7 +76,7 @@
     (when analysis
       (remove-from-symbol-index workspace analysis)
       (setf (workspace-documents workspace)
-            (map:remove (workspace-documents workspace) uri)))))
+            (map:dissoc (workspace-documents workspace) uri)))))
 
 (defun workspace-get-document (workspace uri)
   "Get a document analysis from the workspace."
@@ -91,7 +95,7 @@
   "Update the symbol index with symbols from the analysis."
   (dolist (symbol (analysis:document-analysis-symbols analysis))
     (let ((symbol-name (analysis:symbol-info-name symbol))
-          (location (make-symbol-location 
+          (location (create-symbol-location 
                      (analysis:document-analysis-uri analysis)
                      symbol)))
       (let ((existing-locations (map:get (workspace-symbol-index workspace) 
@@ -104,7 +108,7 @@
 (defun remove-from-symbol-index (workspace analysis)
   "Remove symbols from the index for the given analysis."
   (let ((uri (analysis:document-analysis-uri analysis)))
-    (map:do-map (lambda (symbol-name locations)
+    (map:each (lambda (symbol-name locations)
                   (let ((filtered-locations 
                          (remove-if (lambda (loc) 
                                       (string= (symbol-location-uri loc) uri))
@@ -114,7 +118,7 @@
                               (map:put (workspace-symbol-index workspace)
                                        symbol-name filtered-locations))
                         (setf (workspace-symbol-index workspace)
-                              (map:remove (workspace-symbol-index workspace)
+                              (map:dissoc (workspace-symbol-index workspace)
                                           symbol-name)))))
                 (workspace-symbol-index workspace))))
 
@@ -124,7 +128,7 @@
   range
   symbol-info)
 
-(defun make-symbol-location (uri symbol-info)
+(defun create-symbol-location (uri symbol-info)
   "Create a symbol location."
   (make-symbol-location
    :uri uri
@@ -140,7 +144,7 @@
 (defun workspace-get-all-symbols (workspace &optional filter)
   "Get all symbols in the workspace, optionally filtered."
   (let ((symbols '()))
-    (map:do-map (lambda (name locations)
+    (map:each (lambda (name locations)
                   (declare (ignore name))
                   (dolist (location locations)
                     (when (or (not filter)

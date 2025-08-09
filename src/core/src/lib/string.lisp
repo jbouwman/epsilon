@@ -145,7 +145,7 @@
   (let ((index (last-index string (lambda (test-c)
                                     (not (char= test-c c))))))
     (if index
-        (subseq string 0 index)
+        (subseq string 0 index)  ; index is already 1-based, includes the non-matching character
         "")))  ; Return empty string when all characters match
 
 (defun strip-left (string c)
@@ -285,12 +285,16 @@ match [\\s] in Perl."
       (let ((in-word nil))
         (loop for char across string do
           (cond
-            ((alphanumericp char)
+            ((alpha-char-p char)
              (write-char (if in-word
                              (char-downcase char)
                              (char-upcase char))
                          out)
              (setf in-word t))
+            ((digit-char-p char)
+             (write-char char out)
+             ;; Don't set in-word for digits - next alpha char should be capitalized
+             )
             (t
              (write-char char out)
              (setf in-word nil))))))))

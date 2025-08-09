@@ -8,7 +8,8 @@
    (#:request #:epsilon.http.request)
    (#:response #:epsilon.http.response)
    (#:map #:epsilon.map)
-   (#:str #:epsilon.string))
+   (#:str #:epsilon.string)
+   (#:base64 #:epsilon.base64))
   (:export
    ;; Security Headers Middleware
    #:security-headers-middleware
@@ -320,12 +321,11 @@
 
 (defun decode-basic-auth (credentials)
   "Decode Basic auth credentials"
-  ;; Would need base64 decoding here
-  ;; For now, return as-is
-  (let ((colon-pos (position #\: credentials)))
+  (let* ((decoded (base64:base64-decode-string credentials))
+         (colon-pos (position #\: decoded)))
     (when colon-pos
-      (values (subseq credentials 0 colon-pos)
-              (subseq credentials (1+ colon-pos))))))
+      (values (subseq decoded 0 colon-pos)
+              (subseq decoded (1+ colon-pos))))))
 
 (defun basic-auth-middleware (handler authenticate-fn &key realm)
   "Basic authentication middleware"

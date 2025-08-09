@@ -14,6 +14,7 @@
   (:export
    ;; Main API
    #:evaluation-service
+   #:service-session-manager
    #:make-evaluation-service
    #:start-evaluation-service
    #:stop-evaluation-service

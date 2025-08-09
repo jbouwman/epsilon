@@ -59,7 +59,7 @@ The API documentation is organized by package, with each package having its own 
 ### Development Tools
 
 - **[epsilon.test](epsilon.test/)** - Testing framework *(coming soon)*
-- **[epsilon.tool.build](epsilon.tool.build/)** - Build system *(coming soon)*
+- **[epsilon.loader](epsilon.loader/)** - Package loader
 - **[epsilon.tool.package](epsilon.tool.package/)** - Package management *(coming soon)*
 
 ## Using the API Documentation

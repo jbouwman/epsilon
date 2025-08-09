@@ -4,4 +4,4 @@
  :description "Test library package"
  :sources ("src")
  :dependencies ("epsilon.core")
- :provides ("mylib"))
+)

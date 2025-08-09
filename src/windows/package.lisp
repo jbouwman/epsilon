@@ -6,4 +6,4 @@
  :tests ("tests")
  :dependencies ("epsilon.core")
  :platform "windows"
- :provides ("epsilon.windows" "epsilon.net"))
+ :provides ("epsilon.net"))

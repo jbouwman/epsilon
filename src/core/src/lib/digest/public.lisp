@@ -3,20 +3,24 @@
    #:cl)
   (:local-nicknames
    (:generic :epsilon.digest.generic)
-   (:sha-2 :epsilon.digest.sha-2))
+   (:sha-2 :epsilon.digest.sha-2)
+   (:crc-32 :epsilon.digest.crc-32))
   (:export
    #:make-digest
    #:digest-stream
    #:digest-vector
    #:get-digest
    #:sha1-digest
-   #:sha256))
+   #:sha256
+   #:crc32
+   #:crc32-sequence))
 
 (in-package #:epsilon.digest)
 
 (defun make-digest (name)
   (ecase name
-    (:sha-256 (sha-2:make-sha256-digest))))
+    (:sha-256 (sha-2:make-sha256-digest))
+    (:crc-32 (crc-32:make-crc32-digest))))
 
 (defun digest-stream (digest stream)
   (generic:update-digest-from-stream digest stream))
@@ -47,3 +51,12 @@
   (let ((digest (make-digest :sha-256)))
     (digest-vector digest octets)
     (get-digest digest)))
+
+;; CRC-32 convenience functions
+(defun crc32 (octets)
+  "Compute CRC-32 checksum of octets, return as integer"
+  (crc-32:crc32 octets))
+
+(defun crc32-sequence (sequence)
+  "Compute CRC-32 checksum of sequence, return as integer"
+  (crc-32:crc32-sequence sequence))

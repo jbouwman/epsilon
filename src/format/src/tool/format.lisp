@@ -395,6 +395,9 @@
     (format-tokens tokens stream 
                    :indent-width indent-width 
                    :line-limit line-limit)
+    ;; Add final newline for pretty formatting
+    (when (eq format-style :expanded)
+      (format stream "~%"))
     object))
 
 (defun tokenize (object
