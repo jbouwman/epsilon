@@ -48,12 +48,11 @@
    ;; Operations
    #:register-module
    #:scan-module-directory
-   #:register-package
    #:is-package-loaded
    #:query-packages
    ;; Package info
    #:package-info
-   #:package-info-name
+   #:module-name
    #:package-location
    #:package-loaded-p
    #:package-load-time
@@ -63,7 +62,7 @@
 
 (defclass package-info ()
   ((name :initarg :name 
-         :reader package-info-name 
+         :reader module-name 
          :type string
          :documentation "Package name")
    (location :initarg :location 
@@ -144,24 +143,6 @@
       (and error-p
            (error "Package not found: ~A" name))))
 
-(defun register-package (environment name location metadata)
-  "Register a package in the environment registry"
-  (let ((existing (map:get (modules environment) name)))
-    (if existing
-        ;; Update existing package info
-        (progn
-          (setf (slot-value existing 'location) location
-                (slot-value existing 'metadata) metadata)
-          existing)
-        ;; Create new package info
-        (let ((package-info (make-instance 'package-info
-                                           :name name
-                                           :location location
-                                           :metadata metadata
-                                           :loaded-p nil)))
-          (map:assoc! (modules environment) name package-info)
-          package-info))))
-
 (defun is-package-loaded (environment name)
   "Check if a package has been loaded"
   (let ((package-info (get-module environment name)))
@@ -184,7 +165,7 @@
     
     ;; Search all packages
     (loop for package-info in (map:vals (modules environment))
-          for pkg-name = (package-info-name package-info)
+          for pkg-name = (module-name package-info)
           for metadata = (package-metadata package-info)
           for pkg-provides = (or (getf metadata :provides) (list pkg-name))
           for pkg-platform = (getf metadata :platform)
@@ -221,7 +202,7 @@
               name provides))
       ((> (length matches) 1)
        (error "Multiple packages found matching criteria~@[ name=~A~]~@[ provides=~A~]: ~{~A~^, ~}"
-              name provides (mapcar #'package-info-name matches)))
+              name provides (mapcar #'module-name matches)))
       (t (first matches)))))
 
 
@@ -417,10 +398,6 @@
                                     :dependencies dependencies-list
                                     :provides provides-list
                                     :modules map:+empty+)))
-        ;; Register this package in the environment with full metadata
-        ;; Note: environment parameter is optional for backward compatibility
-        (when environment
-          (register-package environment name uri plist))
         project))))
 
 (defun find-source-info (uri)
@@ -796,7 +773,7 @@
     (dolist (dep-name (project-dependencies project))
       (let ((resolved-dep (find-module environment :provides dep-name)))
         (unless (package-loaded-p resolved-dep)
-          (load-module environment (package-info-name resolved-dep)))))
+          (load-module environment (module-name resolved-dep)))))
     
     ;; Now try to load concatenated FASL if dependencies are resolved and it's up-to-date
     (unless (or force compile-only (map:get (environment-config environment) :force))

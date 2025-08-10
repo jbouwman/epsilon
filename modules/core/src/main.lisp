@@ -342,7 +342,7 @@
          (module-data '()))
     
     (dolist (module all-modules)
-      (let* ((name (loader:package-info-name module))
+      (let* ((name (loader:module-name module))
              (metadata (loader:package-metadata module))
              (version (or (getf metadata :version) "?"))
              (platform (getf metadata :platform))

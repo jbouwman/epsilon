@@ -66,7 +66,7 @@
   (let ((all-descriptors (loader:query-packages environment))
         (concrete-packages '()))
     (dolist (descriptor all-descriptors)
-      (let* ((name (loader:package-info-name descriptor))
+      (let* ((name (loader:module-name descriptor))
              (metadata (loader:package-metadata descriptor))
              (platform (getf metadata :platform)))
         ;; Include if no platform restriction or matches current platform
@@ -151,7 +151,7 @@
     (let ((all-descriptors (loader:query-packages environment))
           (platform-packages '()))
       (dolist (descriptor all-descriptors)
-        (let* ((name (loader:package-info-name descriptor))
+        (let* ((name (loader:module-name descriptor))
                (metadata (loader:package-metadata descriptor))
                (pkg-platform (getf metadata :platform)))
           ;; Include if no platform restriction or matches current platform
