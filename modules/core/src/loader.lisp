@@ -115,25 +115,33 @@
   (let* ((module-path (path:ensure-path path))
          (module-file (path:path-join module-path "module.lisp"))
          (file-string (path:path-string module-file)))
-    (when (probe-file file-string)
-      (let* ((info (with-open-file (stream file-string :if-does-not-exist nil)
-                     (when stream (read stream))))
-             (module-name (getf info :name)))
-        (when module-name
-          (let ((pkg-info (make-instance 'module-info
-                                         :name module-name
-                                         :location module-path
-                                           :metadata info
-                                         :loaded-p nil)))
-            (map:assoc! (modules environment)
-                        module-name pkg-info)))))))
+    (log:debug "Checking for module.lisp at: ~A" file-string)
+    (if (probe-file file-string)
+        (let* ((info (with-open-file (stream file-string :if-does-not-exist nil)
+                       (when stream (read stream))))
+               (module-name (getf info :name)))
+          (if module-name
+              (let ((pkg-info (make-instance 'module-info
+                                             :name module-name
+                                             :location module-path
+                                             :metadata info
+                                             :loaded-p nil)))
+                (log:debug "Registering module: ~A from ~A" module-name path)
+                (map:assoc! (modules environment)
+                            module-name pkg-info))
+              (log:debug "No module name found in ~A" file-string)))
+        (log:debug "No module.lisp found at: ~A" file-string))))
 
 (defun scan-module-directory (environment path)
   "Scan directory for module subdirectories and register them"
   (let ((base-path (path:ensure-path path)))
+    (log:debug "Scanning module directory: ~A" (path:path-string base-path))
     (when (probe-file (path:path-string base-path))
-      (dolist (entry-path (path:list-directory base-path :type :directories))
-        (register-module environment entry-path)))))
+      (let ((dirs (path:list-directory base-path :type :directories)))
+        (log:debug "Found ~A subdirectories in ~A" (length dirs) path)
+        (dolist (entry-path dirs)
+          (log:debug "Attempting to register module from: ~A" entry-path)
+          (register-module environment entry-path))))))
 
 ;;; Module Registry
 
