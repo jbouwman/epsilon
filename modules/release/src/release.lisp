@@ -263,7 +263,7 @@
     (handler-case
         (progn
           (format t "  Making script executable...~%")
-          (process:run-sync "/bin/chmod" 
+          (process:run-sync "chmod" 
                             :args (list "+x" target-script)
                             :check-executable nil))
       (process:command-not-found ()
@@ -358,7 +358,7 @@
 
 (defun create-zip-archive (release-dir release-name)
   "Create a ZIP archive for Windows releases."
-  (process:run-sync "/usr/bin/zip" 
+  (process:run-sync "zip" 
                     :args (list "-r" 
                                 (format nil "~A.zip" release-name)
                                 (path:path-name (path:make-path release-dir)))
@@ -380,7 +380,7 @@
 
 (defun create-tar-archive (release-dir release-name)
   "Create a tar.gz archive for Unix releases with progress feedback."
-  (process:run-sync "/usr/bin/tar" 
+  (process:run-sync "tar" 
                     :args (list "-czf" 
                                 (format nil "~A.tar.gz" release-name)
                                 (path:path-name (path:make-path release-dir)))
@@ -410,7 +410,7 @@
 
 (defun create-tar-archive-with-working-directory (release-dir release-name working-dir)
   "Create a tar.gz archive for Unix releases with explicit working directory."
-  (process:run-sync "/usr/bin/tar" 
+  (process:run-sync "tar" 
                     :args (list "-czf" 
                                 (format nil "~A.tar.gz" release-name)
                                 (path:path-name (path:make-path release-dir)))
