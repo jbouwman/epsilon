@@ -23,7 +23,18 @@
    
    ;; Appenders
    add-appender remove-appender console-appender file-appender
-   logger-appenders
+   tee-appender logger-appenders appender append-log
+   tee-appenders
+   
+   ;; Convenience configuration
+   configure-with-tee
+   
+   ;; Internal types for testing
+   logger log-record logger-name
+   log-level log-message log-timestamp log-context
+   log-fields log-thread log-package log-file log-line
+   emit-log emit-log-with-context emit-log-with-fields
+   logger-effective-level
    
    ;; Structured logging context
    with-context add-context remove-context
@@ -83,9 +94,11 @@
   "Create a new logger with proper parent hierarchy"
   (let* ((parent (find-parent-logger name))
          (logger (make-instance 'logger 
-                               :name name 
-                               :parent parent
-                               :level (if parent (logger-level parent) :info))))
+				:name name 
+				:parent parent
+				:level (if parent (logger-level parent) :info))))
+    ;; Apply any matching wildcard rules
+    (apply-wildcard-rules logger)
     logger))
 
 (defun find-parent-logger (name)
@@ -101,9 +114,9 @@
   "Get effective level, walking up parent chain if needed"
   (if (logger-level logger)
       (logger-level logger)
-      (if (logger-parent logger)
-          (logger-effective-level (logger-parent logger))
-          :info)))
+    (if (logger-parent logger)
+        (logger-effective-level (logger-parent logger))
+      :info)))
 
 (defun logger-enabled-p (logger level)
   "Check if logger is enabled for given level"
@@ -195,6 +208,10 @@
   ((filename :initarg :filename :accessor file-appender-filename)
    (stream :accessor file-appender-stream :initform nil)))
 
+(defclass tee-appender (appender)
+  ((appenders :initarg :appenders :accessor tee-appenders :initform '()))
+  (:documentation "Appender that forwards to multiple child appenders"))
+
 (defgeneric append-log (appender record)
   (:documentation "Write log record to appender"))
 
@@ -217,15 +234,68 @@
             (format-log-record record (appender-formatter appender)))
     (force-output (file-appender-stream appender))))
 
+(defmethod append-log ((appender tee-appender) record)
+  (dolist (child-appender (tee-appenders appender))
+    (append-log child-appender record)))
+
 ;;; Formatters
 
 (defun format-log-record (record formatter)
   "Format a log record using the given formatter"
   (case formatter
-    (:simple (format-simple record))
-    (:detailed (format-detailed record))
-    (:json (format-json record))
-    (t (format-simple record))))
+	(:compact (format-compact record))
+	(:simple (format-simple record))
+	(:detailed (format-detailed record))
+	(:json (format-json record))
+	(t (format-simple record))))
+
+(defun format-compact (record)
+  "Compact one-line format for console output"
+  (let* ((time-only (multiple-value-bind (sec min hour)
+					 (decode-universal-time (log-timestamp record))
+					 (format nil "~2,'0D:~2,'0D:~2,'0D" hour min sec)))
+         (level-abbrev (case (log-level record)
+                             (:trace "TRC")
+                             (:debug "DBG")
+                             (:info "INF")
+                             (:warn "WRN")
+                             (:error "ERR")
+                             (:fatal "FTL")
+                             (t (subseq (string-upcase (log-level record)) 0 3))))
+         (logger-short (let ((name (logger-name (log-logger record))))
+                         (if (> (length name) 20)
+                             (concatenate 'string (subseq name 0 17) "...")
+                           name)))
+         (location (cond
+                    ((and (log-file record) (log-line record))
+                     (format nil "~A:~A" 
+                             (if (> (length (log-file record)) 20)
+                                 (concatenate 'string "..." 
+                                              (subseq (log-file record) 
+                                                      (- (length (log-file record)) 17)))
+                               (log-file record))
+                             (log-line record)))
+                    ((log-file record)
+                     (if (> (length (log-file record)) 20)
+                         (concatenate 'string "..." 
+                                      (subseq (log-file record) 
+                                              (- (length (log-file record)) 17)))
+                       (log-file record)))
+                    (t "")))
+         (fields-str (when (log-fields record)
+                       (format nil " {~{~A:~A~^ ~}}" 
+                               (mapcan (lambda (pair)
+                                         (if (consp pair)
+                                             (list (car pair) (cdr pair))
+                                           (list pair "true")))
+                                       (log-fields record))))))
+    (format nil "[~A] ~A [~A~@[ ~A~]] ~A~A"
+            time-only
+            level-abbrev
+            logger-short
+            (when (not (string= location "")) location)
+            (log-message record)
+            (or fields-str ""))))
 
 (defun format-simple (record)
   "Simple one-line format"
@@ -234,16 +304,16 @@
                               (mapcan (lambda (pair)
                                         (if (consp pair)
                                             (list (car pair) (cdr pair))
-                                            (list pair "true")))
+                                          (list pair "true")))
                                       (log-fields record)))))
         (location-str (cond
-                        ((and (log-file record) (log-line record))
-                         (format nil " [~A:~A]" 
-                                 (log-file record) 
-                                 (log-line record)))
-                        ((log-file record)
-                         (format nil " [~A]" (log-file record)))
-                        (t ""))))
+                       ((and (log-file record) (log-line record))
+                        (format nil " [~A:~A]" 
+                                (log-file record) 
+                                (log-line record)))
+                       ((log-file record)
+                        (format nil " [~A]" (log-file record)))
+                       (t ""))))
     (format nil "[~A] ~A ~A~A: ~A~A" 
             (format-timestamp (log-timestamp record))
             (string-upcase (log-level record))
@@ -261,16 +331,16 @@
                               (mapcan (lambda (pair)
                                         (if (consp pair)
                                             (list (car pair) (cdr pair))
-                                            (list pair "true")))
+                                          (list pair "true")))
                                       (log-fields record)))))
         (location-str (cond
-                        ((and (log-file record) (log-line record))
-                         (format nil " ~A:~A" 
-                                 (log-file record) 
-                                 (log-line record)))
-                        ((log-file record)
-                         (format nil " ~A" (log-file record)))
-                        (t ""))))
+                       ((and (log-file record) (log-line record))
+                        (format nil " ~A:~A" 
+                                (log-file record) 
+                                (log-line record)))
+                       ((log-file record)
+                        (format nil " ~A" (log-file record)))
+                       (t ""))))
     (format nil "[~A] ~A ~A [~A@~A~A]: ~A~A~A"
             (format-timestamp (log-timestamp record))
             (string-upcase (log-level record))
@@ -291,7 +361,7 @@
                                (mapcan (lambda (pair)
                                          (if (consp pair)
                                              (list (car pair) (cdr pair))
-                                             (list pair "true")))
+                                           (list pair "true")))
                                        (log-fields record)))))
         (file-json (when (log-file record)
                      (format nil ",\"file\":~S" (log-file record))))
@@ -342,25 +412,27 @@
 (defmacro with-source-location ((file-var line-var) &body body)
   "Capture source location at macro expansion time"
   `(let ((,file-var ,(or (when *compile-file-pathname* 
-                            (enough-namestring *compile-file-pathname*))
-                          (when *load-pathname*
-                            (enough-namestring *load-pathname*))
-                          nil))
-         (,line-var nil))  ; Line numbers require compiler cooperation
+                           (enough-namestring *compile-file-pathname*))
+                         (when *load-pathname*
+                           (enough-namestring *load-pathname*))
+                         nil))
+         ;; Line number capture would require compiler cooperation
+         ;; For now, we could use a counter or debug info if available
+         (,line-var nil))
      ,@body))
 
 (defmacro log (level format-string &rest args)
   "Log a message at the specified level"
   (let ((package-name (package-name *package*)))
     `(with-source-location (file line)
-       (let ((logger (get-logger ,package-name)))
-         (when (logger-enabled-p logger ,level)
-           (emit-log-with-context logger ,level ,package-name
-                                 ,(if args
-                                      `(format nil ,format-string ,@args)
-                                      format-string)
-                                 :file file
-                                 :line line))))))
+			   (let ((logger (get-logger ,package-name)))
+			     (when (logger-enabled-p logger ,level)
+			       (emit-log-with-context logger ,level ,package-name
+						      ,(if args
+							   `(format nil ,format-string ,@args)
+							 format-string)
+						      :file file
+						      :line line))))))
 
 (defmacro trace (format-string &rest args)
   `(log :trace ,format-string ,@args))
@@ -377,7 +449,7 @@
     `(let ((,first-arg ,format-string-or-condition))
        (if (typep ,first-arg 'condition)
            (log :warn "~A" ,first-arg ,@args)
-           (log :warn ,first-arg ,@args)))))
+         (log :warn ,first-arg ,@args)))))
 
 (defmacro error (format-string-or-condition &rest args)
   "Log an error message. If first argument is a condition, logs it with context."
@@ -385,7 +457,7 @@
     `(let ((,first-arg ,format-string-or-condition))
        (if (typep ,first-arg 'condition)
            (log :error "~A" ,first-arg ,@args)
-           (log :error ,first-arg ,@args)))))
+         (log :error ,first-arg ,@args)))))
 
 (defmacro fatal (format-string &rest args)
   `(log :fatal ,format-string ,@args))
@@ -396,15 +468,15 @@
   "Log a message with structured fields (key-value pairs)"
   (let ((package-name (package-name *package*)))
     `(with-source-location (file line)
-       (let ((logger (get-logger ,package-name)))
-         (when (logger-enabled-p logger ,level)
-           (emit-log-with-fields logger ,level ,package-name
-                                ,(if args
-                                     `(format nil ,format-string ,@args)
-                                     format-string)
-                                ,fields
-                                :file file
-                                :line line))))))
+			   (let ((logger (get-logger ,package-name)))
+			     (when (logger-enabled-p logger ,level)
+			       (emit-log-with-fields logger ,level ,package-name
+						     ,(if args
+							  `(format nil ,format-string ,@args)
+							format-string)
+						     ,fields
+						     :file file
+						     :line line))))))
 
 (defmacro info-with-fields (format-string fields &rest args)
   `(log-with-fields :info ,format-string ,fields ,@args))
@@ -429,17 +501,51 @@
 
 ;;; Configuration
 
+(defparameter *wildcard-rules* '()
+  "Wildcard rules for logger configuration")
+
 (defun configure-from-string (config-string)
   "Configure logging from string like 'debug:epsilon.*,trace:epsilon.yaml'"
-  ;; Simplified implementation - just set root level for now
-  (let* ((specs (seq:realize (str:split #\, config-string)))
-         (first-spec (first specs)))
-    (when first-spec
-      (let* ((parts (seq:realize (str:split #\: first-spec)))
-             (level (intern (string-upcase (first parts)) :keyword)))
-        (setf (logger-level *root-logger*) level)))))
+  (let ((specs (seq:realize (str:split #\, config-string))))
+    (dolist (spec specs)
+      (when (and spec (not (str:empty-p spec)))
+        (let* ((parts (seq:realize (str:split #\: spec)))
+               (level-str (first parts))
+               (pattern (second parts)))
+          (when level-str
+            (let ((level (intern (string-upcase level-str) :keyword)))
+              (cond
+               ;; No pattern means root logger
+               ((or (null pattern) (string= pattern ""))
+                (setf (logger-level *root-logger*) level))
+               
+               ;; Wildcard pattern
+               ((position #\* pattern)
+                (let ((prefix (subseq pattern 0 (position #\* pattern))))
+                  ;; Apply to all matching loggers
+                  (map:each (lambda (name logger)
+                              (when (and (>= (length name) (length prefix))
+                                         (string= prefix name :end2 (length prefix)))
+                                (setf (logger-level logger) level)))
+                            *loggers*)
+                  ;; Also apply to new loggers that match (store the rule)
+                  (push (cons prefix level) *wildcard-rules*)))
+               
+               ;; Exact match
+               (t
+                (let ((logger (get-logger pattern)))
+                  (setf (logger-level logger) level)))))))))))
 
-; Simplified configuration - wildcard matching removed for now
+(defun apply-wildcard-rules (logger)
+  "Apply any matching wildcard rules to a logger"
+  (let ((name (logger-name logger)))
+    (dolist (rule *wildcard-rules*)
+      (let ((prefix (car rule))
+            (level (cdr rule)))
+        (when (and (>= (length name) (length prefix))
+                   (string= prefix name :end2 (length prefix)))
+          (setf (logger-level logger) level)
+          (return))))))
 
 (defun set-level (logger-name level)
   "Set level for specific logger"
@@ -456,7 +562,7 @@
   (setf *root-logger* (make-instance 'logger :name "root" :level :info))
   (add-appender *root-logger* (make-instance 'console-appender)))
 
-(defun configure (&key (level :info) (format :simple) (file nil))
+(defun configure (&key (level :info) (format :compact) (file nil))
   "Configure root logger with common options"
   (setf (logger-level *root-logger*) level)
   (setf (logger-appenders *root-logger*) '())
@@ -464,8 +570,28 @@
                                              :formatter format))
   (when file
     (add-appender *root-logger* (make-instance 'file-appender
-                                               :filename file
-                                               :formatter format))))
+					       :filename file
+					       :formatter format))))
+
+(defun configure-with-tee (&key (level :info) 
+                                (console-format :compact)
+                                (file nil)
+                                (file-format :detailed))
+  "Configure root logger with tee appender for dual console/file output"
+  (setf (logger-level *root-logger*) level)
+  (setf (logger-appenders *root-logger*) '())
+  
+  (let ((appenders (list (make-instance 'console-appender 
+                                        :formatter console-format))))
+    (when file
+      (push (make-instance 'file-appender
+                           :filename file
+                           :formatter file-format)
+            appenders))
+    
+    (add-appender *root-logger* 
+                  (make-instance 'tee-appender 
+                                 :appenders appenders))))
 
 (defun add-appender (logger appender)
   "Add appender to logger"
@@ -481,13 +607,13 @@
 (defun format-timestamp (timestamp)
   "Format universal time as ISO 8601"
   (multiple-value-bind (sec min hour date month year)
-      (decode-universal-time timestamp)
-    (format nil "~4,'0D-~2,'0D-~2,'0DT~2,'0D:~2,'0D:~2,'0D"
-            year month date hour min sec)))
+		       (decode-universal-time timestamp)
+		       (format nil "~4,'0D-~2,'0D-~2,'0DT~2,'0D:~2,'0D:~2,'0D"
+			       year month date hour min sec)))
 
 (defun current-thread-name ()
   "Get current thread name"
   (sb-thread:thread-name sb-thread:*current-thread*))
 
 ;;; Initialize default configuration
-(add-appender *root-logger* (make-instance 'console-appender))
+(add-appender *root-logger* (make-instance 'console-appender :formatter :compact))
