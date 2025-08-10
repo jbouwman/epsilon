@@ -115,7 +115,7 @@
                     (incf total-passed))
                   (progn
                     (format t "  ✗ FAILED~%")
-                    (push module failed-packages)))
+                    (push module failed-modules)))
               
               ;; Clear tests after each package to free memory and prevent accumulation
               (when (and clear-tests-fn (fboundp clear-tests-fn))

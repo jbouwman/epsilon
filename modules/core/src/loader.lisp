@@ -64,24 +64,24 @@
   ((name :initarg :name 
          :reader module-name 
          :type string
-         :documentation "Package name")
+         :documentation "Module name")
    (location :initarg :location 
              :reader module-location
-             :documentation "Package location (path or URI)")
+             :documentation "Module location (path or URI)")
    (loaded-p :initarg :loaded-p 
              :accessor module-loaded-p 
              :initform nil 
              :type boolean
-             :documentation "Whether package has been loaded")
+             :documentation "Whether module has been loaded")
    (load-time :initarg :load-time 
               :accessor module-load-time 
               :initform nil
-              :documentation "When package was loaded")
+              :documentation "When module was loaded")
    (metadata :initarg :metadata
              :accessor module-metadata
              :initform nil
-             :documentation "Full package metadata including provides, dependencies, etc."))
-  (:documentation "Information about a loaded or registered package"))
+             :documentation "Full module metadata including provides, dependencies, etc."))
+  (:documentation "Information about a loaded or registered module"))
 
 ;;; Build Environment
 
@@ -93,7 +93,7 @@
            :accessor environment-config
            :initform (map:make-map)
            :documentation "Build configuration map containing all settings"))
-  (:documentation "Encapsulates all configuration and state for a build session and acts as a package source"))
+  (:documentation "Encapsulates all configuration and state for a build session and acts as a module source"))
 
 (defun make-build-environment (&key config)
   "Create a new build environment"
@@ -108,10 +108,10 @@
                              :force nil
                              :verbose nil))))
 
-;;; Package Discovery and Registration
+;;; Module Discovery and Registration
 
 (defun register-module (environment path)
-  "Register a single package directory (contains module.lisp)"
+  "Register a single module directory (contains module.lisp)"
   (let* ((module-path (path:ensure-path path))
          (module-file (path:path-join module-path "module.lisp"))
          (file-string (path:path-string module-file)))
@@ -129,7 +129,7 @@
                         module-name pkg-info)))))))
 
 (defun scan-module-directory (environment path)
-  "Scan directory for package subdirectories and register them"
+  "Scan directory for module subdirectories and register them"
   (let ((base-path (path:ensure-path path)))
     (when (probe-file (path:path-string base-path))
       (dolist (entry-path (path:list-directory base-path :type :directories))
@@ -138,13 +138,13 @@
 ;;; Module Registry
 
 (defun get-module (environment name &key (error-p nil))
-  "Get module-info for a given package name, or NIL if not found"
+  "Get module-info for a given module name, or NIL if not found"
   (or (map:get (modules environment) name)
       (and error-p
-           (error "Package not found: ~A" name))))
+           (error "Module not found: ~A" name))))
 
 (defun mark-module-loaded (environment name)
-  "Mark a package as loaded"
+  "Mark a module as loaded"
   (let ((module-info (get-module environment name)))
     (when module-info
       (setf (module-loaded-p module-info) t
@@ -167,7 +167,7 @@
           when (and (or (not name)
                         (string= name pkg-name))
                     (or (not provides)
-                        ;; Package provides itself by default
+                        ;; Module provides itself by default
                         (string= provides pkg-name)
                         ;; Or explicitly provides the capability
                         (member provides pkg-provides :test #'string=))
@@ -185,7 +185,7 @@
     results))
 
 (defun find-module (environment &key name provides)
-  "Find exactly one package matching the given criteria.
+  "Find exactly one module matching the given criteria.
    Raises an error if no modules match or if multiple modules match.
    This is a convenience wrapper around query-modules."
   (let ((matches (query-modules environment 
@@ -193,7 +193,7 @@
                                  :provides provides)))
     (cond
       ((null matches)
-       (error "No package found matching criteria~@[ name=~A~]~@[ provides=~A~]"
+       (error "No module found matching criteria~@[ name=~A~]~@[ provides=~A~]"
               name provides))
       ((> (length matches) 1)
        (error "Multiple modules found matching criteria~@[ name=~A~]~@[ provides=~A~]: ~{~A~^, ~}"
@@ -340,7 +340,7 @@
   (let* ((module-file "module.lisp")
          (module-path (path:path-string (path:path-merge (path:path-from-uri uri) module-file)))
          (path (cond ((probe-file module-path) module-path)
-                     (t (error "No package file found: ~A" module-path)))))
+                     (t (error "No module file found: ~A" module-path)))))
     (let* ((plist (with-open-file (stream path)
                     (read stream)))
            ;; Extract fields from property list

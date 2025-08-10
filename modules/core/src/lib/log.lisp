@@ -19,7 +19,7 @@
    
    ;; Configuration
    configure configure-from-string reset-configuration
-   set-level get-level logger-enabled-p
+   set-level get-level logger-enabled-p logger-level
    
    ;; Appenders
    add-appender remove-appender console-appender file-appender

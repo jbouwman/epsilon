@@ -24,8 +24,8 @@
                                       :name "test" 
                                       :level ,level
                                       :appenders (list ,appender-var))))
-     (let ((log:*loggers* (map:make-map)))
-       (map:assoc! log:*loggers* "test" ,logger-var)
+     (let ((log::*loggers* (map:make-map)))
+       (map:assoc! log::*loggers* "test" ,logger-var)
        ,@body)))
 
 ;;; Basic Logging Tests
@@ -52,8 +52,8 @@
 
 (deftest test-logger-hierarchy
   "Test logger parent-child relationships"
-  (let ((log:*loggers* (map:make-map))
-        (log:*root-logger* (make-instance 'log:logger :name "root" :level :warn)))
+  (let ((log::*loggers* (map:make-map))
+        (log::*root-logger* (make-instance 'log:logger :name "root" :level :warn)))
     
     ;; Create parent and child loggers
     (let ((parent (log:get-logger "com.example"))
@@ -83,7 +83,7 @@
                                 :package "TEST"
                                 :file "test.lisp"
                                 :line 42))
-         (output (log:format-log-record record :compact)))
+         (output (log::format-log-record record :compact)))
     
     ;; Check format components
     (is (search "INF" output))
@@ -106,7 +106,7 @@
                                 :file "app.lisp"
                                 :line 100
                                 :context '(:user-id 123 :request-id "abc")))
-         (output (log:format-log-record record :detailed)))
+         (output (log::format-log-record record :detailed)))
     
     ;; Check all components are present
     (is (search "ERROR" output))
@@ -129,7 +129,7 @@
                                 :package "JSON.TEST"
                                 :file "json.lisp"
                                 :line 25))
-         (output (log:format-log-record record :json)))
+         (output (log::format-log-record record :json)))
     
     ;; Check JSON structure
     (is (char= #\{ (char output 0)))
@@ -165,13 +165,13 @@
 
 (deftest test-configure-from-string-simple
   "Test simple string configuration"
-  (let ((log:*loggers* (map:make-map))
-        (log:*root-logger* (make-instance 'log:logger :name "root" :level :info))
-        (log:*wildcard-rules* '()))
+  (let ((log::*loggers* (map:make-map))
+        (log::*root-logger* (make-instance 'log:logger :name "root" :level :info))
+        (log::*wildcard-rules* '()))
     
     ;; Configure root level
     (log:configure-from-string "debug")
-    (is (eq :debug (log:logger-level log:*root-logger*)))
+    (is (eq :debug (log:logger-level log::*root-logger*)))
     
     ;; Configure specific logger
     (log:configure-from-string "error:my.app")
@@ -180,15 +180,15 @@
 
 (deftest test-configure-from-string-wildcards
   "Test wildcard configuration patterns"
-  (let ((log:*loggers* (map:make-map))
-        (log:*root-logger* (make-instance 'log:logger :name "root" :level :info))
-        (log:*wildcard-rules* '()))
+  (let ((log::*loggers* (map:make-map))
+        (log::*root-logger* (make-instance 'log:logger :name "root" :level :info))
+        (log::*wildcard-rules* '()))
     
     ;; Configure with wildcard
     (log:configure-from-string "debug:app.*,trace:app.debug")
     
     ;; Check wildcard rule was stored
-    (is (member "app." log:*wildcard-rules* :key #'car :test #'string=))
+    (is (member "app." log::*wildcard-rules* :key #'car :test #'string=))
     
     ;; New loggers matching pattern should get the level
     (let ((logger1 (log:get-logger "app.module1"))
@@ -206,15 +206,15 @@
 
 (deftest test-configure-from-string-multiple
   "Test multiple configuration specs"
-  (let ((log:*loggers* (map:make-map))
-        (log:*root-logger* (make-instance 'log:logger :name "root" :level :info))
-        (log:*wildcard-rules* '()))
+  (let ((log::*loggers* (map:make-map))
+        (log::*root-logger* (make-instance 'log:logger :name "root" :level :info))
+        (log::*wildcard-rules* '()))
     
     ;; Configure multiple patterns
     (log:configure-from-string "warn,debug:epsilon.*,trace:epsilon.core.loader")
     
     ;; Root should be warn
-    (is (eq :warn (log:logger-level log:*root-logger*)))
+    (is (eq :warn (log:logger-level log::*root-logger*)))
     
     ;; Create and check loggers
     (let ((eps-log (log:get-logger "epsilon.log"))
@@ -230,8 +230,8 @@
 (deftest test-with-context
   "Test thread-local context"
   (with-test-logger (logger appender)
-    (let ((log:*loggers* (map:make-map)))
-      (map:assoc! log:*loggers* "test" logger)
+    (let ((log::*loggers* (map:make-map)))
+      (map:assoc! log::*loggers* "test" logger)
       
       ;; Log without context
       (log:emit-log logger :info "no context")
@@ -262,16 +262,16 @@
 
 (deftest test-configure-with-tee
   "Test convenience tee configuration"
-  (let ((log:*root-logger* (make-instance 'log:logger :name "root" :level :info)))
+  (let ((log::*root-logger* (make-instance 'log:logger :name "root" :level :info)))
     
     ;; Configure with tee (console only, no file)
     (log:configure-with-tee :level :debug 
                            :console-format :compact)
     
-    (is (eq :debug (log:logger-level log:*root-logger*)))
-    (is (= 1 (length (log:logger-appenders log:*root-logger*))))
+    (is (eq :debug (log:logger-level log::*root-logger*)))
+    (is (= 1 (length (log:logger-appenders log::*root-logger*))))
     
-    (let ((tee (first (log:logger-appenders log:*root-logger*))))
+    (let ((tee (first (log:logger-appenders log::*root-logger*))))
       (is (typep tee 'log:tee-appender))
       (is (= 1 (length (log:tee-appenders tee))))
       (is (typep (first (log:tee-appenders tee)) 'log:console-appender)))))
@@ -281,7 +281,7 @@
 (deftest test-source-location-capture
   "Test that source location is captured in macros"
   ;; This test verifies the macro expansion captures location
-  (let ((log:*loggers* (map:make-map))
+  (let ((log::*loggers* (map:make-map))
         (logger (log:get-logger "epsilon.log.tests")))
     
     ;; The log macro should capture file/line info
@@ -318,7 +318,7 @@
 
 (deftest test-logger-caching
   "Test that loggers are cached properly"
-  (let ((log:*loggers* (map:make-map)))
+  (let ((log::*loggers* (map:make-map)))
     (let ((logger1 (log:get-logger "perf.test"))
           (logger2 (log:get-logger "perf.test")))
       
@@ -326,7 +326,7 @@
       (is (eq logger1 logger2))
       
       ;; Should be stored in cache
-      (is (eq logger1 (map:get log:*loggers* "perf.test"))))))
+      (is (eq logger1 (map:get log::*loggers* "perf.test"))))))
 
 (deftest test-level-check-performance
   "Test that level checking is efficient"
@@ -344,10 +344,10 @@
 
 (deftest test-empty-logger-name
   "Test handling of empty logger names"
-  (let ((log:*loggers* (map:make-map)))
+  (let ((log::*loggers* (map:make-map)))
     (let ((logger (log:get-logger "")))
       (is (string= "" (log:logger-name logger)))
-      (is (eq log:*root-logger* (log:logger-parent logger))))))
+      (is (eq log::*root-logger* (log::logger-parent logger))))))
 
 (deftest test-nil-message
   "Test handling of nil messages"
