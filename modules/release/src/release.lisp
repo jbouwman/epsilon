@@ -239,8 +239,8 @@
   "Copy source tree to release directory."
   (format t "Copying source tree...~%")
   
-  (let ((src-dir (path:path-string (path:path-join (namestring (fs:current-directory)) "src")))
-        (target-src (path:path-string (path:path-join release-dir "src"))))
+  (let ((src-dir (path:path-string (path:path-join (namestring (fs:current-directory)) "modules")))
+        (target-src (path:path-string (path:path-join release-dir "modules"))))
         
     ;; Copy source tree using standard epsilon.sys.fs functions
     (fs:copy-directory src-dir target-src)
