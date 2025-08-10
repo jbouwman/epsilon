@@ -32,53 +32,53 @@
    ;; REPL environment
    *environment*
    
-   #:find-module
-   #:name
-   #:version
-   #:location
-   #:metadata
-   #:source
+   find-module
+   name
+   version
+   location
+   metadata
+   source
    
    ;; From loader.environment
    ;; Environment class
-   #:build-environment
-   #:make-build-environment
+   build-environment
+   make-build-environment
    ;; Accessors
-   #:environment-config
+   environment-config
    ;; Operations
-   #:register-module
-   #:scan-module-directory
-   #:is-package-loaded
-   #:query-packages
-   ;; Package info
-   #:package-info
-   #:module-name
-   #:package-location
-   #:package-loaded-p
-   #:package-load-time
-   #:package-metadata))
+   register-module
+   scan-module-directory
+   query-modules
+   ;; Module info
+   module-info
+   module-name
+   module-location
+   module-loaded-p
+   module-load-time
+   module-uri
+   module-metadata))
 
 (in-package epsilon.loader)
 
-(defclass package-info ()
+(defclass module-info ()
   ((name :initarg :name 
          :reader module-name 
          :type string
          :documentation "Package name")
    (location :initarg :location 
-             :reader package-location
+             :reader module-location
              :documentation "Package location (path or URI)")
    (loaded-p :initarg :loaded-p 
-             :accessor package-loaded-p 
+             :accessor module-loaded-p 
              :initform nil 
              :type boolean
              :documentation "Whether package has been loaded")
    (load-time :initarg :load-time 
-              :accessor package-load-time 
+              :accessor module-load-time 
               :initform nil
               :documentation "When package was loaded")
    (metadata :initarg :metadata
-             :accessor package-metadata
+             :accessor module-metadata
              :initform nil
              :documentation "Full package metadata including provides, dependencies, etc."))
   (:documentation "Information about a loaded or registered package"))
@@ -86,9 +86,9 @@
 ;;; Build Environment
 
 (defclass build-environment ()
-  ((packages :initform (map:make-map)
+  ((modules :initform (map:make-map)
              :accessor modules
-             :documentation "Registry of all packages (map of name -> package-info)")
+             :documentation "Registry of all modules (map of name -> module-info)")
    (config :initarg :config
            :accessor environment-config
            :initform (map:make-map)
@@ -112,21 +112,21 @@
 
 (defun register-module (environment path)
   "Register a single package directory (contains module.lisp)"
-  (let* ((package-path (path:ensure-path path))
-         (package-file (path:path-join package-path "module.lisp"))
-         (file-string (path:path-string package-file)))
+  (let* ((module-path (path:ensure-path path))
+         (module-file (path:path-join module-path "module.lisp"))
+         (file-string (path:path-string module-file)))
     (when (probe-file file-string)
       (let* ((info (with-open-file (stream file-string :if-does-not-exist nil)
                      (when stream (read stream))))
-             (package-name (getf info :name)))
-        (when package-name
-          (let ((pkg-info (make-instance 'package-info
-                                         :name package-name
-                                         :location package-path
+             (module-name (getf info :name)))
+        (when module-name
+          (let ((pkg-info (make-instance 'module-info
+                                         :name module-name
+                                         :location module-path
                                            :metadata info
                                          :loaded-p nil)))
             (map:assoc! (modules environment)
-                        package-name pkg-info)))))))
+                        module-name pkg-info)))))))
 
 (defun scan-module-directory (environment path)
   "Scan directory for package subdirectories and register them"
@@ -138,35 +138,30 @@
 ;;; Module Registry
 
 (defun get-module (environment name &key (error-p nil))
-  "Get package-info for a given package name, or NIL if not found"
+  "Get module-info for a given package name, or NIL if not found"
   (or (map:get (modules environment) name)
       (and error-p
            (error "Package not found: ~A" name))))
 
-(defun is-package-loaded (environment name)
-  "Check if a package has been loaded"
-  (let ((package-info (get-module environment name)))
-    (and package-info (package-loaded-p package-info))))
-
-(defun mark-package-loaded (environment name)
+(defun mark-module-loaded (environment name)
   "Mark a package as loaded"
-  (let ((package-info (get-module environment name)))
-    (when package-info
-      (setf (package-loaded-p package-info) t
-            (package-load-time package-info) (get-universal-time)))))
+  (let ((module-info (get-module environment name)))
+    (when module-info
+      (setf (module-loaded-p module-info) t
+            (module-load-time module-info) (get-universal-time)))))
 
 ;;; Query Operations
 
-(defun query-packages (environment &key name provides loaded-only predicate)
-  "Query packages matching specified criteria. 
-   Packages provide themselves by default (e.g., epsilon.core provides epsilon.core)."
+(defun query-modules (environment &key name provides loaded-only predicate)
+  "Query modules matching specified criteria. 
+   Modules provide themselves by default (e.g., epsilon.core provides epsilon.core)."
   (let ((results '())
         (current-platform (string-downcase (symbol-name (env:platform)))))
     
-    ;; Search all packages
-    (loop for package-info in (map:vals (modules environment))
-          for pkg-name = (module-name package-info)
-          for metadata = (package-metadata package-info)
+    ;; Search all modules
+    (loop for module-info in (map:vals (modules environment))
+          for pkg-name = (module-name module-info)
+          for metadata = (module-metadata module-info)
           for pkg-provides = (or (getf metadata :provides) (list pkg-name))
           for pkg-platform = (getf metadata :platform)
           when (and (or (not name)
@@ -179,21 +174,21 @@
                     (or (not pkg-platform)
                         (string= pkg-platform current-platform))
                     (or (not predicate)
-                        (funcall predicate package-info)))
-            collect package-info into loaded-results
+                        (funcall predicate module-info)))
+            collect module-info into loaded-results
           finally (setf results loaded-results))
     
     ;; Filter by loaded-only if requested
     (when loaded-only
-      (setf results (remove-if-not #'package-loaded-p results)))
+      (setf results (remove-if-not #'module-loaded-p results)))
     
     results))
 
 (defun find-module (environment &key name provides)
   "Find exactly one package matching the given criteria.
-   Raises an error if no packages match or if multiple packages match.
-   This is a convenience wrapper around query-packages."
-  (let ((matches (query-packages environment 
+   Raises an error if no modules match or if multiple modules match.
+   This is a convenience wrapper around query-modules."
+  (let ((matches (query-modules environment 
                                  :name name 
                                  :provides provides)))
     (cond
@@ -201,7 +196,7 @@
        (error "No package found matching criteria~@[ name=~A~]~@[ provides=~A~]"
               name provides))
       ((> (length matches) 1)
-       (error "Multiple packages found matching criteria~@[ name=~A~]~@[ provides=~A~]: ~{~A~^, ~}"
+       (error "Multiple modules found matching criteria~@[ name=~A~]~@[ provides=~A~]: ~{~A~^, ~}"
               name provides (mapcar #'module-name matches)))
       (t (first matches)))))
 
@@ -222,8 +217,8 @@
                              (path:path-join epsilon-home "modules"))))
   *environment*)
 
-(defun package-uri (package-info)
-  (package-location package-info))
+(defun module-uri (module-info)
+  (module-location module-info))
 
 (defclass locatable ()
   ((uri :initarg :uri :accessor uri)))
@@ -342,10 +337,10 @@
 (defun load-project (uri &optional environment)
   "Parse module definition from module.lisp in directory URI"
   (log:debug "load-project, uri = ~A" uri)
-  (let* ((package-file "module.lisp")
-         (package-path (path:path-string (path:path-merge (path:path-from-uri uri) package-file)))
-         (path (cond ((probe-file package-path) package-path)
-                     (t (error "No package file found: ~A" package-path)))))
+  (let* ((module-file "module.lisp")
+         (module-path (path:path-string (path:path-merge (path:path-from-uri uri) module-file)))
+         (path (cond ((probe-file module-path) module-path)
+                     (t (error "No package file found: ~A" module-path)))))
     (let* ((plist (with-open-file (stream path)
                     (read stream)))
            ;; Extract fields from property list
@@ -757,35 +752,35 @@
   COMPILE-ONLY - Only compile, don't load (for backward compatibility with build)
   
   Returns T if successfully loaded/compiled, NIL otherwise."
-  (let* ((package-info (get-module environment package))
-         (location (when package-info (package-location package-info)))
-         (package-dir (if location
+  (let* ((module-info (get-module environment package))
+         (location (when module-info (module-location module-info)))
+         (module-dir (if location
                           location
                           (error "Unknown module: ~A" package)))
          (project (handler-case
                       (progn
                         (log:debug "Calling load-project")
-                        (load-project package-dir environment))
+                        (load-project module-dir environment))
                     (error (e)
                       (log:error "Error in load-project for ~A: ~A" package e)
                       (error e)))))
     ;; Build dependencies first
     (dolist (dep-name (project-dependencies project))
       (let ((resolved-dep (find-module environment :provides dep-name)))
-        (unless (package-loaded-p resolved-dep)
+        (unless (module-loaded-p resolved-dep)
           (load-module environment (module-name resolved-dep)))))
     
     ;; Now try to load concatenated FASL if dependencies are resolved and it's up-to-date
     (unless (or force compile-only (map:get (environment-config environment) :force))
       (when (load-binary project)
-        (mark-package-loaded environment package)
+        (mark-module-loaded environment package)
         (return-from load-module t)))
     
     ;; Build if needed
     (let ((build-result (%build environment project :force (or force (map:get (environment-config environment) :force)))))
       (when build-result
         (unless compile-only
-          (mark-package-loaded environment package)))
+          (mark-module-loaded environment package)))
       build-result)))
 
 (defgeneric project-resources (project resource-type)
@@ -808,7 +803,7 @@
    
    Returns T if successful, NIL otherwise."
   (let* ((module-info (get-module environment module))
-         (location (when module-info (package-location module-info)))
+         (location (when module-info (module-location module-info)))
          (module-dir (if location
                           location
                           (error "Unknown module: ~A" module)))

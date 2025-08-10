@@ -57,7 +57,7 @@
 
 (defun project-file (project-name relative-path)
   (let ((module (loader:get-module (loader:environment) project-name :error-p t)))
-    (path:string-path-join (path::path-from-uri (loader::package-uri module)) relative-path)))
+    (path:string-path-join (path::path-from-uri (loader:module-uri module)) relative-path)))
 
 (defmacro deftest (name &body body)
   (let ((docstring (when (and (stringp (first body))

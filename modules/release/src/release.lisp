@@ -1,5 +1,5 @@
 ;;;; This package provides two main functions:
-;;;; - selftest: Discover and test all packages sequentially
+;;;; - selftest: Discover and test all modules sequentially
 ;;;; - generate: Create standalone release packages
 
 (defpackage epsilon.release
@@ -60,44 +60,43 @@
   (fs:make-dirs dir-path)
   (log:debug "Directory created: ~A" dir-path))
 
-
-(defun get-concrete-packages (environment)
-  "Get list of concrete packages (excluding virtual packages)."
-  (let ((all-descriptors (loader:query-packages environment))
-        (concrete-packages '()))
+(defun get-modules (environment)
+  "Get list of all modules."
+  (let ((all-descriptors (loader:query-modules environment))
+        (modules '()))
     (dolist (descriptor all-descriptors)
       (let* ((name (loader:module-name descriptor))
-             (metadata (loader:package-metadata descriptor))
+             (metadata (loader:module-metadata descriptor))
              (platform (getf metadata :platform)))
         ;; Include if no platform restriction or matches current platform
         (when (or (not platform)
                   (string-equal platform (string-downcase (symbol-name (env:platform)))))
-          (push name concrete-packages))))
-    (sort concrete-packages #'string<)))
+          (push name modules))))
+    (sort modules #'string<)))
 
 ;;; Self-test Function
 
 (defun selftest (&optional environment)
-  "Discover all packages and test them sequentially."
+  "Discover all modules and test them sequentially."
   (unless environment
     (setf environment (loader:environment)))
   (log:info "Starting Epsilon Release Self-Test")
   
-  (let ((packages (get-concrete-packages environment))
+  (let ((modules (get-modules environment))
         (total-tested 0)
         (total-passed 0)
-        (failed-packages '()))
+        (failed-modules '()))
     
-    (log:info "Found ~D packages to test" (length packages))
+    (log:info "Found ~D modules to test" (length modules))
     
-    (dolist (pkg packages)
-      (log:info "Testing ~A..." pkg)
+    (dolist (module modules)
+      (log:info "Testing ~A..." module)
       (incf total-tested)
       
       (handler-case
           (progn
-            ;; Load the package
-            (loader:load-module environment pkg)
+            ;; Load the module
+            (loader:load-module environment module)
             
             ;; Ensure epsilon.test is loaded
             ;;; FIXME move this out of the loop, and provide standard functions
@@ -108,7 +107,7 @@
             (let* ((test-run-fn (find-symbol "RUN" (find-package "EPSILON.TEST")))
                    (success-p-fn (find-symbol "SUCCESS-P" (find-package "EPSILON.TEST")))
                    (clear-tests-fn (find-symbol "CLEAR-TESTS" (find-package "EPSILON.TEST.SUITE")))
-                   (result (funcall test-run-fn environment pkg)))
+                   (result (funcall test-run-fn environment module)))
               
               (if (funcall success-p-fn result)
                   (progn
@@ -116,7 +115,7 @@
                     (incf total-passed))
                   (progn
                     (format t "  ✗ FAILED~%")
-                    (push pkg failed-packages)))
+                    (push module failed-packages)))
               
               ;; Clear tests after each package to free memory and prevent accumulation
               (when (and clear-tests-fn (fboundp clear-tests-fn))
@@ -124,59 +123,59 @@
         
         (error (e)
           (format t "  ✗ ERROR: ~A~%" e)
-          (push pkg failed-packages))))
+          (push module failed-modules))))
     
     ;; Summary
     (format t "~%Test Summary:~%")
     (format t "=============~%")
-    (format t "Total packages: ~D~%" total-tested)
+    (format t "Total modules: ~D~%" total-tested)
     (format t "Passed: ~D~%" total-passed)
     (format t "Failed: ~D~%" (- total-tested total-passed))
     
-    (when failed-packages
-      (format t "~%Failed packages:~%")
-      (dolist (pkg (reverse failed-packages))
-        (format t "  - ~A~%" pkg)))
+    (when failed-modules
+      (format t "~%Failed modules:~%")
+      (dolist (module (reverse failed-modules))
+        (format t "  - ~A~%" module)))
     
     (format t "~%")
     (= total-passed total-tested)))
 
 ;;; Release Generation Functions
 
-(defun get-platform-packages (environment platform-arch)
-  "Get list of packages to include for a specific platform."
+(defun get-platform-modules (environment platform-arch)
+  "Get list of modules to include for a specific platform."
   (let ((platform (seq:first (str:split #\- platform-arch))))
     
-    ;; Use the same logic as get-concrete-packages to query available packages
-    (let ((all-descriptors (loader:query-packages environment))
-          (platform-packages '()))
+    ;; Use the same logic as get-modules to query available modules
+    (let ((all-descriptors (loader:query-modules environment))
+          (platform-modules '()))
       (dolist (descriptor all-descriptors)
         (let* ((name (loader:module-name descriptor))
-               (metadata (loader:package-metadata descriptor))
-               (pkg-platform (getf metadata :platform)))
+               (metadata (loader:module-metadata descriptor))
+               (module-platform (getf metadata :platform)))
           ;; Include if no platform restriction or matches current platform
-          (when (or (not pkg-platform)
-                    (string-equal pkg-platform platform)
-                    ;; Also include packages for the current running platform
-                    (string-equal pkg-platform (string-downcase (symbol-name (env:platform)))))
-            (push (str:replace-first name "epsilon." "") platform-packages))))
-      (sort platform-packages #'string<))))
+          (when (or (not module-platform)
+                    (string-equal module-platform platform)
+                    ;; Also include modules for the current running platform
+                    (string-equal module-platform (string-downcase (symbol-name (env:platform)))))
+            (push (str:replace-first name "epsilon." "") platform-modules))))
+      (sort platform-modules #'string<))))
 
-(defun build-packages-for-release (environment platform-arch)
-  "Build all packages needed for the release."
-  (format t "Building packages for ~A...~%" platform-arch)
+(defun build-modules-for-release (environment platform-arch)
+  "Build all modules needed for the release."
+  (format t "Building modules for ~A...~%" platform-arch)
   
-  (let ((packages (get-platform-packages environment platform-arch)))
-    (dolist (pkg packages)
-      (let ((pkg-name (format nil "epsilon.~A" pkg)))
+  (let ((modules (get-platform-modules environment platform-arch)))
+    (dolist (module modules)
+      (let ((module-name (format nil "epsilon.~A" module)))
         (handler-case
             (progn
-              (format t "  Building ~A...~%" pkg-name)
-              (loader:load-module environment pkg-name :compile-only t)
+              (format t "  Building ~A...~%" module-name)
+              (loader:load-module environment module-name :compile-only t)
               (format t "    ✓ Built successfully~%"))
           (error (e)
-            (log:error "Failed to build ~A" pkg-name)
-            (format t "    Warning: Failed to build ~A: ~A~%" pkg-name e)))))))
+            (log:error "Failed to build ~A" module-name)
+            (format t "    Warning: Failed to build ~A: ~A~%" module-name e)))))))
 
 (defun copy-source-tree (release-dir)
   "Copy source tree to release directory."
@@ -400,8 +399,8 @@
       
       (fs:make-dirs release-dir)
       
-      ;; Build all packages
-      (build-packages-for-release environment platform-arch)
+      ;; Build all modules
+      (build-modules-for-release environment platform-arch)
       
       ;; Copy source tree
       (copy-source-tree release-dir)

@@ -338,16 +338,16 @@
 
 (defun display-modules (environment)
   "Display all modules with their virtual capabilities mixed in."
-  (let* ((all-modules (loader:query-packages environment))
+  (let* ((modules (loader:query-modules environment))
          (module-data '()))
     
-    (dolist (module all-modules)
+    (dolist (module modules)
       (let* ((name (loader:module-name module))
-             (metadata (loader:package-metadata module))
+             (metadata (loader:module-metadata module))
              (version (or (getf metadata :version) "?"))
              (platform (getf metadata :platform))
-             (status (if (loader:package-loaded-p module) "LOADED" "AVAILABLE"))
-             (location (path:path-string (loader:package-location module))))
+             (status (if (loader:module-loaded-p module) "LOADED" "AVAILABLE"))
+             (location (path:path-string (loader:module-location module))))
         
         ;; Add to module list (skip platform-specific unless on that platform)
         (when (or (not platform)
