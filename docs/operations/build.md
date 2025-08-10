@@ -155,10 +155,10 @@ Control with: `EPSILON_BUILD_JOBS=4 ./epsilon build`
 For development of local packages without full module builds:
 
 ```bash
-# Run package in current directory (auto-detects name from package.lisp)
+# Run package in current directory (auto-detects name from module.lisp)
 ./epsilon run [args...]
 
-# Package.lisp format for run command
+# module.lisp format for run command
 # (:name "package-name"
 #  :sources ("src")
 #  :dependencies ("epsilon.core") 

@@ -313,7 +313,7 @@ Common pattern for application configuration:
 
 ## Error Recovery
 
-### Robust Parsing
+### Parsing
 
 ```lisp
 (defun safe-parse-config (filename)

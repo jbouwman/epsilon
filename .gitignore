@@ -3,6 +3,8 @@ releases
 TAGS
 *.fasl
 *.log
+*.zip
+*.tar.gz
 node_modules
 package.json
 package-lock.json
