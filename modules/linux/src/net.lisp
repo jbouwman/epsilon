@@ -73,13 +73,7 @@
    #:would-block-error
    
    ;; Status checks
-   #:tcp-connected-p
-   
-   ;; High-level async functions
-   #:tcp-accept-with-timeout
-   #:tcp-connect-with-timeout
-   #:tcp-read-with-timeout
-   #:tcp-write-with-timeout))
+   #:tcp-connected-p))
 
 (in-package :epsilon.net)
 
@@ -129,69 +123,69 @@
 ;;; ============================================================================
 
 (lib:defshared %socket "socket" "libc" :int 
-  (domain :int) (type :int) (protocol :int)
-  :documentation "Create socket")
+	       (domain :int) (type :int) (protocol :int)
+	       :documentation "Create socket")
 
 (lib:defshared %bind "bind" "libc" :int
-  (sockfd :int) (addr :pointer) (addrlen :unsigned-int)
-  :documentation "Bind socket to address")
+	       (sockfd :int) (addr :pointer) (addrlen :unsigned-int)
+	       :documentation "Bind socket to address")
 
 (lib:defshared %listen "listen" "libc" :int
-  (sockfd :int) (backlog :int)
-  :documentation "Listen for connections")
+	       (sockfd :int) (backlog :int)
+	       :documentation "Listen for connections")
 
 (lib:defshared %accept "accept" "libc" :int
-  (sockfd :int) (addr :pointer) (addrlen :pointer)
-  :documentation "Accept connection")
+	       (sockfd :int) (addr :pointer) (addrlen :pointer)
+	       :documentation "Accept connection")
 
 (lib:defshared %connect "connect" "libc" :int
-  (sockfd :int) (addr :pointer) (addrlen :unsigned-int)
-  :documentation "Connect socket")
+	       (sockfd :int) (addr :pointer) (addrlen :unsigned-int)
+	       :documentation "Connect socket")
 
 (lib:defshared %send "send" "libc" :long
-  (sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int)
-  :documentation "Send data on socket")
+	       (sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int)
+	       :documentation "Send data on socket")
 
 (lib:defshared %recv "recv" "libc" :long
-  (sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int)
-  :documentation "Receive data from socket")
+	       (sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int)
+	       :documentation "Receive data from socket")
 
 (lib:defshared %sendto "sendto" "libc" :long
-  (sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int)
-  (dest-addr :pointer) (addrlen :unsigned-int)
-  :documentation "Send data to specific address")
+	       (sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int)
+	       (dest-addr :pointer) (addrlen :unsigned-int)
+	       :documentation "Send data to specific address")
 
 (lib:defshared %recvfrom "recvfrom" "libc" :long
-  (sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int)
-  (src-addr :pointer) (addrlen :pointer)
-  :documentation "Receive data and sender address")
+	       (sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int)
+	       (src-addr :pointer) (addrlen :pointer)
+	       :documentation "Receive data and sender address")
 
 (lib:defshared %close "close" "libc" :int (fd :int)
-  :documentation "Close file descriptor")
+	       :documentation "Close file descriptor")
 
 (lib:defshared %shutdown "shutdown" "libc" :int
-  (sockfd :int) (how :int)
-  :documentation "Shutdown socket")
+	       (sockfd :int) (how :int)
+	       :documentation "Shutdown socket")
 
 (lib:defshared %setsockopt "setsockopt" "libc" :int
-  (sockfd :int) (level :int) (optname :int) (optval :pointer) (optlen :unsigned-int)
-  :documentation "Set socket option")
+	       (sockfd :int) (level :int) (optname :int) (optval :pointer) (optlen :unsigned-int)
+	       :documentation "Set socket option")
 
 (lib:defshared %getsockopt "getsockopt" "libc" :int
-  (sockfd :int) (level :int) (optname :int) (optval :pointer) (optlen :pointer)
-  :documentation "Get socket option")
+	       (sockfd :int) (level :int) (optname :int) (optval :pointer) (optlen :pointer)
+	       :documentation "Get socket option")
 
 (lib:defshared %getsockname "getsockname" "libc" :int
-  (sockfd :int) (addr :pointer) (addrlen :pointer)
-  :documentation "Get socket's own address")
+	       (sockfd :int) (addr :pointer) (addrlen :pointer)
+	       :documentation "Get socket's own address")
 
 (lib:defshared %getpeername "getpeername" "libc" :int
-  (sockfd :int) (addr :pointer) (addrlen :pointer)
-  :documentation "Get peer's address")
+	       (sockfd :int) (addr :pointer) (addrlen :pointer)
+	       :documentation "Get peer's address")
 
 (lib:defshared %fcntl "fcntl" "libc" :int
-  (fd :int) (cmd :int) (arg :int)
-  :documentation "File control operations")
+	       (fd :int) (cmd :int) (arg :int)
+	       :documentation "File control operations")
 
 ;;; ============================================================================
 ;;; Error Conditions
@@ -237,38 +231,38 @@
                                                (function (* sb-alien:int))))))
         (sb-alien:deref errno-ptr 0))
     (error ()
-      ;; If we can't get errno, return -1
-      -1)))
+	   ;; If we can't get errno, return -1
+	   -1)))
 
 (defun errno-to-string (errno)
   "Convert errno to human-readable string"
   (case errno
-    (1 "EPERM - Operation not permitted")
-    (2 "ENOENT - No such file or directory")
-    (9 "EBADF - Bad file descriptor")
-    (11 "EAGAIN/EWOULDBLOCK - Resource temporarily unavailable")
-    (13 "EACCES - Permission denied")
-    (22 "EINVAL - Invalid argument")
-    (24 "EMFILE - Too many open files")
-    (98 "EADDRINUSE - Address already in use")
-    (99 "EADDRNOTAVAIL - Cannot assign requested address")
-    (104 "ECONNRESET - Connection reset by peer")
-    (107 "ENOTCONN - Socket is not connected")
-    (110 "ETIMEDOUT - Operation timed out")
-    (111 "ECONNREFUSED - Connection refused")
-    (t (format nil "Unknown error (~D)" errno))))
+	(1 "EPERM - Operation not permitted")
+	(2 "ENOENT - No such file or directory")
+	(9 "EBADF - Bad file descriptor")
+	(11 "EAGAIN/EWOULDBLOCK - Resource temporarily unavailable")
+	(13 "EACCES - Permission denied")
+	(22 "EINVAL - Invalid argument")
+	(24 "EMFILE - Too many open files")
+	(98 "EADDRINUSE - Address already in use")
+	(99 "EADDRNOTAVAIL - Cannot assign requested address")
+	(104 "ECONNRESET - Connection reset by peer")
+	(107 "ENOTCONN - Socket is not connected")
+	(110 "ETIMEDOUT - Operation timed out")
+	(111 "ECONNREFUSED - Connection refused")
+	(t (format nil "Unknown error (~D)" errno))))
 
 (defun check-error (result operation)
   "Check system call result and signal appropriate error"
   (when (< result 0)
     (let ((errno (get-errno)))
       (case errno
-        (11 (error 'would-block-error :message (format nil "~A would block" operation)))
-        (98 (error 'address-in-use :message (format nil "~A: ~A" operation (errno-to-string errno))))
-        (104 (error 'connection-reset :message (format nil "~A: ~A" operation (errno-to-string errno))))
-        (110 (error 'timeout-error :message (format nil "~A: ~A" operation (errno-to-string errno))))
-        (111 (error 'connection-refused :message (format nil "~A: ~A" operation (errno-to-string errno))))
-        (t (error 'network-error :message (format nil "~A failed: ~A" operation (errno-to-string errno))))))))
+            (11 (error 'would-block-error :message (format nil "~A would block" operation)))
+            (98 (error 'address-in-use :message (format nil "~A: ~A" operation (errno-to-string errno))))
+            (104 (error 'connection-reset :message (format nil "~A: ~A" operation (errno-to-string errno))))
+            (110 (error 'timeout-error :message (format nil "~A: ~A" operation (errno-to-string errno))))
+            (111 (error 'connection-refused :message (format nil "~A: ~A" operation (errno-to-string errno))))
+            (t (error 'network-error :message (format nil "~A failed: ~A" operation (errno-to-string errno))))))))
 
 ;;; ============================================================================
 ;;; Core Types
@@ -334,7 +328,7 @@
   ;; addr is a SAP from epsilon.foreign, use sb-sys:sap-ref-* functions
   (let ((sap (if (typep addr 'sb-sys:system-area-pointer)
                  addr
-                 (sb-alien:alien-sap addr))))
+               (sb-alien:alien-sap addr))))
     ;; sin_family (2 bytes)
     (setf (sb-sys:sap-ref-16 sap 0) +af-inet+)
     ;; sin_port (network byte order)
@@ -358,7 +352,7 @@
   ;; addr could be a SAP or alien value, normalize to SAP
   (let* ((sap (if (typep addr 'sb-sys:system-area-pointer)
                   addr
-                  (sb-alien:alien-sap addr)))
+                (sb-alien:alien-sap addr)))
          (port-bytes (sb-sys:sap-ref-16 sap 2))
          (port (logior (ash (logand port-bytes #xff) 8)
                        (ash (logand port-bytes #xff00) -8)))
@@ -377,7 +371,7 @@
     (loop for pos = (position delimiter string :start start)
           while pos
           do (push (subseq string start pos) parts)
-             (setf start (1+ pos))
+          (setf start (1+ pos))
           finally (push (subseq string start) parts))
     (nreverse parts)))
 
@@ -403,27 +397,27 @@
         (make-socket-address
          (subseq address-string 0 colon-pos)
          (parse-integer (subseq address-string (1+ colon-pos))))
-        (error "Invalid address format: ~A" address-string))))
+      (error "Invalid address format: ~A" address-string))))
 
 (defun resolve-address (hostname-or-address port)
   "Resolve hostname to socket addresses"
   (cond
-    ;; If it looks like an IP address, use it directly
-    ((and (stringp hostname-or-address)
-          (every (lambda (c) (or (digit-char-p c) (char= c #\.)))
-                 hostname-or-address))
-     (list (make-socket-address hostname-or-address port)))
-    
-    ;; If it's "localhost", resolve to 127.0.0.1
-    ((string= hostname-or-address "localhost")
-     (list (make-socket-address "127.0.0.1" port)))
-    
-    ;; Otherwise try DNS resolution (simplified)
-    (t
-     (handler-case
-         (list (make-socket-address "127.0.0.1" port)) ; Fallback for now
-       (error (e)
-         (error 'network-error :message (format nil "Failed to resolve ~A: ~A" hostname-or-address e)))))))
+   ;; If it looks like an IP address, use it directly
+   ((and (stringp hostname-or-address)
+         (every (lambda (c) (or (digit-char-p c) (char= c #\.)))
+                hostname-or-address))
+    (list (make-socket-address hostname-or-address port)))
+   
+   ;; If it's "localhost", resolve to 127.0.0.1
+   ((string= hostname-or-address "localhost")
+    (list (make-socket-address "127.0.0.1" port)))
+   
+   ;; Otherwise try DNS resolution (simplified)
+   (t
+    (handler-case
+        (list (make-socket-address "127.0.0.1" port)) ; Fallback for now
+      (error (e)
+             (error 'network-error :message (format nil "Failed to resolve ~A: ~A" hostname-or-address e)))))))
 
 ;;; ============================================================================
 ;;; Socket Utilities
@@ -438,9 +432,9 @@
 (defun set-socket-reuse-addr (fd enable)
   "Enable or disable SO_REUSEADDR on socket"
   (lib:with-foreign-memory ((optval :int :count 1))
-    (setf (sb-sys:sap-ref-32 optval 0) (if enable 1 0))
-    (let ((result (%setsockopt fd +sol-socket+ +so-reuseaddr+ optval 4)))
-      (check-error result "setsockopt SO_REUSEADDR"))))
+			   (setf (sb-sys:sap-ref-32 optval 0) (if enable 1 0))
+			   (let ((result (%setsockopt fd +sol-socket+ +so-reuseaddr+ optval 4)))
+			     (check-error result "setsockopt SO_REUSEADDR"))))
 
 (defun socket-to-stream (socket direction)
   "Convert socket to Lisp stream"
@@ -458,19 +452,19 @@
   "Get the local address of a socket"
   (lib:with-foreign-memory ((sockaddr :char :count 16)
                             (addrlen :int :count 1))
-    (setf (sb-sys:sap-ref-32 addrlen 0) 16)
-    (let ((result (%getsockname socket-fd sockaddr addrlen)))
-      (check-error result "getsockname")
-      (parse-sockaddr-in sockaddr))))
+			   (setf (sb-sys:sap-ref-32 addrlen 0) 16)
+			   (let ((result (%getsockname socket-fd sockaddr addrlen)))
+			     (check-error result "getsockname")
+			     (parse-sockaddr-in sockaddr))))
 
 (defun get-peer-address (socket-fd)
   "Get the peer address of a socket"
   (lib:with-foreign-memory ((sockaddr :char :count 16)
                             (addrlen :int :count 1))
-    (setf (sb-sys:sap-ref-32 addrlen 0) 16)
-    (let ((result (%getpeername socket-fd sockaddr addrlen)))
-      (check-error result "getpeername")
-      (parse-sockaddr-in sockaddr))))
+			   (setf (sb-sys:sap-ref-32 addrlen 0) 16)
+			   (let ((result (%getpeername socket-fd sockaddr addrlen)))
+			     (check-error result "getpeername")
+			     (parse-sockaddr-in sockaddr))))
 
 ;;; ============================================================================
 ;;; TCP Listener Operations
@@ -479,8 +473,8 @@
 (defun tcp-bind (address &key (backlog 128) (reuse-addr t))
   "Create a TCP listener bound to the specified address"
   (let* ((sock-addr (etypecase address
-                      (socket-address address)
-                      (string (parse-address address))))
+			       (socket-address address)
+			       (string (parse-address address))))
          (socket-fd (create-socket +af-inet+ +sock-stream+ +ipproto-tcp+))
          (epoll-instance (epoll:epoll-create1)))
     
@@ -491,11 +485,11 @@
         (progn
           ;; Bind socket to address
           (lib:with-foreign-memory ((sockaddr :char :count 16))
-            (make-sockaddr-in-into sockaddr 
-                                   (socket-address-ip sock-addr)
-                                   (socket-address-port sock-addr))
-            (let ((result (%bind socket-fd sockaddr 16)))
-              (check-error result "bind")))
+				   (make-sockaddr-in-into sockaddr 
+							  (socket-address-ip sock-addr)
+							  (socket-address-port sock-addr))
+				   (let ((result (%bind socket-fd sockaddr 16)))
+				     (check-error result "bind")))
           
           ;; Listen for connections
           (let ((result (%listen socket-fd backlog)))
@@ -515,62 +509,67 @@
                            :epoll epoll-instance
                            :backlog backlog)))
       (error (e)
-        (%close socket-fd)
-        (epoll:epoll-close epoll-instance)
-        (error e)))))
+             (%close socket-fd)
+             (epoll:epoll-close epoll-instance)
+             (error e)))))
 
 (defun tcp-accept (listener &key (timeout nil))
   "Accept a connection, with optional timeout in seconds"
-  (let ((timeout-ms (if timeout (* timeout 1000) -1)))
+  (let ((timeout-ms (if timeout (round (* timeout 1000)) -1)))
     (loop
-      (handler-case
-          (lib:with-foreign-memory ((peer-sockaddr :char :count 16)
-                                    (addrlen :int :count 1))
-            (setf (sb-sys:sap-ref-32 addrlen 0) 16)
-            (let ((client-fd (%accept (tcp-listener-handle listener) 
-                                      peer-sockaddr addrlen)))
-              (when (>= client-fd 0)
-                (set-nonblocking client-fd)
-                (let ((local-addr (get-local-address client-fd))
-                      (peer-addr (parse-sockaddr-in peer-sockaddr)))
-                  (return (make-instance 'tcp-stream
-                                        :handle client-fd
-                                        :local-address local-addr
-                                        :peer-address peer-addr
-                                        :connected-p t))))))
-        (would-block-error ()
-          ;; Wait for socket to be ready with timeout
-          (let ((events (epoll:wait-for-events (tcp-listener-epoll listener) 1 timeout-ms)))
-            (when (null events)
-              ;; Timeout occurred
-              (if timeout
-                  (error 'timeout-error :message "Accept timeout")
-                  ;; No timeout specified, continue waiting
-                  nil))))
-        (error (e)
-          (error 'network-error :message (format nil "Accept failed: ~A" e))))))
+     (handler-case
+         (lib:with-foreign-memory ((peer-sockaddr :char :count 16)
+                                   (addrlen :int :count 1))
+				  (setf (sb-sys:sap-ref-32 addrlen 0) 16)
+				  (let ((client-fd (%accept (tcp-listener-handle listener) 
+							    peer-sockaddr addrlen)))
+				    (cond
+				      ((>= client-fd 0)
+				       ;; Success - got a connection
+				       (set-nonblocking client-fd)
+				       (let ((local-addr (get-local-address client-fd))
+					     (peer-addr (parse-sockaddr-in peer-sockaddr)))
+					 (return (make-instance 'tcp-stream
+								:handle client-fd
+								:local-address local-addr
+								:peer-address peer-addr
+								:connected-p t))))
+				      (t
+				       ;; Check what error occurred
+				       (check-error client-fd "accept")))))
+       (would-block-error ()
+			  ;; Wait for socket to be ready with timeout
+			  (let ((events (epoll:wait-for-events (tcp-listener-epoll listener) 1 timeout-ms)))
+			    (when (null events)
+			      ;; Timeout occurred
+			      (if timeout
+				  (error 'timeout-error :message "Accept timeout")
+				;; No timeout specified, continue waiting
+				nil))))
+       (error (e)
+              (error 'network-error :message (format nil "Accept failed: ~A" e)))))))
 
 (defun tcp-try-accept (listener)
   "Try to accept a connection without blocking"
   (handler-case
       (lib:with-foreign-memory ((peer-sockaddr :char :count 16)
                                 (addrlen :int :count 1))
-        (setf (sb-sys:sap-ref-32 addrlen 0) 16)
-        (let ((client-fd (%accept (tcp-listener-handle listener) 
-                                  peer-sockaddr addrlen)))
-          (when (>= client-fd 0)
-            (set-nonblocking client-fd)
-            (let ((local-addr (get-local-address client-fd))
-                  (peer-addr (parse-sockaddr-in peer-sockaddr)))
-              (make-instance 'tcp-stream
-                            :handle client-fd
-                            :local-address local-addr
-                            :peer-address peer-addr
-                            :connected-p t)))))
+			       (setf (sb-sys:sap-ref-32 addrlen 0) 16)
+			       (let ((client-fd (%accept (tcp-listener-handle listener) 
+							 peer-sockaddr addrlen)))
+				 (when (>= client-fd 0)
+				   (set-nonblocking client-fd)
+				   (let ((local-addr (get-local-address client-fd))
+					 (peer-addr (parse-sockaddr-in peer-sockaddr)))
+				     (make-instance 'tcp-stream
+						    :handle client-fd
+						    :local-address local-addr
+						    :peer-address peer-addr
+						    :connected-p t)))))
     (would-block-error ()
-      nil)
+		       nil)
     (error (e)
-      (error 'network-error :message (format nil "Accept failed: ~A" e)))))
+	   (error 'network-error :message (format nil "Accept failed: ~A" e)))))
 
 (defun tcp-poll-accept (listener timeout-ms)
   "Poll for incoming connections with timeout"
@@ -629,8 +628,8 @@
 (defun tcp-connect (address &key (timeout nil))
   "Connect to a TCP server with optional timeout"
   (let* ((sock-addr (etypecase address
-                      (socket-address address)
-                      (string (parse-address address))))
+			       (socket-address address)
+			       (string (parse-address address))))
          (socket-fd (create-socket +af-inet+ +sock-stream+ +ipproto-tcp+)))
     
     (handler-case
@@ -640,39 +639,39 @@
           
           ;; Try to connect
           (lib:with-foreign-memory ((sockaddr :char :count 16))
-            (make-sockaddr-in-into sockaddr 
-                                   (socket-address-ip sock-addr)
-                                   (socket-address-port sock-addr))
-            (let ((result (%connect socket-fd sockaddr 16)))
-              (when (< result 0)
-                ;; Check if it's a would-block error (async connection in progress)
-                (let ((errno (get-errno)))
-                  (if (= errno 115) ; EINPROGRESS - connection in progress
-                      (when timeout
-                        ;; Wait for connection to complete with timeout
-                        (let ((epoll-instance (epoll:epoll-create1))
-                              (timeout-ms (* timeout 1000)))
-                          (unwind-protect
-                              (progn
-                                (epoll:epoll-add epoll-instance socket-fd '(:out))
-                                (let ((events (epoll:wait-for-events epoll-instance 1 timeout-ms)))
-                                  (unless events
-                                    (error 'timeout-error :message "Connection timeout"))))
-                            (epoll:epoll-close epoll-instance))))
-                      ;; Other error, check and signal appropriately
-                      (check-error result "connect"))))))
+				   (make-sockaddr-in-into sockaddr 
+							  (socket-address-ip sock-addr)
+							  (socket-address-port sock-addr))
+				   (let ((result (%connect socket-fd sockaddr 16)))
+				     (when (< result 0)
+				       ;; Check if it's a would-block error (async connection in progress)
+				       (let ((errno (get-errno)))
+					 (if (= errno 115) ; EINPROGRESS - connection in progress
+					     (when timeout
+					       ;; Wait for connection to complete with timeout
+					       (let ((epoll-instance (epoll:epoll-create1))
+						     (timeout-ms (round (* timeout 1000))))
+						 (unwind-protect
+						     (progn
+						       (epoll:epoll-add epoll-instance socket-fd '(:out))
+						       (let ((events (epoll:wait-for-events epoll-instance 1 timeout-ms)))
+							 (unless events
+							   (error 'timeout-error :message "Connection timeout"))))
+						   (epoll:epoll-close epoll-instance))))
+					   ;; Other error, check and signal appropriately
+					   (check-error result "connect"))))))
           
           ;; Get local and peer addresses
           (let ((local-addr (get-local-address socket-fd))
                 (peer-addr (get-peer-address socket-fd)))
             (make-instance 'tcp-stream
-                          :handle socket-fd
-                          :local-address local-addr
-                          :peer-address peer-addr
-                          :connected-p t)))
+                           :handle socket-fd
+                           :local-address local-addr
+                           :peer-address peer-addr
+                           :connected-p t)))
       (error (e)
-        (%close socket-fd)
-        (error e)))))
+             (%close socket-fd)
+             (error e)))))
 
 (defun tcp-stream-reader (stream)
   "Get or create input stream for TCP stream"
@@ -689,66 +688,66 @@
 (defun tcp-read (stream buffer &key (start 0) (end (length buffer)) (timeout nil))
   "Read data from TCP stream into buffer with optional timeout"
   (lib:with-foreign-memory ((buf :char :count (- end start)))
-    (let ((result (%recv (tcp-stream-handle stream) buf (- end start) 0)))
-      (cond
-        ((> result 0)
-         ;; Copy data from foreign buffer to Lisp buffer
-         (loop for i from 0 below result
-               do (setf (aref buffer (+ start i))
-                        (sb-sys:sap-ref-8 buf i)))
-         result)
-        ((= result 0)
-         ;; Connection closed
-         (setf (tcp-stream-connected-p stream) nil)
-         0)
-        (t
-         ;; Error occurred
-         (let ((errno (get-errno)))
-           (if (= errno 11) ; EWOULDBLOCK
-               (if timeout
-                   ;; Wait for data with timeout
-                   (let ((timeout-ms (* timeout 1000)))
-                     (if (tcp-stream-wait-for-read stream timeout-ms)
-                         ;; Retry read after epoll indicates readiness
-                         (tcp-read stream buffer :start start :end end :timeout nil)
-                         0)) ; Timeout occurred
-                   0) ; No data available, no timeout specified
-               (progn
-                 (setf (tcp-stream-connected-p stream) nil)
-                 (check-error result "recv")
-                 0))))))))
+			   (let ((result (%recv (tcp-stream-handle stream) buf (- end start) 0)))
+			     (cond
+			      ((> result 0)
+			       ;; Copy data from foreign buffer to Lisp buffer
+			       (loop for i from 0 below result
+				     do (setf (aref buffer (+ start i))
+					      (sb-sys:sap-ref-8 buf i)))
+			       result)
+			      ((= result 0)
+			       ;; Connection closed
+			       (setf (tcp-stream-connected-p stream) nil)
+			       0)
+			      (t
+			       ;; Error occurred
+			       (let ((errno (get-errno)))
+				 (if (= errno 11) ; EWOULDBLOCK
+				     (if timeout
+					 ;; Wait for data with timeout
+					 (let ((timeout-ms (round (* timeout 1000))))
+					   (if (tcp-stream-wait-for-read stream timeout-ms)
+					       ;; Retry read after epoll indicates readiness
+					       (tcp-read stream buffer :start start :end end :timeout nil)
+					     0)) ; Timeout occurred
+				       0) ; No data available, no timeout specified
+				   (progn
+				     (setf (tcp-stream-connected-p stream) nil)
+				     (check-error result "recv")
+				     0))))))))
 
 (defun tcp-write (stream data &key (start 0) (end nil) (timeout nil))
   "Write data to TCP stream with optional timeout"
   (let* ((buffer (etypecase data
-                   (string (sb-ext:string-to-octets data))
-                   (vector data)
-                   (list (coerce data 'vector))))
+			    (string (sb-ext:string-to-octets data))
+			    (vector data)
+			    (list (coerce data 'vector))))
          (actual-end (or end (length buffer))))
     (lib:with-foreign-memory ((buf :char :count (- actual-end start)))
-      ;; Copy data to foreign buffer
-      (loop for i from start below actual-end
-            for j from 0
-            do (setf (sb-sys:sap-ref-8 buf j) (aref buffer i)))
-      
-      (let ((result (%send (tcp-stream-handle stream) buf (- actual-end start) 0)))
-        (cond
-          ((>= result 0) result)
-          (t
-           (let ((errno (get-errno)))
-             (if (= errno 11) ; EWOULDBLOCK
-                 (if timeout
-                     ;; Wait for socket to be writable with timeout
-                     (let ((timeout-ms (* timeout 1000)))
-                       (if (tcp-stream-wait-for-write stream timeout-ms)
-                           ;; Retry write after epoll indicates writability
-                           (tcp-write stream data :start start :end end :timeout nil)
-                           0)) ; Timeout occurred
-                     0) ; No bytes written, would block, no timeout specified
-                 (progn
-                   (setf (tcp-stream-connected-p stream) nil)
-                   (check-error result "send")
-                   0)))))))))
+			     ;; Copy data to foreign buffer
+			     (loop for i from start below actual-end
+				   for j from 0
+				   do (setf (sb-sys:sap-ref-8 buf j) (aref buffer i)))
+			     
+			     (let ((result (%send (tcp-stream-handle stream) buf (- actual-end start) 0)))
+			       (cond
+				((>= result 0) result)
+				(t
+				 (let ((errno (get-errno)))
+				   (if (= errno 11) ; EWOULDBLOCK
+				       (if timeout
+					   ;; Wait for socket to be writable with timeout
+					   (let ((timeout-ms (round (* timeout 1000))))
+					     (if (tcp-stream-wait-for-write stream timeout-ms)
+						 ;; Retry write after epoll indicates writability
+						 (tcp-write stream data :start start :end end :timeout nil)
+					       0)) ; Timeout occurred
+					 0) ; No bytes written, would block, no timeout specified
+				     (progn
+				       (setf (tcp-stream-connected-p stream) nil)
+				       (check-error result "send")
+				       0)))))))))
 
 (defun tcp-write-all (stream data &key (start 0) (end nil))
   "Write all data to TCP stream"
@@ -757,9 +756,9 @@
           while (< pos actual-end)
           for bytes-written = (tcp-write stream data :start pos :end actual-end)
           do (incf pos bytes-written)
-             (when (zerop bytes-written)
-               ;; If no bytes were written, avoid infinite loop
-               (sleep 0.001))
+          (when (zerop bytes-written)
+            ;; If no bytes were written, avoid infinite loop
+            (sleep 0.001))
           finally (return (- actual-end start)))))
 
 (defun tcp-flush (stream)
@@ -793,9 +792,9 @@
 (defun tcp-shutdown (stream &key (how :both))
   "Shutdown TCP stream"
   (let ((shutdown-how (ecase how
-                        (:read +shut-rd+)
-                        (:write +shut-wr+)
-                        (:both +shut-rdwr+))))
+                             (:read +shut-rd+)
+                             (:write +shut-wr+)
+                             (:both +shut-rdwr+))))
     (let ((result (%shutdown (tcp-stream-handle stream) shutdown-how)))
       (check-error result "shutdown"))
     ;; Clean up epoll instance if it exists
@@ -809,45 +808,14 @@
   (tcp-stream-connected-p stream))
 
 ;;; ============================================================================
-;;; High-Level Async I/O Functions
-;;; ============================================================================
-
-(defun tcp-accept-with-timeout (listener timeout)
-  "Accept a connection with timeout, returns nil on timeout"
-  (handler-case
-      (tcp-accept listener :timeout timeout)
-    (timeout-error ()
-      nil)))
-
-(defun tcp-connect-with-timeout (address timeout)
-  "Connect to a server with timeout"
-  (tcp-connect address :timeout timeout))
-
-(defun tcp-read-with-timeout (stream buffer timeout &key (start 0) (end (length buffer)))
-  "Read data with timeout, returns number of bytes read or nil on timeout"
-  (handler-case
-      (let ((bytes-read (tcp-read stream buffer :start start :end end :timeout timeout)))
-        (if (> bytes-read 0) bytes-read nil))
-    (timeout-error ()
-      nil)))
-
-(defun tcp-write-with-timeout (stream data timeout &key (start 0) (end nil))
-  "Write data with timeout, returns number of bytes written or nil on timeout"
-  (handler-case
-      (let ((bytes-written (tcp-write stream data :start start :end end :timeout timeout)))
-        (if (> bytes-written 0) bytes-written nil))
-    (timeout-error ()
-      nil)))
-
-;;; ============================================================================
 ;;; UDP Operations
 ;;; ============================================================================
 
 (defun udp-bind (address)
   "Create a UDP socket bound to address"
   (let* ((sock-addr (etypecase address
-                      (socket-address address)
-                      (string (parse-address address))))
+			       (socket-address address)
+			       (string (parse-address address))))
          (socket-fd (create-socket +af-inet+ +sock-dgram+ +ipproto-udp+)))
     
     (handler-case
@@ -856,11 +824,11 @@
           
           ;; Bind socket to address
           (lib:with-foreign-memory ((sockaddr :char :count 16))
-            (make-sockaddr-in-into sockaddr 
-                                   (socket-address-ip sock-addr)
-                                   (socket-address-port sock-addr))
-            (let ((result (%bind socket-fd sockaddr 16)))
-              (check-error result "UDP bind")))
+				   (make-sockaddr-in-into sockaddr 
+							  (socket-address-ip sock-addr)
+							  (socket-address-port sock-addr))
+				   (let ((result (%bind socket-fd sockaddr 16)))
+				     (check-error result "UDP bind")))
           
           (set-nonblocking socket-fd)
           
@@ -870,113 +838,113 @@
                            :handle socket-fd
                            :local-address actual-addr)))
       (error (e)
-        (%close socket-fd)
-        (error e)))))
+             (%close socket-fd)
+             (error e)))))
 
 (defun udp-connect (socket address)
   "Connect UDP socket to remote address"
   (let ((sock-addr (etypecase address
-                     (socket-address address)
-                     (string (parse-address address)))))
+			      (socket-address address)
+			      (string (parse-address address)))))
     (handler-case
         (lib:with-foreign-memory ((sockaddr :char :count 16))
-          (make-sockaddr-in-into sockaddr 
-                                 (socket-address-ip sock-addr)
-                                 (socket-address-port sock-addr))
-          (let ((result (%connect (udp-socket-handle socket) sockaddr 16)))
-            (check-error result "UDP connect")
-            (setf (udp-socket-connected-peer socket) sock-addr)))
+				 (make-sockaddr-in-into sockaddr 
+							(socket-address-ip sock-addr)
+							(socket-address-port sock-addr))
+				 (let ((result (%connect (udp-socket-handle socket) sockaddr 16)))
+				   (check-error result "UDP connect")
+				   (setf (udp-socket-connected-peer socket) sock-addr)))
       (error (e)
-        (error e)))))
+             (error e)))))
 
 (defun udp-send (socket data &key (start 0) (end nil))
   "Send data on connected UDP socket"
   (let* ((buffer (etypecase data
-                   (string (sb-ext:string-to-octets data))
-                   (vector data)
-                   (list (coerce data 'vector))))
+			    (string (sb-ext:string-to-octets data))
+			    (vector data)
+			    (list (coerce data 'vector))))
          (actual-end (or end (length buffer))))
     (lib:with-foreign-memory ((buf :char :count (- actual-end start)))
-      ;; Copy data to foreign buffer
-      (loop for i from start below actual-end
-            for j from 0
-            do (setf (sb-sys:sap-ref-8 buf j) (aref buffer i)))
-      
-      (let ((result (%send (udp-socket-handle socket) buf (- actual-end start) 0)))
-        (check-error result "UDP send")
-        result))))
+			     ;; Copy data to foreign buffer
+			     (loop for i from start below actual-end
+				   for j from 0
+				   do (setf (sb-sys:sap-ref-8 buf j) (aref buffer i)))
+			     
+			     (let ((result (%send (udp-socket-handle socket) buf (- actual-end start) 0)))
+			       (check-error result "UDP send")
+			       result))))
 
 (defun udp-recv (socket buffer &key (start 0) (end (length buffer)))
   "Receive data on UDP socket"
   (lib:with-foreign-memory ((buf :char :count (- end start)))
-    (let ((result (%recv (udp-socket-handle socket) buf (- end start) 0)))
-      (cond
-        ((> result 0)
-         ;; Copy data from foreign buffer to Lisp buffer
-         (loop for i from 0 below result
-               do (setf (aref buffer (+ start i))
-                        (sb-sys:sap-ref-8 buf i)))
-         result)
-        ((= result 0)
-         0) ; No data
-        (t
-         (let ((errno (get-errno)))
-           (if (= errno 11) ; EWOULDBLOCK
-               0
-               (check-error result "UDP recv"))
-           0))))))
+			   (let ((result (%recv (udp-socket-handle socket) buf (- end start) 0)))
+			     (cond
+			      ((> result 0)
+			       ;; Copy data from foreign buffer to Lisp buffer
+			       (loop for i from 0 below result
+				     do (setf (aref buffer (+ start i))
+					      (sb-sys:sap-ref-8 buf i)))
+			       result)
+			      ((= result 0)
+			       0) ; No data
+			      (t
+			       (let ((errno (get-errno)))
+				 (if (= errno 11) ; EWOULDBLOCK
+				     0
+				   (check-error result "UDP recv"))
+				 0))))))
 
 (defun udp-send-to (socket data address &key (start 0) (end nil))
   "Send data to specific address"
   (let* ((sock-addr (etypecase address
-                      (socket-address address)
-                      (string (parse-address address))))
+			       (socket-address address)
+			       (string (parse-address address))))
          (buffer (etypecase data
-                   (string (sb-ext:string-to-octets data))
-                   (vector data)
-                   (list (coerce data 'vector))))
+			    (string (sb-ext:string-to-octets data))
+			    (vector data)
+			    (list (coerce data 'vector))))
          (actual-end (or end (length buffer))))
     (lib:with-foreign-memory ((buf :char :count (- actual-end start))
-                              (sockaddr :char :count 16))
-      ;; Copy data to foreign buffer
-      (loop for i from start below actual-end
-            for j from 0
-            do (setf (sb-sys:sap-ref-8 buf j) (aref buffer i)))
-      
-      ;; Create destination address
-      (make-sockaddr-in-into sockaddr 
-                             (socket-address-ip sock-addr)
-                             (socket-address-port sock-addr))
-      
-      (let ((result (%sendto (udp-socket-handle socket) buf (- actual-end start) 0
-                             sockaddr 16)))
-        (check-error result "UDP sendto")
-        result))))
+			      (sockaddr :char :count 16))
+			     ;; Copy data to foreign buffer
+			     (loop for i from start below actual-end
+				   for j from 0
+				   do (setf (sb-sys:sap-ref-8 buf j) (aref buffer i)))
+			     
+			     ;; Create destination address
+			     (make-sockaddr-in-into sockaddr 
+						    (socket-address-ip sock-addr)
+						    (socket-address-port sock-addr))
+			     
+			     (let ((result (%sendto (udp-socket-handle socket) buf (- actual-end start) 0
+						    sockaddr 16)))
+			       (check-error result "UDP sendto")
+			       result))))
 
 (defun udp-recv-from (socket buffer &key (start 0) (end (length buffer)))
   "Receive data and sender address"
   (lib:with-foreign-memory ((buf :char :count (- end start))
                             (sockaddr :char :count 16)
                             (addrlen :int :count 1))
-    (setf (sb-sys:sap-ref-32 addrlen 0) 16)
-    (let ((result (%recvfrom (udp-socket-handle socket) buf (- end start) 0
-                             sockaddr addrlen)))
-      (cond
-        ((> result 0)
-         ;; Copy data from foreign buffer to Lisp buffer
-         (loop for i from 0 below result
-               do (setf (aref buffer (+ start i))
-                        (sb-sys:sap-ref-8 buf i)))
-         (values result (parse-sockaddr-in sockaddr)))
-        ((= result 0)
-         (values 0 nil))
-        (t
-         (let ((errno (get-errno)))
-           (if (= errno 11) ; EWOULDBLOCK
-               (values 0 nil)
-               (progn
-                 (check-error result "UDP recvfrom")
-                 (values 0 nil)))))))))
+			   (setf (sb-sys:sap-ref-32 addrlen 0) 16)
+			   (let ((result (%recvfrom (udp-socket-handle socket) buf (- end start) 0
+						    sockaddr addrlen)))
+			     (cond
+			      ((> result 0)
+			       ;; Copy data from foreign buffer to Lisp buffer
+			       (loop for i from 0 below result
+				     do (setf (aref buffer (+ start i))
+					      (sb-sys:sap-ref-8 buf i)))
+			       (values result (parse-sockaddr-in sockaddr)))
+			      ((= result 0)
+			       (values 0 nil))
+			      (t
+			       (let ((errno (get-errno)))
+				 (if (= errno 11) ; EWOULDBLOCK
+				     (values 0 nil)
+				   (progn
+				     (check-error result "UDP recvfrom")
+				     (values 0 nil)))))))))
 
 (defun udp-local-addr (socket)
   "Get local address of UDP socket"
@@ -989,35 +957,35 @@
 (defun set-socket-option (socket-obj option value)
   "Set a socket option"
   (let ((handle (etypecase socket-obj
-                  (tcp-listener (tcp-listener-handle socket-obj))
-                  (tcp-stream (tcp-stream-handle socket-obj))
-                  (udp-socket (udp-socket-handle socket-obj)))))
+			   (tcp-listener (tcp-listener-handle socket-obj))
+			   (tcp-stream (tcp-stream-handle socket-obj))
+			   (udp-socket (udp-socket-handle socket-obj)))))
     (lib:with-foreign-memory ((optval :int :count 1))
-      (setf (sb-sys:sap-ref-32 optval 0) (if value 1 0))
-      (let ((result (ecase option
-                      (:reuse-address (%setsockopt handle +sol-socket+ +so-reuseaddr+ optval 4))
-                      (:keep-alive (%setsockopt handle +sol-socket+ +so-keepalive+ optval 4))
-                      (:tcp-nodelay (%setsockopt handle +ipproto-tcp-level+ +tcp-nodelay+ optval 4)))))
-        (check-error result "setsockopt")))))
+			     (setf (sb-sys:sap-ref-32 optval 0) (if value 1 0))
+			     (let ((result (ecase option
+						  (:reuse-address (%setsockopt handle +sol-socket+ +so-reuseaddr+ optval 4))
+						  (:keep-alive (%setsockopt handle +sol-socket+ +so-keepalive+ optval 4))
+						  (:tcp-nodelay (%setsockopt handle +ipproto-tcp-level+ +tcp-nodelay+ optval 4)))))
+			       (check-error result "setsockopt")))))
 
 (defun get-socket-option (socket-obj option)
   "Get a socket option"
   (let ((handle (etypecase socket-obj
-                  (tcp-listener (tcp-listener-handle socket-obj))
-                  (tcp-stream (tcp-stream-handle socket-obj))
-                  (udp-socket (udp-socket-handle socket-obj)))))
+			   (tcp-listener (tcp-listener-handle socket-obj))
+			   (tcp-stream (tcp-stream-handle socket-obj))
+			   (udp-socket (udp-socket-handle socket-obj)))))
     (lib:with-foreign-memory ((optval :int :count 1)
-                              (optlen :int :count 1))
-      (setf (sb-sys:sap-ref-32 optlen 0) 4)
-      (let ((result (ecase option
-                      (:reuse-address (%getsockopt handle +sol-socket+ +so-reuseaddr+ optval optlen))
-                      (:keep-alive (%getsockopt handle +sol-socket+ +so-keepalive+ optval optlen))
-                      (:recv-buffer (%getsockopt handle +sol-socket+ +so-rcvbuf+ optval optlen))
-                      (:send-buffer (%getsockopt handle +sol-socket+ +so-sndbuf+ optval optlen))
-                      (:tcp-nodelay (%getsockopt handle +ipproto-tcp-level+ +tcp-nodelay+ optval optlen)))))
-        (check-error result "getsockopt")
-        (case option
-          ((:reuse-address :keep-alive :tcp-nodelay) 
-           (not (zerop (sb-sys:sap-ref-32 optval 0))))
-          ((:recv-buffer :send-buffer)
-           (sb-sys:sap-ref-32 optval 0))))))))
+			      (optlen :int :count 1))
+			     (setf (sb-sys:sap-ref-32 optlen 0) 4)
+			     (let ((result (ecase option
+						  (:reuse-address (%getsockopt handle +sol-socket+ +so-reuseaddr+ optval optlen))
+						  (:keep-alive (%getsockopt handle +sol-socket+ +so-keepalive+ optval optlen))
+						  (:recv-buffer (%getsockopt handle +sol-socket+ +so-rcvbuf+ optval optlen))
+						  (:send-buffer (%getsockopt handle +sol-socket+ +so-sndbuf+ optval optlen))
+						  (:tcp-nodelay (%getsockopt handle +ipproto-tcp-level+ +tcp-nodelay+ optval optlen)))))
+			       (check-error result "getsockopt")
+			       (case option
+				     ((:reuse-address :keep-alive :tcp-nodelay) 
+				      (not (zerop (sb-sys:sap-ref-32 optval 0))))
+				     ((:recv-buffer :send-buffer)
+				      (sb-sys:sap-ref-32 optval 0)))))))
