@@ -151,10 +151,10 @@
    (level :initarg :level :reader log-level)
    (logger :initarg :logger :reader log-logger)
    (message :initarg :message :reader log-message)
-   (context :initarg :context :reader log-context)
+   (context :initarg :context :reader log-context :initform nil)
    (fields :initarg :fields :reader log-fields :initform nil)
-   (thread :initarg :thread :reader log-thread)
-   (package :initarg :package :reader log-package)
+   (thread :initarg :thread :reader log-thread :initform "unknown")
+   (package :initarg :package :reader log-package :initform "UNKNOWN")
    (file :initarg :file :reader log-file :initform nil)
    (line :initarg :line :reader log-line :initform nil)))
 

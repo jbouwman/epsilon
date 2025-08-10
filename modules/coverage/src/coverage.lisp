@@ -208,19 +208,31 @@
 
 (defun save-coverage-data (file)
   "Save current coverage data to file"
-  (with-open-file (stream file :direction :output 
-                         :if-exists :supersede
-                         :if-does-not-exist :create)
-    (write (list *coverage-data* *source-map*) :stream stream))
-  (format t ";;; Coverage data saved to ~A~%" file))
+  (handler-case
+      (progn
+        (with-open-file (stream file :direction :output 
+                               :if-exists :supersede
+                               :if-does-not-exist :create)
+          (write (list *coverage-data* *source-map*) :stream stream))
+        (format t ";;; Coverage data saved to ~A~%" file)
+        t)
+    (error (e)
+      (format *error-output* ";;; Error saving coverage data to ~A: ~A~%" file e)
+      nil)))
 
 (defun restore-coverage-data (file)
   "Restore coverage data from file"
-  (with-open-file (stream file :direction :input)
-    (let ((data (read stream)))
-      (setf *coverage-data* (first data)
-            *source-map* (second data))))
-  (format t ";;; Coverage data restored from ~A~%" file))
+  (handler-case
+      (progn
+        (with-open-file (stream file :direction :input)
+          (let ((data (read stream)))
+            (setf *coverage-data* (first data)
+                  *source-map* (second data))))
+        (format t ";;; Coverage data restored from ~A~%" file)
+        t)
+    (error (e)
+      (format *error-output* ";;; Error restoring coverage data from ~A: ~A~%" file e)
+      nil)))
 
 ;;;; Data Collection
 
