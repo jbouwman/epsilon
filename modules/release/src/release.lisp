@@ -115,6 +115,11 @@
    FILE specifies the output file for junit format."
   (log:info "Starting Epsilon Release Self-Test")
   
+  ;; Convert string format to keyword for compatibility
+  (when (stringp format)
+    (setf format (intern (string-upcase format) :keyword)))
+  
+  
   (let ((modules (get-modules environment))
         (total-tested 0)
         (total-passed 0)
@@ -131,41 +136,44 @@
       (log:info "Testing ~A..." module)
       (incf total-tested)
       
-      (handler-case
-          (progn
-            ;; Load the module
-            (loader:load-module environment module)
-            
-            ;; Run tests with format and file parameters
-            (let* ((test-run-fn (find-symbol "RUN" (find-package "EPSILON.TEST")))
-                   (success-p-fn (find-symbol "SUCCESS-P" (find-package "EPSILON.TEST")))
-                   (clear-tests-fn (find-symbol "CLEAR-TESTS" (find-package "EPSILON.TEST.SUITE")))
-                   ;; For individual modules in junit mode, suppress output
-                   (module-format (if (eq format :junit) :silent format))
-                   (result (funcall test-run-fn environment module :format module-format)))
+      (let ((result nil)
+            (test-error nil))
+        (handler-case
+            (progn
+              ;; Load the module
+              (loader:load-module environment module)
               
-              ;; Collect results for junit aggregation
-              (when (eq format :junit)
-                (push (cons module result) all-results))
-              
-              (if (funcall success-p-fn result)
-                  (progn
-                    (unless (eq format :junit)
-                      (format t "  ✓ PASSED~%"))
-                    (incf total-passed))
-                  (progn
-                    (unless (eq format :junit)
-                      (format t "  ✗ FAILED~%"))
-                    (push module failed-modules)))
-              
-              ;; Clear tests after each package to free memory and prevent accumulation
-              (when (and clear-tests-fn (fboundp clear-tests-fn))
-                (funcall clear-tests-fn))))
+              ;; Run tests with format and file parameters
+              (let* ((test-run-fn (find-symbol "RUN" (find-package "EPSILON.TEST")))
+                     (success-p-fn (find-symbol "SUCCESS-P" (find-package "EPSILON.TEST")))
+                     (clear-tests-fn (find-symbol "CLEAR-TESTS" (find-package "EPSILON.TEST.SUITE")))
+                     ;; For individual modules in junit mode, suppress output
+                     (module-format (if (eq format :junit) :none format)))
+                (setf result (funcall test-run-fn environment module :format module-format))
+                
+                (if (funcall success-p-fn result)
+                    (progn
+                      (unless (eq format :junit)
+                        (format t "  ✓ PASSED~%"))
+                      (incf total-passed))
+                    (progn
+                      (unless (eq format :junit)
+                        (format t "  ✗ FAILED~%"))
+                      (push module failed-modules)))
+                
+                ;; Clear tests after each package to free memory and prevent accumulation
+                (when (and clear-tests-fn (fboundp clear-tests-fn))
+                  (funcall clear-tests-fn))))
+          
+          (error (e)
+            (setf test-error e)
+            (unless (eq format :junit)
+              (format t "  ✗ ERROR: ~A~%" e))
+            (push module failed-modules)))
         
-        (error (e)
-          (unless (eq format :junit)
-            (format t "  ✗ ERROR: ~A~%" e))
-          (push module failed-modules))))
+        ;; Collect results for junit aggregation (always executed)
+        (when (eq format :junit)
+          (push (cons module result) all-results))))
     
     ;; Generate appropriate output based on format
     (case format

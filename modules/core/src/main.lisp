@@ -276,6 +276,30 @@
               function-spec args)
     (apply symbol args)))
 
+(defun remove-exec-args (args)
+  "Remove --exec and its associated arguments from the args list."
+  (let ((filtered-args '())
+        (i 0))
+    (loop while (< i (length args))
+          for arg = (nth i args)
+          do (cond
+               ((string= arg "--exec")
+                ;; Skip --exec and its spec
+                (when (< (1+ i) (length args))
+                  (incf i 2)) ; Skip --exec and spec
+                ;; Skip following --key value pairs
+                (loop while (and (< i (length args))
+                                 (>= (length (nth i args)) 2)
+                                 (string= "--" (subseq (nth i args) 0 2))
+                                 (not (member (nth i args) 
+                                              '("--load" "--eval" "--exec" "--module" "--test")
+                                              :test #'string=)))
+                      do (incf i 2))) ; Skip --key value pairs
+               (t 
+                (push arg filtered-args)
+                (incf i))))
+    (reverse filtered-args)))
+
 (defun collect-ordered-actions (args)
   "Collect --load, --eval, and --exec actions in the order they appear."
   (let ((actions '())
@@ -474,7 +498,16 @@
     ;; Split args at "--" to separate epsilon args from passthrough args
     (multiple-value-bind (epsilon-args passthrough-args)
         (split-args-at-delimiter args)
-      (let ((parsed-args (argparse:parse-args arg-parser epsilon-args)))
+      ;; Extract exec actions first to avoid argparse conflicts with keyword args
+      (let ((ordered-actions (collect-ordered-actions epsilon-args))
+            (exec-args '()))
+        ;; Remove exec-related args from epsilon-args for clean argparse parsing
+        (dolist (action ordered-actions)
+          (when (eq (first action) :exec)
+            (setf exec-args (append exec-args (list action)))))
+        ;; Filter out exec and related args for argparse
+        (let* ((filtered-args (remove-exec-args epsilon-args))
+               (parsed-args (argparse:parse-args arg-parser filtered-args)))
         ;; Check global options
         (when (map:get (argparse:parsed-options parsed-args) "log")
           (log:configure-from-string (map:get (argparse:parsed-options parsed-args) "log")))
@@ -511,13 +544,12 @@
           (sb-ext:exit :code 0))
             
         ;; STEP 4: Process --load, --eval, and --exec in order of appearance
-        (let ((ordered-actions (collect-ordered-actions epsilon-args)))
-          (when ordered-actions
-            (process-ordered-actions environment ordered-actions passthrough-args)
-            (sb-ext:exit :code 0)))
+        (when ordered-actions
+          (process-ordered-actions environment ordered-actions passthrough-args)
+          (sb-ext:exit :code 0))
             
         ;; No command, no positionals, no eval - start REPL
-        (start-interactive-repl)))))
+        (start-interactive-repl))))))
 
 (defun cli-run (&optional args)
   "Main entry point from from epsilon script"
