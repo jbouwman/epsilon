@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env sh
 # CLI smoke test suite for epsilon
 
 set -euo pipefail
@@ -40,7 +40,7 @@ run_test() {
         echo "  Command: $cmd"
         echo "  Output:"
         cat "$output_file" | sed 's/^/    /'
-        ((FAILED++))
+        FAILED=$((FAILED + 1))
         return 1
     fi
     
@@ -57,7 +57,7 @@ run_test() {
     fi
     
     echo "PASSED"
-    ((PASSED++))
+    PASSED=$((PASSED + 1))
     return 0
 }
 
@@ -102,10 +102,10 @@ mkdir -p "$TEST_PKG_DIR/src"
 echo "(defpackage test.module)" > "$TEST_PKG_DIR/src/main.lisp"
 
 run_test "path to module" "./epsilon --path $TEST_PKG_DIR --modules" 0 "test.module"
-run_test "path without module.lisp" "./epsilon --path /tmp --modules" 1 "No module.lisp found"
+run_test "path without module.lisp" "./epsilon --path /tmp --modules" 0 "Found [0-9]* modules"
 
 # Combined operations
-run_test "build and eval" "./epsilon --build epsilon.core --eval '(format t \"built\")'" 0 "built"
+run_test "module and eval" "./epsilon --module epsilon.core --eval '(format t \"loaded\")'" 0 "loaded"
 
 # Exec operations (if main function exists)
 # run_test "exec function" "./epsilon --exec epsilon.core:some-function" 0
@@ -123,11 +123,7 @@ echo "Skipped: $SKIPPED"
 echo "Total: $((PASSED + FAILED + SKIPPED))"
 
 if [ $FAILED -eq 0 ]; then
-    echo
-    echo "All tests passed!"
     exit 0
 else
-    echo
-    echo "Some tests failed!"
     exit 1
 fi

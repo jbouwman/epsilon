@@ -424,7 +424,9 @@
       (format *error-output* "Evaluation error: ~A~%" e)
       (sb-ext:exit :code 1))))
 
-;; FIXME this is duplicated in tool.common
+;; Module discovery helper
+;; Note: This could potentially use epsilon.tool.common if loaded,
+;; but main.lisp needs to work without additional dependencies
 
 (defun find-module-directory (module-name)
   "Try to find a module directory by searching common locations"

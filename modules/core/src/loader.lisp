@@ -210,11 +210,19 @@
   "Get or create the default environment"
   (unless *environment*
     (setf *environment* (make-build-environment))
-    ;; FIXME bail if core modules aren't found
-    ;; FIXME use system environment accessors
-    (let ((epsilon-home (sb-ext:posix-getenv "EPSILON_HOME")))
-      (scan-module-directory *environment* 
-                             (path:path-join epsilon-home "modules"))))
+    ;; Use proper environment accessor instead of direct posix call
+    (let ((epsilon-home (env:getenv "EPSILON_HOME")))
+      (unless epsilon-home
+        (error "EPSILON_HOME environment variable not set"))
+      (let ((modules-path (path:path-join epsilon-home "modules")))
+        (unless (probe-file (path:path-string modules-path))
+          (error "Epsilon modules directory not found: ~A" modules-path))
+        (scan-module-directory *environment* modules-path)
+        ;; Verify core modules are available
+        (let ((core-modules '("epsilon.core")))
+          (dolist (module-name core-modules)
+            (unless (get-module *environment* module-name)
+              (error "Core module ~A not found in ~A" module-name modules-path)))))))
   *environment*)
 
 (defun module-uri (module-info)
@@ -336,6 +344,7 @@
 
 (defun load-project (uri &optional environment)
   "Parse module definition from module.lisp in directory URI"
+  (declare (ignore environment)) ; Currently unused, kept for API compatibility
   (log:debug "load-project, uri = ~A" uri)
   (let* ((module-file "module.lisp")
          (module-path (path:path-string (path:path-merge (path:path-from-uri uri) module-file)))
@@ -810,13 +819,20 @@
          (project (load-project module-dir environment))
          (resources (project-resources project resource-type)))
     
-    ;; Sort resources topologically
-    ;; FIXME this is totally wrong
-    (multiple-value-bind (sorted-resources cycles)
-        (sort-sources resources)
-      (when cycles
-        (error "Circular dependencies detected in ~A ~A: ~A" 
-               module resource-type cycles))
+    ;; Sort resources if they have dependencies, otherwise use as-is
+    ;; Tests, benchmarks, etc. typically don't have inter-file dependencies
+    (let ((sorted-resources 
+           (if (eq resource-type :sources)
+               ;; Source files need topological sorting based on dependencies
+               (multiple-value-bind (sorted cycles)
+                   (sort-sources resources)
+                 (when cycles
+                   (error "Circular dependencies detected in ~A sources: ~A" 
+                          module cycles))
+                 sorted)
+               ;; Other resources (tests, benchmarks, etc.) can be processed in any order
+               ;; They should be independent and not have inter-file dependencies
+               resources)))
       
       ;; Build each resource
       (let ((all-success t))
