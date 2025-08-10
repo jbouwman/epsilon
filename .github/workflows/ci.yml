@@ -53,14 +53,7 @@ jobs:
     - name: Run tests for all packages
       run: |
         echo "=== Testing all epsilon packages ==="
-        
-        # Use the comprehensive test script
-        if [ -x ./scripts/ci-test-all.sh ]; then
-          ./scripts/ci-test-all.sh
-        else
-          # Fallback: test all known modules
-          ./epsilon test all --format junit --file target/TEST-epsilon-${{ runner.os }}.xml
-        fi
+        ./epsilon --exec epsilon.release:selftest --format junit --file "target/TEST-epsilon-${{ runner.os }}.xml"
         
     - name: Publish Test Report
       uses: mikepenz/action-junit-report@v5

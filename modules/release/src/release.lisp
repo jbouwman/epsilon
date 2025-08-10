@@ -76,18 +76,56 @@
 
 ;;; Self-test Function
 
-(defun selftest (&optional environment)
-  "Discover all modules and test them sequentially."
-  (unless environment
-    (setf environment (loader:environment)))
+(defun generate-junit-report (all-results file total-tested total-passed failed-modules)
+  "Generate an aggregated JUnit XML report from all test results."
+  (ensure-directories-exist file)
+  (with-open-file (stream file
+                          :direction :output 
+                          :if-exists :supersede
+                          :if-does-not-exist :create)
+    (format stream "<?xml version=\"1.0\" encoding=\"UTF-8\"?>~%")
+    (format stream "<testsuites tests=\"~D\" failures=\"~D\" errors=\"0\" time=\"0.0\">~%"
+            total-tested (- total-tested total-passed))
+    
+    ;; Create a testsuite for each module
+    (dolist (module-result (reverse all-results))
+      (let* ((module (car module-result))
+             (result (cdr module-result))
+             (success (if result
+                         (zerop (+ (length (funcall (find-symbol "FAILURES" "EPSILON.TEST.SUITE") result))
+                                  (length (funcall (find-symbol "ERRORS" "EPSILON.TEST.SUITE") result))))
+                         nil)))
+        (format stream "  <testsuite name=\"~A\" tests=\"1\" failures=\"~D\" errors=\"0\" time=\"0.0\">~%"
+                module (if success 0 1))
+        (format stream "    <testcase name=\"~A\" classname=\"epsilon.release\" time=\"0.0\"" module)
+        (if success
+            (format stream "/>~%")
+            (progn
+              (format stream ">~%")
+              (format stream "      <failure message=\"Module tests failed\">Module ~A tests failed</failure>~%" module)
+              (format stream "    </testcase>~%")))
+        (format stream "  </testsuite>~%")))
+    
+    (format stream "</testsuites>~%"))
+  (log:info "JUnit report written to ~A" file))
+
+(defun selftest (&key (environment (loader:environment)) (format :shell) (file nil))
+  "Discover all modules and test them sequentially.
+   FORMAT can be :shell (default) or :junit for XML output.
+   FILE specifies the output file for junit format."
   (log:info "Starting Epsilon Release Self-Test")
   
   (let ((modules (get-modules environment))
         (total-tested 0)
         (total-passed 0)
-        (failed-modules '()))
+        (failed-modules '())
+        (all-results '()))
     
     (log:info "Found ~D modules to test" (length modules))
+    
+    ;; Ensure epsilon.test is loaded once
+    (unless (find-package "EPSILON.TEST")
+      (loader:load-module environment "epsilon.test"))
     
     (dolist (module modules)
       (log:info "Testing ~A..." module)
@@ -98,23 +136,26 @@
             ;; Load the module
             (loader:load-module environment module)
             
-            ;; Ensure epsilon.test is loaded
-            ;;; FIXME move this out of the loop, and provide standard functions
-            (unless (find-package "EPSILON.TEST")
-              (loader:load-module environment "epsilon.test"))
-            
-            ;; Run tests
+            ;; Run tests with format and file parameters
             (let* ((test-run-fn (find-symbol "RUN" (find-package "EPSILON.TEST")))
                    (success-p-fn (find-symbol "SUCCESS-P" (find-package "EPSILON.TEST")))
                    (clear-tests-fn (find-symbol "CLEAR-TESTS" (find-package "EPSILON.TEST.SUITE")))
-                   (result (funcall test-run-fn environment module)))
+                   ;; For individual modules in junit mode, suppress output
+                   (module-format (if (eq format :junit) :silent format))
+                   (result (funcall test-run-fn environment module :format module-format)))
+              
+              ;; Collect results for junit aggregation
+              (when (eq format :junit)
+                (push (cons module result) all-results))
               
               (if (funcall success-p-fn result)
                   (progn
-                    (format t "  ✓ PASSED~%")
+                    (unless (eq format :junit)
+                      (format t "  ✓ PASSED~%"))
                     (incf total-passed))
                   (progn
-                    (format t "  ✗ FAILED~%")
+                    (unless (eq format :junit)
+                      (format t "  ✗ FAILED~%"))
                     (push module failed-modules)))
               
               ;; Clear tests after each package to free memory and prevent accumulation
@@ -122,22 +163,31 @@
                 (funcall clear-tests-fn))))
         
         (error (e)
-          (format t "  ✗ ERROR: ~A~%" e)
+          (unless (eq format :junit)
+            (format t "  ✗ ERROR: ~A~%" e))
           (push module failed-modules))))
     
-    ;; Summary
-    (format t "~%Test Summary:~%")
-    (format t "=============~%")
-    (format t "Total modules: ~D~%" total-tested)
-    (format t "Passed: ~D~%" total-passed)
-    (format t "Failed: ~D~%" (- total-tested total-passed))
+    ;; Generate appropriate output based on format
+    (case format
+      (:junit
+       ;; Generate aggregated JUnit XML report
+       (when file
+         (generate-junit-report all-results file total-tested total-passed failed-modules)))
+      (otherwise
+       ;; Summary for console output
+       (format t "~%Test Summary:~%")
+       (format t "=============~%")
+       (format t "Total modules: ~D~%" total-tested)
+       (format t "Passed: ~D~%" total-passed)
+       (format t "Failed: ~D~%" (- total-tested total-passed))
+       
+       (when failed-modules
+         (format t "~%Failed modules:~%")
+         (dolist (module (reverse failed-modules))
+           (format t "  - ~A~%" module)))
+       
+       (format t "~%")))
     
-    (when failed-modules
-      (format t "~%Failed modules:~%")
-      (dolist (module (reverse failed-modules))
-        (format t "  - ~A~%" module)))
-    
-    (format t "~%")
     (= total-passed total-tested)))
 
 ;;; Release Generation Functions

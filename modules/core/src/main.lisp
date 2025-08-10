@@ -293,8 +293,26 @@
                   (incf i 2)))
                ((string= arg "--exec")
                 (when (< (1+ i) (length args))
-                  (push (list :exec (nth (1+ i) args)) actions)
-                  (incf i 2)))
+                  ;; Collect exec spec and following keyword arguments
+                  (let ((exec-spec (nth (1+ i) args))
+                        (keyword-args '())
+                        (j (+ i 2)))
+                    ;; Collect --key value pairs after exec spec
+                    (loop while (and (< j (length args))
+                                     (>= (length (nth j args)) 2)
+                                     (string= "--" (subseq (nth j args) 0 2))
+                                     ;; Stop at other known flags
+                                     (not (member (nth j args) 
+                                                  '("--load" "--eval" "--exec" "--module" "--test")
+                                                  :test #'string=)))
+                          do (when (< (1+ j) (length args))
+                               (let ((key (subseq (nth j args) 2))
+                                     (value (nth (1+ j) args)))
+                                 (push (intern (string-upcase key) :keyword) keyword-args)
+                                 (push value keyword-args))
+                               (incf j 2)))
+                    (push (list :exec exec-spec (reverse keyword-args)) actions)
+                    (setf i j))))
                (t (incf i))))
     (reverse actions)))
 
@@ -309,7 +327,8 @@
          (unless (eq result (values))
            (format t "~A~%" result))))
       (:exec
-       (let ((exec-spec (second action)))
+       (let ((exec-spec (second action))
+             (keyword-args (third action)))
          ;; Extract package name and load if needed
          (multiple-value-bind (package-spec function-spec)
              (parse-exec-spec exec-spec)
@@ -317,7 +336,9 @@
                       (>= (length package-spec) 8)
                       (string= "epsilon." package-spec :end2 8))
              (loader:load-module environment package-spec))
-           (execute-package-function package-spec function-spec passthrough-args)))))))
+           ;; Combine keyword args with passthrough args
+           (let ((all-args (append keyword-args passthrough-args)))
+             (execute-package-function package-spec function-spec all-args))))))))
 
 (defun get-command-parser (command-name)
   "Get the parser for a command (stub for future use)."
