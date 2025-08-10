@@ -24,7 +24,7 @@
    ;; defining tests
    deftest
    with-label
-   project-file
+   module-file
    
    ;; fixtures
    fixture
@@ -51,12 +51,10 @@
 
 (in-package epsilon.test)
 
-;; TODO project-file is here in order to load package-relative resources: non-source files that contain test data, metadata, configuration and so on. Ideally there should be a generic scheme for this that uses the package's load time or runtime environment.
+;; TODO module-file is here in order to load package-relative resources: non-source files that contain test data, metadata, configuration and so on. Ideally there should be a generic scheme for this that uses the package's load time or runtime environment.
 
-;; FIXME rename to module-file
-
-(defun project-file (project-name relative-path)
-  (let ((module (loader:get-module (loader:environment) project-name :error-p t)))
+(defun module-file (module-name relative-path)
+  (let ((module (loader:get-module (loader:environment) module-name :error-p t)))
     (path:string-path-join (path::path-from-uri (loader:module-uri module)) relative-path)))
 
 (defmacro deftest (name &body body)

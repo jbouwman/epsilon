@@ -2,4 +2,4 @@
  :version "1.0.0"
  :author "Jesse Bouwman"
  :description "Code coverage analysis tool for Epsilon"
- :dependencies ("epsilon.core"))
+ :requires ("epsilon.core"))

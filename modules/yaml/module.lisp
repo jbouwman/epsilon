@@ -4,5 +4,5 @@
  :description "YAML parser for Common Lisp supporting YAML 1.2 subset"
  :sources ("src")
  :tests ("tests")
- :dependencies ("epsilon.core")
+ :requires ("epsilon.core")
 )

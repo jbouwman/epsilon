@@ -4,6 +4,6 @@
  :description "Windows-specific functions (IOCP networking)"
  :sources ("src")
  :tests ("tests")
- :dependencies ("epsilon.core")
+ :requires ("epsilon.core")
  :platform "windows"
  :provides ("epsilon.net"))

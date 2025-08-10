@@ -13,7 +13,7 @@
 
 (deftest sha-2
   (let ((digest (digest:make-digest :sha-256))
-        (shilling (project-file "epsilon.core" "tests/lib/shilling.txt")))
+        (shilling (module-file "epsilon.core" "tests/lib/shilling.txt")))
     (with-open-file (stream shilling :element-type 'unsigned-byte)
       (digest:digest-stream digest stream))
     (is (string=

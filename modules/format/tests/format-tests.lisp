@@ -81,7 +81,7 @@
 
 (defun load-test-resource (filename)
   "Load the contents of a test resource file"
-  (let ((path (project-file "epsilon.format" (path:string-path-join "tests/format" filename))))
+  (let ((path (module-file "epsilon.format" (path:string-path-join "tests/format" filename))))
     (fs:read-file path)))
 
 (defun find-string-difference (str1 str2)

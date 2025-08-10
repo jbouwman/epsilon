@@ -4,4 +4,4 @@
  :description "Code linter for Epsilon Lisp with comment-aware parsing"
  :sources ("src")
  :tests ("tests")
- :dependencies ("epsilon.core" "epsilon.parsing"))
+ :requires ("epsilon.core" "epsilon.parsing"))

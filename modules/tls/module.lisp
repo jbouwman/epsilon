@@ -4,5 +4,5 @@
  :description "TLS/SSL support for epsilon networking"
  :sources ("src")
  :tests ("tests")
- :dependencies ("epsilon.core" "epsilon.foreign" "epsilon.net")
+ :requires ("epsilon.core" "epsilon.foreign" "epsilon.net")
 )

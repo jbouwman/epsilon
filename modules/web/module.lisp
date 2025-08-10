@@ -4,5 +4,5 @@
  :description "Web framework helpers for epsilon.http"
  :sources ("src")
  :tests ("tests")
- :dependencies ("epsilon.core" "epsilon.http" "epsilon.json")
+ :requires ("epsilon.core" "epsilon.http" "epsilon.json")
 )

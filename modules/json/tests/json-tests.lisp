@@ -17,7 +17,7 @@
   "Load a JSON test file from tests/lib/json/"
   (->> filename
        (path:string-path-join "tests/json")
-       (project-file "epsilon.json")
+       (module-file "epsilon.json")
        fs:read-file))
 
 ;;;; Basic value tests

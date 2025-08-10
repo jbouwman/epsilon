@@ -29,7 +29,7 @@
 (defstruct compilation-task
   "A unit of compilation work"
   build-input
-  dependencies
+  requires
   status ; :pending :compiling :compiled :loaded :failed
   result
   load-lock)
@@ -49,7 +49,7 @@
                        (requires (loader::source-info-requires source-info))
                        (task (make-compilation-task
                               :build-input build-input
-                              :dependencies requires
+                              :requires requires
                               :status :pending
                               :load-lock (sb-thread:make-mutex 
                                          :name (format nil "load-~A" defines)))))

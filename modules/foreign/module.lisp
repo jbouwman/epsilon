@@ -4,5 +4,5 @@
  :description "Foreign Function Interface and C language integration"
  :sources ("src")
  :tests ("tests")
- :dependencies ("epsilon.core" "epsilon.parsing")
+ :requires ("epsilon.core" "epsilon.parsing")
  :provides ("epsilon.clang"))

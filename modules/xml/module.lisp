@@ -4,5 +4,5 @@
  :description "XML parsing and generation for Epsilon"
  :sources ("src")
  :tests ("tests")
- :dependencies ("epsilon.core" "epsilon.regex")
+ :requires ("epsilon.core" "epsilon.regex")
 )

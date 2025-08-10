@@ -4,5 +4,5 @@
  :description "Type catalog and registry system for managing type definitions"
  :sources ("src")
  :tests ("tests")
- :dependencies ("epsilon.core" "epsilon.regex")
+ :requires ("epsilon.core" "epsilon.regex")
 )

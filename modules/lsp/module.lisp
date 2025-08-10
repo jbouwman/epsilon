@@ -4,5 +4,5 @@
  :description "Language Server Protocol implementation with code evaluation support"
  :sources ("src" "src/evaluation")
  :tests ("tests")
- :dependencies ("epsilon.core" "epsilon.parsing" "epsilon.json")
+ :requires ("epsilon.core" "epsilon.parsing" "epsilon.json")
 )

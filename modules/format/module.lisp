@@ -4,5 +4,5 @@
  :description "Code formatting tools for Epsilon"
  :sources ("src")
  :tests ("tests")
- :dependencies ("epsilon.core")
+ :requires ("epsilon.core")
 )

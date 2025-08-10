@@ -80,7 +80,7 @@
    (metadata :initarg :metadata
              :accessor module-metadata
              :initform nil
-             :documentation "Full module metadata including provides, dependencies, etc."))
+             :documentation "Full module metadata including provides, requires, etc."))
   (:documentation "Information about a loaded or registered module"))
 
 ;;; Build Environment
@@ -328,7 +328,7 @@
    (experiments :initarg :experiments :accessor project-experiments :initform nil)
    (docs :initarg :docs :accessor project-docs :initform nil)
    (data :initarg :data :accessor project-data :initform nil)
-   (dependencies :initarg :dependencies :accessor project-dependencies)
+   (requires :initarg :requires :accessor project-requires)
    (provides :initarg :provides :accessor project-provides)
    (modules :initarg :modules :accessor project-modules)))
 
@@ -364,7 +364,7 @@
            (experiment-paths (getf plist :experiments))
            (doc-paths (getf plist :docs))
            (data-paths (getf plist :data))
-           (dependencies-list (getf plist :dependencies))
+           (requires-list (getf plist :requires))
            (provides-list (getf plist :provides))
            (platform (getf plist :platform))
            ;; Helper function to load resources from paths
@@ -399,7 +399,7 @@
                                     :experiments experiments
                                     :docs docs
                                     :data data
-                                    :dependencies dependencies-list
+                                    :requires requires-list
                                     :provides provides-list
                                     :modules map:+empty+)))
         project))))
@@ -774,7 +774,7 @@
                       (log:error "Error in load-project for ~A: ~A" package e)
                       (error e)))))
     ;; Build dependencies first
-    (dolist (dep-name (project-dependencies project))
+    (dolist (dep-name (project-requires project))
       (let ((resolved-dep (find-module environment :provides dep-name)))
         (unless (module-loaded-p resolved-dep)
           (load-module environment (module-name resolved-dep)))))

@@ -4,5 +4,5 @@
  :description "Test framework for Epsilon"
  :sources ("src")
  :tests ("tests")
- :dependencies ("epsilon.core" "epsilon.regex" "epsilon.xml")
+ :requires ("epsilon.core" "epsilon.regex" "epsilon.xml")
 )
