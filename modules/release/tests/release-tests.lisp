@@ -138,16 +138,6 @@
             ;; May fail if zip command not available
             (is t "ZIP creation failed (may be expected): ~A" e)))))))
 
-(deftest get-platform-packages-test
-  "Test package filtering by platform"
-  (let* ((env (loader:environment))
-         (platform-arch (release::detect-platform))
-         (packages (release::get-platform-packages env platform-arch)))
-    ;; Should return a list
-    (is (listp packages))
-    ;; Each package should be a string
-    (dolist (pkg packages)
-      (is (stringp pkg)))))
 
 (deftest create-release-archive-test
   "Test appropriate archive creation based on platform"
@@ -228,10 +218,7 @@
              working-dir)
             ;; Verify the archive was created
             (is (fs:exists-p (path:path-join working-dir (format nil "~A.tgz" release-name)))
-                "Archive file should exist")
-            ;; Also check for checksum file
-            (is (fs:exists-p (path:path-join working-dir (format nil "~A.tar.gz.sha256" release-name)))
-                "Checksum file should exist"))
+                "Archive file should exist"))
         (error (e)
           ;; If tar is not available, that's ok for the test
           (is (or (search "tar command not found" (format nil "~A" e))

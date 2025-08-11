@@ -71,13 +71,14 @@
          ,@real-body)
        (suite:register-test ',name ,docstring))))
 
-(defun run (environment module &key test-name (format :shell) file)
+(defun run (environment module &key package test-name (format :shell) file)
   "Test an epsilon module.
   
   ENVIRONMENT - The loader environment with repositories configured
   MODULE - Module to test (e.g., 'epsilon.core', 'epsilon.http')
+  PACKAGE - Specific package pattern to filter tests (optional)
   TEST-NAME - Specific test name pattern to run (optional)
-  FORMAT - Output format: :repl, :shell, or :junit (default: :shell)
+  FORMAT - Output format: :shell, :verbose, :junit, :tap, etc. (default: :shell)
   FILE - Output file for test report (optional)
   
   Returns the test run result object."
@@ -87,14 +88,12 @@
     (log:debug "Loading tests for module: ~A" module)
     (loader:load-module-resources environment module :tests))
   
-  ;; Select tests based on test-name pattern if provided
-  (let ((selected-tests (if test-name
-                            (suite:select :name test-name)
-                            (suite:select))))
+  ;; Select tests based on package and test-name patterns if provided
+  (let ((selected-tests (suite:select :package package :name test-name)))
     (log:debug "Test selection complete: ~D tests selected" (length selected-tests))
-    (when test-name
-      (log:debug "Selected ~D tests matching name '~A'" 
-                (length selected-tests) test-name))
+    (when (or package test-name)
+      (log:debug "Selected ~D tests matching package: '~A', name: '~A'" 
+                (length selected-tests) package test-name))
     (when (zerop (length selected-tests))
       (log:warn "No tests found!")
       (format t "~&;;; Warning: No tests found!~%"))

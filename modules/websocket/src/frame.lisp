@@ -341,7 +341,12 @@
   (make-websocket-frame
    :fin fin
    :opcode +opcode-binary+
-   :payload data))
+   :payload (if (typep data '(simple-array (unsigned-byte 8) (*)))
+                data
+                ;; Convert vector to proper byte array
+                (make-array (length data) 
+                           :element-type '(unsigned-byte 8)
+                           :initial-contents data))))
 
 (defun frame-text (frame)
   "Extract text from a text frame"

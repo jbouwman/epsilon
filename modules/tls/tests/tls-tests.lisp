@@ -77,8 +77,8 @@
   (tls:with-mock-tls (:simulate-handshake-failure t)
     (let* ((ctx (tls:create-tls-context :server-p nil))
            (conn (tls:tls-connect :mock-socket ctx)))
-      (is (tls:tls-connection-p conn))
-      (is-not (tls:tls-connection-handshake-complete-p conn))
+      (is (tls:mock-tls-connection-p conn))
+      (is-not (tls:mock-tls-connection-handshake-complete-p conn))
       (is-equal :failed (tls:simulate-tls-handshake conn)))))
 
 (deftest test-mock-certificate-error ()
@@ -86,7 +86,7 @@
   (tls:with-mock-tls (:simulate-cert-error t)
     (let* ((ctx (tls:create-tls-context :server-p nil))
            (conn (tls:tls-connect :mock-socket ctx)))
-      (is (tls:tls-connection-p conn))
+      (is (tls:mock-tls-connection-p conn))
       (is-equal :cert-error (tls:simulate-tls-handshake conn)))))
 
 (deftest test-mock-network-error ()
@@ -94,7 +94,7 @@
   (tls:with-mock-tls (:simulate-network-error t)
     (let* ((ctx (tls:create-tls-context :server-p nil))
            (conn (tls:tls-connect :mock-socket ctx)))
-      (is-thrown 'error (tls:mock-tls-read conn (make-array 100))))))
+      (is-thrown (error) (tls:mock-tls-read conn (make-array 100))))))
 
 (deftest test-mock-data-injection ()
   "Test mock data injection and retrieval"
