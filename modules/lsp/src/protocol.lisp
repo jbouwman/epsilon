@@ -1,7 +1,8 @@
 (defpackage #:epsilon.lsp.protocol
   (:use #:common-lisp)
   (:local-nicknames
-   (#:map #:epsilon.map))
+   (#:map #:epsilon.map)
+   (#:jsonrpc #:epsilon.lsp.protocol.jsonrpc))
   (:export
    #:protocol-handler
    #:protocol-handler-p
@@ -15,11 +16,7 @@
    #:make-protocol-handler
    #:make-jsonrpc-handler
    #:read-message
-   #:write-message
-   #:make-request
-   #:make-response
-   #:make-notification
-   #:make-error-response))
+   #:write-message))
 
 (in-package #:epsilon.lsp.protocol)
 
@@ -37,12 +34,12 @@
   "Create a JSON-RPC protocol handler."
   (make-protocol-handler
    :type :json-rpc
-   :read-fn #'epsilon.lsp.protocol.jsonrpc:read-message
-   :write-fn #'epsilon.lsp.protocol.jsonrpc:write-message
-   :make-request-fn #'epsilon.lsp.protocol.jsonrpc:make-request
-   :make-response-fn #'epsilon.lsp.protocol.jsonrpc:make-response
-   :make-notification-fn #'epsilon.lsp.protocol.jsonrpc:make-notification
-   :make-error-fn #'epsilon.lsp.protocol.jsonrpc:make-error-response))
+   :read-fn #'jsonrpc:read-message
+   :write-fn #'jsonrpc:write-message
+   :make-request-fn #'jsonrpc:make-request
+   :make-response-fn #'jsonrpc:make-response
+   :make-notification-fn #'jsonrpc:make-notification
+   :make-error-fn #'jsonrpc:make-error-response))
 
 (defun read-message (handler stream)
   "Read a message using the protocol handler."
@@ -52,18 +49,3 @@
   "Write a message using the protocol handler."
   (funcall (protocol-handler-write-fn handler) message stream))
 
-(defun make-request (handler id method &optional params)
-  "Create a request using the protocol handler."
-  (funcall (protocol-handler-make-request-fn handler) id method params))
-
-(defun make-response (handler id result)
-  "Create a response using the protocol handler."
-  (funcall (protocol-handler-make-response-fn handler) id result))
-
-(defun make-notification (handler method &optional params)
-  "Create a notification using the protocol handler."
-  (funcall (protocol-handler-make-notification-fn handler) method params))
-
-(defun make-error-response (handler id code message &optional data)
-  "Create an error response using the protocol handler."
-  (funcall (protocol-handler-make-error-fn handler) id code message data))

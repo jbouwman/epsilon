@@ -60,10 +60,10 @@
 (deftest test-extract-content-length-positive ()
   "Test content length extraction with valid values"
   (is-equal 100 
-            (client::extract-content-length "Content-Length: 100\r\n"))
+            (client::extract-content-length (format nil "Content-Length: 100~C~C" #\Return #\Linefeed)))
   (is-equal 0 
-            (client::extract-content-length "Content-Length: 0\r\n")))
+            (client::extract-content-length (format nil "Content-Length: 0~C~C" #\Return #\Linefeed))))
 
 (deftest test-extract-content-length-negative ()
   "Test content length extraction with no Content-Length header"
-  (is (null (client::extract-content-length "User-Agent: test-agent\r\n"))))
+  (is (null (client::extract-content-length (format nil "User-Agent: test-agent~C~C" #\Return #\Linefeed)))))

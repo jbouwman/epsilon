@@ -59,14 +59,16 @@
 
 (defun json-request-p (request)
   "Check if request has JSON content type"
-  (let ((content-type (map:get (request:request-headers request) "content-type" "")))
+  (let ((content-type (or (map:get (request:request-headers request) "content-type")
+                          (map:get (request:request-headers request) "Content-Type")
+                          "")))
     (search "application/json" content-type)))
 
 (defun parse-query-string (query-string)
   "Parse URL query string into a map"
   (if (or (null query-string) (zerop (length query-string)))
       map:+empty+
-      (let ((pairs (seq:realize (str:split #\& query-string))))
+      (let ((pairs (str:split #\& query-string)))
         (seq:reduce (lambda (m pair)
                       (let ((kv (seq:realize (str:split #\= pair))))
                         (if (= (length kv) 2)
@@ -84,7 +86,12 @@
    (when (and (json-request-p request)
               (request:request-body request))
      (handler-case
-         (map:get (json:parse (request:request-body request)) name)
+         (let ((parsed-json (json:parse (request:request-body request))))
+           (if (listp parsed-json)
+               ;; Convert alist to map
+               (map:get (map:from-pairs parsed-json) name)
+               ;; Already a map or other object
+               (map:get parsed-json name)))
        (error () nil)))
    ;; Return default
    default))

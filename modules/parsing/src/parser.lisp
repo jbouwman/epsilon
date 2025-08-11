@@ -153,14 +153,16 @@
                        :remaining (seq:rest (parse-state-remaining state))
                        :context (parse-state-context state)
                        :consumed-p t))
-              (make-failure :message (format nil "Unexpected token: ~A" token)
+              (make-failure :message (if expected
+                                                      (format nil "Expected ~A, got ~A" expected token)
+                                                      (format nil "Unexpected token: ~A" token))
                             :state state
                             :expected (or expected "different token")))))))
 
 (defun token (expected-token)
   "Parse a specific token."
   (satisfy (lambda (tok) (equal tok expected-token))
-           (format nil "~A" expected-token)))
+           (format nil "~S" expected-token)))
 
 ;;; Choice and Sequence Combinators
 ;;;

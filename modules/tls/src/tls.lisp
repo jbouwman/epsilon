@@ -51,6 +51,8 @@
    #:mock-tls-read
    #:mock-tls-write
    #:create-mock-connection
+   #:mock-tls-connection-p
+   #:mock-tls-connection-handshake-complete-p
    #:inject-mock-data
    #:get-mock-written-data
    #:clear-mock-buffers

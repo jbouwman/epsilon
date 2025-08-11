@@ -80,15 +80,11 @@
     
     (t 
      (let ((error-response 
-            (protocol:make-error-response 
-             (lsp-server-protocol-handler server)
+            (jsonrpc:make-error-response 
              nil
              jsonrpc:+invalid-request+
              "Invalid message type")))
-       (protocol:write-message 
-        (lsp-server-protocol-handler server)
-        error-response 
-        *standard-output*)))))
+       (jsonrpc:write-message error-response *standard-output*)))))
 
 ;;; LSP Method Handlers
 
@@ -101,14 +97,14 @@
     
     (handler-case
         (let ((result (dispatch-method server method params)))
-          (let ((response (protocol:make-response handler id result)))
-            (protocol:write-message handler response *standard-output*)))
+          (let ((response (jsonrpc:make-response id result)))
+            (jsonrpc:write-message response *standard-output*)))
       (error (e)
         (let ((error-response 
-               (protocol:make-error-response 
-                handler id jsonrpc:+internal-error+ 
+               (jsonrpc:make-error-response 
+                id jsonrpc:+internal-error+ 
                 (format nil "Internal error: ~A" e))))
-          (protocol:write-message handler error-response *standard-output*))))))
+          (jsonrpc:write-message error-response *standard-output*))))))
 
 (defun handle-lsp-notification (server notification)
   "Handle an LSP notification."
@@ -370,14 +366,13 @@
                         (convert-errors-to-diagnostics 
                          (analysis:document-analysis-errors doc-analysis))))
          (handler (lsp-server-protocol-handler server))
-         (notification (protocol:make-notification 
-                        handler 
+         (notification (jsonrpc:make-notification 
                         "textDocument/publishDiagnostics"
                         (map:make-map
                          "uri" uri
                          "diagnostics" (or diagnostics '())))))
     
-    (protocol:write-message handler notification *standard-output*)))
+    (jsonrpc:write-message notification *standard-output*)))
 
 (defun convert-errors-to-diagnostics (errors)
   "Convert analysis errors to LSP diagnostic format."
