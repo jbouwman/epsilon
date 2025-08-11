@@ -76,68 +76,126 @@
 
 ;;; Self-test Function
 
-(defun selftest (&optional environment)
-  "Discover all modules and test them sequentially."
-  (unless environment
-    (setf environment (loader:environment)))
+(defun generate-junit-report (all-results file total-tested total-passed failed-modules)
+  "Generate an aggregated JUnit XML report from all test results."
+  (ensure-directories-exist file)
+  (with-open-file (stream file
+                          :direction :output 
+                          :if-exists :supersede
+                          :if-does-not-exist :create)
+    (format stream "<?xml version=\"1.0\" encoding=\"UTF-8\"?>~%")
+    (format stream "<testsuites tests=\"~D\" failures=\"~D\" errors=\"0\" time=\"0.0\">~%"
+            total-tested (- total-tested total-passed))
+    
+    ;; Create a testsuite for each module
+    (dolist (module-result (reverse all-results))
+      (let* ((module (car module-result))
+             (result (cdr module-result))
+             (success (if result
+                         (zerop (+ (length (funcall (find-symbol "FAILURES" "EPSILON.TEST.SUITE") result))
+                                  (length (funcall (find-symbol "ERRORS" "EPSILON.TEST.SUITE") result))))
+                         nil)))
+        (format stream "  <testsuite name=\"~A\" tests=\"1\" failures=\"~D\" errors=\"0\" time=\"0.0\">~%"
+                module (if success 0 1))
+        (format stream "    <testcase name=\"~A\" classname=\"epsilon.release\" time=\"0.0\"" module)
+        (if success
+            (format stream "/>~%")
+            (progn
+              (format stream ">~%")
+              (format stream "      <failure message=\"Module tests failed\">Module ~A tests failed</failure>~%" module)
+              (format stream "    </testcase>~%")))
+        (format stream "  </testsuite>~%")))
+    
+    (format stream "</testsuites>~%"))
+  (log:info "JUnit report written to ~A" file))
+
+(defun selftest (&key (environment (loader:environment)) (format :shell) (file nil))
+  "Discover all modules and test them sequentially.
+   FORMAT can be :shell (default) or :junit for XML output.
+   FILE specifies the output file for junit format."
   (log:info "Starting Epsilon Release Self-Test")
+  
+  ;; Convert string format to keyword for compatibility
+  (when (stringp format)
+    (setf format (intern (string-upcase format) :keyword)))
+  
   
   (let ((modules (get-modules environment))
         (total-tested 0)
         (total-passed 0)
-        (failed-modules '()))
+        (failed-modules '())
+        (all-results '()))
     
     (log:info "Found ~D modules to test" (length modules))
+    
+    ;; Ensure epsilon.test is loaded once
+    (unless (find-package "EPSILON.TEST")
+      (loader:load-module environment "epsilon.test"))
     
     (dolist (module modules)
       (log:info "Testing ~A..." module)
       (incf total-tested)
       
-      (handler-case
-          (progn
-            ;; Load the module
-            (loader:load-module environment module)
-            
-            ;; Ensure epsilon.test is loaded
-            ;;; FIXME move this out of the loop, and provide standard functions
-            (unless (find-package "EPSILON.TEST")
-              (loader:load-module environment "epsilon.test"))
-            
-            ;; Run tests
-            (let* ((test-run-fn (find-symbol "RUN" (find-package "EPSILON.TEST")))
-                   (success-p-fn (find-symbol "SUCCESS-P" (find-package "EPSILON.TEST")))
-                   (clear-tests-fn (find-symbol "CLEAR-TESTS" (find-package "EPSILON.TEST.SUITE")))
-                   (result (funcall test-run-fn environment module)))
+      (let ((result nil)
+            (test-error nil))
+        (handler-case
+            (progn
+              ;; Load the module
+              (loader:load-module environment module)
               
-              (if (funcall success-p-fn result)
-                  (progn
-                    (format t "  ✓ PASSED~%")
-                    (incf total-passed))
-                  (progn
-                    (format t "  ✗ FAILED~%")
-                    (push module failed-modules)))
-              
-              ;; Clear tests after each package to free memory and prevent accumulation
-              (when (and clear-tests-fn (fboundp clear-tests-fn))
-                (funcall clear-tests-fn))))
+              ;; Run tests with format and file parameters
+              (let* ((test-run-fn (find-symbol "RUN" (find-package "EPSILON.TEST")))
+                     (success-p-fn (find-symbol "SUCCESS-P" (find-package "EPSILON.TEST")))
+                     (clear-tests-fn (find-symbol "CLEAR-TESTS" (find-package "EPSILON.TEST.SUITE")))
+                     ;; For individual modules in junit mode, suppress output
+                     (module-format (if (eq format :junit) :none format)))
+                (setf result (funcall test-run-fn environment module :format module-format))
+                
+                (if (funcall success-p-fn result)
+                    (progn
+                      (unless (eq format :junit)
+                        (format t "  ✓ PASSED~%"))
+                      (incf total-passed))
+                    (progn
+                      (unless (eq format :junit)
+                        (format t "  ✗ FAILED~%"))
+                      (push module failed-modules)))
+                
+                ;; Clear tests after each package to free memory and prevent accumulation
+                (when (and clear-tests-fn (fboundp clear-tests-fn))
+                  (funcall clear-tests-fn))))
+          
+          (error (e)
+            (setf test-error e)
+            (unless (eq format :junit)
+              (format t "  ✗ ERROR: ~A~%" e))
+            (push module failed-modules)))
         
-        (error (e)
-          (format t "  ✗ ERROR: ~A~%" e)
-          (push module failed-modules))))
+        ;; Collect results for junit aggregation (always executed)
+        (when (eq format :junit)
+          (push (cons module result) all-results))))
     
-    ;; Summary
-    (format t "~%Test Summary:~%")
-    (format t "=============~%")
-    (format t "Total modules: ~D~%" total-tested)
-    (format t "Passed: ~D~%" total-passed)
-    (format t "Failed: ~D~%" (- total-tested total-passed))
+    ;; Generate appropriate output based on format
+    (case format
+      (:junit
+       ;; Generate aggregated JUnit XML report
+       (when file
+         (generate-junit-report all-results file total-tested total-passed failed-modules)))
+      (otherwise
+       ;; Summary for console output
+       (format t "~%Test Summary:~%")
+       (format t "=============~%")
+       (format t "Total modules: ~D~%" total-tested)
+       (format t "Passed: ~D~%" total-passed)
+       (format t "Failed: ~D~%" (- total-tested total-passed))
+       
+       (when failed-modules
+         (format t "~%Failed modules:~%")
+         (dolist (module (reverse failed-modules))
+           (format t "  - ~A~%" module)))
+       
+       (format t "~%")))
     
-    (when failed-modules
-      (format t "~%Failed modules:~%")
-      (dolist (module (reverse failed-modules))
-        (format t "  - ~A~%" module)))
-    
-    (format t "~%")
     (= total-passed total-tested)))
 
 ;;; Release Generation Functions
@@ -181,8 +239,8 @@
   "Copy source tree to release directory."
   (format t "Copying source tree...~%")
   
-  (let ((src-dir (path:path-string (path:path-join (namestring (fs:current-directory)) "src")))
-        (target-src (path:path-string (path:path-join release-dir "src"))))
+  (let ((src-dir (path:path-string (path:path-join (namestring (fs:current-directory)) "modules")))
+        (target-src (path:path-string (path:path-join release-dir "modules"))))
         
     ;; Copy source tree using standard epsilon.sys.fs functions
     (fs:copy-directory src-dir target-src)
@@ -205,7 +263,7 @@
     (handler-case
         (progn
           (format t "  Making script executable...~%")
-          (process:run-sync "/bin/chmod" 
+          (process:run-sync "chmod" 
                             :args (list "+x" target-script)
                             :check-executable nil))
       (process:command-not-found ()
@@ -300,7 +358,7 @@
 
 (defun create-zip-archive (release-dir release-name)
   "Create a ZIP archive for Windows releases."
-  (process:run-sync "/usr/bin/zip" 
+  (process:run-sync "zip" 
                     :args (list "-r" 
                                 (format nil "~A.zip" release-name)
                                 (path:path-name (path:make-path release-dir)))
@@ -320,27 +378,13 @@
     (fs:write-file-string (format nil "~A.sha256" archive-name) checksum-content)
     (format t "  ✓ Checksum file created: ~A.sha256~%" archive-name)))
 
-(defun create-tar-archive (release-dir release-name)
-  "Create a tar.gz archive for Unix releases with progress feedback."
-  (process:run-sync "/usr/bin/tar" 
-                    :args (list "-czf" 
-                                (format nil "~A.tar.gz" release-name)
-                                (path:path-name (path:make-path release-dir)))
-                    :stream-output (lambda (line)
-                                     (when (> (length line) 0)
-                                       (format t ".")))
-                    :check-executable nil)
-  (format t "~%")
-  ;; Create checksum file
-  (create-checksum-file (format nil "~A.tar.gz" release-name)))
-
 (defun create-release-archive (release-dir release-name platform-arch)
   "Create the final release archive."
   (let ((platform (seq:first (str:split #\- platform-arch)))
         (parent-dir (path:path-string (path:path-parent (path:make-path release-dir))))
         (old-cwd (namestring (fs:current-directory))))
     
-    (log:info "Creating release archive for ~A" platform-arch)
+    (log:info "Creating release archive for ~A in ~A" platform-arch release-dir)
     
     (unwind-protect
          (progn
@@ -352,18 +396,28 @@
 
 (defun create-tar-archive-with-working-directory (release-dir release-name working-dir)
   "Create a tar.gz archive for Unix releases with explicit working directory."
-  (process:run-sync "/usr/bin/tar" 
-                    :args (list "-czf" 
-                                (format nil "~A.tar.gz" release-name)
-                                (path:path-name (path:make-path release-dir)))
-                    :working-directory working-dir
-                    :stream-output (lambda (line)
-                                     (when (> (length line) 0)
-                                       (format t ".")))
-                    :check-executable nil)
-  (format t "~%")
-  ;; Create checksum file
-  (create-checksum-file (format nil "~A.tar.gz" release-name)))
+  (handler-case
+      (progn
+        (process:run-sync "tar" 
+                          :args (list "czf" 
+                                      (format nil "~a.tgz" release-name)
+                                      release-name)
+                          :working-directory working-dir
+                          :check-executable nil)
+        (format t "~%")
+        ;; Create checksum file - use full path in working directory
+        (create-checksum-file (path:path-string 
+                               (path:path-join working-dir 
+                                               (format nil "~A.tgz" release-name)))))
+    (process:process-error-condition (e)
+      (error "tar command failed with exit code ~A~%Output: ~A~%Error: ~A" 
+             (epsilon.process::process-error-exit-code e)
+             (epsilon.process::process-error-output e)
+             (epsilon.process::process-error-error-output e)))
+    (process:command-not-found ()
+      (error "tar command not found - please install tar"))
+    (process:process-timeout-error ()
+      (error "tar command timed out - archive may be too large"))))
 
 (defun generate (&optional environment-or-version version-override)
   "Generate a standalone release package."

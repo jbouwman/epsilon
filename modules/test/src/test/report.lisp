@@ -103,12 +103,24 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
                  internal-time-units-per-second)))))
 
 ;;;
+;;; 'silent' formatter (for aggregation)
+;;;
+
+(defclass silent-report () ())
+
+(defmethod event ((formatter silent-report) event-type event-data)
+  ;; Silent reporter does nothing - just collects results
+  (declare (ignore formatter event-type event-data))
+  nil)
+
+;;;
 ;;; 'junit' XML formatter
 ;;;
 
 (defclass junit-report ()
   ((output-file :initform "target/TEST-epsilon.xml"
-                :reader output-file)))
+                :initarg :output-file
+                :accessor output-file)))
 
 (defmethod event ((formatter junit-report) (event-type (eql :end)) run)
   (emit-junit-xml formatter run))
@@ -292,7 +304,10 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
     (symbol (intern (string value) :keyword))
     (string (intern (string-upcase value) :keyword))))
 
-(defun make (&key format &allow-other-keys)
-  (make-instance (or (map:get *report-formats* (to-keyword format))
-                     (error "unknown test report type ~s: want one of ~A" format
-                            (map:keys *report-formats*)))))
+(defun make (&key format file &allow-other-keys)
+  (let ((report-class (or (map:get *report-formats* (to-keyword format))
+                          (error "unknown test report type ~s: want one of ~A" format
+                                 (map:keys *report-formats*)))))
+    (if (and file (eq report-class 'junit-report))
+        (make-instance report-class :output-file file)
+        (make-instance report-class))))
