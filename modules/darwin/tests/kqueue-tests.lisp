@@ -102,7 +102,7 @@
       (unwind-protect
            (progn
              (is (= count 1) "Should have count of 1")
-             (is (not (zerop memory)) "Memory should be allocated")
+             (is (not (zerop (sb-sys:sap-int memory))) "Memory should be allocated")
              ;; Verify the structure was written correctly
              (is (= 123 (sb-sys:sap-ref-64 memory 0)) "ident should be 123")
              (is (= kqueue:+evfilt-read+ (sb-sys:signed-sap-ref-16 memory 8)) "filter should be EVFILT_READ")
