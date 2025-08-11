@@ -124,13 +124,14 @@
          (args (subprocess-args subprocess))
          (env (subprocess-environment subprocess))
          (wd (subprocess-working-directory subprocess))
-         ;; Try to find the command in PATH if it's not an absolute path
-         (actual-cmd (if (or (char= (char cmd 0) #\/)
-                             #+win32 (and (>= (length cmd) 3)
-                                         (char= (char cmd 1) #\:)))
-                         cmd  ; Already absolute path
-                         (or (find-executable-in-path cmd)
-                             cmd))))  ; Fall back to original if not found
+         ;; Determine if the command is an absolute path
+         (is-absolute-path (or (char= (char cmd 0) #\/)
+                                #+win32 (and (>= (length cmd) 3)
+                                            (char= (char cmd 1) #\:))))
+         ;; For non-absolute paths, just use the command name with :search t
+         ;; For absolute paths, use as-is with :search nil
+         (actual-cmd cmd)
+         (use-search (not is-absolute-path)))
     
     ;; sb-ext:run-program behaves differently based on output/error settings:
     ;; - When :output/:error are :stream, it returns multiple values: (output-stream error-stream process)
@@ -139,16 +140,16 @@
     (let ((output-setting (subprocess-output subprocess))
           (error-setting (subprocess-error subprocess)))
       (if (and (eq output-setting :stream) (eq error-setting :stream))
-          ;; Case 1: Both output and error are streams - returns (output-stream error-stream process)
-          (multiple-value-bind (output-stream error-stream process)
-              (sb-ext:run-program actual-cmd args
-                                  :environment env
-                                  :directory wd
-                                  :input (subprocess-input subprocess)
-                                  :output output-setting
-                                  :error error-setting
-                                  :wait wait
-                                  :search nil)
+          ;; Case 1: Both output and error are streams - process has the streams
+          (let ((process (apply #'sb-ext:run-program 
+                                actual-cmd args
+                                `(:directory ,wd
+                                  :input ,(subprocess-input subprocess)
+                                  :output ,output-setting
+                                  :error ,error-setting
+                                  :wait ,wait
+                                  :search ,use-search
+                                  ,@(when env `(:environment ,env))))))
             (unless process
               (error 'process-error-condition 
                      :command cmd
@@ -157,21 +158,22 @@
                      :error-output (format nil "sb-ext:run-program returned NIL for command: ~A~%Args: ~A~%Working directory: ~A~%Environment: ~A~%~%This typically means:~%1. Command not found in PATH or at specified location~%2. Permission denied (file not executable)~%3. Invalid working directory~%4. Memory/resource limits reached" 
                                            actual-cmd args wd env)))
             (setf (subprocess-process subprocess) process
-                  (subprocess-output-stream subprocess) output-stream
-                  (subprocess-error-stream subprocess) error-stream)
+                  (subprocess-output-stream subprocess) (sb-ext:process-output process)
+                  (subprocess-error-stream subprocess) (sb-ext:process-error process))
             (when wait
               (setf (subprocess-exit-code subprocess)
                     (sb-ext:process-exit-code process)))
             subprocess)
           ;; Case 2: Other output/error settings - returns just the process
-          (let ((process (sb-ext:run-program actual-cmd args
-                                             :environment env
-                                             :directory wd
-                                             :input (subprocess-input subprocess)
-                                             :output output-setting
-                                             :error error-setting
-                                             :wait wait
-                                             :search nil)))
+          (let ((process (apply #'sb-ext:run-program 
+                                actual-cmd args
+                                `(:directory ,wd
+                                  :input ,(subprocess-input subprocess)
+                                  :output ,output-setting
+                                  :error ,error-setting
+                                  :wait ,wait
+                                  :search ,use-search
+                                  ,@(when env `(:environment ,env))))))
             (unless process
               (error 'process-error-condition 
                      :command cmd

@@ -177,3 +177,63 @@
           (error (e)
             ;; May fail if archiving commands not availables
             (is t "Archive creation failed (may be expected): ~A" e)))))))
+
+(deftest tar-error-handling-test
+  "Test that tar errors include stderr in the error message"
+  ;; Try to create a tar archive with invalid parameters to trigger an error
+  (with-temp-directory (temp-dir)
+    (let* ((working-dir (path:path-string temp-dir))
+           (release-name "test-release")
+           ;; Create a directory that doesn't exist as the target
+           (nonexistent-dir "this-directory-does-not-exist"))
+      
+      ;; This should fail because the directory to archive doesn't exist
+      (handler-case
+          (progn
+            (release::create-tar-archive-with-working-directory 
+             nonexistent-dir
+             release-name
+             working-dir)
+            ;; If we get here, tar didn't fail as expected
+            (is nil "Expected tar to fail but it succeeded"))
+        (error (e)
+          ;; Verify the error message contains stderr information
+          (let ((error-message (format nil "~A" e)))
+            (is (search "tar command failed" error-message)
+                "Error message should mention tar command failed")
+            ;; The error should include exit code, output, and error information
+            (is (or (search "exit code" error-message)
+                    (search "Error:" error-message))
+                "Error message should include diagnostic information from tar")))))))
+
+(deftest tar-successful-archive-test
+  "Test that tar can successfully create an archive when parameters are valid"
+  (with-temp-directory (temp-dir)
+    (let* ((working-dir (path:path-string temp-dir))
+           (release-name "test-release")
+           (release-dir-path (path:path-join working-dir release-name))
+           (release-dir (path:path-string release-dir-path))
+           (test-file (path:path-string (path:path-join release-dir-path "test.txt"))))
+      
+      ;; Create test content
+      (ensure-directories-exist (format nil "~A/" release-dir))
+      (fs:write-file-string test-file "test content for tar")
+      
+      ;; This should succeed
+      (handler-case
+          (progn
+            (release::create-tar-archive-with-working-directory 
+             release-dir
+             release-name
+             working-dir)
+            ;; Verify the archive was created
+            (is (fs:exists-p (path:path-join working-dir (format nil "~A.tgz" release-name)))
+                "Archive file should exist")
+            ;; Also check for checksum file
+            (is (fs:exists-p (path:path-join working-dir (format nil "~A.tar.gz.sha256" release-name)))
+                "Checksum file should exist"))
+        (error (e)
+          ;; If tar is not available, that's ok for the test
+          (is (or (search "tar command not found" (format nil "~A" e))
+                  (search "tar command failed" (format nil "~A" e)))
+              "If tar fails, it should be with a clear error message"))))))

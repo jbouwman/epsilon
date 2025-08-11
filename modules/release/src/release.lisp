@@ -378,27 +378,13 @@
     (fs:write-file-string (format nil "~A.sha256" archive-name) checksum-content)
     (format t "  ✓ Checksum file created: ~A.sha256~%" archive-name)))
 
-(defun create-tar-archive (release-dir release-name)
-  "Create a tar.gz archive for Unix releases with progress feedback."
-  (process:run-sync "tar" 
-                    :args (list "-czf" 
-                                (format nil "~A.tar.gz" release-name)
-                                (path:path-name (path:make-path release-dir)))
-                    :stream-output (lambda (line)
-                                     (when (> (length line) 0)
-                                       (format t ".")))
-                    :check-executable nil)
-  (format t "~%")
-  ;; Create checksum file
-  (create-checksum-file (format nil "~A.tar.gz" release-name)))
-
 (defun create-release-archive (release-dir release-name platform-arch)
   "Create the final release archive."
   (let ((platform (seq:first (str:split #\- platform-arch)))
         (parent-dir (path:path-string (path:path-parent (path:make-path release-dir))))
         (old-cwd (namestring (fs:current-directory))))
     
-    (log:info "Creating release archive for ~A" platform-arch)
+    (log:info "Creating release archive for ~A in ~A" platform-arch release-dir)
     
     (unwind-protect
          (progn
@@ -410,18 +396,28 @@
 
 (defun create-tar-archive-with-working-directory (release-dir release-name working-dir)
   "Create a tar.gz archive for Unix releases with explicit working directory."
-  (process:run-sync "tar" 
-                    :args (list "-czf" 
-                                (format nil "~A.tar.gz" release-name)
-                                (path:path-name (path:make-path release-dir)))
-                    :working-directory working-dir
-                    :stream-output (lambda (line)
-                                     (when (> (length line) 0)
-                                       (format t ".")))
-                    :check-executable nil)
-  (format t "~%")
-  ;; Create checksum file
-  (create-checksum-file (format nil "~A.tar.gz" release-name)))
+  (handler-case
+      (progn
+        (process:run-sync "tar" 
+                          :args (list "czf" 
+                                      (format nil "~a.tgz" release-name)
+                                      release-name)
+                          :working-directory working-dir
+                          :check-executable nil)
+        (format t "~%")
+        ;; Create checksum file - use full path in working directory
+        (create-checksum-file (path:path-string 
+                               (path:path-join working-dir 
+                                               (format nil "~A.tgz" release-name)))))
+    (process:process-error-condition (e)
+      (error "tar command failed with exit code ~A~%Output: ~A~%Error: ~A" 
+             (epsilon.process::process-error-exit-code e)
+             (epsilon.process::process-error-output e)
+             (epsilon.process::process-error-error-output e)))
+    (process:command-not-found ()
+      (error "tar command not found - please install tar"))
+    (process:process-timeout-error ()
+      (error "tar command timed out - archive may be too large"))))
 
 (defun generate (&optional environment-or-version version-override)
   "Generate a standalone release package."
