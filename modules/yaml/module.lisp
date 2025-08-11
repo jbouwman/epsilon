@@ -1,8 +1,3 @@
 (:name "epsilon.yaml"
- :version "0.1.0"
- :author "Jesse Bouwman"
- :description "YAML parser for Common Lisp supporting YAML 1.2 subset"
- :sources ("src")
- :tests ("tests")
- :requires ("epsilon.core")
-)
+ :version "1.0.0"
+ :description "YAML parser for Common Lisp supporting YAML 1.2 subset")
