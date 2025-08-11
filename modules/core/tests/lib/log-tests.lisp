@@ -115,8 +115,8 @@
     (is (search "APP.CORE" output))
     (is (search "app.lisp:100" output))
     (is (search "Error occurred" output))
-    (is (search "user-id=123" output))
-    (is (search "request-id=abc" output))))
+    (is (search "USER-ID=123" output))
+    (is (search "REQUEST-ID=abc" output))))
 
 (deftest test-json-formatter
   "Test JSON log format"

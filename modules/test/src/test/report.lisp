@@ -5,6 +5,7 @@
   (:local-nicknames
    (suite epsilon.test.suite)
    (map epsilon.map)
+   (seq epsilon.sequence)
    (str epsilon.string)
    (xml epsilon.xml))
   (:export
@@ -41,10 +42,10 @@
     (format nil "~,2fs~@[ ~A~]"
             (suite::elapsed-time result)
             (case (suite:status result)
-              (:failure "FAILURE")
-              (:error "ERROR")  
-              (:skip "SKIP")
-              (otherwise nil)))))
+		  (:failure "FAILURE")
+		  (:error "ERROR")  
+		  (:skip "SKIP")
+		  (otherwise nil)))))
 
 (defun format-test-entry (test-name &optional (total-width 78) result)
   "Format a test entry with properly aligned timing and status.
@@ -67,16 +68,16 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
   "Print a message summarizing a test failure, error, or skip"
   (when (suite:condition result)
     (case (suite:status result)
-      (:failure
-       (format nil "~&~%~%~A~%~%"
-               (suite::failure-message (suite:condition result))))
-      (:error
-       (format nil "~&~%~%~A~%~%Stack:~%~%~A~%~%"
-               (suite::original-error (suite:condition result))
-               (suite::stack-trace result)))
-      (:skip
-       (format nil "~&;;       Skipped: ~A~%"
-               (suite::skip-message (suite:condition result)))))))
+	  (:failure
+	   (format nil "~&~%~%~A~%~%"
+		   (suite::failure-message (suite:condition result))))
+	  (:error
+	   (format nil "~&~%~%~A~%~%Stack:~%~%~A~%~%"
+		   (suite::original-error (suite:condition result))
+		   (suite::stack-trace result)))
+	  (:skip
+	   (format nil "~&;;       Skipped: ~A~%"
+		   (suite::skip-message (suite:condition result)))))))
 
 (defmethod event ((formatter shell-report) (event-type (eql :end-test)) result)
   (with-slots (failure-count max-failures) formatter
@@ -134,9 +135,9 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
                             :direction :output 
                             :if-exists :supersede
                             :if-does-not-exist :create)
-      ;; This XML declaration should be handled by the xml package.
-      (format stream "<?xml version=\"1.0\" encoding=\"UTF-8\"?>~%")
-      (xml:emit (make-junit-testsuites run) stream))))
+		    ;; This XML declaration should be handled by the xml package.
+		    (format stream "<?xml version=\"1.0\" encoding=\"UTF-8\"?>~%")
+		    (xml:emit (make-junit-testsuites run) stream))))
 
 (defun make-junit-testsuites (run)
   "Create JUnit XML testsuites element"
@@ -187,22 +188,22 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
          (children '()))
     
     (case (suite:status result)
-      (:failure
-       (push (xml:element "failure"
-                          :attributes (list "message" (suite::failure-message (suite:condition result)))
-                          :children (list (xml:text (suite::failure-message (suite:condition result)))))
-             children))
-      (:error
-       (push (xml:element "error"
-                          :attributes (list "message" (format nil "~A" (suite::original-error (suite:condition result))))
-                          :children (list (xml:text (format nil "~A~%~%~A" 
-                                                            (suite::original-error (suite:condition result))
-                                                            (or (suite::stack-trace result) "")))))
-             children))
-      (:skip
-       (push (xml:element "skipped"
-                          :attributes (list "message" (suite::skip-message (suite:condition result))))
-             children)))
+	  (:failure
+	   (push (xml:element "failure"
+                              :attributes (list "message" (suite::failure-message (suite:condition result)))
+                              :children (list (xml:text (suite::failure-message (suite:condition result)))))
+		 children))
+	  (:error
+	   (push (xml:element "error"
+                              :attributes (list "message" (format nil "~A" (suite::original-error (suite:condition result))))
+                              :children (list (xml:text (format nil "~A~%~%~A" 
+								(suite::original-error (suite:condition result))
+								(or (suite::stack-trace result) "")))))
+		 children))
+	  (:skip
+	   (push (xml:element "skipped"
+                              :attributes (list "message" (suite::skip-message (suite:condition result))))
+		 children)))
     
     (when (and (suite::stdout-output result) (not (string= (suite::stdout-output result) "")))
       (push (xml:element "system-out" 
@@ -240,41 +241,41 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
         (status (suite:status result)))
     (incf (test-count formatter))
     (case status
-      (:failure
-       (format t "not ok ~D ~A~%" 
-               (test-count formatter)
-               (format-tap-test-name test))
-       (when (suite:condition result)
-         (format t "  ---~%")
-         (format t "  message: ~S~%"
-                 (suite::failure-message (suite:condition result)))
-         (format t "  severity: fail~%")
-         (format t "  ...~%")))
-      (:error
-       (format t "not ok ~D ~A~%" 
-               (test-count formatter)
-               (format-tap-test-name test))
-       (when (suite:condition result)
-         (format t "  ---~%")
-         (format t "  message: ~S~%"
-                 (format nil "~A" (suite::original-error (suite:condition result))))
-         (format t "  severity: fail~%")
-         (when (suite::stack-trace result)
-           (format t "  data:~%")
-           (format t "    stack: |~%")
-           (dolist (line (str:split #\Newline (suite::stack-trace result)))
-             (format t "      ~A~%" line)))
-         (format t "  ...~%")))
-      (:skip
-       (format t "ok ~D ~A # SKIP~@[ ~A~]~%"
-               (test-count formatter)
-               (format-tap-test-name test)
-               (when (suite:condition result)
-                 (suite::skip-message (suite:condition result)))))
-      (otherwise
-       (format t "ok ~D ~A~%"
-               (test-count formatter)
-               (format-tap-test-name test))))))
+	  (:failure
+	   (format t "not ok ~D ~A~%" 
+		   (test-count formatter)
+		   (format-tap-test-name test))
+	   (when (suite:condition result)
+             (format t "  ---~%")
+             (format t "  message: ~S~%"
+                     (suite::failure-message (suite:condition result)))
+             (format t "  severity: fail~%")
+             (format t "  ...~%")))
+	  (:error
+	   (format t "not ok ~D ~A~%" 
+		   (test-count formatter)
+		   (format-tap-test-name test))
+	   (when (suite:condition result)
+             (format t "  ---~%")
+             (format t "  message: ~S~%"
+                     (format nil "~A" (suite::original-error (suite:condition result))))
+             (format t "  severity: fail~%")
+             (when (suite::stack-trace result)
+               (format t "  data:~%")
+               (format t "    stack: |~%")
+               (dolist (line (str:split (suite::stack-trace result) #\Newline))
+		 (format t "      ~A~%" line)))
+             (format t "  ...~%")))
+	  (:skip
+	   (format t "ok ~D ~A # SKIP~@[ ~A~]~%"
+		   (test-count formatter)
+		   (format-tap-test-name test)
+		   (when (suite:condition result)
+                     (suite::skip-message (suite:condition result)))))
+	  (otherwise
+	   (format t "ok ~D ~A~%"
+		   (test-count formatter)
+		   (format-tap-test-name test))))))
 
 (defmethod event ((formatter tap-report) (event-type (eql :end)) run)
   (format t "1..~D~%" (test-count formatter))
@@ -293,16 +294,133 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
 (defclass null-report ()
   ())
 
+;;;
+;;; 'verbose' formatter - detailed output for debugging
+;;;
+
+(defclass verbose-report ()
+  ((current-package :initform nil :accessor current-package)
+   (assertion-count :initform 0 :accessor assertion-count)))
+
+(defmethod event ((formatter verbose-report) (event-type (eql :start)) event-data)
+  (format t "~&╭────────────────────────────────────────────────────────────────────────────╮~%")
+  (format t "│                           EPSILON TEST RUNNER                                 │~%")
+  (format t "│                            Verbose Mode Active                                │~%")
+  (format t "╰────────────────────────────────────────────────────────────────────────────╯~%~%"))
+
+(defmethod event ((formatter verbose-report) (event-type (eql :start-group)) group)
+  (setf (current-package formatter) (first group))
+  (format t "~%┌─ Package: ~A~%" (string-downcase (first group)))
+  (format t "│~%"))
+
+(defmethod event ((formatter verbose-report) (event-type (eql :start-test)) test)
+  (setf (assertion-count formatter) 0)
+  (format t "│  ► Running test: ~A~%" (string-downcase (symbol-name test))))
+
+(defmethod event ((formatter verbose-report) (event-type (eql :end-test)) result)
+  (let* ((test (suite:test result))
+         (status (suite:status result))
+         (elapsed (suite::elapsed-time result))
+         (assertions (suite:assertions result))
+         (status-symbol (case status
+                              (:failure "✗")
+                              (:error "⚠")
+                              (:skip "⊘")
+                              (otherwise "✓")))
+         (status-text (case status
+                            (:failure "FAILED")
+                            (:error "ERROR")
+                            (:skip "SKIPPED")
+                            (otherwise "PASSED"))))
+    
+    ;; Show test completion with timing
+    (format t "│  ~A Test ~A in ~,3fs (~D assertion~:P)~%" 
+            status-symbol status-text elapsed (length assertions))
+    
+    ;; Show assertion details if there are any
+    (when assertions
+      (format t "│     Assertions:~%")
+      (dolist (assertion (reverse assertions))
+        (destructuring-bind (result report-fn) assertion
+			    (cond
+			     ((and (listp result) (eq (first result) :label-start))
+			      (format t "│       ├─ ~A~%" (second result)))
+			     ((and (listp result) (eq (first result) :label-end))
+			      nil) ; Skip end labels
+			     (result
+			      (format t "│       │  ✓ Passed~%"))
+			     (t
+			      (format t "│       │  ✗ Failed~%"))))))
+    
+    ;; Show stdout/stderr if present
+    (when (and (suite::stdout-output result) 
+               (not (string= (suite::stdout-output result) "")))
+      (format t "│     Standard Output:~%")
+      (dolist (line (seq:realize (str:split #\Newline (suite::stdout-output result))))
+        (unless (string= line "")
+          (format t "│       > ~A~%" line))))
+    
+    (when (and (suite::stderr-output result)
+               (not (string= (suite::stderr-output result) "")))
+      (format t "│     Error Output:~%")
+      (dolist (line (seq:realize (str:split #\Newline (suite::stderr-output result))))
+        (unless (string= line "")
+          (format t "│       ! ~A~%" line))))
+    
+    ;; Show detailed error information for failures/errors
+    (when (member status '(:failure :error))
+      (format t "│~%│     ═══ FAILURE DETAILS ═══~%")
+      (case status
+            (:failure
+             (let ((msg (suite::failure-message (suite:condition result))))
+               (format t "│     Message: ~A~%" msg)))
+            (:error
+             (let ((error (suite::original-error (suite:condition result))))
+               (format t "│     Error: ~A~%" error)
+               (when (suite::stack-trace result)
+		 (format t "│     Stack Trace:~%")
+		 (dolist (line (seq:realize (str:split #\Newline (suite::stack-trace result))))
+		   (unless (string= line "")
+                     (format t "│       ~A~%" line)))))))
+      
+      (format t "│~%"))))
+
+(defmethod event ((formatter verbose-report) (event-type (eql :end)) run)
+  (format t "└────────────────────────────────────────────────────────────────────────────~%~%")
+  (let* ((total-tests (map:size (suite::tests run)))
+         (failures (length (suite:failures run)))
+         (errors (length (suite:errors run)))
+         (skipped (length (suite:skipped run)))
+         (passed (- total-tests failures errors skipped))
+         (total-time (/ (- (suite::end-time run) (suite::start-time run))
+                        internal-time-units-per-second)))
+    
+    (format t "╭─ TEST SUMMARY ─────────────────────────────────────────────────────────────╮~%")
+    (format t "│                                                                             │~%")
+    (format t "│  Total Tests: ~3D     Passed: ~3D     Failed: ~3D     Errors: ~3D     Skipped: ~3D  │~%"
+            total-tests passed failures errors skipped)
+    (format t "│                                                                             │~%")
+    (format t "│  Total Time: ~,3F seconds                                                    │~%"
+            total-time)
+    (format t "│                                                                             │~%")
+    
+    (if (zerop (+ failures errors))
+        (format t "│  ✓ ALL TESTS PASSED                                                        │~%")
+      (format t "│  ✗ TESTS FAILED                                                            │~%"))
+    
+    (format t "╰────────────────────────────────────────────────────────────────────────────╯~%")))
+
 (defparameter *report-formats*
   (map:make-map :none 'null-report
                 :shell 'shell-report
+                :verbose 'verbose-report
                 :junit 'junit-report
                 :tap 'tap-report))
 
 (defun to-keyword (value)
   (etypecase value
-    (symbol (intern (string value) :keyword))
-    (string (intern (string-upcase value) :keyword))))
+	     (symbol (intern (string value) :keyword))
+	     (string (intern (string-upcase value) :keyword))))
 
 (defun make (&key format file &allow-other-keys)
   (let ((report-class (or (map:get *report-formats* (to-keyword format))
@@ -310,4 +428,4 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
                                  (map:keys *report-formats*)))))
     (if (and file (eq report-class 'junit-report))
         (make-instance report-class :output-file file)
-        (make-instance report-class))))
+      (make-instance report-class))))

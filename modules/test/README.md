@@ -87,33 +87,44 @@ Group related assertions within a test:
 
 ## Running Tests
 
-### Single Module Testing
+### Command Line Testing
 
 ```bash
 # Test a specific module
-./epsilon test --module epsilon.core
+./epsilon --test epsilon.core
 
-# Test with specific format
-./epsilon test --module epsilon.http --format junit
+# Test specific package within a module
+./epsilon --test epsilon.core:epsilon.log.tests
 
-# Save results to file
-./epsilon test --module epsilon.json --output results.xml
+# Test specific test by name
+./epsilon --test epsilon.core:epsilon.log.tests:test-detailed-formatter
+
+# Test with verbose output for debugging
+./epsilon --test epsilon.core --verbose
+./epsilon --test epsilon.core:epsilon.log.tests:test-detailed-formatter --verbose
+
+# Run multiple specific tests
+./epsilon --test epsilon.core:epsilon.map.tests:assoc-increases-count \
+         --test epsilon.core:epsilon.map.tests:contains
 ```
 
 ### Programmatic Testing
 
 ```lisp
 ;; Run all tests in a module
-(epsilon.test:run :module "epsilon.core")
+(epsilon.test:run environment "epsilon.core")
 
 ;; Run specific package tests
-(epsilon.test:run :package "epsilon.map")
+(epsilon.test:run environment "epsilon.core" :package "epsilon.map.tests")
 
-;; Run specific test
-(epsilon.test:run :name "map-creation-test")
+;; Run specific test by name
+(epsilon.test:run environment "epsilon.core" 
+                  :package "epsilon.log.tests" 
+                  :test-name "test-detailed-formatter")
 
 ;; Run with different output format
-(epsilon.test:run :module "epsilon.string" :format :junit :file "results.xml")
+(epsilon.test:run environment "epsilon.string" :format :verbose)
+(epsilon.test:run environment "epsilon.string" :format :junit :file "results.xml")
 ```
 
 ### Run All Tests
@@ -132,15 +143,42 @@ Group related assertions within a test:
 ## Output Formats
 
 ### Shell Format (Default)
-Human-readable console output with colors and progress indicators:
+Human-readable console output with progress indicators:
 ```
-;;; Running 15 tests...
-✓ basic-arithmetic-test (0.001s)
-✓ string-operations-test (0.002s)
-✗ failing-test (0.001s)
-  Expected 5 but got 4
+Running tests:
 
-Tests: 15, Passed: 14, Failed: 1, Errors: 0
+;; epsilon.log.tests
+;;     test-detailed-formatter (6) .............................. 0.02s FAILURE
+
+Test Run Complete:
+;;   Tests: 1
+;;   Failures: 1
+;;   Errors: 0
+;;   Skipped: 0
+;;   Time: 0.04 seconds
+```
+
+### Verbose Format
+Detailed output showing all assertions and test execution details:
+```
+╭────────────────────────────────────────────────────────────────────────────╮
+│                           EPSILON TEST RUNNER                                 │
+│                            Verbose Mode Active                                │
+╰────────────────────────────────────────────────────────────────────────────╯
+
+┌─ Package: epsilon.log.tests
+│
+│  ► Running test: test-detailed-formatter
+│  ✗ Test FAILED in 0.020s (6 assertions)
+│     Assertions:
+│       │  ✓ Passed
+│       │  ✓ Passed
+│       │  ✗ Failed
+│
+│     ═══ FAILURE DETAILS ═══
+│     Message: Expected 5 but got 4
+│
+└────────────────────────────────────────────────────────────────────────────
 ```
 
 ### JUnit XML Format
@@ -152,12 +190,6 @@ Compatible with CI/CD systems and test reporting tools:
     <failure message="Expected 5 but got 4"/>
   </testcase>
 </testsuite>
-```
-
-### REPL Format
-Minimal output suitable for interactive development:
-```
-15 tests: 14 passed, 1 failed
 ```
 
 ## Advanced Features
