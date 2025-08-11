@@ -40,15 +40,86 @@ Download the appropriate release for your platform from [GitHub Releases](https:
 
 #### Unix (Linux/macOS)
 ```bash
-# Interactive REPL with Epsilon loaded
-epsilon
+# Interactive REPL
+./epsilon
 
 # Evaluate expressions  
-epsilon --eval "(format t \"Hello, Epsilon!\")"
+./epsilon --eval "(format t \"Hello, World\")"
 
-# Use Epsilon libraries
-epsilon --eval "(epsilon.lib.map:make-map :a 1 :b 2)"
+# Load specific module
+./epsilon --module epsilon.json --eval "(json:encode '(:foo \"bar\"))"
+
+# List available modules
+./epsilon --modules
 ```
+
+### Testing
+
+```bash
+# Test specific module
+./epsilon --test epsilon.core
+
+# Test specific package within a module
+./epsilon --test epsilon.core:epsilon.log.tests
+
+# Test specific test by name
+./epsilon --test epsilon.core:epsilon.log.tests:test-detailed-formatter
+
+# Test with verbose output for debugging
+./epsilon --test epsilon.core --verbose
+./epsilon --test epsilon.core:epsilon.log.tests:test-detailed-formatter --verbose
+
+# Self-test all modules
+./epsilon --exec epsilon.release:selftest
+
+# Run all tests with JUnit output
+./epsilon --exec epsilon.release:selftest --format junit --file target/TEST-results.xml
+
+# Run CLI smoke tests
+./scripts/smoke.sh
+```
+
+### Development
+
+```bash
+# Build documentation
+./scripts/build.sh
+
+# Install epsilon
+./scripts/install.sh
+```
+
+## Architecture
+
+Epsilon is a Lisp programming environment built on SBCL with a modular architecture. The codebase follows functional programming principles with immutable data structures and protocol-based extensibility.
+
+### Module System
+Each module in `/modules/` contains a `module.lisp` file defining dependencies and exports. Modules are loaded via `epsilon.loader` which handles dependency resolution and incremental compilation. Core bootstrap happens through `/modules/core/src/boot.lisp`.
+
+### Key Architectural Patterns
+- **Functional Data Structures**: Maps, sets, and sequences with structural sharing (modules/core/src/lib/)
+- **Protocol-based Design**: Extension points via epsilon.protocol for polymorphic behavior
+- **Platform Abstraction**: Platform-specific modules (darwin/linux/windows) handle OS differences
+- **Resource Management**: Connection pooling in HTTP client, proper cleanup in all I/O operations
+- **Transducers**: Composable algorithmic transformations in modules/core/src/lib/transducer.lisp
+
+### Testing Framework
+The custom test framework (epsilon.test) supports hierarchical test organization with fixtures. Tests use `deftest` macro and assertions like `is`, `is-=`, `is-equal`. Tests can output to shell, REPL, or JUnit XML format.
+
+### Module Dependencies
+Core modules form a dependency hierarchy:
+- epsilon.core: Foundation (no dependencies)
+- epsilon.test: Testing framework (depends on core)
+- epsilon.http: HTTP client/server (depends on core, tls)
+- epsilon.json/yaml/msgpack: Data formats (depend on core)
+- epsilon.lsp: Language Server Protocol (depends on json, http)
+
+### Code Style
+- Lisp naming conventions: lowercase with hyphens
+- Packages export symbols explicitly via defpackage
+- Functional style preferred: avoid mutation, use pure functions
+- Proper docstrings for public APIs
+- Indentation follows standard Lisp conventions
 
 ## Documentation
 
