@@ -12,13 +12,17 @@ Start an interactive session:
 
 This launches a REPL with Epsilon's core libraries loaded from the self-contained binary.
 
-Run a local package during development:
+Evaluate expressions directly:
 
 ```bash
-./epsilon run [args...]
+./epsilon --eval "(format t \"Hello, World\")"
 ```
 
-This auto-detects and runs the package defined in the current directory's `module.lisp`.
+Load specific modules:
+
+```bash
+./epsilon --module epsilon.json --eval "(json:encode '(:foo \"bar\"))"
+```
 
 ## Basic Usage
 
@@ -79,16 +83,9 @@ Lazy sequences support functional operations:
 
 ## Writing Programs
 
-FIXME: out of date
-
-Create `hello.lisp`:
+You can create standalone Lisp programs that use Epsilon:
 
 ```lisp
-#!/usr/bin/env sbcl --script
-
-(load "scripts/boot.lisp")
-(boot)
-
 (defpackage :hello
   (:use :cl)
   (:local-nicknames
@@ -107,19 +104,19 @@ Create `hello.lisp`:
 (main)
 ```
 
-Run it:
+Run it using the epsilon binary:
 
 ```bash
-sbcl --script hello.lisp
+./epsilon --eval "(load \"hello.lisp\")"
 ```
 
 ## Building Applications
 
 For larger projects, use Epsilon's module system:
 
-1. Create a module directory with `package.edn`
+1. Create a module directory with `module.lisp`
 2. Define your packages and dependencies
-3. Use epsilon binary: `./epsilon your-script.lisp`
+3. Use epsilon binary to load and test modules
 
 See the [Application Development Guide](app-development-guide.md) for details.
 
