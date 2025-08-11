@@ -9,7 +9,8 @@ Documentation for building, testing, and deploying Epsilon.
 
 ## CI/CD & Releases
 
-- [CI/CD Process](ci-cd.md) - Complete guide to testing, continuous integration, and releases
+- [CI/CD Process](ci-cd.md) - Complete guide to testing and continuous integration
+- [Release Process](release-process.md) - Creating and managing releases
 
 ## Distribution
 
