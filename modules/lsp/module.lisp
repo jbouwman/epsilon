@@ -1,8 +1,4 @@
 (:name "epsilon.lsp"
- :version "0.2.0"
- :author "Epsilon Project"
+ :version "1.0.0"
  :description "Language Server Protocol implementation with code evaluation support"
- :sources ("src" "src/evaluation")
- :tests ("tests")
- :requires ("epsilon.core" "epsilon.parsing" "epsilon.json")
-)
+ :requires ("epsilon.parsing" "epsilon.json"))

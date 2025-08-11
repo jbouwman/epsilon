@@ -1,8 +1,4 @@
 (:name "epsilon.tls"
- :version "0.1.0"
- :author "Jesse Bouwman"
+ :version "1.0.0"
  :description "TLS/SSL support for epsilon networking"
- :sources ("src")
- :tests ("tests")
- :requires ("epsilon.core" "epsilon.foreign" "epsilon.net")
-)
+ :requires ("epsilon.foreign" "epsilon.net"))

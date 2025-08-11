@@ -1,4 +1,3 @@
 (:name "epsilon.parsing"
  :description "Parsing and lexing utilities"
- :version "1.0.0"
- :requires ("epsilon.core"))
+ :version "1.0.0")

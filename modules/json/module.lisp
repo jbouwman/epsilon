@@ -1,6 +1,5 @@
 (:name "epsilon.json"
- :version "1.0.0"                       ; TODO core modules should track main release version
- :author "Jesse Bouwman"
+ :version "1.0.0"
  :description "JSON parser"
- :data ("tests/json")                   ; JSON test files used for testing
- :requires ("epsilon.core" "epsilon.parsing"))
+ :data ("tests/json")
+ :requires ("epsilon.parsing"))

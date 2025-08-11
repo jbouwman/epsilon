@@ -1,5 +1,3 @@
 (:name "epsilon.regex"
- :version "0.1.0"
- :author "Jesse Bouwman"
- :description "Regular expressions"
- :requires ("epsilon.core"))
+ :version "1.0.0"
+ :description "Regular expressions")

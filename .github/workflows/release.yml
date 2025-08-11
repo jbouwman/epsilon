@@ -84,23 +84,25 @@ jobs:
     - name: Build distribution package
       run: |
         VERSION="${{ steps.version.outputs.version }}"
-        PLATFORM="${{ matrix.platform }}-${{ matrix.arch }}"
         
-        # Create distribution archive
-        ./epsilon release --version "${VERSION}" --platforms "${PLATFORM}"
+        # Create distribution archive using epsilon.release:generate
+        # Note: This builds for the current platform only
+        ./epsilon --exec epsilon.release:generate -- "${VERSION}"
         
         # List generated artifacts
         echo "=== Generated artifacts ==="
-        find target/release -type f -name "*.tar.gz" -o -name "*.sha256" | sort
+        find releases -type f -name "*.tar.gz" -o -name "*.sha256" | sort
         
     - name: Test runtime executable
       run: |
         # Extract and test the runtime
-        TARBALL=$(find target/release -name "epsilon-*.tar.gz" | head -1)
+        TARBALL=$(find releases -name "epsilon-*.tar.gz" | head -1)
         if [ -f "$TARBALL" ]; then
           tar -xzf "$TARBALL"
-          ./epsilon/epsilon version
-          ./epsilon/epsilon test epsilon.core
+          # The directory name should match the tarball name without .tar.gz
+          DIR_NAME=$(basename "$TARBALL" .tar.gz)
+          ./"$DIR_NAME"/epsilon version
+          ./"$DIR_NAME"/epsilon test epsilon.core
         fi
         
     - name: Upload release artifacts
@@ -108,9 +110,9 @@ jobs:
       with:
         name: epsilon-${{ steps.version.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}
         path: |
-          target/release/epsilon-*.tar.gz
-          target/release/epsilon-*.tar.gz.sha256
-          target/release/epk/*.epk
+          releases/epsilon-*.tar.gz
+          releases/epsilon-*.tar.gz.sha256
+          releases/epk/*.epk
 
   # Create GitHub release with all artifacts
   publish-release:

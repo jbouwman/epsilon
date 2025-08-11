@@ -1,6 +1,6 @@
-# CI/CD and Release Process
+# CI/CD Process
 
-Comprehensive guide to Epsilon's continuous integration, testing, and release workflows.
+Guide to Epsilon's continuous integration and testing workflows. For release process, see [Release Process](release-process.md).
 
 ## Overview
 
@@ -123,54 +123,16 @@ build-v1-${{ runner.os }}-${{ hashFiles('src/**/*.lisp') }}
 - `src/*/target` - Compiled FASL files
 - `.epsilon-cache` - Build metadata
 
-## Release Process
+## Release Workflow
 
-### Creating a Release
+For detailed information about creating releases, version management, and release strategies, see the [Release Process documentation](release-process.md).
 
-1. **Update version** (if using version files):
-   ```bash
-   # Update version in relevant files
-   git commit -am "Release v1.2.3"
-   ```
+### Quick Reference
 
-2. **Create and push tag**:
-   ```bash
-   git tag v1.2.3
-   git push origin v1.2.3
-   ```
-
-3. **Monitor workflow**:
-   - Check Actions tab for build progress
-   - Release automatically created when builds complete
-
-### Version Conventions
-
-- **Stable**: `v1.2.3`
-- **Pre-release**: `v1.2.3-beta.1`, `v1.2.3-rc.1`
-- **Development**: Automatic `dev-SHA` versions
-
-### Release Artifacts
-
-Each release includes:
-- `epsilon-VERSION-PLATFORM.tar.gz` - Binary distribution
-- `epsilon-VERSION-PLATFORM.tar.gz.sha256` - Checksum
-- `*.epk` - Epsilon packages (if applicable)
-- Auto-generated release notes
-
-### Installation from Release
-
-```bash
-# Download latest for your platform
-curl -LO https://github.com/jbouwman/epsilon/releases/latest/download/epsilon-VERSION-linux-x86_64.tar.gz
-
-# Verify checksum
-sha256sum -c epsilon-VERSION-linux-x86_64.tar.gz.sha256
-
-# Extract and install
-tar xzf epsilon-VERSION-linux-x86_64.tar.gz
-cd epsilon
-./install.sh  # Or manually copy to PATH
-```
+- **Create Release**: Tag with semantic version (e.g., `v0.11.0`)
+- **Pre-releases**: Use suffixes like `-alpha.1`, `-beta.1`, `-rc.1`
+- **Artifacts**: Automatic builds for Linux x86_64, macOS ARM64, and macOS x86_64
+- **Checksums**: SHA256 checksums generated for all release archives
 
 ## Platform-Specific Notes
 

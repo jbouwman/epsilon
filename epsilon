@@ -30,21 +30,24 @@ fi
 # Parse debug and rebuild flags before passing to SBCL
 DEBUG_MODE="false"
 REBUILD_BOOT="false"
-# Use array to preserve argument boundaries
-declare -a FILTERED_ARGS=()
-for arg in "$@"; do
-    case "$arg" in
+
+# Check for our custom flags
+while [ $# -gt 0 ]; do
+    case "$1" in
         --debug)
             DEBUG_MODE="true"
+            shift
             ;;
         --rebuild)
             REBUILD_BOOT="true"
+            shift
             ;;
         *)
-            FILTERED_ARGS+=("$arg")
+            break  # Stop at first non-epsilon flag
             ;;
     esac
 done
+# Now $@ contains only the remaining arguments
 
 # Force rebuild of bootstrap.fasl if requested
 if [ "$REBUILD_BOOT" = "true" ]; then
@@ -61,7 +64,7 @@ fi
 
 cd "$EPSILON_HOME"
 # Note: SBCL args must be unquoted, user args must be quoted
-if [ ${#FILTERED_ARGS[@]} -eq 0 ]; then
+if [ $# -eq 0 ]; then
     exec sbcl $SBCL_RUNTIME_ARGS \
          $SBCL_TOPLEVEL_ARGS \
          --load "$EPSILON_BOOT" \
@@ -72,5 +75,5 @@ else
          $SBCL_TOPLEVEL_ARGS \
          --load "$EPSILON_BOOT" \
          --eval "(epsilon.main:cli-run)" \
-         -- "${FILTERED_ARGS[@]}"
+         -- "$@"
 fi
