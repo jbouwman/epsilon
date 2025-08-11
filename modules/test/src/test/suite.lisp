@@ -268,7 +268,12 @@ Returns the leaf node for package-name."
            (let ((*test* result)
                  (*standard-output* (make-broadcast-stream *standard-output* stdout-stream))
                  (*error-output* (make-broadcast-stream *error-output* stderr-stream)))
-             (setf return-value (apply test args))))
+             ;; Add 10 second timeout for each test
+             (handler-case
+                 (sb-ext:with-timeout 10
+                   (setf return-value (apply test args)))
+               (sb-ext:timeout ()
+                 (error "Test timed out after 10 seconds")))))
       (setf (end-time result) (get-internal-real-time)
             (stdout-output result) (get-output-stream-string stdout-stream)
             (stderr-output result) (get-output-stream-string stderr-stream)
