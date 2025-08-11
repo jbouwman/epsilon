@@ -19,11 +19,11 @@ This installs Epsilon to `~/.epsilon` and adds it to your PATH.
 git clone https://github.com/jbouwman/epsilon.git
 cd epsilon
 
-# Build
-./make build
+# Build documentation
+./scripts/build.sh
 
-# Install (optional)
-./make install PREFIX=/usr/local
+# Install epsilon
+./scripts/install.sh
 ```
 
 ### Docker
@@ -64,6 +64,6 @@ epsilon
 rm -rf ~/.epsilon
 # Remove from PATH in ~/.bashrc or ~/.zshrc
 
-# If installed manually
-make uninstall
+# If installed from source
+./scripts/uninstall.sh
 ```

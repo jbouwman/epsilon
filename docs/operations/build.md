@@ -5,37 +5,35 @@ Epsilon uses a content-based build system with dependency tracking and increment
 ## Quick Start
 
 ```bash
-# Build a module
-./epsilon build epsilon.core
+# Test specific module
+./epsilon --test epsilon.core
 
-# Build all modules
-./epsilon build
+# Self-test all modules
+./epsilon --exec epsilon.release:selftest
 
-# Clean and rebuild
-./epsilon build --clean epsilon.core
+# Test with verbose output
+./epsilon --test epsilon.core --verbose
 
-# Run a local package during development
-./epsilon run package-name [args...]
+# List available modules
+./epsilon --modules
 ```
 
 ## Module Structure
 
-Each module requires a `package.edn` file:
+Each module requires a `module.lisp` file defining dependencies and exports:
 
-```edn
-{
-  "name" "mymodule"
-  "version" "1.0.0"
-  "sources" ["src"]
-  "tests" ["tests"]
-  "dependencies" ["epsilon.core"]
-}
+```lisp
+(:name "mymodule"
+ :version "1.0.0"
+ :sources ("src")
+ :tests ("tests")
+ :dependencies ("epsilon.core"))
 ```
 
 Directory layout:
 ```
 mymodule/
-├── package.edn      # Module configuration
+├── module.lisp      # Module configuration
 ├── src/             # Source files
 ├── tests/           # Test files  
 └── target/          # Build artifacts (generated)
@@ -45,11 +43,11 @@ mymodule/
 
 ### Dependency Resolution
 
-Modules are built in dependency order:
-1. Parse `package.edn` files
+Modules are loaded in dependency order:
+1. Parse `module.lisp` files
 2. Construct dependency graph
 3. Topologically sort modules
-4. Build in order
+4. Load in order
 
 Circular dependencies cause build failure.
 
@@ -96,35 +94,27 @@ Cache is invalidated when:
 ### Command Line Options
 
 ```bash
-./epsilon build [module] [options]
+./epsilon [options]
 
 Options:
-  --verbose        Show compilation output
-  --force          Ignore cache, rebuild everything
-  --clean          Delete artifacts before building
-  --test           Run tests after building
+  --test MODULE           Test specific module
+  --verbose              Show verbose output
+  --modules              List available modules
+  --eval EXPRESSION      Evaluate expression
+  --module MODULE        Load specific module
 ```
 
-### Build Profiles
+### Testing Profiles
 
-Create `.epsilon-build.edn` in project root:
+Run tests with different output formats:
 
-```edn
-{
-  "profiles" {
-    "debug" {
-      "optimize" 0
-      "debug" 3
-    }
-    "release" {
-      "optimize" 3
-      "debug" 0
-    }
-  }
-}
+```bash
+# JUnit XML output
+./epsilon --exec epsilon.release:selftest --format junit --file target/TEST-results.xml
+
+# CLI smoke tests
+./scripts/smoke.sh
 ```
-
-Use with: `./epsilon build --profile release`
 
 ## Parallel Builds
 
@@ -143,26 +133,29 @@ Control with: `EPSILON_BUILD_JOBS=4 ./epsilon build`
 ### With Testing
 
 ```bash
-# Build and test
-./epsilon build --test epsilon.core
+# Test specific module
+./epsilon --test epsilon.core
 
-# Test specific module after build
-./epsilon test --module epsilon.core
+# Test with verbose output
+./epsilon --test epsilon.core --verbose
+
+# Test specific package within module
+./epsilon --test epsilon.core:epsilon.log.tests
 ```
 
-### Local Package Development
+### Module Development
 
-For development of local packages without full module builds:
+For development with Epsilon's module system:
 
 ```bash
-# Run package in current directory (auto-detects name from module.lisp)
-./epsilon run [args...]
+# Load specific module and evaluate
+./epsilon --module epsilon.json --eval "(json:encode '(:foo \"bar\"))"
 
-# module.lisp format for run command
-# (:name "package-name"
-#  :sources ("src")
-#  :dependencies ("epsilon.core") 
-#  :main "package-name:main")
+# Interactive REPL with modules loaded
+./epsilon
+
+# List all available modules
+./epsilon --modules
 ```
 
 ## Troubleshooting
@@ -173,7 +166,7 @@ For development of local packages without full module builds:
 ```
 Error: Module 'foo' not found in registry
 ```
-Check module name in `package.edn` and ensure module is registered.
+Check module name in `module.lisp` and ensure module is in the modules directory.
 
 **Circular dependency**
 ```
@@ -187,23 +180,23 @@ Error in foo.lisp:42: Undefined function BAR
 ```
 Check function definitions and package exports.
 
-### Debug Build
+### Debug Testing
 
 ```bash
-# Maximum verbosity
-./epsilon --log 'trace:epsilon.tool.build' --build epsilon.core
+# Test with verbose output
+./epsilon --test epsilon.core --verbose
 
-# Show dependency graph
-./epsilon build --show-deps epsilon.core
+# Test specific test by name
+./epsilon --test epsilon.core:epsilon.log.tests:test-detailed-formatter --verbose
 ```
 
-### Clean Build
+### Clean Testing
 
 When encountering persistent issues:
 ```bash
 # Remove all artifacts
-rm -rf module/*/target
+rm -rf modules/*/target
 
-# Full rebuild
-./epsilon build --force
+# Self-test all modules
+./epsilon --exec epsilon.release:selftest
 ```

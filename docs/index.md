@@ -21,7 +21,7 @@ Technical documentation and design decisions.
 
 - [Data Structures](architecture/data-structures.md) - Maps, sequences, and sets
 - [Module Management](architecture/module-management.md) - Module system design
-- [Module Catalog](module-dependencies.md) - Complete module reference
+- [Module Catalog](architecture/module-catalog.md) - Complete module reference
 - Additional specifications in [architecture](architecture/index.md)
 
 ### Operations
