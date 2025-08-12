@@ -1,0 +1,523 @@
+(defpackage epsilon.foreign.struct
+  (:use cl)
+  (:local-nicknames
+   (map epsilon.map)
+   (trampoline epsilon.foreign.trampoline))
+  (:export
+   ;; Struct definition
+   #:define-c-struct
+   #:define-c-struct-auto
+   #:define-c-union
+   #:parse-c-struct
+   
+   ;; Layout management
+   #:struct-layout-p
+   #:get-struct-layout
+   #:struct-layout-size
+   #:struct-layout-alignment
+   #:struct-field-offset
+   #:struct-field-type
+   #:struct-field-size
+   #:struct-has-field-p
+   
+   ;; Instance creation and access
+   #:with-c-struct
+   #:with-c-union
+   #:with-struct-view
+   #:with-foreign-object
+   #:struct-ref
+   #:struct-ref-ptr
+   #:union-ref
+   #:struct-pointer
+   #:foreign-alloc
+   #:foreign-free
+   
+   ;; Serialization
+   #:struct-to-bytes
+   #:bytes-to-struct
+   #:struct-to-string))
+
+(in-package :epsilon.foreign.struct)
+
+;;;; C Struct Layout Discovery and Support
+
+;;; Struct layout representation
+
+(defstruct struct-layout
+  "Represents the memory layout of a C struct"
+  name
+  size
+  alignment
+  fields        ; map of field-name -> field-info
+  field-order)  ; list of field names in order
+
+(defstruct field-info
+  "Information about a struct field"
+  name
+  type
+  offset
+  size
+  alignment
+  bit-field-p
+  bit-offset
+  bit-width)
+
+(defvar *struct-layouts* (make-hash-table :test 'eq)
+  "Registry of struct layouts")
+
+;;; Basic type sizes and alignments (64-bit)
+
+(defparameter *type-info*
+  '((:char 1 1)
+    (:signed-char 1 1)
+    (:unsigned-char 1 1)
+    (:short 2 2)
+    (:unsigned-short 2 2)
+    (:int 4 4)
+    (:unsigned-int 4 4)
+    (:long 8 8)
+    (:unsigned-long 8 8)
+    (:long-long 8 8)
+    (:unsigned-long-long 8 8)
+    (:float 4 4)
+    (:double 8 8)
+    (:long-double 16 16)
+    (:pointer 8 8)
+    (:size-t 8 8)
+    (:ssize-t 8 8)
+    (:time-t 8 8)
+    (:clock-t 8 8)
+    (:pid-t 4 4)
+    (:uid-t 4 4)
+    (:gid-t 4 4)
+    (:mode-t 4 4)
+    (:off-t 8 8)
+    (:dev-t 8 8)
+    (:ino-t 8 8))
+  "Size and alignment for basic C types")
+
+(defun get-type-info (type)
+  "Get size and alignment for a type"
+  (cond
+    ;; Basic types
+    ((assoc type *type-info*)
+     (destructuring-bind (size align) (cdr (assoc type *type-info*))
+       (values size align)))
+    ;; Arrays
+    ((and (consp type) (eq (first type) :array))
+     (destructuring-bind (element-type count) (cdr type)
+       (multiple-value-bind (elem-size elem-align) (get-type-info element-type)
+         (values (* elem-size count) elem-align))))
+    ;; Structs
+    ((and (consp type) (eq (first type) :struct))
+     (let ((layout (get-struct-layout (second type))))
+       (values (struct-layout-size layout)
+               (struct-layout-alignment layout))))
+    ;; Pointers
+    ((and (consp type) (eq (first type) :pointer))
+     (values 8 8))
+    ;; Bit fields
+    ((and (consp type) (eq (first type) :bit))
+     (values 0 1)) ; Bit fields don't consume separate space
+    ;; Default
+    (t (values 8 8))))
+
+;;; Struct definition
+
+(defun calculate-struct-layout (fields)
+  "Calculate offsets and total size for struct fields"
+  (let ((offset 0)
+        (max-align 1)
+        (field-infos '())
+        (bit-offset 0)
+        (bit-container-offset nil))
+    (dolist (field-spec fields)
+      (destructuring-bind (name type &rest options) field-spec
+        (declare (ignore options))
+        (cond
+          ;; Bit field
+          ((and (consp type) (eq (first type) :bit))
+           (let ((width (second type)))
+             ;; Start new container if needed
+             (when (or (null bit-container-offset)
+                       (> (+ bit-offset width) 32))
+               (setf offset (align-offset offset 4))
+               (setf bit-container-offset offset)
+               (setf bit-offset 0)
+               (incf offset 4))
+             (push (make-field-info :name name
+                                   :type :unsigned-int
+                                   :offset bit-container-offset
+                                   :size 4
+                                   :alignment 4
+                                   :bit-field-p t
+                                   :bit-offset bit-offset
+                                   :bit-width width)
+                   field-infos)
+             (incf bit-offset width)))
+          ;; Regular field
+          (t
+           (setf bit-container-offset nil) ; End bit field sequence
+           (multiple-value-bind (size align) (get-type-info type)
+             (setf offset (align-offset offset align))
+             (push (make-field-info :name name
+                                   :type type
+                                   :offset offset
+                                   :size size
+                                   :alignment align
+                                   :bit-field-p nil)
+                   field-infos)
+             (incf offset size)
+             (setf max-align (max max-align align)))))))
+    ;; Align total size to struct alignment
+    (setf offset (align-offset offset max-align))
+    (values (nreverse field-infos) offset max-align)))
+
+(defun align-offset (offset alignment)
+  "Align offset to the given alignment"
+  (let ((remainder (mod offset alignment)))
+    (if (zerop remainder)
+        offset
+        (+ offset (- alignment remainder)))))
+
+(defun define-c-struct (name fields)
+  "Define a C struct with the given fields"
+  (multiple-value-bind (field-infos size alignment)
+      (calculate-struct-layout fields)
+    (let ((field-map map:+empty+))
+      (dolist (info field-infos)
+        (setf field-map (map:assoc field-map (field-info-name info) info)))
+      (let ((layout (make-struct-layout :name name
+                                        :size size
+                                        :alignment alignment
+                                        :fields field-map
+                                        :field-order (mapcar #'field-info-name field-infos))))
+        (setf (gethash name *struct-layouts*) layout)
+        ;; Register with trampoline system
+        (trampoline:register-c-type name
+                                    :base :struct
+                                    :size size
+                                    :alignment alignment)
+        layout))))
+
+(defun define-c-union (name fields)
+  "Define a C union with the given fields"
+  (let ((max-size 0)
+        (max-align 1)
+        (field-infos '()))
+    (dolist (field-spec fields)
+      (destructuring-bind (name type &rest options) field-spec
+        (declare (ignore options))
+        (multiple-value-bind (size align) (get-type-info type)
+          (push (make-field-info :name name
+                                :type type
+                                :offset 0  ; All union fields at offset 0
+                                :size size
+                                :alignment align
+                                :bit-field-p nil)
+                field-infos)
+          (setf max-size (max max-size size))
+          (setf max-align (max max-align align)))))
+    ;; Align total size
+    (setf max-size (align-offset max-size max-align))
+    (let ((field-map map:+empty+))
+      (dolist (info (nreverse field-infos))
+        (setf field-map (map:assoc field-map (field-info-name info) info)))
+      (let ((layout (make-struct-layout :name name
+                                        :size max-size
+                                        :alignment max-align
+                                        :fields field-map
+                                        :field-order (mapcar #'field-info-name
+                                                           (nreverse field-infos)))))
+        (setf (gethash name *struct-layouts*) layout)
+        layout))))
+
+(defun get-struct-layout (name)
+  "Get the layout for a struct type"
+  (gethash name *struct-layouts*))
+
+(defun struct-field-offset (layout field-name)
+  "Get the offset of a field in a struct"
+  (let ((info (map:get (struct-layout-fields layout) field-name)))
+    (when info
+      (field-info-offset info))))
+
+(defun struct-field-type (layout field-name)
+  "Get the type of a field in a struct"
+  (let ((info (map:get (struct-layout-fields layout) field-name)))
+    (when info
+      (field-info-type info))))
+
+(defun struct-field-size (layout field-name)
+  "Get the size of a field in a struct"
+  (let ((info (map:get (struct-layout-fields layout) field-name)))
+    (when info
+      (field-info-size info))))
+
+(defun struct-has-field-p (layout field-name)
+  "Check if a struct has a given field"
+  (map:get (struct-layout-fields layout) field-name))
+
+;;; Struct instances
+
+(defstruct c-struct-instance
+  "Runtime representation of a C struct"
+  layout
+  pointer
+  owned-p)  ; Whether we own the memory
+
+(defmacro with-c-struct ((var type) &body body)
+  "Allocate a C struct and bind it to var"
+  `(let* ((layout (get-struct-layout ',type))
+          (size (struct-layout-size layout))
+          (ptr (foreign-alloc size))
+          (,var (make-c-struct-instance :layout layout
+                                        :pointer ptr
+                                        :owned-p t)))
+     (unwind-protect
+          (progn
+            ;; Zero-initialize
+            (dotimes (i size)
+              (setf (sb-sys:sap-ref-8 ptr i) 0))
+            ,@body)
+       (when (c-struct-instance-owned-p ,var)
+         (foreign-free ptr)))))
+
+(defmacro with-c-union ((var type) &body body)
+  "Allocate a C union and bind it to var"
+  `(with-c-struct (,var ,type) ,@body))
+
+(defmacro with-struct-view ((var pointer type) &body body)
+  "Create a zero-copy view of a struct from foreign memory"
+  `(let* ((layout (get-struct-layout ',type))
+          (,var (make-c-struct-instance :layout layout
+                                        :pointer ,pointer
+                                        :owned-p nil)))
+     ,@body))
+
+(defmacro with-foreign-object ((var type) &body body)
+  "Allocate foreign memory for a type"
+  (let ((size-var (gensym "SIZE")))
+    `(let* ((,size-var ,(if (eq type :time-t) 8
+                            (if (and (consp type) (eq (first type) :pointer))
+                                8
+                                `(get-type-size ',type))))
+            (,var (foreign-alloc ,size-var)))
+       (unwind-protect
+            (progn ,@body)
+         (foreign-free ,var)))))
+
+(defun get-type-size (type)
+  "Get the size of a type"
+  (multiple-value-bind (size align) (get-type-info type)
+    (declare (ignore align))
+    size))
+
+;;; Field access
+
+(defun struct-ref (struct field-spec)
+  "Get a field value from a struct"
+  (let ((layout (c-struct-instance-layout struct))
+        (ptr (c-struct-instance-pointer struct)))
+    (if (consp field-spec)
+        ;; Nested field access
+        (destructuring-bind (field &rest subfields) field-spec
+          (let ((info (map:get (struct-layout-fields layout) field)))
+            (when info
+              (let ((field-type (field-info-type info)))
+                (if (and (consp field-type) (eq (first field-type) :struct))
+                    ;; Recurse into nested struct
+                    (let ((nested-layout (get-struct-layout (second field-type)))
+                          (nested-ptr (sb-sys:sap+ ptr (field-info-offset info))))
+                      (struct-ref (make-c-struct-instance :layout nested-layout
+                                                          :pointer nested-ptr
+                                                          :owned-p nil)
+                                 subfields))
+                    ;; Array access
+                    (when (and (consp field-type) (eq (first field-type) :array))
+                      (let ((index (first subfields))
+                            (elem-type (second field-type)))
+                        (read-value-at ptr 
+                                      (+ (field-info-offset info)
+                                         (* index (first (get-type-info elem-type))))
+                                      elem-type))))))))
+        ;; Simple field access
+        (let ((info (map:get (struct-layout-fields layout) field-spec)))
+          (when info
+            (if (field-info-bit-field-p info)
+                ;; Extract bit field
+                (let ((container (sb-sys:sap-ref-32 ptr (field-info-offset info)))
+                      (mask (1- (ash 1 (field-info-bit-width info)))))
+                  (logand (ash container (- (field-info-bit-offset info))) mask))
+                ;; Regular field
+                (read-value-at ptr (field-info-offset info) (field-info-type info))))))))
+
+(defun (setf struct-ref) (value struct field-spec)
+  "Set a field value in a struct"
+  (let ((layout (c-struct-instance-layout struct))
+        (ptr (c-struct-instance-pointer struct)))
+    (if (consp field-spec)
+        ;; Nested or array field
+        (destructuring-bind (field &rest subfields) field-spec
+          (let ((info (map:get (struct-layout-fields layout) field)))
+            (when info
+              (let ((field-type (field-info-type info)))
+                (cond
+                  ;; Nested struct
+                  ((and (consp field-type) (eq (first field-type) :struct))
+                   (let ((nested-layout (get-struct-layout (second field-type)))
+                         (nested-ptr (sb-sys:sap+ ptr (field-info-offset info))))
+                     (setf (struct-ref (make-c-struct-instance :layout nested-layout
+                                                               :pointer nested-ptr
+                                                               :owned-p nil)
+                                      subfields)
+                           value)))
+                  ;; Array element
+                  ((and (consp field-type) (eq (first field-type) :array))
+                   (let ((index (first subfields))
+                         (elem-type (second field-type)))
+                     (write-value-at ptr
+                                    (+ (field-info-offset info)
+                                       (* index (first (get-type-info elem-type))))
+                                    elem-type
+                                    value))))))))
+        ;; Simple field
+        (let ((info (map:get (struct-layout-fields layout) field-spec)))
+          (when info
+            (if (field-info-bit-field-p info)
+                ;; Set bit field
+                (let* ((offset (field-info-offset info))
+                       (bit-offset (field-info-bit-offset info))
+                       (bit-width (field-info-bit-width info))
+                       (mask (1- (ash 1 bit-width)))
+                       (container (sb-sys:sap-ref-32 ptr offset)))
+                  (setf container (logior (logand container
+                                                  (lognot (ash mask bit-offset)))
+                                         (ash (logand value mask) bit-offset)))
+                  (setf (sb-sys:sap-ref-32 ptr offset) container))
+                ;; Regular field
+                (write-value-at ptr (field-info-offset info) 
+                               (field-info-type info) value)))))
+    value))
+
+(defun union-ref (union field)
+  "Get a field value from a union"
+  (struct-ref union field))
+
+(defun (setf union-ref) (value union field)
+  "Set a field value in a union"
+  (setf (struct-ref union field) value))
+
+(defun struct-ref-ptr (pointer type field)
+  "Access a struct field through a pointer"
+  (let ((layout (get-struct-layout type)))
+    (struct-ref (make-c-struct-instance :layout layout
+                                        :pointer pointer
+                                        :owned-p nil)
+                field)))
+
+(defun read-value-at (ptr offset type)
+  "Read a value of the given type from memory"
+  (case type
+    (:char (sb-sys:signed-sap-ref-8 ptr offset))
+    (:unsigned-char (sb-sys:sap-ref-8 ptr offset))
+    (:short (sb-sys:signed-sap-ref-16 ptr offset))
+    (:unsigned-short (sb-sys:sap-ref-16 ptr offset))
+    (:int (sb-sys:signed-sap-ref-32 ptr offset))
+    (:unsigned-int (sb-sys:sap-ref-32 ptr offset))
+    ((:long :time-t :ssize-t :off-t) (sb-sys:signed-sap-ref-64 ptr offset))
+    ((:unsigned-long :size-t :dev-t :ino-t) (sb-sys:sap-ref-64 ptr offset))
+    (:float (sb-sys:sap-ref-single ptr offset))
+    (:double (sb-sys:sap-ref-double ptr offset))
+    (:pointer (sb-sys:sap-ref-sap ptr offset))
+    ((:pid-t :uid-t :gid-t :mode-t) (sb-sys:signed-sap-ref-32 ptr offset))
+    (t (if (and (consp type) (eq (first type) :pointer))
+           (sb-sys:sap-ref-sap ptr offset)
+           0))))
+
+(defun write-value-at (ptr offset type value)
+  "Write a value of the given type to memory"
+  (case type
+    (:char (setf (sb-sys:signed-sap-ref-8 ptr offset) value))
+    (:unsigned-char (setf (sb-sys:sap-ref-8 ptr offset) value))
+    (:short (setf (sb-sys:signed-sap-ref-16 ptr offset) value))
+    (:unsigned-short (setf (sb-sys:sap-ref-16 ptr offset) value))
+    (:int (setf (sb-sys:signed-sap-ref-32 ptr offset) value))
+    (:unsigned-int (setf (sb-sys:sap-ref-32 ptr offset) value))
+    ((:long :time-t :ssize-t :off-t) (setf (sb-sys:signed-sap-ref-64 ptr offset) value))
+    ((:unsigned-long :size-t) (setf (sb-sys:sap-ref-64 ptr offset) value))
+    (:float (setf (sb-sys:sap-ref-single ptr offset) value))
+    (:double (setf (sb-sys:sap-ref-double ptr offset) value))
+    (:pointer (setf (sb-sys:sap-ref-sap ptr offset) value))
+    ((:pid-t :uid-t :gid-t :mode-t) (setf (sb-sys:signed-sap-ref-32 ptr offset) value))
+    (t (when (and (consp type) (eq (first type) :pointer))
+         (setf (sb-sys:sap-ref-sap ptr offset) value)))))
+
+(defun struct-pointer (struct)
+  "Get the pointer to a struct's memory"
+  (c-struct-instance-pointer struct))
+
+;;; Memory management
+
+(defun foreign-alloc (size)
+  "Allocate foreign memory"
+  (sb-alien:alien-sap (sb-alien:make-alien (sb-alien:unsigned 8) size)))
+
+(defun foreign-free (ptr)
+  "Free foreign memory"
+  (sb-alien:free-alien (sb-alien:sap-alien ptr (* (sb-alien:unsigned 8)))))
+
+;;; Serialization
+
+(defun struct-to-bytes (struct)
+  "Serialize a struct to a byte vector"
+  (let* ((layout (c-struct-instance-layout struct))
+         (size (struct-layout-size layout))
+         (ptr (c-struct-instance-pointer struct))
+         (bytes (make-array size :element-type '(unsigned-byte 8))))
+    (dotimes (i size)
+      (setf (aref bytes i) (sb-sys:sap-ref-8 ptr i)))
+    bytes))
+
+(defun bytes-to-struct (bytes struct)
+  "Deserialize bytes into a struct"
+  (let* ((layout (c-struct-instance-layout struct))
+         (size (min (length bytes) (struct-layout-size layout)))
+         (ptr (c-struct-instance-pointer struct)))
+    (dotimes (i size)
+      (setf (sb-sys:sap-ref-8 ptr i) (aref bytes i)))
+    struct))
+
+(defun struct-to-string (struct)
+  "Pretty-print a struct"
+  (let* ((layout (c-struct-instance-layout struct))
+         (name (struct-layout-name layout)))
+    (with-output-to-string (s)
+      (format s "#<~A" name)
+      (dolist (field-name (struct-layout-field-order layout))
+        (let ((value (struct-ref struct field-name)))
+          (format s " ~A=~A" field-name value)))
+      (format s ">"))))
+
+;;; C header parsing
+
+(defun parse-c-struct (name header-text)
+  "Parse a C struct definition from header text (simplified)"
+  ;; This is a simplified parser - real implementation would use Clang
+  (declare (ignore header-text))
+  ;; For now, just create a dummy struct
+  (define-c-struct name
+    '((dummy :int))))
+
+(defun define-c-struct-auto (name header-text)
+  "Define a struct by parsing C header text"
+  (parse-c-struct name header-text))
+
+;;; Integration with defshared
+
+(defmacro defshared (name c-name library return-type &rest args)
+  "Define a foreign function (temporary compatibility)"
+  (declare (ignore c-name library return-type args))
+  `(defun ,name (&rest args)
+     (declare (ignore args))
+     0))

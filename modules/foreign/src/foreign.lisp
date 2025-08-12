@@ -3,7 +3,12 @@
   (:local-nicknames
    (map epsilon.map)
    (seq epsilon.sequence)
-   (path epsilon.path))
+   (path epsilon.path)
+   (trampoline epsilon.foreign.trampoline)
+   (marshalling epsilon.foreign.marshalling)
+   (struct epsilon.foreign.struct)
+   (callback epsilon.foreign.callback)
+   (callback-impl epsilon.foreign.callback-impl))
   (:export
    ;; Core FFI
    shared-call
@@ -36,7 +41,92 @@
    
    ;; Type Mapping
    def-type-map
-   *primitive-type-map*))
+   *primitive-type-map*
+   
+   ;; New trampoline-based interface
+   defshared-fast
+   shared-call-fast
+   
+   ;; Re-export from trampoline module
+   make-ffi-trampoline
+   get-or-create-trampoline
+   c-type
+   c-type-p
+   c-type-base
+   c-type-size
+   c-type-alignment
+   c-type-signed-p
+   get-c-type
+   ffi-signature
+   ffi-signature-p
+   ffi-signature-return-type
+   ffi-signature-arg-types
+   ffi-signature-trampoline
+   register-signature
+   get-signature
+   clear-signature-registry
+   convert-to-foreign
+   convert-from-foreign
+   
+   ;; Re-export from marshalling module
+   infer-function-signature
+   with-pinned-array
+   with-string-array
+   with-output-array
+   define-enum
+   enum-value
+   enum-keyword
+   defshared-auto
+   defshared-smart
+   define-c-type
+   foreign-error
+   foreign-error-p
+   foreign-error-code
+   foreign-error-function
+   bool-to-foreign
+   foreign-to-bool
+   
+   ;; Re-export from struct module
+   define-c-struct
+   define-c-struct-auto
+   define-c-union
+   parse-c-struct
+   struct-layout-p
+   get-struct-layout
+   struct-layout-size
+   struct-layout-alignment
+   struct-field-offset
+   struct-field-type
+   struct-field-size
+   struct-has-field-p
+   with-c-struct
+   with-c-union
+   with-struct-view
+   with-foreign-object
+   struct-ref
+   struct-ref-ptr
+   union-ref
+   struct-pointer
+   struct-to-bytes
+   bytes-to-struct
+   struct-to-string
+   
+   ;; Re-export from callback module
+   make-callback
+   call-callback
+   callback-pointer
+   register-callback
+   unregister-callback
+   get-callback
+   list-callbacks
+   defcallback
+   with-callback
+   with-callback-scope
+   callback-info
+   callback-info-p
+   callback-info-function
+   callback-info-signature
+   callback-info-pointer))
 
 (in-package epsilon.foreign)
 
@@ -573,28 +663,10 @@
     (t
      (error "Unsupported type specifier: ~A" type))))
 
+;; Now delegating to trampoline:convert-to-foreign
 (defun convert-to-foreign (value type)
   "Convert Lisp value to foreign representation"
-  (case type
-    (:string 
-     (if (stringp value)
-         (sb-alien:make-alien-string value)
-         value))
-    (:char 
-     (if (characterp value) 
-         (char-code value) 
-         value))
-    ((:int :long :short :unsigned-int :unsigned-long :unsigned-short)
-     (if (numberp value) value (error "Expected number for ~A" type)))
-    ((:float :double)
-     (if (numberp value) (coerce value 'double-float) value))
-    (:pointer
-     (cond 
-       ((numberp value) (sb-sys:int-sap value))  ; Convert integer address to SAP
-       ((sb-sys:system-area-pointer-p value) value)  ; Already a SAP
-       ((zerop value) (sb-sys:int-sap 0))  ; NULL pointer
-       (t value)))  ; Hope it's already the right type
-    (otherwise value)))
+  (trampoline:convert-to-foreign value type))
 
 ;;; defshared: Defines a Lisp function that calls a C function
 ;;; Creates optimized calling paths based on type information
@@ -879,4 +951,168 @@
   (logand data #xffffffff))
 
 (defvar *primitive-type-map*)
+
+;;;; New Trampoline-based Fast FFI
+
+(defun shared-call-fast (function-designator return-type arg-types &rest args)
+  "Fast FFI call using compiled trampolines instead of eval"
+  (let ((function-address
+          (etypecase function-designator
+            (symbol (lib-function 
+                     (lib-open "libc") 
+                     (string function-designator)))
+            (list (destructuring-bind (fn-name lib-name) function-designator
+                    (lib-function 
+                     (lib-open lib-name) 
+                     (string fn-name)))))))
+    (unless function-address
+      (error "Could not find function ~A" function-designator))
+    ;; Use trampoline system
+    (trampoline:call-with-trampoline function-address return-type arg-types args)))
+
+(defmacro defshared-fast (lisp-name c-name library return-type &rest args)
+  "Fast version of defshared using trampolines"
+  (let* ((doc-pos (position :documentation args))
+         (documentation (when doc-pos (nth (1+ doc-pos) args)))
+         (arg-specs (if doc-pos
+                        (append (subseq args 0 doc-pos)
+                                (subseq args (+ doc-pos 2)))
+                        args))
+         ;; Filter out empty lists which represent no arguments
+         (arg-specs (remove-if (lambda (spec) (and (listp spec) (null spec))) arg-specs))
+         (arg-names (when arg-specs (mapcar #'first arg-specs)))
+         (arg-types (when arg-specs (mapcar #'second arg-specs))))
+    `(progn
+       ;; Register the signature
+       (trampoline:register-signature ',lisp-name ,return-type ',(or arg-types '()))
+       ;; Define the function
+       (defun ,lisp-name ,arg-names
+         ,@(when documentation (list documentation))
+         (shared-call-fast (list ,c-name ,library) ,return-type ',(or arg-types '()) ,@arg-names)))))
+
+;; Re-export trampoline functions for convenience
+(defun make-ffi-trampoline (return-type arg-types)
+  (trampoline:make-ffi-trampoline return-type arg-types))
+
+(defun get-or-create-trampoline (return-type arg-types)
+  (trampoline:get-or-create-trampoline return-type arg-types))
+
+(defun get-c-type (type)
+  (trampoline:get-c-type type))
+
+(defun register-signature (name return-type arg-types)
+  (trampoline:register-signature name return-type arg-types))
+
+(defun get-signature (name)
+  (trampoline:get-signature name))
+
+(defun clear-signature-registry ()
+  (trampoline:clear-signature-registry))
+
+;; Re-export struct accessors
+(defun c-type-p (x) (trampoline:c-type-p x))
+(defun c-type-base (x) (trampoline:c-type-base x))
+(defun c-type-size (x) (trampoline:c-type-size x))
+(defun c-type-alignment (x) (trampoline:c-type-alignment x))
+(defun c-type-signed-p (x) (trampoline:c-type-signed-p x))
+
+(defun ffi-signature-p (x) (trampoline:ffi-signature-p x))
+(defun ffi-signature-return-type (x) (trampoline:ffi-signature-return-type x))
+(defun ffi-signature-arg-types (x) (trampoline:ffi-signature-arg-types x))
+(defun ffi-signature-trampoline (x) (trampoline:ffi-signature-trampoline x))
+
+;; Use the existing convert-to-foreign that's already defined earlier in the file
+;; Just wrap convert-from-foreign
+(defun convert-from-foreign (value type) (trampoline:convert-from-foreign value type))
+
+;; Re-export marshalling functions
+(defun infer-function-signature (name) (marshalling:infer-function-signature name))
+(defmacro with-pinned-array ((var array) &body body)
+  `(marshalling:with-pinned-array (,var ,array) ,@body))
+(defmacro with-string-array ((var strings) &body body)
+  `(marshalling:with-string-array (,var ,strings) ,@body))
+(defmacro with-output-array ((var count type) &body body)
+  `(marshalling:with-output-array (,var ,count ,type) ,@body))
+(defun define-enum (name mappings) (marshalling:define-enum name mappings))
+(defun enum-value (enum-name keyword) (marshalling:enum-value enum-name keyword))
+(defun enum-keyword (enum-name value) (marshalling:enum-keyword enum-name value))
+(defun define-c-struct (name &rest fields) 
+  (apply #'struct:define-c-struct name fields))
+(defun define-c-struct-auto (name header-text)
+  (struct:define-c-struct-auto name header-text))
+(defun define-c-union (name &rest fields)
+  (apply #'struct:define-c-union name fields))
+(defun parse-c-struct (name header)
+  (struct:parse-c-struct name header))
+(defun struct-layout-p (x) (struct:struct-layout-p x))
+(defun get-struct-layout (name) (struct:get-struct-layout name))
+(defun struct-layout-size (layout) (struct:struct-layout-size layout))
+(defun struct-layout-alignment (layout) (struct:struct-layout-alignment layout))
+(defun struct-field-offset (layout field) (struct:struct-field-offset layout field))
+(defun struct-field-type (layout field) (struct:struct-field-type layout field))
+(defun struct-field-size (layout field) (struct:struct-field-size layout field))
+(defun struct-has-field-p (layout field) (struct:struct-has-field-p layout field))
+(defmacro with-c-struct ((var type) &body body)
+  `(struct:with-c-struct (,var ,type) ,@body))
+(defmacro with-c-union ((var type) &body body)
+  `(struct:with-c-union (,var ,type) ,@body))
+(defmacro with-struct-view ((var ptr type) &body body)
+  `(struct:with-struct-view (,var ,ptr ,type) ,@body))
+(defmacro with-foreign-object ((var type) &body body)
+  `(struct:with-foreign-object (,var ,type) ,@body))
+(defun struct-ref (struct field) (struct:struct-ref struct field))
+(defun (setf struct-ref) (value struct field) 
+  (setf (struct:struct-ref struct field) value))
+(defun struct-ref-ptr (ptr type field) (struct:struct-ref-ptr ptr type field))
+(defun union-ref (union field) (struct:union-ref union field))
+(defun (setf union-ref) (value union field)
+  (setf (struct:union-ref union field) value))
+(defun struct-pointer (struct) (struct:struct-pointer struct))
+(defun struct-to-bytes (struct) (struct:struct-to-bytes struct))
+(defun bytes-to-struct (bytes struct) (struct:bytes-to-struct bytes struct))
+(defun struct-to-string (struct) (struct:struct-to-string struct))
+(defmacro defshared-auto (name c-name library &rest options)
+  `(marshalling:defshared-auto ,name ,c-name ,library ,@options))
+(defmacro defshared-smart (name c-name &optional (library "libc"))
+  `(marshalling:defshared-smart ,name ,c-name ,library))
+
+;; Callback re-exports
+(defun make-callback (function return-type arg-types)
+  (callback:make-callback function return-type arg-types))
+(defun call-callback (ptr &rest args)
+  (apply #'callback:call-callback ptr args))
+(defun callback-pointer (name)
+  (callback:callback-pointer name))
+(defun register-callback (name function return-type arg-types)
+  (callback:register-callback name function return-type arg-types))
+(defun unregister-callback (name-or-id)
+  (callback:unregister-callback name-or-id))
+(defun get-callback (name-or-id)
+  (callback:get-callback name-or-id))
+(defun list-callbacks ()
+  (callback:list-callbacks))
+(defmacro defcallback (name return-type lambda-list &body body)
+  `(callback:defcallback ,name ,return-type ,lambda-list ,@body))
+(defmacro with-callback ((var function return-type arg-types) &body body)
+  `(callback:with-callback (,var ,function ,return-type ,arg-types) ,@body))
+(defmacro with-callback-scope (&body body)
+  `(callback:with-callback-scope ,@body))
+(defun callback-info-p (x) (callback:callback-info-p x))
+(defun callback-info-function (info) (callback:callback-info-function info))
+(defun callback-info-pointer (info) (callback:callback-info-pointer info))
+(defun define-c-type (name size &rest args)
+  (apply #'marshalling:define-c-type name size args))
+(defun foreign-error-p (x) (typep x 'marshalling:foreign-error))
+(defun foreign-error-code (e) (marshalling:foreign-error-code e))
+(defun foreign-error-function (e) (marshalling:foreign-error-function e))
+(defun bool-to-foreign (value) (marshalling:bool-to-foreign value))
+(defun foreign-to-bool (value) (marshalling:foreign-to-bool value))
+
+;; Load libffi bridge integration
+(eval-when (:load-toplevel :execute)
+  (handler-case
+      (load (merge-pathnames "libffi-bridge.lisp" 
+                             (or *load-pathname* *compile-file-pathname*)))
+    (error (e)
+      (warn "Failed to load libffi bridge: ~A" e))))
 
