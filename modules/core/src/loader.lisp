@@ -9,9 +9,7 @@
    (pkg epsilon.sys.pkg)
    (env epsilon.sys.env)
    (fs epsilon.sys.fs)
-   (digest epsilon.digest)
    (fn epsilon.function)
-   (hex epsilon.hex)
    (map epsilon.map)
    (seq epsilon.sequence)
    (str epsilon.string)
@@ -239,33 +237,24 @@
 (defclass locatable ()
   ((uri :initarg :uri :accessor uri)))
 
-(defclass hashable ()
-  ((hash :initarg :hash :accessor hash)))
 
 (defgeneric build-order (node &key)
   (:documentation "Produce a sequence of steps necessary to build a specific node in the project source tree."))
 
-(defclass source-info (locatable hashable)
+(defclass source-info (locatable)
   ((defines :initarg :defines :accessor source-info-defines)
    (requires :initarg :requires :accessor source-info-requires)))
 
 (defmethod path ((self locatable))
   (path:path-from-uri (uri self)))
 
-(defun calculate-hash (uri)
-  (let ((digest (digest:make-digest :sha-256)))
-    (with-open-file (stream (path:path-from-uri uri) :element-type 'unsigned-byte)
-      (digest:digest-stream digest stream))
-    (hex:u8-to-hex
-     (digest:get-digest digest))))
 
 (defmethod print-object ((obj source-info) stream)
   (print-unreadable-object (obj stream :type t)
-    (format stream "~a (~a)"
-            (path obj)
-            (subseq (hash obj) 0 10))))
+    (format stream "~a"
+            (path obj))))
 
-(defclass target-info (locatable hashable)
+(defclass target-info (locatable)
   ())
 
 (defclass build-input ()
@@ -346,7 +335,6 @@
     (when (or defines requires)
       (make-instance 'source-info
                      :uri uri
-                     :hash (calculate-hash uri)
                      :defines (pkg:normalize defines)
                      :requires (mapcar #'pkg:normalize requires)))))
 
@@ -450,9 +438,7 @@
          (target-path (path:string-path-join "target" "package" "fasl" "lib" target-rel-path))
          (target-uri (path:uri-merge (uri project) target-path)))
     (make-instance 'target-info
-                   :uri target-uri
-                   :hash (when (fs:exists-p target-uri)
-                           (calculate-hash target-uri)))))
+                   :uri target-uri)))
 
 (defun %make-build-input (project source-info)
   "Create target information for a source file"
@@ -488,7 +474,7 @@
    External package dependencies are ignored (should be loaded separately).
    Returns two values: sorted list and cyclic dependencies (if any)."
   (let* ((nodes (reduce (lambda (m source-info)
-                         (map:assoc m (hash source-info) source-info))
+                         (map:assoc m (path:path-from-uri (uri source-info)) source-info))
                        (remove-if #'null sources)
                        :initial-value map:+empty+))
          ;; Only track packages defined within this set of sources
@@ -501,34 +487,34 @@
          (visiting map:+empty+)
          (cycles nil)
          (sorted nil))
-    (labels ((dep-hashes (source)
+    (labels ((dep-paths (source)
                ;; Only include dependencies that are defined in this source set
                (loop :for pkg :in (source-info-requires source)
                      :for dep-source := (map:get local-packages pkg)
                      :when dep-source  ;; Only if it's a local dependency
-                       :collect (hash dep-source)))
-             (visit (hash path)
-               (when (map:contains-p visiting hash)
-                 (let ((cycle (ldiff path (member hash path))))
+                       :collect (path:path-from-uri (uri dep-source))))
+             (visit (path-key path)
+               (when (map:contains-p visiting path-key)
+                 (let ((cycle (ldiff path (member path-key path))))
                    (push cycle cycles))
                  (return-from visit nil))
-               (when (member hash sorted :test #'equal)
+               (when (member path-key sorted :test #'equal)
                  (return-from visit t))
-               (let ((node (map:get nodes hash)))
+               (let ((node (map:get nodes path-key)))
                  (unless node
                    (return-from visit t))
-                 (map:assoc! visiting hash t)
-                 (let ((source (map:get nodes hash)))
-                   (dolist (dep (dep-hashes source))
-                     (visit dep (cons hash path))))
-                 (setf visiting (map:dissoc visiting hash))
-                 (push hash sorted)
+                 (map:assoc! visiting path-key t)
+                 (let ((source (map:get nodes path-key)))
+                   (dolist (dep (dep-paths source))
+                     (visit dep (cons path-key path))))
+                 (setf visiting (map:dissoc visiting path-key))
+                 (push path-key sorted)
                  t)))
       (dolist (source-info (map:vals nodes))
-        (visit (hash source-info) nil))
+        (visit (path:path-from-uri (uri source-info)) nil))
       (values
-       (mapcar (lambda (hash)
-                 (map:get nodes hash))
+       (mapcar (lambda (path-key)
+                 (map:get nodes path-key))
                (nreverse sorted))
        cycles))))
 

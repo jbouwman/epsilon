@@ -173,16 +173,15 @@
             (xf:into '() (xf:take 3) '(1 2 3 4 5 6 7 8 9 10)))
   
   ;; Custom early termination
-  (let ((sum 0))
-    (is-equal 3
-              (xf:transduce (xf:map #'identity)
-                           (lambda (acc x)
-                             (let ((new-sum (+ acc x)))
-                               (if (> new-sum 5)
-                                   (xf:reduced acc)
-                                   new-sum)))
-                           0
-                           '(1 2 3 4 5)))))
+  (is-equal 3
+            (xf:transduce (xf:map #'identity)
+                         (lambda (acc x)
+                           (let ((new-sum (+ acc x)))
+                             (if (> new-sum 5)
+                                 (xf:reduced acc)
+                                 new-sum)))
+                         0
+                         '(1 2 3 4 5))))
 
 (deftest halt-when-transducer
   "Test halt-when transducer"

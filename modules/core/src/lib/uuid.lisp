@@ -212,15 +212,15 @@
   "Hash a namespace UUID and name using MD5 for UUID v3."
   ;; This would require MD5 implementation
   ;; For now, using a simplified approach
-  (let ((combined (concatenate 'string (to-string namespace) name)))
-    (random-bytes 16))) ; Placeholder
+  (declare (ignore namespace name))
+  (random-bytes 16)) ; Placeholder
 
 (defun hash-name-sha1 (namespace name)
   "Hash a namespace UUID and name using SHA-1 for UUID v5."
   ;; This would require SHA-1 implementation
   ;; For now, using a simplified approach
-  (let ((combined (concatenate 'string (to-string namespace) name)))
-    (random-bytes 16))) ; Placeholder
+  (declare (ignore namespace name))
+  (random-bytes 16)) ; Placeholder
 
 (defun make-v3 (namespace name)
   "Create a version 3 (MD5 name-based) UUID."
