@@ -9,9 +9,7 @@
    (pkg epsilon.sys.pkg)
    (env epsilon.sys.env)
    (fs epsilon.sys.fs)
-   (digest epsilon.digest)
    (fn epsilon.function)
-   (hex epsilon.hex)
    (map epsilon.map)
    (seq epsilon.sequence)
    (str epsilon.string)
@@ -59,6 +57,9 @@
    module-metadata))
 
 (in-package epsilon.loader)
+
+(defparameter *debug-build-order* nil
+  "Enable debug logging of build order information")
 
 (defclass module-info ()
   ((name :initarg :name 
@@ -239,33 +240,24 @@
 (defclass locatable ()
   ((uri :initarg :uri :accessor uri)))
 
-(defclass hashable ()
-  ((hash :initarg :hash :accessor hash)))
 
 (defgeneric build-order (node &key)
   (:documentation "Produce a sequence of steps necessary to build a specific node in the project source tree."))
 
-(defclass source-info (locatable hashable)
+(defclass source-info (locatable)
   ((defines :initarg :defines :accessor source-info-defines)
    (requires :initarg :requires :accessor source-info-requires)))
 
 (defmethod path ((self locatable))
   (path:path-from-uri (uri self)))
 
-(defun calculate-hash (uri)
-  (let ((digest (digest:make-digest :sha-256)))
-    (with-open-file (stream (path:path-from-uri uri) :element-type 'unsigned-byte)
-      (digest:digest-stream digest stream))
-    (hex:u8-to-hex
-     (digest:get-digest digest))))
 
 (defmethod print-object ((obj source-info) stream)
   (print-unreadable-object (obj stream :type t)
-    (format stream "~a (~a)"
-            (path obj)
-            (subseq (hash obj) 0 10))))
+    (format stream "~a"
+            (path obj))))
 
-(defclass target-info (locatable hashable)
+(defclass target-info (locatable)
   ())
 
 (defclass build-input ()
@@ -346,7 +338,6 @@
     (when (or defines requires)
       (make-instance 'source-info
                      :uri uri
-                     :hash (calculate-hash uri)
                      :defines (pkg:normalize defines)
                      :requires (mapcar #'pkg:normalize requires)))))
 
@@ -417,9 +408,11 @@
       (remove-if #'null
                  (mapcar #'make-source-info
                          (fs:list-files uri ".lisp")))
-    (error ()
+    (file-error ()
       ;; If directory doesn't exist or can't be read, return empty list
-      '())))
+      '())
+    ;; Let other errors (like package definition errors) bubble up
+    ))
 
 (defun collect-all-sources (project)
   "Collect sources from this project only (dependencies should already be loaded)"
@@ -450,9 +443,7 @@
          (target-path (path:string-path-join "target" "package" "fasl" "lib" target-rel-path))
          (target-uri (path:uri-merge (uri project) target-path)))
     (make-instance 'target-info
-                   :uri target-uri
-                   :hash (when (fs:exists-p target-uri)
-                           (calculate-hash target-uri)))))
+                   :uri target-uri)))
 
 (defun %make-build-input (project source-info)
   "Create target information for a source file"
@@ -470,8 +461,29 @@
 ;; test-build-order removed - use project-resources with :tests instead
 
 (defun read-first-form (uri)
-  (with-open-file (stream (path:path-from-uri uri))
-    (read stream)))
+  "Read forms from a file until we find a defpackage or in-package form.
+   Throws an error if no package definition is found, except for bootstrap files."
+  (let ((file-path (path:path-from-uri uri)))
+    (with-open-file (stream file-path)
+      (loop for form = (ignore-errors (read stream nil :eof))
+            until (eq form :eof)
+            when (and (consp form) 
+                      (member (first form) '(defpackage in-package) :test #'string-equal))
+              return form
+            finally 
+              ;; Allow certain types of files to not have package definitions
+              (let ((filename (file-namestring file-path))
+                    (path-str (namestring file-path)))
+                ;; Bootstrap files, test files, and example files are exempt
+                (unless (or (member filename '("boot.lisp" "epsilon.lisp" "main.lisp") :test #'string=)
+                            (search "/tests/" path-str)
+                            (search "/examples/" path-str)
+                            (search "/benchmarks/" path-str)
+                            (search "/experiments/" path-str))
+                  (error "No package definition (defpackage or in-package) found in file: ~A~%~
+                          Regular source files must define a package. Bootstrap, test, example, and experimental files are exempt." 
+                         file-path))
+                (return nil))))))
 
 (defun interpret-package (form)
   (cond ((string-equal 'defpackage (first form))
@@ -488,7 +500,7 @@
    External package dependencies are ignored (should be loaded separately).
    Returns two values: sorted list and cyclic dependencies (if any)."
   (let* ((nodes (reduce (lambda (m source-info)
-                         (map:assoc m (hash source-info) source-info))
+                         (map:assoc m (path:path-from-uri (uri source-info)) source-info))
                        (remove-if #'null sources)
                        :initial-value map:+empty+))
          ;; Only track packages defined within this set of sources
@@ -501,34 +513,34 @@
          (visiting map:+empty+)
          (cycles nil)
          (sorted nil))
-    (labels ((dep-hashes (source)
+    (labels ((dep-paths (source)
                ;; Only include dependencies that are defined in this source set
                (loop :for pkg :in (source-info-requires source)
                      :for dep-source := (map:get local-packages pkg)
                      :when dep-source  ;; Only if it's a local dependency
-                       :collect (hash dep-source)))
-             (visit (hash path)
-               (when (map:contains-p visiting hash)
-                 (let ((cycle (ldiff path (member hash path))))
+                       :collect (path:path-from-uri (uri dep-source))))
+             (visit (path-key path)
+               (when (map:contains-p visiting path-key)
+                 (let ((cycle (ldiff path (member path-key path))))
                    (push cycle cycles))
                  (return-from visit nil))
-               (when (member hash sorted :test #'equal)
+               (when (member path-key sorted :test #'equal)
                  (return-from visit t))
-               (let ((node (map:get nodes hash)))
+               (let ((node (map:get nodes path-key)))
                  (unless node
                    (return-from visit t))
-                 (map:assoc! visiting hash t)
-                 (let ((source (map:get nodes hash)))
-                   (dolist (dep (dep-hashes source))
-                     (visit dep (cons hash path))))
-                 (setf visiting (map:dissoc visiting hash))
-                 (push hash sorted)
+                 (map:assoc! visiting path-key t)
+                 (let ((source (map:get nodes path-key)))
+                   (dolist (dep (dep-paths source))
+                     (visit dep (cons path-key path))))
+                 (setf visiting (map:dissoc visiting path-key))
+                 (push path-key sorted)
                  t)))
       (dolist (source-info (map:vals nodes))
-        (visit (hash source-info) nil))
+        (visit (path:path-from-uri (uri source-info)) nil))
       (values
-       (mapcar (lambda (hash)
-                 (map:get nodes hash))
+       (mapcar (lambda (path-key)
+                 (map:get nodes path-key))
                (nreverse sorted))
        cycles))))
 
@@ -724,41 +736,62 @@
   (let* ((build (make-instance 'project-build
                                :project project
                                :results '()))
-         (build-inputs (build-order project))
-         (results (let ((index 0))
-                    (seq:map (lambda (build-input)
-                               (incf index)
-                               (let ((result (if force
-                                                 (compile-source environment build-input)
-                                                 (case (build-input-status build-input)
-                                                   ((:target-missing
-                                                     :source-newer)
-                                                    (compile-source environment build-input))
-                                                   (t
-                                                    (load-source environment build-input))))))
-                                 (when (compilation-errors result)
-                                   (log:error "Compilation failed: ~A" 
-                                                  (path (source-info (build-input result)))))
-                                 result))
-                             build-inputs))))
-    (setf (slot-value build 'results) results)
-    (setf (end-time build) (get-internal-real-time))
+         ;; Force build-inputs to ensure we have a concrete list  
+         (build-inputs (seq:seq (seq:realize (build-order project)))))
+    
+    ;; Log build information for debugging (can be disabled if not needed)
+    (when *debug-build-order*
+      (log:info "Build order for ~A:" (project-name project))
+      (let ((index 0)
+            (build-list (seq:realize build-inputs)))
+        (dolist (build-input build-list)
+          (incf index)
+          (log:info "  ~D. ~A (~A)" 
+                    index
+                    (path:path-from-uri (source-uri build-input))
+                    (build-input-status build-input)))))
+    
+    ;; Force compilation/loading to happen immediately by realizing the sequence
+    (let* ((results (let ((index 0))
+                      (seq:realize 
+                       (seq:map (lambda (build-input)
+                                  (incf index)
+                                  (let ((result (if force
+                                                    (compile-source environment build-input)
+                                                    (case (build-input-status build-input)
+                                                      ((:target-missing
+                                                        :source-newer)
+                                                       (compile-source environment build-input))
+                                                      (t
+                                                       (load-source environment build-input))))))
+                                    (when (compilation-errors result)
+                                      (log:error "Compilation failed: ~A" 
+                                                     (path (source-info (build-input result)))))
+                                    result))
+                                build-inputs)))))
+      ;; Now results is a realized list, safe to store and use
+      (setf (slot-value build 'results) results)
+      (setf (end-time build) (get-internal-real-time))
       
-    (when (and (not force)
-               (seq:every-p (lambda (result)
-                              (not (compilation-errors result)))
-                            results))
-      (let* ((fasl-files (seq:map (lambda (build-input)
-                                    (path:path-from-uri (target-uri build-input)))
-                                  build-inputs))
-             (binary-rel-path (path:string-path-join 
-                                    "target" "package" "module.fasl"))
-             (binary-path (path:path-from-uri 
-                                (path:uri-merge (uri project) binary-rel-path))))
-        (when (seq:not-empty-p fasl-files)
-          (create-binary (seq:realize fasl-files) binary-path))))
+      ;; results is now a concrete list, so every-p will work correctly
+      (when (and (not force)
+                 (every (lambda (result)
+                          (not (compilation-errors result)))
+                        results))
+        (let* (;; Force fasl-files to be computed immediately
+               (fasl-files (seq:realize 
+                            (seq:map (lambda (build-input)
+                                       (path:path-from-uri (target-uri build-input)))
+                                     build-inputs)))
+               (binary-rel-path (path:string-path-join 
+                                      "target" "package" "module.fasl"))
+               (binary-path (path:path-from-uri 
+                                  (path:uri-merge (uri project) binary-rel-path))))
+          ;; fasl-files is now a concrete list
+          (when fasl-files
+            (create-binary fasl-files binary-path))))
       
-    build))
+      build)))
 
 (defun load-module (environment package &key force compile-only)
   "Ensure a package is available in the environment.

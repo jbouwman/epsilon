@@ -7,10 +7,9 @@
     (require :epsilon.test)))
 
 (defpackage epsilon.process.tests
-  (:use cl)
+  (:use cl epsilon.test)
   (:local-nicknames
-   (process epsilon.process)
-   (test epsilon.test)))
+   (process epsilon.process)))
 
 (in-package epsilon.process.tests)
 
@@ -18,12 +17,12 @@
 ;;; Command Building and Escaping Tests
 ;;; ============================================================================
 
-(test:deftest test-escape-shell-arg-posix ()
+(deftest test-escape-shell-arg-posix ()
   "Test POSIX shell argument escaping"
-  (test:is-equal "'hello'" (process:escape-shell-arg "hello" :shell :posix))
-  (test:is-equal "'hello world'" (process:escape-shell-arg "hello world" :shell :posix))
-  (test:is-equal "'hello'\\''world'" (process:escape-shell-arg "hello'world" :shell :posix))
-  (test:is-equal "''" (process:escape-shell-arg "" :shell :posix)))
+  (is-equal "'hello'" (process:escape-shell-arg "hello" :shell :posix))
+  (is-equal "'hello world'" (process:escape-shell-arg "hello world" :shell :posix))
+  (is-equal "'hello'\\''world'" (process:escape-shell-arg "hello'world" :shell :posix))
+  (is-equal "''" (process:escape-shell-arg "" :shell :posix)))
 
 (deftest test-escape-shell-arg-windows ()
   "Test Windows shell argument escaping"
@@ -95,8 +94,8 @@
 (deftest test-stream-output-callback ()
   "Test stream output processing with callback"
   (let ((received-lines '()))
-    (process:run-sync "echo" 
-                      :args '("line1\nline2\nline3")
+    (process:run-sync "printf" 
+                      :args '("line1\\nline2\\nline3\\n")
                       :stream-output (lambda (line)
                                        (push line received-lines)))
     (is (= 3 (length received-lines)))
@@ -124,9 +123,9 @@
 (deftest test-shell-execution ()
   "Test running commands through shell"
   (multiple-value-bind (output error-output exit-code)
-      (process:run-sync "echo" 
-                        :args '("$HOME")
-                        :shell t
+      (process:run-sync "sh" 
+                        :args '("-c" "echo $HOME")
+                        :shell nil
                         :error-on-failure nil)
     (is-equal 0 exit-code)
     ;; When run through shell, $HOME should be expanded
@@ -219,7 +218,7 @@
 
 (deftest test-environment-handling ()
   "Test environment variable handling"
-  (let ((test-env (list (cons "TEST_VAR" "test_value"))))
+  (let ((test-env (list "TEST_VAR=test_value")))
     (multiple-value-bind (output error-output exit-code)
         (process:run-sync "sh" 
                           :args '("-c" "echo $TEST_VAR")

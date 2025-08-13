@@ -18,6 +18,10 @@
            #:build-command-line
            #:find-executable
            #:process-error-condition
+           #:process-error-exit-code
+           #:process-error-command
+           #:subprocess-command
+           #:subprocess-args
            #:command-not-found
            #:process-timeout-error
            #:*default-timeout*

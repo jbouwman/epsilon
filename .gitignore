@@ -2,3 +2,5 @@ target
 releases
 TAGS
 node_modules
+package.json
+package-lock.json
