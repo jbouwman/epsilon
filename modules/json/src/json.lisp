@@ -22,7 +22,8 @@
     :comma :colon :eof))
 
 (defun tokenize-string (lexer)
-  "Tokenize a JSON string literal."
+  "Tokenize a JSON string literal from LEXER, handling escape sequences.
+   Example: tokenizes \"hello\" to (:string . \"hello\")"
   (multiple-value-bind (start-pos start-line start-column)
       (lexer:lexer-position lexer)
     (unless (char= (lexer:next lexer) #\")

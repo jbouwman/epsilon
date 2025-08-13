@@ -19,16 +19,16 @@ The API documentation is organized by package, with each package having its own 
 ### Utility Libraries
 
 - **[epsilon.argparse](epsilon.argparse/)** - Command-line argument parsing with subcommand support
-- **[epsilon.lib.map](epsilon.lib.map/)** - Immutable hash-array mapped trie (HAMT) implementation *(coming soon)*
-- **[epsilon.lib.sequence](epsilon.lib.sequence/)** - Lazy sequences with functional operations *(coming soon)*
-- **[epsilon.lib.string](epsilon.lib.string/)** - Unicode-aware string manipulation *(coming soon)*
-- **[epsilon.lib.path](epsilon.lib.path/)** - Cross-platform path manipulation *(coming soon)*
+- **[epsilon.map](epsilon.map.md)** - Immutable hash-array mapped trie (HAMT) implementation
+- **[epsilon.sequence](epsilon.sequence/)** - Lazy sequences with functional operations *(coming soon)*
+- **[epsilon.string](epsilon.string.md)** - Unicode-aware string manipulation
+- **[epsilon.path](epsilon.path/)** - Cross-platform path manipulation *(coming soon)*
 
 ### Data Structures
 
-- **[epsilon.lib.set](epsilon.lib.set/)** - Immutable sets based on HAMT *(coming soon)*
-- **[epsilon.lib.table](epsilon.lib.table/)** - Table formatting and display *(coming soon)*
-- **[epsilon.lib.list](epsilon.lib.list/)** - Extended list operations *(coming soon)*
+- **[epsilon.set](epsilon.set/)** - Immutable sets based on HAMT *(coming soon)*
+- **[epsilon.table](epsilon.table/)** - Table formatting and display *(coming soon)*
+- **[epsilon.list](epsilon.list.md)** - Extended list operations
 
 ### System Integration
 
@@ -58,7 +58,7 @@ The API documentation is organized by package, with each package having its own 
 
 ### Development Tools
 
-- **[epsilon.test](epsilon.test/)** - Testing framework *(coming soon)*
+- **[epsilon.test](epsilon.test.md)** - Testing framework
 - **[epsilon.loader](epsilon.loader/)** - Package loader
 - **[epsilon.tool.package](epsilon.tool.package/)** - Package management *(coming soon)*
 
@@ -98,21 +98,21 @@ Epsilon follows consistent naming conventions across all packages:
 
 ### Error Handling
 
-All Epsilon APIs use a consistent error handling approach:
+Epsilon APIs use Common Lisp condition system:
 
-1. **Conditions** - Each package defines specific condition types
-2. **Restarts** - Where appropriate, restarts are provided
-3. **Defaults** - Many functions accept default values for missing data
-4. **Validation** - Input validation with clear error messages
+1. **Conditions** - Packages define condition types
+2. **Restarts** - Available where applicable
+3. **Defaults** - Functions accept default values
+4. **Validation** - Input validation with error messages
 
 ### Performance Notes
 
-API documentation includes performance characteristics where relevant:
+Documentation includes performance characteristics:
 
-- **Time Complexity** - Big-O notation for operations
-- **Space Complexity** - Memory usage patterns
-- **Thread Safety** - Concurrency considerations
-- **Allocation** - Notes on memory allocation
+- **Time Complexity** - Big-O notation
+- **Space Complexity** - Memory usage
+- **Thread Safety** - Concurrency notes
+- **Allocation** - Memory allocation
 
 ## Contributing
 

@@ -41,6 +41,8 @@
         :documentation "end of available data")))
 
 (defun make-input-stream (input)
+  "Create a binary input stream from INPUT vector.
+   Example: (make-input-stream #(72 101 108 108 111))"
   (make-instance 'binary-input-stream :input input :end (length input)))
 
 (defmethod peek-byte ((stream binary-input-stream) &optional peek-type (eof-error-p t) eof-value)
@@ -102,6 +104,8 @@
     position))
 
 (defun make-buffer (&key (initial-length 32))
+  "Create an adjustable byte buffer with INITIAL-LENGTH capacity.
+   Example: (make-buffer :initial-length 64)"
   (make-array initial-length :element-type 'u8 
                              :fill-pointer 0 :adjustable t))
 
@@ -112,6 +116,8 @@
              :accessor stream-position)))
 
 (defun make-output-stream ()
+  "Create a binary output stream with an internal buffer.
+   Example: (let ((s (make-output-stream))) (write-byte 65 s))"
   (make-instance 'binary-output-stream))
 
 (defmethod stream-write-byte ((stream binary-output-stream) byte)

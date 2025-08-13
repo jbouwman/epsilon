@@ -54,6 +54,8 @@
 ;; TODO module-file is here in order to load package-relative resources: non-source files that contain test data, metadata, configuration and so on. Ideally there should be a generic scheme for this that uses the package's load time or runtime environment.
 
 (defun module-file (module-name relative-path)
+  "Return absolute path to RELATIVE-PATH within MODULE-NAME's directory.
+   Example: (module-file 'epsilon.test \"fixtures/data.txt\")"
   (let ((module (loader:get-module (loader:environment) module-name :error-p t)))
     (path:string-path-join (path::path-from-uri (loader:module-uri module)) relative-path)))
 
@@ -102,11 +104,14 @@
                             :file file))))
 
 (defun success-p (run)
+  "Return T if test RUN completed successfully with no failures.
+   Example: (success-p test-result) => T"
   (zerop (+ (length (suite:failures run))
             (length (suite:errors run)))))
 
 (defun skip (&optional (message "Test skipped"))
-  "Skip the current test with an optional message"
+  "Skip the current test with an optional MESSAGE.
+   Example: (skip \"Feature not supported on this platform\")"
   (signal 'suite:skip :message message))
 
 (defmacro with-label (label &body body)

@@ -46,6 +46,8 @@
 
 (declaim (inline safe-endp))
 (defun safe-endp (x)
+  "Safe version of ENDP that checks proper list termination.
+   Example: (safe-endp '()) => T"
   (declare (optimize safety))
   (endp x))
 
@@ -68,6 +70,8 @@ property list PLIST in the same order."
 
 (declaim (inline racons))
 (defun racons (key value ralist)
+  "Reverse acons - add (VALUE . KEY) to RALIST.
+   Example: (racons :name \"John\" '()) => ((\"John\" . :name))"
   (acons value key ralist))
 
 (macrolet
@@ -115,6 +119,7 @@ be used with SETF.")
 be used with SETF."))
 
 (defun malformed-plist (plist)
+  "Signal an error for a malformed property list."
   (error "Malformed plist: ~S" plist))
 
 (defmacro doplist ((key val plist &optional values) &body body)
@@ -174,12 +179,14 @@ place and saves back the result into the place.")
 destructively modifying it and saves back the result into the place.")
 
 (defun circular-list (&rest elements)
-  "Creates a circular list of ELEMENTS."
+  "Create a circular list from ELEMENTS.
+   Example: (circular-list 1 2 3) => circular list #1=(1 2 3 . #1#)"
   (let ((cycle (copy-list elements)))
     (nconc cycle cycle)))
 
 (defun circular-list-p (object)
-  "Returns true if OBJECT is a circular list, NIL otherwise."
+  "Return T if OBJECT is a circular list, NIL otherwise.
+   Example: (circular-list-p (circular-list 1 2)) => T"
   (and (listp object)
        (do ((fast object (cddr fast))
             (slow (cons (car object) (cdr object)) (cdr slow)))
@@ -190,7 +197,8 @@ destructively modifying it and saves back the result into the place.")
            (return t)))))
 
 (defun circular-tree-p (object)
-  "Returns true if OBJECT is a circular tree, NIL otherwise."
+  "Return T if OBJECT contains circular references anywhere in its tree structure.
+   Example: (circular-tree-p '(1 2 . #1=(3 . #1#))) => T"
   (labels ((circularp (object seen)
              (and (consp object)
                   (do ((fast (cons (car object) (cdr object)) (cddr fast))
@@ -208,7 +216,8 @@ destructively modifying it and saves back the result into the place.")
     (circularp object nil)))
 
 (defun proper-list-p (object)
-  "Returns true if OBJECT is a proper list."
+  "Return T if OBJECT is a proper list (NIL-terminated, non-circular).
+   Example: (proper-list-p '(1 2 3)) => T"
   (cond ((not object)
          t)
         ((consp object)
@@ -284,6 +293,8 @@ list."
     (nconc list list)))
 
 (defun circular-list-subseq (list start end)
+  "Extract a subsequence from a circular LIST from START to END.
+   Example: (circular-list-subseq (circular-list 1 2 3) 0 5) => (1 2 3 1 2)"
   (let* ((length (- end start))
          (subseq (make-list length)))
     (do ((i 0 (1+ i))

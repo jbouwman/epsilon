@@ -83,10 +83,13 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
     root))
 
 (defun size (hamt)
+  "Return the number of key-value pairs in the HAMT.
+   Example: (size (assoc +empty+ :a 1 :b 2)) => 2"
   (hamt-count hamt))
 
 (defun count (hamt)
-  "Get the number of key-value pairs in the map"
+  "Return the number of key-value pairs in the map.
+   Example: (count (assoc +empty+ :x 10)) => 1"
   (hamt-count hamt))
 
 (defmethod make-load-form ((self hamt) &optional environment)
@@ -111,38 +114,45 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
 (declaim (inline get-index bitmap-present-p bitmap-index))
 
 (defun get-index (hash shift)
-  "Get index in the current level's array based on hash and shift"
+  "Get index in the current level's array based on HASH and SHIFT.
+   Used internally for HAMT navigation."
   (logand (ash hash (- shift)) +partition-mask+))
 
 (defun bitmap-present-p (bitmap index)
-  "Check if a bit is set in the bitmap"
+  "Check if bit at INDEX is set in BITMAP.
+   Example: (bitmap-present-p #b1010 1) => T"
   (logtest bitmap (ash 1 index)))
 
 (defun bitmap-index (bitmap index)
-  "Convert bitmap index to array index"
+  "Convert bitmap INDEX to array index by counting set bits.
+   Example: (bitmap-index #b1011 2) => 2"
   (logcount (logand bitmap (1- (ash 1 index)))))
 
 (defun get (map key &optional default)
-  "Get value for key from map, returning default if not found"
+  "Get value for KEY from MAP, returning DEFAULT if not found.
+   Example: (get (assoc +empty+ :name \"Bob\") :name) => \"Bob\""
   (let ((root (hamt-root map)))
     (if root
         (node-get root (sxhash key) 0 key default)
         default)))
 
 (defun contains-p (map key)
-  "Return true if map contains key"
+  "Return T if MAP contains KEY.
+   Example: (contains-p (assoc +empty+ :id 42) :id) => T"
   (let ((not-found (gensym)))
     (not (eq (get map key not-found)
              not-found))))
 
 (defun contains-key-p (map key)
-  "Return true if map contains key (alias for contains-p)"
+  "Return T if MAP contains KEY (alias for contains-p).
+   Example: (contains-key-p (assoc +empty+ :x 1) :x) => T"
   (contains-p map key))
 
 ;; FIXME rename to to-alist
 
 (defun seq (map)
-  "Return a sequence of key-value pairs from the map"
+  "Return an association list of key-value pairs from MAP.
+   Example: (seq (assoc +empty+ :a 1 :b 2)) => ((:A . 1) (:B . 2))"
   (let ((result nil))
     (labels ((collect (node)
                (etypecase node
