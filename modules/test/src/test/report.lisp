@@ -139,6 +139,32 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
 		    (format stream "<?xml version=\"1.0\" encoding=\"UTF-8\"?>~%")
 		    (xml:emit (make-junit-testsuites run) stream))))
 
+(defun format-timestamp ()
+  "Format current timestamp in ISO 8601 format"
+  (multiple-value-bind (sec min hour day month year)
+      (get-decoded-time)
+    (format nil "~4,'0D-~2,'0D-~2,'0DT~2,'0D:~2,'0D:~2,'0D"
+	    year month day hour min sec)))
+
+(defun format-assertion-history (assertions)
+  "Format assertion history for detailed output"
+  (if (null assertions)
+      "No assertions recorded"
+      (with-output-to-string (s)
+	(let ((count 0))
+	  (dolist (assertion (reverse assertions))
+	    (incf count)
+	    (destructuring-bind (result report-fn) assertion
+	      (cond
+	       ((and (listp result) (eq (first result) :label-start))
+		(format s "  ~D. Label: ~A~%" count (second result)))
+	       ((and (listp result) (eq (first result) :label-end))
+		nil) ; Skip end labels
+	       (result
+		(format s "  ~D. ✓ PASSED~%" count))
+	       (t
+		(format s "  ~D. ✗ FAILED~%" count)))))))))
+
 (defun make-junit-testsuites (run)
   "Create JUnit XML testsuites element"
   (let* ((all-tests (map:vals (suite::tests run)))
@@ -169,6 +195,10 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
          (errors (count-if (lambda (r) (eq :error (suite:status r))) tests))
          (skipped (count-if (lambda (r) (eq :skip (suite:status r))) tests))
          (suite-time (reduce #'+ tests :key #'suite::elapsed-time :initial-value 0))
+         (properties (list (xml:element "properties"
+					:children (list (xml:element "property"
+								     :attributes (list "name" "epsilon.module"
+										       "value" suite-name))))))
          (testcases (mapcar #'make-junit-testcase (reverse tests))))
     (xml:element "testsuite"
                  :attributes (list "name" suite-name
@@ -176,8 +206,9 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
                                    "failures" failures
                                    "errors" errors
                                    "skipped" skipped
-                                   "time" (format nil "~,3F" suite-time))
-                 :children testcases)))
+                                   "time" (format nil "~,3F" suite-time)
+				   "timestamp" (format-timestamp))
+                 :children (append properties testcases))))
 
 (defun make-junit-testcase (result)
   "Create JUnit XML testcase element for a test result"
@@ -189,17 +220,37 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
     
     (case (suite:status result)
 	  (:failure
-	   (push (xml:element "failure"
-                              :attributes (list "message" (suite::failure-message (suite:condition result)))
-                              :children (list (xml:text (suite::failure-message (suite:condition result)))))
-		 children))
+	   (let* ((condition (suite:condition result))
+		  (message (suite::failure-message condition))
+		  (form (ignore-errors (suite::failure-form condition)))
+		  (assertions (suite:assertions result))
+		  (details (format nil "~A~%~%Failed assertion:~%~A~%~%Assertion history (~D total):~%~A"
+				   message
+				   (if form (format nil "~S" form) "N/A")
+				   (length assertions)
+				   (format-assertion-history assertions))))
+	     (push (xml:element "failure"
+				:attributes (list "message" message
+						  "type" "AssertionFailure")
+				:children (list (xml:text details)))
+		   children)))
 	  (:error
-	   (push (xml:element "error"
-                              :attributes (list "message" (format nil "~A" (suite::original-error (suite:condition result))))
-                              :children (list (xml:text (format nil "~A~%~%~A" 
-								(suite::original-error (suite:condition result))
-								(or (suite::stack-trace result) "")))))
-		 children))
+	   (let* ((error-condition (suite::original-error (suite:condition result)))
+		  (error-type (format nil "~A" (type-of error-condition)))
+		  (error-message (format nil "~A" error-condition))
+		  (stack-trace (or (suite::stack-trace result) "No stack trace available"))
+		  (assertions (suite:assertions result))
+		  (details (format nil "Error: ~A~%Type: ~A~%~%Stack trace:~%~A~%~%Assertion history (~D total):~%~A"
+				   error-message
+				   error-type
+				   stack-trace
+				   (length assertions)
+				   (format-assertion-history assertions))))
+	     (push (xml:element "error"
+				:attributes (list "message" error-message
+						  "type" error-type)
+				:children (list (xml:text details)))
+		   children)))
 	  (:skip
 	   (push (xml:element "skipped"
                               :attributes (list "message" (suite::skip-message (suite:condition result))))

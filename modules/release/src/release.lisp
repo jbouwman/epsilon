@@ -60,6 +60,93 @@
   (fs:make-dirs dir-path)
   (log:debug "Directory created: ~A" dir-path))
 
+(defun generate-module-testsuite (module-name result)
+  "Generate a testsuite XML element for a module's test results."
+  (when (and result (find-package "EPSILON.TEST.SUITE") (find-package "EPSILON.TEST.REPORT"))
+    ;; Use the test report's function to generate the testsuite
+    (let ((suite-tests-fn (find-symbol "SUITE-TESTS" "EPSILON.TEST.SUITE"))
+          (list-suites-fn (find-symbol "LIST-SUITES" "EPSILON.TEST.SUITE"))
+          (make-junit-testsuite-fn (find-symbol "MAKE-JUNIT-TESTSUITE" "EPSILON.TEST.REPORT")))
+      (when (and suite-tests-fn list-suites-fn make-junit-testsuite-fn)
+        ;; Get all test suites in this module
+        (let ((suites (funcall list-suites-fn result)))
+          ;; Create XML for each suite
+          (when suites
+            (mapcar (lambda (suite-name)
+                      (funcall make-junit-testsuite-fn 
+                               suite-name 
+                               (funcall suite-tests-fn result suite-name)))
+                    suites)))))))
+
+(defun count-module-tests (result)
+  "Count total tests in a module result."
+  (if (and result (find-package "EPSILON.TEST.SUITE"))
+      (let ((tests-fn (find-symbol "TESTS" "EPSILON.TEST.SUITE")))
+        (if tests-fn
+            (map:size (funcall tests-fn result))
+            0))
+      0))
+
+(defun count-module-failures (result)
+  "Count failures in a module result."
+  (if (and result (find-package "EPSILON.TEST.SUITE"))
+      (let ((failures-fn (find-symbol "FAILURES" "EPSILON.TEST.SUITE")))
+        (if failures-fn
+            (length (funcall failures-fn result))
+            0))
+      0))
+
+(defun count-module-errors (result)
+  "Count errors in a module result."
+  (if (and result (find-package "EPSILON.TEST.SUITE"))
+      (let ((errors-fn (find-symbol "ERRORS" "EPSILON.TEST.SUITE")))
+        (if errors-fn
+            (length (funcall errors-fn result))
+            0))
+      0))
+
+(defun get-module-time (result)
+  "Get total time for a module's tests."
+  (if (and result (find-package "EPSILON.TEST.SUITE"))
+      (let ((start-time-fn (find-symbol "START-TIME" "EPSILON.TEST.SUITE"))
+            (end-time-fn (find-symbol "END-TIME" "EPSILON.TEST.SUITE")))
+        (if (and start-time-fn end-time-fn)
+            (/ (- (funcall end-time-fn result)
+                  (funcall start-time-fn result))
+               internal-time-units-per-second)
+            0.0))
+      0.0))
+
+(defun merge-test-results (aggregate-run module-run)
+  "Merge test results from a module run into the aggregate run."
+  (when module-run
+    (let ((tests-accessor (find-symbol "TESTS" "EPSILON.TEST.SUITE"))
+          (failures-accessor (find-symbol "FAILURES" "EPSILON.TEST.SUITE"))
+          (errors-accessor (find-symbol "ERRORS" "EPSILON.TEST.SUITE"))
+          (skipped-accessor (find-symbol "SKIPPED" "EPSILON.TEST.SUITE")))
+      
+      ;; Copy all tests from module-run to aggregate-run
+      (when tests-accessor
+        (map:each (lambda (k v)
+                    (map:assoc! (funcall tests-accessor aggregate-run) k v))
+                  (funcall tests-accessor module-run)))
+      
+      ;; Append failures, errors, and skipped tests
+      (when failures-accessor
+        (setf (slot-value aggregate-run (intern "FAILURES" "EPSILON.TEST.SUITE"))
+              (append (funcall failures-accessor aggregate-run)
+                      (funcall failures-accessor module-run))))
+      
+      (when errors-accessor
+        (setf (slot-value aggregate-run (intern "ERRORS" "EPSILON.TEST.SUITE"))
+              (append (funcall errors-accessor aggregate-run)
+                      (funcall errors-accessor module-run))))
+      
+      (when skipped-accessor
+        (setf (slot-value aggregate-run (intern "SKIPPED" "EPSILON.TEST.SUITE"))
+              (append (funcall skipped-accessor aggregate-run)
+                      (funcall skipped-accessor module-run)))))))
+
 (defun get-modules (environment)
   "Get list of all modules."
   (let ((all-descriptors (loader:query-modules environment))
@@ -79,34 +166,90 @@
 (defun generate-junit-report (all-results file total-tested total-passed failed-modules)
   "Generate an aggregated JUnit XML report from all test results."
   (ensure-directories-exist file)
-  (with-open-file (stream file
-                          :direction :output 
-                          :if-exists :supersede
-                          :if-does-not-exist :create)
-    (format stream "<?xml version=\"1.0\" encoding=\"UTF-8\"?>~%")
-    (format stream "<testsuites tests=\"~D\" failures=\"~D\" errors=\"0\" time=\"0.0\">~%"
-            total-tested (- total-tested total-passed))
+  
+  ;; Check if we have actual test results with details
+  (let ((has-detailed-results nil))
+    (dolist (module-result all-results)
+      (when (and (cdr module-result)
+                 (find-package "EPSILON.TEST.SUITE"))
+        (let* ((result (cdr module-result))
+               (tests-fn (find-symbol "TESTS" "EPSILON.TEST.SUITE")))
+          (when (and tests-fn (plusp (map:size (funcall tests-fn result))))
+            (setf has-detailed-results t)))))
     
-    ;; Create a testsuite for each module
-    (dolist (module-result (reverse all-results))
-      (let* ((module (car module-result))
-             (result (cdr module-result))
-             (success (if result
-                         (zerop (+ (length (funcall (find-symbol "FAILURES" "EPSILON.TEST.SUITE") result))
-                                  (length (funcall (find-symbol "ERRORS" "EPSILON.TEST.SUITE") result))))
-                         nil)))
-        (format stream "  <testsuite name=\"~A\" tests=\"1\" failures=\"~D\" errors=\"0\" time=\"0.0\">~%"
-                module (if success 0 1))
-        (format stream "    <testcase name=\"~A\" classname=\"epsilon.release\" time=\"0.0\"" module)
-        (if success
-            (format stream "/>~%")
-            (progn
-              (format stream ">~%")
-              (format stream "      <failure message=\"Module tests failed\">Module ~A tests failed</failure>~%" module)
-              (format stream "    </testcase>~%")))
-        (format stream "  </testsuite>~%")))
-    
-    (format stream "</testsuites>~%"))
+    (if (and has-detailed-results
+             (find-package "EPSILON.TEST.REPORT")
+             (find-package "EPSILON.XML"))
+      ;; Generate detailed JUnit report with all test cases
+      (with-open-file (stream file
+                              :direction :output 
+                              :if-exists :supersede
+                              :if-does-not-exist :create)
+        (format stream "<?xml version=\"1.0\" encoding=\"UTF-8\"?>~%")
+        (let ((xml-emit (find-symbol "EMIT" "EPSILON.XML"))
+              (xml-element (find-symbol "ELEMENT" "EPSILON.XML"))
+              (xml-text (find-symbol "TEXT" "EPSILON.XML"))
+              (all-testsuites '())
+              (total-tests 0)
+              (total-failures 0)
+              (total-errors 0)
+              (total-time 0.0))
+          
+          ;; Process each module's results
+          (dolist (module-result (reverse all-results))
+            (let* ((module (car module-result))
+                   (result (cdr module-result)))
+              (when result
+                (let ((suite-xmls (generate-module-testsuite module result)))
+                  (when suite-xmls
+                    ;; Add all testsuites from this module
+                    (dolist (suite-xml suite-xmls)
+                      (push suite-xml all-testsuites))
+                    ;; Update totals
+                    (incf total-tests (count-module-tests result))
+                    (incf total-failures (count-module-failures result))
+                    (incf total-errors (count-module-errors result))
+                    (incf total-time (or (get-module-time result) 0.0)))))))
+          
+          ;; Write the aggregated XML
+          (funcall xml-emit
+                   (funcall xml-element "testsuites"
+                            :attributes (list "tests" total-tests
+                                              "failures" total-failures
+                                              "errors" total-errors
+                                              "time" (format nil "~,3F" total-time))
+                            :children (reverse all-testsuites))
+                   stream)))
+      
+      ;; Fallback to simple summary format if detailed reporting unavailable
+      (with-open-file (stream file
+                              :direction :output 
+                              :if-exists :supersede
+                              :if-does-not-exist :create)
+        (format stream "<?xml version=\"1.0\" encoding=\"UTF-8\"?>~%")
+        (format stream "<testsuites tests=\"~D\" failures=\"~D\" errors=\"0\" time=\"0.0\">~%"
+                total-tested (- total-tested total-passed))
+        
+        ;; Create a testsuite for each module
+        (dolist (module-result (reverse all-results))
+          (let* ((module (car module-result))
+                 (result (cdr module-result))
+                 (success (if result
+                             (zerop (+ (length (funcall (find-symbol "FAILURES" "EPSILON.TEST.SUITE") result))
+                                      (length (funcall (find-symbol "ERRORS" "EPSILON.TEST.SUITE") result))))
+                             nil)))
+            (format stream "  <testsuite name=\"~A\" tests=\"1\" failures=\"~D\" errors=\"0\" time=\"0.0\">~%"
+                    module (if success 0 1))
+            (format stream "    <testcase name=\"~A\" classname=\"epsilon.release\" time=\"0.0\"" module)
+            (if success
+                (format stream "/>~%")
+                (progn
+                  (format stream ">~%")
+                  (format stream "      <failure message=\"Module tests failed\">Module ~A tests failed</failure>~%" module)
+                  (format stream "    </testcase>~%")))
+            (format stream "  </testsuite>~%")))
+        
+        (format stream "</testsuites>~%"))))
   (log:info "JUnit report written to ~A" file))
 
 (defun selftest (&key (environment (loader:environment)) (format :shell) (file nil))
