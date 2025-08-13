@@ -1,6 +1,8 @@
 (:name "epsilon.web"
- :version "1.0.0"
- :description "Web framework helpers for epsilon.http"
- :requires ("epsilon.http"
-            "epsilon.json"))
+ :version "2.0.0"
+ :description "Modern web framework with routing, middleware, and WebSocket support"
+ :requires ("epsilon.core"
+            "epsilon.http"
+            "epsilon.json"
+            "epsilon.websocket"))
 

@@ -11,6 +11,8 @@
    #:request-headers
    #:request-body
    #:request-params
+   #:request-path-params
+   #:request-session
    #:parse-query-string
    #:parse-form-data
    #:parse-http-request))
@@ -22,7 +24,9 @@
    (path :initarg :path :accessor request-path)
    (headers :initarg :headers :accessor request-headers :initform map:+empty+)
    (body :initarg :body :accessor request-body :initform nil)
-   (params :initarg :params :accessor request-params :initform map:+empty+)))
+   (params :initarg :params :accessor request-params :initform map:+empty+)
+   (path-params :initarg :path-params :accessor request-path-params :initform map:+empty+)
+   (session :initarg :session :accessor request-session :initform nil)))
 
 (defun make-request (method path &key headers body params)
   "Create an HTTP request object"
