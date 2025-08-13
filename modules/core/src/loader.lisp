@@ -58,6 +58,9 @@
 
 (in-package epsilon.loader)
 
+(defparameter *debug-build-order* nil
+  "Enable debug logging of build order information")
+
 (defclass module-info ()
   ((name :initarg :name 
          :reader module-name 
@@ -459,15 +462,28 @@
 
 (defun read-first-form (uri)
   "Read forms from a file until we find a defpackage or in-package form.
-   Throws an error if no package definition is found."
-  (with-open-file (stream (path:path-from-uri uri))
-    (loop for form = (ignore-errors (read stream nil :eof))
-          until (eq form :eof)
-          when (and (consp form) 
-                    (member (first form) '(defpackage in-package) :test #'string-equal))
-            return form
-          finally (error "No package definition (defpackage or in-package) found in file: ~A" 
-                         (path:path-from-uri uri)))))
+   Throws an error if no package definition is found, except for bootstrap files."
+  (let ((file-path (path:path-from-uri uri)))
+    (with-open-file (stream file-path)
+      (loop for form = (ignore-errors (read stream nil :eof))
+            until (eq form :eof)
+            when (and (consp form) 
+                      (member (first form) '(defpackage in-package) :test #'string-equal))
+              return form
+            finally 
+              ;; Allow certain types of files to not have package definitions
+              (let ((filename (file-namestring file-path))
+                    (path-str (namestring file-path)))
+                ;; Bootstrap files, test files, and example files are exempt
+                (unless (or (member filename '("boot.lisp" "epsilon.lisp" "main.lisp") :test #'string=)
+                            (search "/tests/" path-str)
+                            (search "/examples/" path-str)
+                            (search "/benchmarks/" path-str)
+                            (search "/experiments/" path-str))
+                  (error "No package definition (defpackage or in-package) found in file: ~A~%~
+                          Regular source files must define a package. Bootstrap, test, example, and experimental files are exempt." 
+                         file-path))
+                (return nil))))))
 
 (defun interpret-package (form)
   (cond ((string-equal 'defpackage (first form))
@@ -723,16 +739,17 @@
          ;; Force build-inputs to ensure we have a concrete list  
          (build-inputs (seq:seq (seq:realize (build-order project)))))
     
-    ;; Debug: dump the sorted build inputs (can be removed later)
-    (log:info "Build order for ~A:" (project-name project))
-    (let ((index 0)
-          (build-list (seq:realize build-inputs)))
-      (dolist (build-input build-list)
-        (incf index)
-        (log:info "  ~D. ~A (~A)" 
-                  index
-                  (path:path-from-uri (source-uri build-input))
-                  (build-input-status build-input))))
+    ;; Log build information for debugging (can be disabled if not needed)
+    (when *debug-build-order*
+      (log:info "Build order for ~A:" (project-name project))
+      (let ((index 0)
+            (build-list (seq:realize build-inputs)))
+        (dolist (build-input build-list)
+          (incf index)
+          (log:info "  ~D. ~A (~A)" 
+                    index
+                    (path:path-from-uri (source-uri build-input))
+                    (build-input-status build-input)))))
     
     ;; Force compilation/loading to happen immediately by realizing the sequence
     (let* ((results (let ((index 0))
