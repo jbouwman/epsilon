@@ -3,7 +3,7 @@
 ;;;; This file contains all Foreign Function Interface bindings for both
 ;;;; SSL/TLS operations and cryptographic functions.
 
-(defpackage :epsilon.cryptography.ffi
+(defpackage :epsilon.crypto.ffi
   (:use :cl)
   (:local-nicknames
    (#:lib #:epsilon.foreign))
@@ -119,7 +119,7 @@
    #:%err-get-error
    #:%err-error-string))
 
-(in-package :epsilon.cryptography.ffi)
+(in-package :epsilon.crypto.ffi)
 
 ;;;; SSL/TLS Library FFI Bindings (libssl)
 

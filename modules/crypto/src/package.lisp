@@ -1,8 +1,8 @@
-;;;; Package Definition for epsilon.cryptography
+;;;; Package Definition for epsilon.crypto
 ;;;;
-;;;; This file defines the main package and exports for the cryptography module
+;;;; This file defines the main package with core types and constants
 
-(defpackage :epsilon.cryptography
+(defpackage :epsilon.crypto
   (:use :cl)
   (:local-nicknames
    (#:map #:epsilon.map)
@@ -189,7 +189,7 @@
    #:+evp-pkey-x25519+
    #:+rsa-f4+))
 
-(in-package :epsilon.cryptography)
+(in-package :epsilon.crypto)
 
 ;;;; Constants
 

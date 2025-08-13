@@ -54,7 +54,7 @@ The API documentation is organized by package, with each package having its own 
 
 - **[epsilon.http](epsilon.http/)** - HTTP client and server *(coming soon)*
 - **[epsilon.websocket](epsilon.websocket/)** - WebSocket client and server *(coming soon)*
-- **[epsilon.cryptography](epsilon.cryptography/)** - Comprehensive cryptography and TLS/SSL support
+- **[epsilon.crypto](epsilon.crypto/)** - Cryptographic operations and TLS/SSL support
 
 ### Development Tools
 

@@ -2,12 +2,12 @@
 ;;;;
 ;;;; Tests for X.509 certificates and CSRs
 
-(defpackage :epsilon.cryptography.cert-tests
+(defpackage :epsilon.crypto.cert-tests
   (:use :cl :epsilon.test)
   (:local-nicknames
-   (#:crypto #:epsilon.cryptography)))
+   (#:crypto #:epsilon.crypto)))
 
-(in-package :epsilon.cryptography.cert-tests)
+(in-package :epsilon.crypto.cert-tests)
 
 ;;;; Helper Functions
 

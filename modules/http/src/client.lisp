@@ -9,7 +9,7 @@
    (#:str #:epsilon.string)
    (#:seq #:epsilon.sequence)
    (#:map #:epsilon.map)
-   (#:tls #:epsilon.cryptography))
+   (#:tls #:epsilon.crypto))
   (:export
    #:request
    #:http-get

@@ -2,11 +2,11 @@
 ;;;;
 ;;;; This file provides TLS/SSL functionality using OpenSSL
 
-(defpackage :epsilon.cryptography.tls
-  (:use :cl :epsilon.cryptography)
+(defpackage :epsilon.crypto.tls
+  (:use :cl :epsilon.crypto)
   (:local-nicknames
-   (#:ffi #:epsilon.cryptography.ffi))
-  (:import-from :epsilon.cryptography
+   (#:ffi #:epsilon.crypto.ffi))
+  (:import-from :epsilon.crypto
    ;; Import all needed symbols
    #:+tls-verify-none+
    #:+tls-verify-peer+
@@ -46,7 +46,7 @@
    #:make-x509-certificate
    #:crypto-error))
 
-(in-package :epsilon.cryptography.tls)
+(in-package :epsilon.crypto.tls)
 
 ;;;; TLS Context Management
 

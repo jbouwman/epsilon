@@ -2,18 +2,18 @@
 ;;;;
 ;;;; These tests verify the module structure and basic functionality
 
-(defpackage :epsilon.cryptography.tests
+(defpackage :epsilon.crypto.tests
   (:use :cl :epsilon.test)
   (:local-nicknames
-   (#:crypto #:epsilon.cryptography)))
+   (#:crypto #:epsilon.crypto)))
 
-(in-package :epsilon.cryptography.tests)
+(in-package :epsilon.crypto.tests)
 
 ;;;; Structure Tests
 
 (deftest test-module-loaded
   "Test that the cryptography module loads correctly"
-  (is (find-package :epsilon.cryptography)))
+  (is (find-package :epsilon.crypto)))
 
 (deftest test-exported-symbols
   "Test that key symbols are exported"
@@ -103,5 +103,5 @@
 (deftest test-module-integration
   "Test that the module integrates properly with epsilon"
   ;; Just verify the package exists for now
-  (is (find-package :epsilon.cryptography))
+  (is (find-package :epsilon.crypto))
   (is (find-package :epsilon.foreign)))

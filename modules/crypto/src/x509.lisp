@@ -2,11 +2,11 @@
 ;;;;
 ;;;; This file provides certificate and CSR functionality
 
-(defpackage :epsilon.cryptography.certificate
-  (:use :cl :epsilon.cryptography)
+(defpackage :epsilon.crypto.x509
+  (:use :cl :epsilon.crypto)
   (:local-nicknames
-   (#:ffi #:epsilon.cryptography.ffi))
-  (:import-from :epsilon.cryptography
+   (#:ffi #:epsilon.crypto.ffi))
+  (:import-from :epsilon.crypto
    ;; Import needed types and functions
    #:x509-certificate
    #:x509-certificate-p
@@ -23,7 +23,7 @@
    #:crypto-error
    #:+digest-sha256+))
 
-(in-package :epsilon.cryptography.certificate)
+(in-package :epsilon.crypto.x509)
 
 ;;;; X.509 Certificate Operations
 

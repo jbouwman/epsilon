@@ -2,12 +2,12 @@
 ;;;;
 ;;;; Comprehensive tests for cryptographic hash functions
 
-(defpackage :epsilon.cryptography.digest-tests
+(defpackage :epsilon.crypto.digest-tests
   (:use :cl :epsilon.test)
   (:local-nicknames
-   (#:crypto #:epsilon.cryptography)))
+   (#:crypto #:epsilon.crypto)))
 
-(in-package :epsilon.cryptography.digest-tests)
+(in-package :epsilon.crypto.digest-tests)
 
 ;;;; Test Vectors
 ;;;; These are known test vectors for various hash algorithms
