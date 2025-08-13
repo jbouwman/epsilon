@@ -98,21 +98,21 @@ Epsilon follows consistent naming conventions across all packages:
 
 ### Error Handling
 
-All Epsilon APIs use a consistent error handling approach:
+Epsilon APIs use Common Lisp condition system:
 
-1. **Conditions** - Each package defines specific condition types
-2. **Restarts** - Where appropriate, restarts are provided
-3. **Defaults** - Many functions accept default values for missing data
-4. **Validation** - Input validation with clear error messages
+1. **Conditions** - Packages define condition types
+2. **Restarts** - Available where applicable
+3. **Defaults** - Functions accept default values
+4. **Validation** - Input validation with error messages
 
 ### Performance Notes
 
-API documentation includes performance characteristics where relevant:
+Documentation includes performance characteristics:
 
-- **Time Complexity** - Big-O notation for operations
-- **Space Complexity** - Memory usage patterns
-- **Thread Safety** - Concurrency considerations
-- **Allocation** - Notes on memory allocation
+- **Time Complexity** - Big-O notation
+- **Space Complexity** - Memory usage
+- **Thread Safety** - Concurrency notes
+- **Allocation** - Memory allocation
 
 ## Contributing
 

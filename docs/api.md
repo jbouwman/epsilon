@@ -5,29 +5,28 @@ API documentation for Epsilon packages.
 ## Core Data Structures
 
 ### Collections
-- **[Map](api/map.md)** - Immutable hash-array mapped trie (HAMT) implementation
-  - Key-value associations with O(log n) operations
+- **[Map](api/map.md)** - Hash-array mapped trie (HAMT) implementation
+  - O(log32 n) operations for get, assoc, dissoc
   - Nested access with `get-in`, `assoc-in`, `update-in`
-  - Functional transformations: `map`, `filter`, `reduce`
+  - Transformations: `map`, `filter`, `reduce`
 
-- **[Sequence](api/sequence.md)** - Lazy sequences with functional operations
-  - Lazy evaluation with memoization support
-  - Infinite sequence capabilities
-  - Operation library: `map`, `filter`, `take`, `drop`
+- **[Sequence](api/sequence.md)** - Lazy sequences
+  - Lazy evaluation with memoization
+  - Operations: `map`, `filter`, `take`, `drop`
 
-- **[Set](api/set.md)** - Immutable sets based on HAMT structure
-  - Mathematical set operations (union, intersection, difference)
-  - O(log n) membership testing and modification
+- **[Set](api/set.md)** - Sets based on HAMT
+  - Set operations: union, intersection, difference
+  - O(log32 n) membership testing
 
 ## Data Encoding & Serialization
 
 ### Text Formats
-- **JSON** - JSON encoding/decoding with Unicode support
-  - Streaming parser for large documents
-  - Configurable encoding options
+- **JSON** - JSON encoding/decoding
+  - Streaming parser
+  - Configurable encoding
 
-- **YAML** - YAML document processing
-  - YAML 1.2 specification support
+- **YAML** - YAML processing
+  - YAML 1.2 specification
   - Document and stream processing
 
 - **XML** - XML parsing and generation
@@ -35,29 +34,29 @@ API documentation for Epsilon packages.
 ### Binary Formats
 - **Base64** - Base64 encoding and decoding *(documentation pending)*
 - **Hex** - Hexadecimal string conversion *(documentation pending)*
-- **MessagePack** - Binary serialization format *(documentation pending)*
-- **Binary** - Low-level binary data handling *(documentation pending)*
+- **MessagePack** - Binary serialization *(documentation pending)*
+- **Binary** - Binary data handling *(documentation pending)*
 
 ## Cryptography & Hashing
 
 ### Hash Functions
-- **Digest** - SHA-2 family hash functions *(documentation pending)*
-  - SHA-224, SHA-256, SHA-384, SHA-512 implementations
-  - Multiple output formats (bytes, hex, base64)
+- **Digest** - SHA-2 hash functions *(documentation pending)*
+  - SHA-224, SHA-256, SHA-384, SHA-512
+  - Output formats: bytes, hex, base64
 
-- **Checksum** - Non-cryptographic checksums *(documentation pending)*
-  - CRC-32 and Adler-32 implementations
-  - Stream-based processing support
+- **Checksum** - Checksums *(documentation pending)*
+  - CRC-32 and Adler-32
+  - Stream processing
 
 ## Text Processing
 
 ### String Operations
-- **String** - String manipulation and utilities *(documentation pending)*
-  - Unicode-aware string processing
+- **String** - String manipulation *(documentation pending)*
+  - Unicode string processing
   - Pattern matching and replacement
 
-- **Character** - Character operations and Unicode support *(documentation pending)*
-- **Regex** - Regular expression matching *(documentation pending)*
+- **Character** - Character operations *(documentation pending)*
+- **Regex** - Regular expressions *(documentation pending)*
 
 ### Parsing & Generation
 - **URI** - URI parsing, construction, and manipulation *(documentation pending)*
@@ -67,42 +66,42 @@ API documentation for Epsilon packages.
 ## System Integration
 
 ### Threading & Concurrency
-- **Thread** - Threading primitives and thread pools *(documentation pending)*
+- **Thread** - Threading primitives *(documentation pending)*
 - **Lock** - Synchronization primitives *(documentation pending)*
-- **Atomic** - Atomic operations and lock-free data structures *(documentation pending)*
+- **Atomic** - Atomic operations *(documentation pending)*
 
 ### System Services
-- **FS** - Filesystem operations and path manipulation *(documentation pending)*
-- **Env** - Environment variable access *(documentation pending)*
-- **Process** - Process creation and management *(documentation pending)*
+- **FS** - Filesystem operations *(documentation pending)*
+- **Env** - Environment variables *(documentation pending)*
+- **Process** - Process management *(documentation pending)*
 
 ### Package System
-- **Package** - Package utilities and introspection *(documentation pending)*
+- **Package** - Package utilities *(documentation pending)*
 
 ## Network Programming
 
 ### HTTP
-- **HTTP** - Complete HTTP client and server *(documentation pending)*
-  - HTTP/1.1 specification compliance
-  - Connection pooling and keep-alive
+- **HTTP** - HTTP client and server *(documentation pending)*
+  - HTTP/1.1 specification
+  - Connection pooling
   - TLS/SSL support
 
 ### Core Networking
-- **Socket** - Low-level socket operations *(documentation pending)*
-- **DNS** - DNS resolution and caching *(documentation pending)*
+- **Socket** - Socket operations *(documentation pending)*
+- **DNS** - DNS resolution *(documentation pending)*
 
 ## Development Tools
 
 ### Build System
-- **Build** - Dependency-tracking build system *(documentation pending)*
-  - Content-based change detection
+- **Build** - Build system *(documentation pending)*
+  - Dependency tracking
   - Incremental compilation
-  - Module dependency resolution
+  - Module dependencies
 
 ### Testing
-- **Test** - Test definition and execution framework *(documentation pending)*
-  - Hierarchical test organization
-  - Multiple output formats (TAP, JUnit XML)
+- **Test** - Test framework *(documentation pending)*
+  - Test organization
+  - Output formats: TAP, JUnit XML
   - Performance metrics collection
 
 ### Performance

@@ -1,10 +1,10 @@
 # epsilon.test
 
-Comprehensive testing framework with hierarchical test organization and multiple output formats.
+Testing framework for Epsilon modules.
 
 ## Overview
 
-The `epsilon.test` package provides a testing framework designed for Epsilon modules. It supports test discovery, fixtures, multiple assertion types, and various output formats including shell, JUnit XML, and TAP.
+The `epsilon.test` package provides test definition, execution, and reporting. Supports fixtures, multiple assertion types, and output formats including shell, JUnit XML, and TAP.
 
 ## Quick Start
 
@@ -386,15 +386,15 @@ Use patterns to run specific tests:
         (is-equal (find-user "Charlie") user)))))
 ```
 
-## Best Practices
+## Testing Guidelines
 
-1. **Name tests clearly**: Use `test-` prefix and descriptive names
-2. **One concept per test**: Test a single behavior or function
-3. **Use appropriate assertions**: Choose the right equality test
-4. **Clean up resources**: Always use fixtures for external resources
-5. **Group related assertions**: Use `with-label` for clarity
-6. **Test edge cases**: Include boundary conditions and error cases
-7. **Keep tests fast**: Mock external dependencies when possible
+1. Use `test-` prefix for test names
+2. Test single behaviors per test
+3. Select appropriate equality assertion
+4. Use fixtures for resource cleanup
+5. Group assertions with `with-label`
+6. Include edge cases and error conditions
+7. Mock external dependencies for speed
 
 ## Integration with CI/CD
 

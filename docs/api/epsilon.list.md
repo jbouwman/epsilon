@@ -1,10 +1,10 @@
 # epsilon.list
 
-Extended list operations including circular list support and property list utilities.
+List operations for association lists, property lists, and circular lists.
 
 ## Overview
 
-The `epsilon.list` package provides enhanced list manipulation functions beyond Common Lisp's standard offerings. It includes utilities for working with association lists, property lists, circular lists, and various list modification macros.
+The `epsilon.list` package provides list manipulation functions for association lists, property lists, circular lists, and list modification macros.
 
 ## Quick Start
 
@@ -465,13 +465,13 @@ Type designator for circular lists.
 - Modify macros may cons new structure or modify in place
 - `flatten` is not tail-recursive for deeply nested structures
 
-## Best Practices
+## Usage Notes
 
-1. Use `proper-list-p` before operations that require proper lists
-2. Prefer non-destructive operations unless performance critical
-3. Use `doplist` for clean property list iteration
-4. Be careful with circular lists - many operations will loop forever
-5. Consider using `epsilon.map` for large key-value collections
+1. Check `proper-list-p` before operations requiring proper lists
+2. Non-destructive operations create new structure
+3. `doplist` iterates property lists
+4. Standard list operations loop forever on circular lists
+5. Consider `epsilon.map` for large key-value collections
 
 ## See Also
 

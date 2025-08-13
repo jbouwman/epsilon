@@ -4,7 +4,7 @@ String manipulation and processing functions with Unicode support.
 
 ## Overview
 
-The `epsilon.string` package provides comprehensive string manipulation utilities including splitting, joining, trimming, case conversion, pattern matching, and Unicode-aware operations. All functions are designed to work efficiently with Common Lisp strings while providing a clean, functional interface.
+The `epsilon.string` package provides string manipulation functions including splitting, joining, trimming, case conversion, and pattern matching. Functions operate on Common Lisp strings.
 
 ## Quick Start
 
@@ -501,13 +501,12 @@ Return subsequence by creating displaced array (no copying).
 - Most functions handle Unicode correctly but operate at the character level
 - Case conversion functions use Common Lisp's built-in Unicode support
 
-## Best Practices
+## Usage Notes
 
-1. Use local nicknames to avoid typing `epsilon.string:` repeatedly
-2. Prefer lazy `split` for large strings to avoid memory overhead
-3. Use `contains-p` instead of searching with `index-of` when you only need a boolean
-4. Consider `nsubseq` for efficient substring operations on large strings
-5. Use `:test #'char=` for case-sensitive operations when needed
+1. Use local nicknames for brevity
+2. `split` returns lazy sequences
+3. `nsubseq` creates displaced arrays without copying
+4. Default string comparison is case-insensitive; use `:test #'char=` for case-sensitive
 
 ## See Also
 

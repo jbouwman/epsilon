@@ -1,10 +1,10 @@
 # epsilon.map
 
-Immutable, persistent hash maps using Hash Array Mapped Trie (HAMT) data structure.
+Hash maps using Hash Array Mapped Trie (HAMT) data structure.
 
 ## Overview
 
-The `epsilon.map` package provides immutable, persistent hash maps with O(log32 n) operations for get, assoc, and dissoc. The implementation uses structural sharing for memory efficiency, making it ideal for functional programming patterns where data immutability is important.
+The `epsilon.map` package implements hash maps using a Hash Array Mapped Trie (HAMT) data structure. Operations have O(log32 n) time complexity. The implementation uses structural sharing between versions.
 
 ## Quick Start
 
@@ -368,13 +368,13 @@ The log32 base means:
 - Maps with < 1024 entries: 2 levels deep
 - Maps with < 32768 entries: 3 levels deep
 
-## Best Practices
+## Usage Notes
 
-1. **Start with +empty+**: Always build maps starting from the empty constant
-2. **Use structural sharing**: Modified maps share structure with originals
-3. **Batch updates**: Use multiple key-value pairs in single `assoc` call
-4. **Prefer get-in/assoc-in**: For nested structures, use specialized functions
-5. **Consider transients**: For bulk operations, transient maps can improve performance
+1. Build maps starting from `+empty+`
+2. Modified maps share structure with originals
+3. Batch updates with multiple key-value pairs in single `assoc`
+4. Use `get-in`/`assoc-in` for nested structures
+5. Transient maps available for bulk operations
 
 ## Thread Safety
 
