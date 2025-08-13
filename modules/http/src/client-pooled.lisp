@@ -9,7 +9,7 @@
    (#:str #:epsilon.string)
    (#:seq #:epsilon.sequence)
    (#:map #:epsilon.map)
-   (#:tls #:epsilon.tls)
+   (#:tls #:epsilon.cryptography)
    (#:pool #:epsilon.http.connection-pool))
   (:export
    #:pooled-request

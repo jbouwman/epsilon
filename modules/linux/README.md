@@ -276,12 +276,12 @@ Create network addresses:
 (make-inet6-address "2001:db8::1" 443)
 ```
 
-### TLS Support (`epsilon.tls`)
+### TLS Support (`epsilon.cryptography`)
 
 **Secure Socket Layer / Transport Layer Security**
 
 ```lisp
-(use-package :epsilon.tls)
+(use-package :epsilon.cryptography)
 
 ;; Create TLS context
 (with-tls-context (ctx :method :tls-v1.2)

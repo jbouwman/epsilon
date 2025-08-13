@@ -5,6 +5,8 @@ pkgs.mkShell {
     sbcl
     nodejs_20
     nodePackages.npm
+    libffi
+    openssl
     ripgrep
   ];
 

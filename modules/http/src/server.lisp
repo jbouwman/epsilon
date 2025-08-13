@@ -7,7 +7,7 @@
    (time epsilon.time)
    (request epsilon.http.request)
    (response epsilon.http.response)
-   (tls epsilon.tls)
+   (tls epsilon.cryptography)
    (log epsilon.log))
   (:export
    start-server

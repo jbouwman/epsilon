@@ -64,7 +64,13 @@
   (append
    ;; Check for Nix store paths
    (when (probe-file "/nix/store/")
-     (list "/nix/store/qdcbgcj27x2kpxj2sf9yfvva7qsgg64g-glibc-2.38-77/lib"))
+     (append
+       ;; Current OpenSSL in this environment
+       (when (probe-file "/nix/store/3dxy700bd43x9zh8n2klpygrj37yy67q-openssl-3.0.14/lib")
+         (list "/nix/store/3dxy700bd43x9zh8n2klpygrj37yy67q-openssl-3.0.14/lib"))
+       ;; Fallback glibc path
+       (when (probe-file "/nix/store/qdcbgcj27x2kpxj2sf9yfvva7qsgg64g-glibc-2.38-77/lib")
+         (list "/nix/store/qdcbgcj27x2kpxj2sf9yfvva7qsgg64g-glibc-2.38-77/lib"))))
    ;; Homebrew paths on macOS
    #+darwin
    (remove-if-not #'probe-file
@@ -102,9 +108,9 @@
     ((string= name "libc") "libc.so.6")
     ((string= name "libm") "libm.so.6")
     ((string= name "libpthread") "libpthread.so.0")
-    ;; Handle special case for system SSL/crypto libraries
-    ((string= name "libssl") "libssl.so")
-    ((string= name "libcrypto") "libcrypto.so")
+    ;; Handle special case for system SSL/crypto libraries - try versioned first
+    ((string= name "libssl") "libssl.so.3")
+    ((string= name "libcrypto") "libcrypto.so.3")
     ;; Don't double-prefix names that already start with "lib"
     ((and (>= (length name) 3) (string= (subseq name 0 3) "lib"))
      (concatenate 'string name ".so"))

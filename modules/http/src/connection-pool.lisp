@@ -6,7 +6,7 @@
   (:use :cl)
   (:local-nicknames
    (#:net #:epsilon.net)
-   (#:tls #:epsilon.tls)
+   (#:tls #:epsilon.cryptography)
    (#:map #:epsilon.map)
    (#:str #:epsilon.string))
   (:export

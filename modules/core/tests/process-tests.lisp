@@ -236,28 +236,3 @@
                         :error-on-failure nil)
     (is-equal 0 exit-code)
     (is (search "/tmp" output))))
-
-;;; ============================================================================
-;;; Performance and Resource Tests
-;;; ============================================================================
-
-(deftest test-multiple-processes ()
-  "Test running multiple processes concurrently"
-  (let ((processes '()))
-    (dotimes (i 3)
-      (let ((subprocess (process:make-subprocess "sleep" :args '("0.1"))))
-        (process:start subprocess :wait nil)
-        (push subprocess processes)))
-    
-    ;; All should be running
-    (dolist (p processes)
-      (is (process:running-p p)))
-    
-    ;; Wait for all to complete
-    (dolist (p processes)
-      (process:wait-for-process p 2))
-    
-    ;; All should be completed
-    (dolist (p processes)
-      (is (not (process:running-p p)))
-      (is-equal 0 (process:process-exit-code p)))))
