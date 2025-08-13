@@ -5,5 +5,5 @@
  :sources ("src")
  :tests ("tests")
  :data ("tests/certs")
- :requires ("epsilon.core" "epsilon.json" "epsilon.tls" "epsilon.net")
+ :requires ("epsilon.core" "epsilon.json" "epsilon.cryptography" "epsilon.net")
 )

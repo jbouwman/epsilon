@@ -5,7 +5,7 @@
    (#:server #:epsilon.http.server)
    (#:request #:epsilon.http.request)
    (#:response #:epsilon.http.response)
-   (#:tls #:epsilon.tls)
+   (#:tls #:epsilon.cryptography)
    (#:map #:epsilon.map)
    (#:str #:epsilon.string)
    (#:thread #:epsilon.sys.thread)))
