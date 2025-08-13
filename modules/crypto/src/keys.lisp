@@ -2,11 +2,11 @@
 ;;;;
 ;;;; This file provides public key cryptography operations using OpenSSL's libcrypto
 
-(defpackage :epsilon.cryptography.crypto
-  (:use :cl :epsilon.cryptography)
+(defpackage :epsilon.crypto.keys
+  (:use :cl :epsilon.crypto)
   (:local-nicknames
-   (#:ffi #:epsilon.cryptography.ffi))
-  (:import-from :epsilon.cryptography
+   (#:ffi #:epsilon.crypto.ffi))
+  (:import-from :epsilon.crypto
    ;; Import all needed types and constants
    #:crypto-key
    #:crypto-key-p
@@ -27,7 +27,7 @@
    #:+digest-sha3-256+
    #:+digest-sha3-512+))
 
-(in-package :epsilon.cryptography.crypto)
+(in-package :epsilon.crypto.keys)
 
 ;;;; Key Generation Functions
 

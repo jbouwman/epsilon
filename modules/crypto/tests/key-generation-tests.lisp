@@ -1,13 +1,13 @@
-;;;; Key Generation Test Suite for epsilon.cryptography
+;;;; Key Generation Test Suite for epsilon.crypto
 ;;;;
 ;;;; Comprehensive tests for RSA, EC, and Ed25519 key generation
 
-(defpackage :epsilon.cryptography.key-tests
+(defpackage :epsilon.crypto.key-tests
   (:use :cl :epsilon.test)
   (:local-nicknames
-   (#:crypto #:epsilon.cryptography)))
+   (#:crypto #:epsilon.crypto)))
 
-(in-package :epsilon.cryptography.key-tests)
+(in-package :epsilon.crypto.key-tests)
 
 ;;;; Test Fixtures
 

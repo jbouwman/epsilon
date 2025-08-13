@@ -2,12 +2,12 @@
 ;;;;
 ;;;; Tests for public key encryption/decryption and random generation
 
-(defpackage :epsilon.cryptography.encryption-tests
+(defpackage :epsilon.crypto.encryption-tests
   (:use :cl :epsilon.test)
   (:local-nicknames
-   (#:crypto #:epsilon.cryptography)))
+   (#:crypto #:epsilon.crypto)))
 
-(in-package :epsilon.cryptography.encryption-tests)
+(in-package :epsilon.crypto.encryption-tests)
 
 ;;;; Test Data
 

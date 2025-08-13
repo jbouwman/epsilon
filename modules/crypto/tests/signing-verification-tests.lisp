@@ -2,12 +2,12 @@
 ;;;;
 ;;;; Comprehensive tests for signing and verification operations
 
-(defpackage :epsilon.cryptography.signing-tests
+(defpackage :epsilon.crypto.signing-tests
   (:use :cl :epsilon.test)
   (:local-nicknames
-   (#:crypto #:epsilon.cryptography)))
+   (#:crypto #:epsilon.crypto)))
 
-(in-package :epsilon.cryptography.signing-tests)
+(in-package :epsilon.crypto.signing-tests)
 
 ;;;; Test Data
 
