@@ -19,16 +19,16 @@ The API documentation is organized by package, with each package having its own 
 ### Utility Libraries
 
 - **[epsilon.argparse](epsilon.argparse/)** - Command-line argument parsing with subcommand support
-- **[epsilon.lib.map](epsilon.lib.map/)** - Immutable hash-array mapped trie (HAMT) implementation *(coming soon)*
-- **[epsilon.lib.sequence](epsilon.lib.sequence/)** - Lazy sequences with functional operations *(coming soon)*
-- **[epsilon.lib.string](epsilon.lib.string/)** - Unicode-aware string manipulation *(coming soon)*
-- **[epsilon.lib.path](epsilon.lib.path/)** - Cross-platform path manipulation *(coming soon)*
+- **[epsilon.map](epsilon.map.md)** - Immutable hash-array mapped trie (HAMT) implementation
+- **[epsilon.sequence](epsilon.sequence/)** - Lazy sequences with functional operations *(coming soon)*
+- **[epsilon.string](epsilon.string.md)** - Unicode-aware string manipulation
+- **[epsilon.path](epsilon.path/)** - Cross-platform path manipulation *(coming soon)*
 
 ### Data Structures
 
-- **[epsilon.lib.set](epsilon.lib.set/)** - Immutable sets based on HAMT *(coming soon)*
-- **[epsilon.lib.table](epsilon.lib.table/)** - Table formatting and display *(coming soon)*
-- **[epsilon.lib.list](epsilon.lib.list/)** - Extended list operations *(coming soon)*
+- **[epsilon.set](epsilon.set/)** - Immutable sets based on HAMT *(coming soon)*
+- **[epsilon.table](epsilon.table/)** - Table formatting and display *(coming soon)*
+- **[epsilon.list](epsilon.list.md)** - Extended list operations
 
 ### System Integration
 
@@ -58,7 +58,7 @@ The API documentation is organized by package, with each package having its own 
 
 ### Development Tools
 
-- **[epsilon.test](epsilon.test/)** - Testing framework *(coming soon)*
+- **[epsilon.test](epsilon.test.md)** - Testing framework
 - **[epsilon.loader](epsilon.loader/)** - Package loader
 - **[epsilon.tool.package](epsilon.tool.package/)** - Package management *(coming soon)*
 

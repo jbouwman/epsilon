@@ -85,6 +85,8 @@
            (seq:cons string seq:*empty*))))))
 
 (defun join (delimiter strings)
+  "Join STRINGS with DELIMITER between each element.
+   Example: (join \", \" '(\"a\" \"b\" \"c\")) => \"a, b, c\""
   (when (seq:empty-p strings)
     (return-from join ""))
   (let* ((strings (seq:realize strings))
@@ -100,6 +102,8 @@
     s))
 
 (defun concat (&rest strings)
+  "Concatenate all STRINGS into a single string.
+   Example: (concat \"hello\" \" \" \"world\") => \"hello world\""
   (let ((output (make-string (apply #'+ (mapcar #'length strings))))
         (offset 0))
     (dolist (string strings output)
@@ -109,6 +113,8 @@
       (incf offset (length string)))))
 
 (defun random-string (&optional (length 12))
+  "Generate a random alphanumeric string of given LENGTH.
+   Example: (random-string 5) => \"aB3xK\""
   (declare (type fixnum length))
   (let ((result (make-string length)))
     (declare (type simple-string result))
@@ -132,16 +138,22 @@
   (and (stringp s) (plusp (length s)) (char s (1- (length s)))))
 
 (defun first-index (string char-fn)
+  "Find index of first character in STRING satisfying CHAR-FN predicate.
+   Example: (first-index \"hello123\" #'digit-char-p) => 5"
   (loop :for i :from 0 :to (1- (length string))
         :when (funcall char-fn (aref string i))
           :return i))
 
 (defun last-index (string char-fn)
+  "Find index after last character in STRING satisfying CHAR-FN predicate.
+   Example: (last-index \"abc123\" #'alpha-char-p) => 3"
   (loop :for i :from (length string) :downto 1
         :when (funcall char-fn (aref string (1- i)))
           :return i))
 
 (defun strip-right (string c)
+  "Remove trailing occurrences of character C from STRING.
+   Example: (strip-right \"hello...\" #\\.) => \"hello\""
   (let ((index (last-index string (lambda (test-c)
                                     (not (char= test-c c))))))
     (if index
@@ -149,6 +161,8 @@
         "")))  ; Return empty string when all characters match
 
 (defun strip-left (string c)
+  "Remove leading occurrences of character C from STRING.
+   Example: (strip-left \"...hello\" #\\.) => \"hello\""
   (let ((index (first-index string (lambda (test-c)
                                     (not (char= test-c c))))))
     (if index
@@ -156,6 +170,8 @@
         "")))
 
 (defun strip (string c)
+  "Remove leading and trailing occurrences of character C from STRING.
+   Example: (strip \"***text***\" #\\*) => \"text\""
   (strip-right (strip-left string c) c))
 
 (defun ends-with-p (seq suffix &key (test #'char-equal))

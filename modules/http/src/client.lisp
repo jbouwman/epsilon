@@ -30,7 +30,8 @@
    (tls-connection :initarg :tls-connection :accessor connection-tls-connection :initform nil)))
 
 (defun make-http-connection (host port &key ssl-p)
-  "Create an HTTP connection using epsilon.net"
+  "Create an HTTP connection to HOST:PORT, optionally with SSL.
+   Example: (make-http-connection \"example.com\" 443 :ssl-p t)"
   (let* ((address (net:make-socket-address host port))
          (socket (net:tcp-connect address))
          (tls-conn nil))
@@ -58,7 +59,8 @@
            (net:tcp-shutdown (connection-socket ,conn) :both))))))
 
 (defun parse-url (url-string)
-  "Parse URL into components - simple implementation"
+  "Parse URL-STRING into scheme, host, port, path, and query components.
+   Example: (parse-url \"https://api.example.com:8080/data?id=123\")"
   (let* ((scheme-end (search "://" url-string))
          (scheme (if scheme-end
                      (subseq url-string 0 scheme-end)
@@ -94,7 +96,8 @@
     (values scheme host port path query)))
 
 (defun format-request-line (method path query)
-  "Format HTTP request line"
+  "Format HTTP request line with METHOD, PATH and optional QUERY.
+   Example: (format-request-line \"GET\" \"/api/users\" \"page=1\")"
   (format nil "~A ~A~@[?~A~] HTTP/1.1"
           method
           path
