@@ -34,14 +34,14 @@
   (when *libffi-library*
     (return-from load-libffi-extension *libffi-library*))
   
-  (let* ((module-dir (pathname-directory 
-                      (or *compile-file-pathname* 
-                          *load-pathname* 
-                          (error "Cannot determine module directory"))))
-         (c-dir (append module-dir '("c")))
-         (lib-path (make-pathname :directory c-dir
-                                  :name "libepsilon-libffi"
-                                  :type "so")))
+  (let* ((current-path (or *load-pathname* 
+                          *compile-file-pathname* 
+                          (error "Cannot determine module directory")))
+         (module-root (make-pathname 
+                      :directory (butlast (butlast (pathname-directory current-path)))))
+         (lib-path (merge-pathnames 
+                   #P"c/libepsilon-libffi.so"
+                   module-root)))
     (handler-case
         (progn
           (setf *libffi-library* (sb-alien:load-shared-object lib-path))

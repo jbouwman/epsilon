@@ -150,7 +150,7 @@
     (tv-nsec :long))
   
   ;; Create an instance using with-c-struct macro
-  (lib:with-c-struct (ts timespec)
+  (lib:with-c-struct (ts 'timespec)
     ;; Set values
     (setf (lib:struct-ref ts 'tv-sec) 1234567890)
     (setf (lib:struct-ref ts 'tv-nsec) 123456789)
