@@ -436,6 +436,16 @@
                   (sb-sys:int-sap ,function-address)
                   (sb-alien:function sb-alien:int sb-alien:int sb-alien:int sb-alien:int))
                  ,@converted-args))))
+                 
+      ;; fcntl style: int fn(int, int, long)
+      ((and (eq return-type :int) (equal arg-types '(:int :int :long)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:int sb-alien:int sb-alien:int sb-alien:long))
+                 ,@converted-args))))
       
       ;; bind/connect style: int fn(int, pointer, unsigned-int)
       ((and (eq return-type :int) (equal arg-types '(:int :pointer :unsigned-int)))
@@ -446,6 +456,34 @@
                   (sb-sys:int-sap ,function-address)
                   (sb-alien:function sb-alien:int sb-alien:int 
                                      sb-alien:system-area-pointer sb-alien:unsigned-int))
+                 ,@converted-args))))
+      
+      ;; sendto style: long fn(int, pointer, unsigned-long, int, pointer, unsigned-int)
+      ((and (eq return-type :long) 
+            (equal arg-types '(:int :pointer :unsigned-long :int :pointer :unsigned-int)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:long sb-alien:int 
+                                     sb-alien:system-area-pointer sb-alien:unsigned-long
+                                     sb-alien:int sb-alien:system-area-pointer 
+                                     sb-alien:unsigned-int))
+                 ,@converted-args))))
+      
+      ;; recvfrom style: long fn(int, pointer, unsigned-long, int, pointer, pointer)
+      ((and (eq return-type :long) 
+            (equal arg-types '(:int :pointer :unsigned-long :int :pointer :pointer)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:long sb-alien:int 
+                                     sb-alien:system-area-pointer sb-alien:unsigned-long
+                                     sb-alien:int sb-alien:system-area-pointer 
+                                     sb-alien:system-area-pointer))
                  ,@converted-args))))
       
       ;; accept style: int fn(int, pointer, pointer)
@@ -626,6 +664,17 @@
                   (sb-sys:int-sap ,function-address)
                   (sb-alien:function sb-alien:void sb-alien:unsigned-long 
                                      sb-alien:system-area-pointer sb-alien:unsigned-long))
+                 ,@converted-args))))
+      
+      ;; getaddrinfo style: int fn(c-string, c-string, pointer, pointer)
+      ((and (eq return-type :int) (equal arg-types '(:c-string :c-string :pointer :pointer)))
+       (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                     args arg-types)))
+         (eval `(sb-alien:alien-funcall 
+                 (sb-alien:sap-alien 
+                  (sb-sys:int-sap ,function-address)
+                  (sb-alien:function sb-alien:int sb-alien:c-string sb-alien:c-string
+                                     sb-alien:system-area-pointer sb-alien:system-area-pointer))
                  ,@converted-args))))
       
       (t

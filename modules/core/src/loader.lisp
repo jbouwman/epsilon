@@ -489,7 +489,13 @@
   (cond ((string-equal 'defpackage (first form))
          (values (second form)
                  (append (cdr (assoc :use (cddr form)))
-                         (mapcar #'second (cdr (assoc :local-nicknames (cddr form)))))))
+                         (mapcar #'second (cdr (assoc :local-nicknames (cddr form))))
+                         ;; Extract packages from :import-from clauses
+                         (mapcar #'cadr 
+                                 (remove-if-not (lambda (clause)
+                                                  (and (consp clause)
+                                                       (eq (car clause) :import-from)))
+                                                (cddr form))))))
         ((string-equal 'in-package (first form))
          (values nil
                  (cdr form)))))
