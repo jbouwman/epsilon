@@ -2,7 +2,9 @@
   (:use cl)
   (:local-nicknames
    (map epsilon.map)
-   (trampoline epsilon.foreign.trampoline))
+   (trampoline epsilon.foreign.trampoline)
+   (clang epsilon.clang)
+   (parser epsilon.parser))
   (:export
    ;; Struct definition
    #:define-c-struct
@@ -40,6 +42,150 @@
 (in-package :epsilon.foreign.struct)
 
 ;;;; C Struct Layout Discovery and Support
+
+;;; Typedef resolution system
+
+(defvar *typedef-table* (make-hash-table :test 'equal)
+  "Registry of typedef mappings to primitive types")
+
+(defvar *system-typedefs*
+  '(;; Standard C99 types typically found in stdint.h
+    ("int8_t" . :char)
+    ("uint8_t" . :unsigned-char)
+    ("int16_t" . :short)
+    ("uint16_t" . :unsigned-short)
+    ("int32_t" . :int)
+    ("uint32_t" . :unsigned-int)
+    ("int64_t" . :long-long)
+    ("uint64_t" . :unsigned-long-long)
+    ;; Common POSIX types (platform-dependent, these are typical 64-bit mappings)
+    ("size_t" . :unsigned-long)
+    ("ssize_t" . :long)
+    ("time_t" . :long)
+    ("off_t" . :long)
+    ("pid_t" . :int)
+    ("uid_t" . :unsigned-int)
+    ("gid_t" . :unsigned-int))
+  "Common system typedef mappings - these should ideally be discovered at runtime")
+
+(defun initialize-typedef-table ()
+  "Initialize the typedef table with common system types"
+  (loop for (name . type) in *system-typedefs*
+        do (setf (gethash name *typedef-table*) type)))
+
+;; Initialize on load
+(initialize-typedef-table)
+
+(defun discover-typedef (typedef-name)
+  "Discover the primitive type for a typedef"
+  (or
+   ;; First check if we already know it
+   (resolve-typedef typedef-name)
+   ;; Try to discover its size
+   (let ((size (discover-typedef-size typedef-name)))
+     (when size
+       (let ((primitive-type
+              (case size
+                (1 :unsigned-char)  ; Assume unsigned for now
+                (2 :unsigned-short)
+                (4 :unsigned-int)
+                (8 :unsigned-long)
+                (otherwise :pointer))))
+         ;; Cache the result
+         (register-typedef typedef-name primitive-type)
+         primitive-type)))
+   ;; Fall back to reasonable default
+   :long))
+
+(defun resolve-typedef (name)
+  "Resolve a typedef name to its primitive type"
+  (gethash name *typedef-table*))
+
+(defun register-typedef (name primitive-type)
+  "Register a new typedef mapping"
+  (setf (gethash name *typedef-table*) primitive-type))
+
+(defun discover-typedef-size (typedef-name)
+  "Discover the size of a typedef at runtime using C compiler"
+  (handler-case
+      (let* ((c-code (format nil "#include <sys/types.h>~%#include <stddef.h>~%#include <time.h>~%#include <stdio.h>~%int main() { printf(\"%%lu\", sizeof(~A)); return 0; }" typedef-name))
+             (temp-file (format nil "/tmp/typedef_test_~A.c" (random 10000)))
+             (exe-file (format nil "/tmp/typedef_test_~A" (random 10000))))
+        (unwind-protect
+             (progn
+               ;; Write C code to file
+               (with-open-file (out temp-file :direction :output :if-exists :supersede)
+                 (write-string c-code out))
+               ;; Compile it
+               (let ((compile-result (sb-ext:run-program "cc" (list "-o" exe-file temp-file)
+                                                         :search t :wait t)))
+                 (when (zerop (sb-ext:process-exit-code compile-result))
+                   ;; Run it and capture output
+                   (let ((run-result (with-output-to-string (s)
+                                      (sb-ext:run-program exe-file nil
+                                                         :search nil :wait t :output s))))
+                     (parse-integer run-result :junk-allowed t)))))
+          ;; Clean up temp files
+          (ignore-errors (delete-file temp-file))
+          (ignore-errors (delete-file exe-file))))
+    (error () nil)))  ; Return nil if we can't determine the size
+
+(defun typedef-to-primitive-type (size-in-bytes signed-p)
+  "Map a size and signedness to a primitive type"
+  (cond
+    ((= size-in-bytes 1)
+     (if signed-p :char :unsigned-char))
+    ((= size-in-bytes 2)
+     (if signed-p :short :unsigned-short))
+    ((= size-in-bytes 4)
+     (if signed-p :int :unsigned-int))
+    ((= size-in-bytes 8)
+     (if signed-p :long :unsigned-long))
+    (t :pointer)))  ; Unknown size, assume pointer
+
+(defun discover-system-typedefs ()
+  "Discover system typedefs by compiling small C programs"
+  ;; This would ideally compile and run C code to discover actual sizes
+  ;; For now, we use reasonable defaults based on pointer size
+  (let* ((pointer-size (sb-alien:alien-size sb-alien:system-area-pointer))
+         (is-64-bit (= pointer-size 64))  ; alien-size returns bits
+         (platform-typedefs
+          (cond
+            ;; 64-bit Linux/Unix
+            ((and is-64-bit (member :unix *features*))
+             '(("size_t" . :unsigned-long)
+               ("ssize_t" . :long)
+               ("time_t" . :long)
+               ("off_t" . :long)
+               ("ptrdiff_t" . :long)))
+            ;; 32-bit systems
+            ((not is-64-bit)
+             '(("size_t" . :unsigned-int)
+               ("ssize_t" . :int)
+               ("time_t" . :long)
+               ("off_t" . :long)
+               ("ptrdiff_t" . :int)))
+            ;; Default fallback
+            (t '()))))
+    (loop for (name . type) in platform-typedefs
+          do (register-typedef name type))))
+
+(defun load-system-headers ()
+  "Load typedef definitions from common system headers"
+  ;; Try to parse common system headers if available
+  (dolist (header '("/usr/include/sys/types.h"
+                    "/usr/include/stddef.h"
+                    "/usr/include/stdint.h"))
+    (when (probe-file header)
+      (handler-case
+          (with-open-file (in header :direction :input)
+            (let ((content (make-string (file-length in))))
+              (read-sequence content in)
+              ;; Parse typedefs from the header
+              (dolist (typedef (parse-typedefs-from-header content))
+                (when typedef
+                  (register-typedef (car typedef) (cdr typedef))))))
+        (error () nil)))))  ; Ignore errors reading system headers
 
 ;;; Struct layout representation
 
@@ -501,32 +647,64 @@
 
 ;;; C header parsing
 
+(defun parse-typedefs-from-header (header-text)
+  "Extract typedef declarations from C header text using simple parsing"
+  ;; Simple line-based parsing for typedef declarations
+  (let ((lines (split-string header-text #\Newline))
+        (typedefs '()))
+    (dolist (line lines)
+      (when (and (search "typedef" line)
+                 (not (search "//" line))  ; Skip comments
+                 (not (search "/*" line)))
+        (let ((typedef (parse-typedef-line line)))
+          (when typedef
+            (push typedef typedefs)))))
+    (nreverse typedefs)))
+
+(defun split-string (string delimiter)
+  "Split a string by delimiter character"
+  (let ((result '())
+        (start 0))
+    (loop for pos = (position delimiter string :start start)
+          while pos
+          do (push (subseq string start pos) result)
+             (setf start (1+ pos))
+          finally (push (subseq string start) result))
+    (nreverse result)))
+
+(defun parse-typedef-line (line)
+  "Parse a single typedef line"
+  ;; Simple parsing: typedef <type-spec> <name>;
+  (let ((trimmed (string-trim '(#\Space #\Tab) line)))
+    (when (and (> (length trimmed) 7)
+               (string= "typedef" (subseq trimmed 0 7)))
+      (let* ((rest (string-trim '(#\Space #\Tab) (subseq trimmed 7)))
+             (semicolon-pos (position #\; rest)))
+        (when semicolon-pos
+          (let* ((type-and-name (subseq rest 0 semicolon-pos))
+                 (words (remove-if (lambda (s) (= (length s) 0))
+                                  (split-string type-and-name #\Space))))
+            (when (>= (length words) 2)
+              ;; Last word is the new typedef name, rest is the type
+              (let ((new-name (car (last words)))
+                    (type-words (butlast words)))
+                (cons new-name (parse-field-type type-words))))))))))
+
+(defun parse-c-type-spec (type-spec)
+  "Parse a C type specification into a primitive type"
+  (let ((words (remove-if (lambda (s) (= (length s) 0))
+                          (split-string type-spec #\Space))))
+    (parse-field-type words)))
+
 (defun parse-c-struct (name header-text)
   "Parse a C struct definition from header text"
-  ;; Try to use the clang parser if available
-  (or
-   (when (find-package "EPSILON.CLANG")
-     (handler-case
-         (let* ((clang-pkg (find-package "EPSILON.CLANG"))
-                (tokenize-fn (find-symbol "TOKENIZE" clang-pkg))
-                (parser-pkg (find-package "EPSILON.PARSER"))
-                (run-fn (when parser-pkg (find-symbol "RUN" parser-pkg)))
-                (struct-spec-fn (find-symbol "STRUCT-SPECIFIER" clang-pkg)))
-           (when (and tokenize-fn run-fn struct-spec-fn)
-             (let* ((stream (make-string-input-stream header-text))
-                    (tokens (funcall tokenize-fn stream))
-                    (ast (funcall run-fn (funcall struct-spec-fn) tokens)))
-               (when (and ast (epsilon.parser:success-p ast))
-                 (let ((parsed (epsilon.parser:success-value ast)))
-                   (when (and parsed (listp parsed) (eq (getf parsed :type) :struct))
-                     (let ((fields (extract-struct-fields parsed)))
-                       (when fields
-                         (define-c-struct name fields)))))))))
-       (error (e)
-         (declare (ignore e))
-         nil)))
-   ;; Fall back to simple parsing of the provided text
-   (parse-struct-from-text name header-text)))
+  ;; First, extract any typedefs from the header
+  (dolist (typedef (parse-typedefs-from-header header-text))
+    (when typedef
+      (register-typedef (car typedef) (cdr typedef))))
+  ;; For now, use simple parsing until clang parser is fully integrated
+  ;; TODO: Fix clang parser integration with epsilon.parser combinators
+  (parse-struct-from-text name header-text))
 
 (defun convert-parsed-fields (parsed-fields)
   "Convert parsed field specs to our format"
@@ -540,13 +718,13 @@
   (let ((fields (getf ast :fields)))
     (when fields
       (loop for field in fields
-            when (and (listp field) (eq (getf field :type) :field-declaration))
+            when (and (listp field) (eq (first field) :field-declaration))
             append (process-field-declaration field)))))
 
 (defun process-field-declaration (field-decl)
   "Process a field declaration into our format"
-  (let ((specifiers (getf field-decl :specifiers))
-        (declarators (getf field-decl :declarators)))
+  (let ((specifiers (getf (rest field-decl) :specifiers))
+        (declarators (getf (rest field-decl) :declarators)))
     (when (and specifiers declarators)
       (let ((type (parse-field-type specifiers)))
         (mapcar (lambda (declarator)
@@ -557,24 +735,38 @@
                 declarators)))))
 
 (defun parse-field-type (specifiers)
-  "Parse field type from specifiers"
+  "Parse field type from specifiers - resolve to primitive machine types"
   (cond
+    ;; Handle unsigned types
+    ((member "unsigned" specifiers :test #'string=)
+     (cond
+       ((and (member "long" specifiers :test #'string=)
+             (> (count "long" specifiers :test #'string=) 1)) :unsigned-long-long)
+       ((member "long" specifiers :test #'string=) :unsigned-long)
+       ((member "int" specifiers :test #'string=) :unsigned-int)
+       ((member "short" specifiers :test #'string=) :unsigned-short)
+       ((member "char" specifiers :test #'string=) :unsigned-char)
+       (t :unsigned-int)))  ; unsigned alone means unsigned int
+    ;; Handle long long
+    ((and (member "long" specifiers :test #'string=)
+          (> (count "long" specifiers :test #'string=) 1)) :long-long)
+    ;; Handle basic types
+    ((member "long" specifiers :test #'string=) :long)
     ((member "int" specifiers :test #'string=) :int)
     ((member "char" specifiers :test #'string=) :char)
     ((member "short" specifiers :test #'string=) :short)
-    ((member "long" specifiers :test #'string=) :long)
     ((member "float" specifiers :test #'string=) :float)
     ((member "double" specifiers :test #'string=) :double)
     ((member "void" specifiers :test #'string=) :void)
-    ((member "unsigned" specifiers :test #'string=)
-     (cond
-       ((member "int" specifiers :test #'string=) :unsigned-int)
-       ((member "char" specifiers :test #'string=) :unsigned-char)
-       ((member "short" specifiers :test #'string=) :unsigned-short)
-       ((member "long" specifiers :test #'string=) :unsigned-long)
-       (t :unsigned-int)))
+    ;; Handle pointers
     ((some (lambda (s) (and (stringp s) (search "*" s))) specifiers) :pointer)
-    (t :int)))
+    ;; Check if it's a single identifier that might be a typedef
+    ((and (= (length specifiers) 1)
+          (stringp (first specifiers)))
+     ;; Try to discover the typedef's actual type
+     (discover-typedef (first specifiers)))
+    ;; Default case
+    (t :int)))  ; Default to int
 
 (defun parse-struct-from-text (name text)
   "Simple fallback struct parser"

@@ -13,7 +13,10 @@
    symbol)
   (:export
    tokenize
-   parse))
+   parse
+   struct-specifier
+   translation-unit
+   external-declaration))
 
 (in-package epsilon.clang)
 
