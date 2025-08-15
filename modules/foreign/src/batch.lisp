@@ -6,8 +6,7 @@
 (defpackage epsilon.foreign.batch
   (:use cl)
   (:local-nicknames
-   (pool epsilon.foreign.memory-pool)
-   (ffi epsilon.foreign))
+   (pool epsilon.foreign.memory-pool))
   (:export
    #:with-foreign-batch
    #:batch-call
@@ -59,8 +58,11 @@
         ;; Return a promise for the result
         (lambda ()
           (gethash call-id (batch-context-deferred-results *current-batch*))))
-      ;; No batch context, execute immediately
-      (apply #'ffi:shared-call name-lib return-type arg-types args)))
+      ;; No batch context, execute immediately  
+      (if (find-package "EPSILON.FOREIGN")
+          (apply (find-symbol "SHARED-CALL" "EPSILON.FOREIGN")
+                 name-lib return-type arg-types args)
+          (error "epsilon.foreign package not loaded"))))
 
 (defun batch-allocate (type &optional (count 1))
   "Batch memory allocation"
@@ -68,16 +70,24 @@
       (let ((ptr (if (batch-context-pool *current-batch*)
                      (pool:pool-allocate (* count (foreign-type-size type))
                                         (batch-context-pool *current-batch*))
-                     (ffi:foreign-alloc type :count count))))
+                     (if (find-package "EPSILON.FOREIGN")
+                         (funcall (find-symbol "FOREIGN-ALLOC" "EPSILON.FOREIGN")
+                                  type :count count)
+                         (error "epsilon.foreign package not loaded")))))
         (push (list ptr type count) (batch-context-allocations *current-batch*))
         ptr)
-      (ffi:foreign-alloc type :count count)))
+      (if (find-package "EPSILON.FOREIGN")
+          (funcall (find-symbol "FOREIGN-ALLOC" "EPSILON.FOREIGN")
+                   type :count count)
+          (error "epsilon.foreign package not loaded"))))
 
 (defun batch-free (ptr)
   "Batch memory deallocation"
   (if *current-batch*
       (push ptr (batch-context-deallocations *current-batch*))
-      (ffi:foreign-free ptr)))
+      (if (find-package "EPSILON.FOREIGN")
+          (funcall (find-symbol "FOREIGN-FREE" "EPSILON.FOREIGN") ptr)
+          (error "epsilon.foreign package not loaded"))))
 
 ;;; Batch execution
 
@@ -92,8 +102,10 @@
       ;; Execute all calls
       (dolist (call calls)
         (destructuring-bind (id name-lib return-type arg-types args) call
-          (let ((result (apply #'ffi:shared-call 
-                              name-lib return-type arg-types args)))
+          (let ((result (if (find-package "EPSILON.FOREIGN")
+                           (apply (find-symbol "SHARED-CALL" "EPSILON.FOREIGN")
+                                  name-lib return-type arg-types args)
+                           (error "epsilon.foreign package not loaded"))))
             (setf (gethash id (batch-context-deferred-results batch)) result)))))))
 
 (defun cleanup-batch (batch)
@@ -101,7 +113,9 @@
   (when batch
     ;; Free all deferred deallocations
     (dolist (ptr (batch-context-deallocations batch))
-      (ffi:foreign-free ptr))
+      (if (find-package "EPSILON.FOREIGN")
+          (funcall (find-symbol "FOREIGN-FREE" "EPSILON.FOREIGN") ptr)
+          (error "epsilon.foreign package not loaded")))
     ;; Clear batch data
     (setf (batch-context-calls batch) nil)
     (setf (batch-context-allocations batch) nil)

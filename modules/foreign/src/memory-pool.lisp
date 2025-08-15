@@ -64,7 +64,9 @@
 
 (defun allocate-new-block (pool)
   "Allocate a new memory block for the pool"
-  (let ((ptr (sb-alien:make-alien sb-alien:char (memory-pool-block-size pool))))
+  (let ((ptr (sb-alien:alien-sap 
+              (sb-alien:make-alien (sb-alien:unsigned 8) 
+                                   (memory-pool-block-size pool)))))
     (when *pool-statistics*
       (incf (memory-pool-total-allocated pool)))
     ptr))
@@ -96,7 +98,7 @@
         (sb-alien:alien-funcall
          (sb-alien:extern-alien "memset"
                                (sb-alien:function sb-alien:void
-                                                 (* sb-alien:char)
+                                                 sb-alien:system-area-pointer
                                                  sb-alien:int
                                                  sb-alien:unsigned-long))
          ptr 0 size))
@@ -149,11 +151,11 @@
 (defun pool-destroy (pool)
   "Destroy a pool and free all its memory"
   (sb-thread:with-mutex ((memory-pool-lock pool))
-    ;; Free all blocks
+    ;; Free all blocks (convert SAP back to alien for freeing)
     (dolist (ptr (memory-pool-free-blocks pool))
-      (sb-alien:free-alien ptr))
+      (sb-alien:free-alien (sb-alien:sap-alien ptr (* (sb-alien:unsigned 8)))))
     (dolist (ptr (memory-pool-used-blocks pool))
-      (sb-alien:free-alien ptr))
+      (sb-alien:free-alien (sb-alien:sap-alien ptr (* (sb-alien:unsigned 8)))))
     ;; Clear lists
     (setf (memory-pool-free-blocks pool) nil)
     (setf (memory-pool-used-blocks pool) nil)

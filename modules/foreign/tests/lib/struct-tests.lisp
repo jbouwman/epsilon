@@ -41,7 +41,7 @@
       (y :int)))
   
   ;; Create an instance
-  (struct:with-c-struct (pt 'point)
+  (struct:with-c-struct (pt point)
     ;; Set values
     (setf (struct:struct-ref pt 'x) 10)
     (setf (struct:struct-ref pt 'y) 20)
@@ -64,7 +64,7 @@
       (data (:struct inner))
       (count :int)))
   
-  (struct:with-c-struct (obj 'outer)
+  (struct:with-c-struct (obj outer)
     ;; Access nested fields
     (setf (struct:struct-ref obj 'id) 1)
     (setf (struct:struct-ref obj '(data value)) 42)
@@ -80,7 +80,7 @@
     '((size :int)
       (data (:array :unsigned-char 256))))
   
-  (struct:with-c-struct (buf 'buffer-struct)
+  (struct:with-c-struct (buf buffer-struct)
     (setf (struct:struct-ref buf 'size) 10)
     
     ;; Set array elements
@@ -97,8 +97,8 @@
     '((value :int)
       (next (:pointer (:struct node)))))
   
-  (struct:with-c-struct (node1 'node)
-    (struct:with-c-struct (node2 'node)
+  (struct:with-c-struct (node1 node)
+    (struct:with-c-struct (node2 node)
       (setf (struct:struct-ref node1 'value) 10)
       (setf (struct:struct-ref node2 'value) 20)
       
@@ -118,7 +118,7 @@
       (reserved :bit 4)
       (data :unsigned-char)))
   
-  (struct:with-c-struct (f 'flags)
+  (struct:with-c-struct (f flags)
     ;; Set bit fields
     (setf (struct:struct-ref f 'enabled) 1)
     (setf (struct:struct-ref f 'mode) 5)
@@ -236,7 +236,7 @@
     (buf (:pointer (:struct stat-struct))))
   
   ;; Use it
-  (struct:with-c-struct (statbuf 'stat-struct)
+  (struct:with-c-struct (statbuf stat-struct)
     (let ((result (stat-func "/tmp" (struct:struct-pointer statbuf))))
       (when (zerop result)
         ;; Successfully got file stats
@@ -280,7 +280,7 @@
       (flags :unsigned-int)
       (payload (:array :unsigned-char 64))))
   
-  (struct:with-c-struct (packet 'data-packet)
+  (struct:with-c-struct (packet data-packet)
     ;; Set some data
     (setf (struct:struct-ref packet 'version) 1)
     (setf (struct:struct-ref packet 'flags) #x1234)
@@ -293,7 +293,7 @@
       (is (>= (length bytes) 72)) ; At least version + flags + some payload
       
       ;; Deserialize back
-      (struct:with-c-struct (packet2 'data-packet)
+      (struct:with-c-struct (packet2 data-packet)
         (struct:bytes-to-struct bytes packet2)
         (is (= (struct:struct-ref packet2 'version) 1))
         (is (= (struct:struct-ref packet2 'flags) #x1234))
@@ -307,7 +307,7 @@
       (y :float)
       (z :float)))
   
-  (struct:with-c-struct (pt 'point3d)
+  (struct:with-c-struct (pt point3d)
     (setf (struct:struct-ref pt 'x) 1.0)
     (setf (struct:struct-ref pt 'y) 2.0)
     (setf (struct:struct-ref pt 'z) 3.0)

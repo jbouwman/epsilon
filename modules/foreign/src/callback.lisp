@@ -128,11 +128,12 @@
       ;; Try to use SBCL's alien-lambda
       (let ((alien-lambda-sym (find-symbol "ALIEN-LAMBDA" "SB-ALIEN")))
         (if alien-lambda-sym
-            (let* ((lambda-form `(,alien-lambda-sym 
-                                  (sb-alien:function ,alien-return ,@alien-args)
-                                  ,(loop for name in arg-names
-                                        for type in alien-args
-                                        collect (list name type))
+            (let* ((typed-lambda-list (loop for name in arg-names
+                                           for type in alien-args
+                                           collect (list name type)))
+                   (lambda-form `(,alien-lambda-sym 
+                                  ,alien-return
+                                  ,typed-lambda-list
                                   ,(build-callback-body function return-type arg-types arg-names)))
                    (alien-cb (eval lambda-form))
                    (pointer (sb-alien:alien-sap alien-cb)))
@@ -151,8 +152,9 @@
                                   (incf *dummy-pointer-counter*)))))))
 
 ;;; libffi integration control
-(defvar *use-libffi* t
-  "Whether to use libffi for callback creation when available")
+(defvar *use-libffi* nil
+  "Whether to use libffi for callback creation when available
+   Currently disabled as SBCL's alien-lambda is working correctly")
 
 (defun libffi-available-p ()
   "Check if libffi integration is available"
@@ -194,17 +196,10 @@
 
 (defun make-callback (function return-type arg-types)
   "Create a C-callable callback from a Lisp function
-   Uses libffi when available, falls back to SBCL implementation"
-  (if (and *use-libffi* (libffi-available-p))
-      (handler-case
-          ;; Try libffi first
-          (funcall (find-symbol "MAKE-LIBFFI-CALLBACK" '#:epsilon.foreign)
-                   function return-type arg-types)
-        (error (e)
-          (warn "libffi callback creation failed: ~A~%Falling back to SBCL implementation" e)
-          (make-sbcl-callback function return-type arg-types)))
-      ;; Use SBCL implementation
-      (make-sbcl-callback function return-type arg-types)))
+   Prefers SBCL's alien-lambda which works correctly after our fixes"
+  ;; Always use SBCL implementation which is now working
+  ;; libffi integration would require complex C-to-Lisp callback mechanism
+  (make-sbcl-callback function return-type arg-types))
 
 (defun make-callback-wrapper (function return-type arg-types)
   "Create a wrapper function that handles type conversions"

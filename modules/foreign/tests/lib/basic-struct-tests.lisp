@@ -53,7 +53,7 @@
       (float-val :float)
       (double-val :double)))
   
-  (struct:with-c-struct (s 'test-mixed)
+  (struct:with-c-struct (s test-mixed)
     (setf (struct:struct-ref s 'byte-val) 255)
     (setf (struct:struct-ref s 'int-val) -1000)
     (setf (struct:struct-ref s 'long-val) 9999999)
@@ -143,7 +143,7 @@
     '((value :int)
       (next :pointer)))
   
-  (struct:with-c-struct (node 'test-with-pointer)
+  (struct:with-c-struct (node test-with-pointer)
     (setf (struct:struct-ref node 'value) 42)
     (setf (struct:struct-ref node 'next) (sb-sys:int-sap 0))
     
