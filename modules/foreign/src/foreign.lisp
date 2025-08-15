@@ -3,7 +3,12 @@
   (:local-nicknames
    (map epsilon.map)
    (seq epsilon.sequence)
-   (path epsilon.path))
+   (path epsilon.path)
+   (trampoline epsilon.foreign.trampoline)
+   (marshalling epsilon.foreign.marshalling)
+   (struct epsilon.foreign.struct)
+   (callback epsilon.foreign.callback)
+   (callback-impl epsilon.foreign.callback-impl))
   (:export
    ;; Core FFI
    shared-call
@@ -36,7 +41,92 @@
    
    ;; Type Mapping
    def-type-map
-   *primitive-type-map*))
+   *primitive-type-map*
+   
+   ;; New trampoline-based interface
+   defshared-fast
+   shared-call-fast
+   
+   ;; Re-export from trampoline module
+   make-ffi-trampoline
+   get-or-create-trampoline
+   c-type
+   c-type-p
+   c-type-base
+   c-type-size
+   c-type-alignment
+   c-type-signed-p
+   get-c-type
+   ffi-signature
+   ffi-signature-p
+   ffi-signature-return-type
+   ffi-signature-arg-types
+   ffi-signature-trampoline
+   register-signature
+   get-signature
+   clear-signature-registry
+   convert-to-foreign
+   convert-from-foreign
+   
+   ;; Re-export from marshalling module
+   infer-function-signature
+   with-pinned-array
+   with-string-array
+   with-output-array
+   define-enum
+   enum-value
+   enum-keyword
+   defshared-auto
+   defshared-smart
+   define-c-type
+   foreign-error
+   foreign-error-p
+   foreign-error-code
+   foreign-error-function
+   bool-to-foreign
+   foreign-to-bool
+   
+   ;; Re-export from struct module
+   define-c-struct
+   define-c-struct-auto
+   define-c-union
+   parse-c-struct
+   struct-layout-p
+   get-struct-layout
+   struct-layout-size
+   struct-layout-alignment
+   struct-field-offset
+   struct-field-type
+   struct-field-size
+   struct-has-field-p
+   with-c-struct
+   with-c-union
+   with-struct-view
+   with-foreign-object
+   struct-ref
+   struct-ref-ptr
+   union-ref
+   struct-pointer
+   struct-to-bytes
+   bytes-to-struct
+   struct-to-string
+   
+   ;; Re-export from callback module
+   make-callback
+   call-callback
+   callback-pointer
+   register-callback
+   unregister-callback
+   get-callback
+   list-callbacks
+   defcallback
+   with-callback
+   with-callback-scope
+   callback-info
+   callback-info-p
+   callback-info-function
+   callback-info-signature
+   callback-info-pointer))
 
 (in-package epsilon.foreign)
 
@@ -573,28 +663,10 @@
     (t
      (error "Unsupported type specifier: ~A" type))))
 
+;; Now delegating to trampoline:convert-to-foreign
 (defun convert-to-foreign (value type)
   "Convert Lisp value to foreign representation"
-  (case type
-    (:string 
-     (if (stringp value)
-         (sb-alien:make-alien-string value)
-         value))
-    (:char 
-     (if (characterp value) 
-         (char-code value) 
-         value))
-    ((:int :long :short :unsigned-int :unsigned-long :unsigned-short)
-     (if (numberp value) value (error "Expected number for ~A" type)))
-    ((:float :double)
-     (if (numberp value) (coerce value 'double-float) value))
-    (:pointer
-     (cond 
-       ((numberp value) (sb-sys:int-sap value))  ; Convert integer address to SAP
-       ((sb-sys:system-area-pointer-p value) value)  ; Already a SAP
-       ((zerop value) (sb-sys:int-sap 0))  ; NULL pointer
-       (t value)))  ; Hope it's already the right type
-    (otherwise value)))
+  (trampoline:convert-to-foreign value type))
 
 ;;; defshared: Defines a Lisp function that calls a C function
 ;;; Creates optimized calling paths based on type information
@@ -879,4 +951,107 @@
   (logand data #xffffffff))
 
 (defvar *primitive-type-map*)
+
+;;;; New Trampoline-based Fast FFI
+
+(defun shared-call-fast (function-designator return-type arg-types &rest args)
+  "Fast FFI call using compiled trampolines instead of eval"
+  (let ((function-address
+          (etypecase function-designator
+            (symbol (lib-function 
+                     (lib-open "libc") 
+                     (string function-designator)))
+            (list (destructuring-bind (fn-name lib-name) function-designator
+                    (lib-function 
+                     (lib-open lib-name) 
+                     (string fn-name)))))))
+    (unless function-address
+      (error "Could not find function ~A" function-designator))
+    ;; Use trampoline system
+    (trampoline:call-with-trampoline function-address return-type arg-types args)))
+
+(defmacro defshared-fast (lisp-name c-name library return-type &rest args)
+  "Fast version of defshared using trampolines"
+  (let* ((doc-pos (position :documentation args))
+         (documentation (when doc-pos (nth (1+ doc-pos) args)))
+         (arg-specs (if doc-pos
+                        (append (subseq args 0 doc-pos)
+                                (subseq args (+ doc-pos 2)))
+                        args))
+         ;; Filter out empty lists which represent no arguments
+         (arg-specs (remove-if (lambda (spec) (and (listp spec) (null spec))) arg-specs))
+         (arg-names (when arg-specs (mapcar #'first arg-specs)))
+         (arg-types (when arg-specs (mapcar #'second arg-specs))))
+    `(progn
+       ;; Register the signature
+       (trampoline:register-signature ',lisp-name ,return-type ',(or arg-types '()))
+       ;; Define the function
+       (defun ,lisp-name ,arg-names
+         ,@(when documentation (list documentation))
+         (shared-call-fast (list ,c-name ,library) ,return-type ',(or arg-types '()) ,@arg-names)))))
+
+;; Helper functions for type conversion - these are actually needed
+(defun convert-from-foreign (value type) 
+  "Convert foreign value to Lisp representation"
+  (trampoline:convert-from-foreign value type))
+
+;; Re-export bool conversion functions from marshalling
+(defun bool-to-foreign (value &optional type)
+  "Convert Lisp boolean to C bool"
+  (marshalling:bool-to-foreign value type))
+
+(defun foreign-to-bool (value &optional type)
+  "Convert C bool to Lisp boolean"
+  (marshalling:foreign-to-bool value type))
+
+;; Re-export error handling from marshalling
+(defun foreign-error-p (condition)
+  "Check if condition is a foreign error"
+  (typep condition 'marshalling:foreign-error))
+
+(defun foreign-error-code (condition)
+  "Get error code from foreign error"
+  (marshalling:foreign-error-code condition))
+
+(defun foreign-error-function (condition)
+  "Get function name from foreign error"
+  (marshalling:foreign-error-function condition))
+
+;; Re-export the condition type
+(deftype foreign-error ()
+  'marshalling:foreign-error)
+
+;; Re-export define-c-type
+(defun define-c-type (name size &rest args)
+  "Define a new C type"
+  (apply #'marshalling:define-c-type name size args))
+
+;; Re-export smart defshared macro
+(defmacro defshared-smart (name c-name &optional (library "libc"))
+  "Define a foreign function with fully automatic signature inference"
+  `(marshalling:defshared-smart ,name ,c-name ,library))
+
+;; Re-export array handling macros
+(defmacro with-output-array ((var count type) &body body)
+  "Create an array for output parameters"
+  `(marshalling:with-output-array (,var ,count ,type) ,@body))
+
+;; Re-export struct functions
+(defun define-c-struct (name fields)
+  "Define a C struct"
+  (struct:define-c-struct name fields))
+
+(defmacro with-c-struct ((var type) &body body)
+  "Allocate a C struct"
+  `(struct:with-c-struct (,var ,type) ,@body))
+
+(defun struct-ref (struct field)
+  "Get struct field value"
+  (struct:struct-ref struct field))
+
+(defun (setf struct-ref) (value struct field)
+  "Set struct field value"
+  (setf (struct:struct-ref struct field) value))
+
+
 

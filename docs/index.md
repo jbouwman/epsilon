@@ -22,6 +22,7 @@ Technical documentation and design decisions.
 - [Data Structures](architecture/data-structures.md) - Maps, sequences, and sets
 - [Module Management](architecture/module-management.md) - Module system design
 - [Module Catalog](architecture/module-catalog.md) - Complete module reference
+- [Foreign Function Interface](ffi-system.md) - C library integration and callbacks
 - Additional specifications in [architecture](architecture/index.md)
 
 ### Operations
@@ -39,6 +40,7 @@ Development projects and future enhancements.
 
 - Immutable data structures (maps, sequences, sets, vectors)
 - Module system with dependency management
+- **Foreign Function Interface** - C library integration with callbacks
 - Data encoding (JSON, YAML, MessagePack, EDN)
 - Cryptographic functions (SHA-2, checksums)
 - Network programming (HTTP client/server, WebSocket)
