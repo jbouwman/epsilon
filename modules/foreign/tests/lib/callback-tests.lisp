@@ -142,7 +142,7 @@
                          (sb-sys:signed-sap-ref-32 pt-ptr 4)))  ; y
                     :int '(:pointer))))
     
-    (struct:with-c-struct (pt 'point-cb)
+    (struct:with-c-struct (pt point-cb)
       (setf (struct:struct-ref pt 'x) 10)
       (setf (struct:struct-ref pt 'y) 20)
       (is (= (callback:call-callback point-sum (struct:struct-pointer pt)) 30)))))
@@ -150,9 +150,11 @@
 (deftest test-callback-thread-safety
   "Test that callbacks work correctly from multiple threads"
   (let* ((counter 0)
+         (lock (sb-thread:make-mutex))
          (increment-cb (callback:make-callback
                         (lambda () 
-                          (incf counter))
+                          (sb-thread:with-mutex (lock)
+                            (incf counter)))
                         :int '()))
          (threads (loop for i from 1 to 5
                        collect (sb-thread:make-thread
@@ -195,11 +197,12 @@
     (callback:with-callback-scope
       ;; Create multiple callbacks
       (dotimes (i 10)
-        (push (callback:make-callback
-               (lambda (x) (* x i))
-               :int '(:int))
-              callbacks))
-      ;; Use callbacks
+        (let ((capture-i i))  ; Capture current value of i
+          (push (callback:make-callback
+                 (lambda (x) (* x capture-i))
+                 :int '(:int))
+                callbacks)))
+      ;; Use callbacks - first in list is last added (i=9), so 5*9=45
       (is (= (callback:call-callback (first callbacks) 5) 45)))
     ;; After scope, callbacks should be cleaned up
     ;; (This is more of a memory leak test - hard to verify directly)

@@ -4,7 +4,9 @@
    epsilon.syntax
    epsilon.test)
   (:local-nicknames
-   (lib epsilon.foreign)))
+   (lib epsilon.foreign)
+   (callback epsilon.foreign.callback)
+   (trampoline epsilon.foreign.trampoline)))
 
 (in-package epsilon.foreign.sbcl-callback-tests)
 
@@ -137,16 +139,16 @@
   ;; Test the registry infrastructure
   (let ((test-func (lambda (x) (* x 3))))
     ;; Register a callback (this should work with our infrastructure)
-    (let ((cb-id (lib:register-callback 'test-cb test-func :int '(:int))))
+    (let ((cb-id (callback:register-callback 'test-cb test-func :int '(:int))))
       (is (integerp cb-id))
       
       ;; Retrieve it
-      (let ((cb-ptr (lib:get-callback 'test-cb)))
+      (let ((cb-ptr (callback:get-callback 'test-cb)))
         (is (sb-sys:system-area-pointer-p cb-ptr)))
       
       ;; Clean up
-      (lib:unregister-callback 'test-cb)
-      (is (null (lib:get-callback 'test-cb))))))
+      (callback:unregister-callback 'test-cb)
+      (is (null (callback:get-callback 'test-cb))))))
 
 (deftest test-alternative-callback-creation
   "Test alternative approaches to callback creation"
@@ -177,7 +179,7 @@
       (let* ((lib-handle (lib:lib-open "libc"))
              (strlen-addr (lib:lib-function lib-handle "strlen")))
         ;; Create a trampoline and test it
-        (let ((trampoline (lib::get-or-create-trampoline :size-t '(:string))))
+        (let ((trampoline (trampoline:get-or-create-trampoline :size-t '(:string))))
           (let ((result (funcall trampoline strlen-addr "test")))
             (is (= result 4))
             (format t "~%alien-funcall baseline working: strlen('test') = ~A~%" result))))
@@ -188,7 +190,7 @@
 (deftest test-callback-stub-behavior
   "Test current callback stub to understand its behavior"
   ;; Test our current make-callback implementation
-  (let ((cb-ptr (lib:make-callback (lambda (x) (+ x 10)) :int '(:int))))
+  (let ((cb-ptr (callback:make-callback (lambda (x) (+ x 10)) :int '(:int))))
     ;; Verify we get a pointer
     (is (sb-sys:system-area-pointer-p cb-ptr))
     
@@ -197,7 +199,7 @@
     
     ;; Test calling the callback
     (handler-case
-        (let ((result (lib:call-callback cb-ptr 5)))
+        (let ((result (callback:call-callback cb-ptr 5)))
           (is (= result 15)) ; 5 + 10 = 15
           (format t "~%Callback call successful: f(5) = ~A~%" result))
       (error (e)
