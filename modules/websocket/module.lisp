@@ -2,4 +2,4 @@
  :version "1.0.0"
  :author "epsilon"
  :description "WebSocket implementation (RFC 6455) for epsilon"
- :requires ("epsilon.core" "epsilon.crypto" "epsilon.http"))
+ :requires ("epsilon.core" "epsilon.digest" "epsilon.http"))
