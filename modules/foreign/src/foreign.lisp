@@ -995,5 +995,63 @@
   "Convert foreign value to Lisp representation"
   (trampoline:convert-from-foreign value type))
 
+;; Re-export bool conversion functions from marshalling
+(defun bool-to-foreign (value &optional type)
+  "Convert Lisp boolean to C bool"
+  (marshalling:bool-to-foreign value type))
+
+(defun foreign-to-bool (value &optional type)
+  "Convert C bool to Lisp boolean"
+  (marshalling:foreign-to-bool value type))
+
+;; Re-export error handling from marshalling
+(defun foreign-error-p (condition)
+  "Check if condition is a foreign error"
+  (typep condition 'marshalling:foreign-error))
+
+(defun foreign-error-code (condition)
+  "Get error code from foreign error"
+  (marshalling:foreign-error-code condition))
+
+(defun foreign-error-function (condition)
+  "Get function name from foreign error"
+  (marshalling:foreign-error-function condition))
+
+;; Re-export the condition type
+(deftype foreign-error ()
+  'marshalling:foreign-error)
+
+;; Re-export define-c-type
+(defun define-c-type (name size &rest args)
+  "Define a new C type"
+  (apply #'marshalling:define-c-type name size args))
+
+;; Re-export smart defshared macro
+(defmacro defshared-smart (name c-name &optional (library "libc"))
+  "Define a foreign function with fully automatic signature inference"
+  `(marshalling:defshared-smart ,name ,c-name ,library))
+
+;; Re-export array handling macros
+(defmacro with-output-array ((var count type) &body body)
+  "Create an array for output parameters"
+  `(marshalling:with-output-array (,var ,count ,type) ,@body))
+
+;; Re-export struct functions
+(defun define-c-struct (name fields)
+  "Define a C struct"
+  (struct:define-c-struct name fields))
+
+(defmacro with-c-struct ((var type) &body body)
+  "Allocate a C struct"
+  `(struct:with-c-struct (,var ,type) ,@body))
+
+(defun struct-ref (struct field)
+  "Get struct field value"
+  (struct:struct-ref struct field))
+
+(defun (setf struct-ref) (value struct field)
+  "Set struct field value"
+  (setf (struct:struct-ref struct field) value))
+
 
 

@@ -4,7 +4,8 @@
    epsilon.syntax
    epsilon.test)
   (:local-nicknames
-   (lib epsilon.foreign)))
+   (lib epsilon.foreign)
+   (trampoline epsilon.foreign.trampoline)))
 
 (in-package epsilon.foreign.trampoline-tests)
 
@@ -12,7 +13,7 @@
 
 (deftest test-trampoline-creation
   "Test that we can create compiled trampolines"
-  (let ((trampoline (lib::make-ffi-trampoline :int '())))
+  (let ((trampoline (trampoline:make-ffi-trampoline :int '())))
     (is (functionp trampoline))
     ;; Test with getpid
     (let* ((lib-handle (lib:lib-open "libc"))
@@ -23,7 +24,7 @@
 
 (deftest test-trampoline-with-args
   "Test trampolines with arguments"
-  (let ((trampoline (lib::make-ffi-trampoline :unsigned-long '(:string))))
+  (let ((trampoline (trampoline:make-ffi-trampoline :unsigned-long '(:string))))
     (is (functionp trampoline))
     ;; Test with strlen
     (let* ((lib-handle (lib:lib-open "libc"))
@@ -34,13 +35,13 @@
 
 (deftest test-signature-caching
   "Test that trampolines are cached by signature"
-  (let ((trampoline1 (lib::get-or-create-trampoline :int '()))
-        (trampoline2 (lib::get-or-create-trampoline :int '())))
+  (let ((trampoline1 (trampoline:get-or-create-trampoline :int '()))
+        (trampoline2 (trampoline:get-or-create-trampoline :int '())))
     ;; Should return the same trampoline
     (is (eq trampoline1 trampoline2)))
   
-  (let ((trampoline1 (lib::get-or-create-trampoline :int '(:int)))
-        (trampoline2 (lib::get-or-create-trampoline :int '(:int :int))))
+  (let ((trampoline1 (trampoline:get-or-create-trampoline :int '(:int)))
+        (trampoline2 (trampoline:get-or-create-trampoline :int '(:int :int))))
     ;; Different signatures should give different trampolines
     (is (not (eq trampoline1 trampoline2)))))
 

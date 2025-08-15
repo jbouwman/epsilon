@@ -357,27 +357,27 @@
 
 (defun c-typedef-p (node)
   "Check if node is a typedef"
-  (and (listp node) (eq (second node) :typedef)))
+  (and (listp node) (eq (getf node :type) :typedef)))
 
 (defun c-function-p (node)
   "Check if node is a function"
-  (and (listp node) (eq (second node) :function)))
+  (and (listp node) (eq (getf node :type) :function)))
 
 (defun c-struct-p (node)
   "Check if node is a struct"
-  (and (listp node) (eq (second node) :struct)))
+  (and (listp node) (eq (getf node :type) :struct)))
 
 (defun c-union-p (node)
   "Check if node is a union"
-  (and (listp node) (eq (second node) :union)))
+  (and (listp node) (eq (getf node :type) :union)))
 
 (defun c-enum-p (node)
   "Check if node is an enum"
-  (and (listp node) (eq (second node) :enum)))
+  (and (listp node) (eq (getf node :type) :enum)))
 
 (defun c-variable-p (node)
   "Check if node is a variable"
-  (and (listp node) (eq (second node) :variable)))
+  (and (listp node) (eq (getf node :type) :variable)))
 
 ;; Database structure
 

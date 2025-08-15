@@ -502,12 +502,85 @@
 ;;; C header parsing
 
 (defun parse-c-struct (name header-text)
-  "Parse a C struct definition from header text (simplified)"
-  ;; This is a simplified parser - real implementation would use Clang
-  (declare (ignore header-text))
+  "Parse a C struct definition from header text"
+  ;; Try to use the clang parser if available
+  (or
+   (when (find-package "EPSILON.CLANG")
+     (handler-case
+         (let* ((clang-pkg (find-package "EPSILON.CLANG"))
+                (tokenize-fn (find-symbol "TOKENIZE" clang-pkg))
+                (parser-pkg (find-package "EPSILON.PARSER"))
+                (run-fn (when parser-pkg (find-symbol "RUN" parser-pkg)))
+                (struct-spec-fn (find-symbol "STRUCT-SPECIFIER" clang-pkg)))
+           (when (and tokenize-fn run-fn struct-spec-fn)
+             (let* ((stream (make-string-input-stream header-text))
+                    (tokens (funcall tokenize-fn stream))
+                    (ast (funcall run-fn (funcall struct-spec-fn) tokens)))
+               (when (and ast (epsilon.parser:success-p ast))
+                 (let ((parsed (epsilon.parser:success-value ast)))
+                   (when (and parsed (listp parsed) (eq (getf parsed :type) :struct))
+                     (let ((fields (extract-struct-fields parsed)))
+                       (when fields
+                         (define-c-struct name fields)))))))))
+       (error (e)
+         (declare (ignore e))
+         nil)))
+   ;; Fall back to simple parsing of the provided text
+   (parse-struct-from-text name header-text)))
+
+(defun convert-parsed-fields (parsed-fields)
+  "Convert parsed field specs to our format"
+  (mapcar (lambda (field)
+            (list (first field) ; field name
+                  (second field))) ; field type
+          parsed-fields))
+
+(defun extract-struct-fields (ast)
+  "Extract fields from parsed struct AST"
+  (let ((fields (getf ast :fields)))
+    (when fields
+      (loop for field in fields
+            when (and (listp field) (eq (getf field :type) :field-declaration))
+            append (process-field-declaration field)))))
+
+(defun process-field-declaration (field-decl)
+  "Process a field declaration into our format"
+  (let ((specifiers (getf field-decl :specifiers))
+        (declarators (getf field-decl :declarators)))
+    (when (and specifiers declarators)
+      (let ((type (parse-field-type specifiers)))
+        (mapcar (lambda (declarator)
+                  (list (if (stringp declarator)
+                           (intern (string-upcase declarator) :keyword)
+                           :unknown)
+                        type))
+                declarators)))))
+
+(defun parse-field-type (specifiers)
+  "Parse field type from specifiers"
+  (cond
+    ((member "int" specifiers :test #'string=) :int)
+    ((member "char" specifiers :test #'string=) :char)
+    ((member "short" specifiers :test #'string=) :short)
+    ((member "long" specifiers :test #'string=) :long)
+    ((member "float" specifiers :test #'string=) :float)
+    ((member "double" specifiers :test #'string=) :double)
+    ((member "void" specifiers :test #'string=) :void)
+    ((member "unsigned" specifiers :test #'string=)
+     (cond
+       ((member "int" specifiers :test #'string=) :unsigned-int)
+       ((member "char" specifiers :test #'string=) :unsigned-char)
+       ((member "short" specifiers :test #'string=) :unsigned-short)
+       ((member "long" specifiers :test #'string=) :unsigned-long)
+       (t :unsigned-int)))
+    ((some (lambda (s) (and (stringp s) (search "*" s))) specifiers) :pointer)
+    (t :int)))
+
+(defun parse-struct-from-text (name text)
+  "Simple fallback struct parser"
+  (declare (ignore text))
   ;; For now, just create a dummy struct
-  (define-c-struct name
-    '((dummy :int))))
+  (define-c-struct name '((dummy :int))))
 
 (defun define-c-struct-auto (name header-text)
   "Define a struct by parsing C header text"

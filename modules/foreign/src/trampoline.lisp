@@ -152,24 +152,39 @@
 (defmethod convert-to-foreign (value (type (eql :void)))
   nil)
 
+;; Default method for unspecialized types (e.g., enum types)
+(defmethod convert-to-foreign (value type)
+  ;; Check if it's a registered type with a converter
+  (let ((type-info (gethash type *c-type-registry*)))
+    (if (and type-info (c-type-converter-to type-info))
+        (funcall (c-type-converter-to type-info) value type)
+        value)))
+
 (defgeneric convert-from-foreign (value type)
   (:documentation "Convert a foreign value to Lisp representation"))
 
 (defmethod convert-from-foreign (value type)
-  ;; Default: return as-is
-  value)
+  ;; Default: check for registered converter, else return as-is
+  (let ((type-info (gethash type *c-type-registry*)))
+    (if (and type-info (c-type-converter-from type-info))
+        (funcall (c-type-converter-from type-info) value type)
+        value)))
 
 (defmethod convert-from-foreign (value (type (eql :string)))
   ;; Convert C string to Lisp string
-  (if (sb-sys:sap= value (sb-sys:int-sap 0))
-      nil
-      ;; Read the string manually from the SAP
-      (let ((chars '()))
-        (loop for i from 0
-              for byte = (sb-sys:sap-ref-8 value i)
-              until (zerop byte)
-              do (push (code-char byte) chars))
-        (coerce (nreverse chars) 'string))))
+  (cond
+    ;; If it's already a string (SB-ALIEN converted it), return it
+    ((stringp value) value)
+    ;; If it's a null pointer, return nil
+    ((sb-sys:sap= value (sb-sys:int-sap 0)) nil)
+    ;; Otherwise, read the string manually from the SAP
+    (t
+     (let ((chars '()))
+       (loop for i from 0
+             for byte = (sb-sys:sap-ref-8 value i)
+             until (zerop byte)
+             do (push (code-char byte) chars))
+       (coerce (nreverse chars) 'string)))))
 
 (defmethod convert-from-foreign (value (type (eql :void)))
   nil)
