@@ -1,17 +1,24 @@
 (defpackage #:epsilon.digest
   (:use #:cl)
   (:local-nicknames
+   (:md5 :epsilon.digest.md5)
+   (:sha-1 :epsilon.digest.sha-1)
    (:sha-2 :epsilon.digest.sha-2)
+   (:sha3 :epsilon.digest.sha3)
    (:crc-32 :epsilon.digest.crc-32)
    (:generic :epsilon.digest.generic))
   (:export
    ;; One-shot hash functions (Rust-style)
+   #:md5
    #:sha256
+   #:sha3-256
    #:sha1
    #:crc32
    
    ;; Streaming hash interface (Go-style)
+   #:make-md5
    #:make-sha256
+   #:make-sha3-256
    #:make-sha1  
    #:make-crc32
    #:update
@@ -49,6 +56,13 @@
 
 ;;; One-shot hash functions (Rust-style convenience functions)
 
+(defun md5 (data)
+  "Compute MD5 hash of data. Data can be string, vector, or byte array."
+  (let ((digest (md5:make-md5-digest))
+        (bytes (normalize-input data)))
+    (generic:update-digest digest bytes :start 0 :end (length bytes))
+    (generic:produce-digest digest)))
+
 (defun sha256 (data)
   "Compute SHA-256 hash of data. Data can be string, vector, or byte array."
   (let ((digest (sha-2:make-sha256-digest))
@@ -56,18 +70,19 @@
     (generic:update-digest digest bytes :start 0 :end (length bytes))
     (generic:produce-digest digest)))
 
+(defun sha3-256 (data)
+  "Compute SHA3-256 hash of data. Data can be string, vector, or byte array."
+  (let ((digest (sha3:make-sha3-256-digest))
+        (bytes (normalize-input data)))
+    (generic:update-digest digest bytes :start 0 :end (length bytes))
+    (generic:produce-digest digest)))
+
 (defun sha1 (data)
-  "Compute SHA-1 hash of data. Currently a stub implementation."
-  (let ((bytes (normalize-input data)))
-    ;; Simple stub implementation - should be replaced with real SHA-1
-    (let ((result (make-array 20 :element-type '(unsigned-byte 8) :initial-element 0)))
-      (when (> (length bytes) 0)
-        (loop for i from 0 below 20
-              do (setf (aref result i) 
-                       (mod (loop for j from i below (length bytes) by 20
-                                  sum (aref bytes j))
-                            256))))
-      result)))
+  "Compute SHA-1 hash of data. Data can be string, vector, or byte array."
+  (let ((digest (sha-1:make-sha1-digest))
+        (bytes (normalize-input data)))
+    (generic:update-digest digest bytes :start 0 :end (length bytes))
+    (generic:produce-digest digest)))
 
 (defun crc32 (data)
   "Compute CRC-32 checksum of data, return as integer."
@@ -80,14 +95,21 @@
   digest
   algorithm)
 
+(defun make-md5 ()
+  "Create a new MD5 hasher"
+  (make-hasher :digest (md5:make-md5-digest) :algorithm :md5))
+
 (defun make-sha256 ()
   "Create a new SHA-256 hasher"
   (make-hasher :digest (sha-2:make-sha256-digest) :algorithm :sha256))
 
 (defun make-sha1 ()
   "Create a new SHA-1 hasher"
-  ;; For now, return nil since we don't have a real SHA-1 implementation
-  (make-hasher :digest nil :algorithm :sha1))
+  (make-hasher :digest (sha-1:make-sha1-digest) :algorithm :sha1))
+
+(defun make-sha3-256 ()
+  "Create a new SHA3-256 hasher"
+  (make-hasher :digest (sha3:make-sha3-256-digest) :algorithm :sha3-256))
 
 (defun make-crc32 ()
   "Create a new CRC-32 hasher"
@@ -97,32 +119,30 @@
   "Add data to the hash. Data can be string, vector, or byte array."
   (let ((bytes (normalize-input data)))
     (case (hasher-algorithm hasher)
-      ((:sha256 :crc32)
+      ((:md5 :sha256 :sha1 :sha3-256 :crc32)
        (generic:update-digest (hasher-digest hasher) bytes 
-                             :start 0 :end (length bytes)))
-      (:sha1
-       ;; SHA-1 not implemented for streaming yet
-       (error "SHA-1 streaming not implemented")))
+                             :start 0 :end (length bytes))))
     nil))
 
 (defun finalize (hasher)
   "Finalize the hash and return the result"
   (case (hasher-algorithm hasher)
-    (:sha256 (generic:produce-digest (hasher-digest hasher)))
+    ((:md5 :sha256 :sha1 :sha3-256) (generic:produce-digest (hasher-digest hasher)))
     (:crc32 (let ((result (generic:produce-digest (hasher-digest hasher))))
               ;; Convert 4-byte result to integer
               (+ (ash (aref result 0) 24)
                  (ash (aref result 1) 16)
                  (ash (aref result 2) 8)
-                 (aref result 3))))
-    (:sha1 (error "SHA-1 not implemented"))))
+                 (aref result 3))))))
 
 (defun reset (hasher)
   "Reset the hasher to initial state"
   (case (hasher-algorithm hasher)
+    (:md5 (setf (hasher-digest hasher) (md5:make-md5-digest)))
     (:sha256 (setf (hasher-digest hasher) (sha-2:make-sha256-digest)))
-    (:crc32 (setf (hasher-digest hasher) (crc-32:make-crc32-digest)))
-    (:sha1 (setf (hasher-digest hasher) nil)))
+    (:sha1 (setf (hasher-digest hasher) (sha-1:make-sha1-digest)))
+    (:sha3-256 (setf (hasher-digest hasher) (sha3:make-sha3-256-digest)))
+    (:crc32 (setf (hasher-digest hasher) (crc-32:make-crc32-digest))))
   nil)
 
 ;; Legacy compatibility function
