@@ -4,7 +4,7 @@
 
 epsilon.io now properly integrates with existing platform-specific async I/O infrastructure instead of reinventing the wheel. This provides:
 
-- **Leverages existing code**: Uses epsilon.linux (epoll), epsilon.darwin (kqueue), epsilon.windows (IOCP)
+- **Uses existing code**: Uses epsilon.linux (epoll), epsilon.darwin (kqueue), epsilon.windows (IOCP)
 - **Zero duplication**: No reimplementation of platform async mechanisms
 - **Better maintainability**: Platform experts can focus on their backends
 - **Consistent API**: Unified interface across all platforms
@@ -186,4 +186,4 @@ modules/darwin/src/
 └── io-integration.lisp      # epsilon.io integration (new)
 ```
 
-This architecture leverages the existing excellent platform-specific code while providing a modern, unified async I/O API on top.
+This architecture uses the existing excellent platform-specific code while providing a modern, unified async I/O API on top.

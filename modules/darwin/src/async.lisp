@@ -1,7 +1,7 @@
 ;;;; Darwin Async I/O Implementation using kqueue
 ;;;;
 ;;;; This module provides the epsilon.async interface for Darwin systems
-;;;; using kqueue for event notification and leveraging existing async infrastructure.
+;;;; using kqueue for event notification and using existing async infrastructure.
 
 (defpackage #:epsilon.async
   (:use #:cl)
@@ -48,7 +48,7 @@
   (error-callback nil :type (or null function)))
 
 ;;; ============================================================================
-;;; Darwin Async System (leveraging existing infrastructure)
+;;; Darwin Async System (using existing infrastructure)
 ;;; ============================================================================
 
 (defvar *completion-queue* '()
@@ -58,7 +58,7 @@
 
 (defun ensure-async-system ()
   "Ensure the async system is initialized"
-  ;; Leverage existing epsilon.net.async infrastructure
+  ;; Use existing epsilon.net.async infrastructure
   (net-async:ensure-async-system))
 
 (defun stop-async-system ()
