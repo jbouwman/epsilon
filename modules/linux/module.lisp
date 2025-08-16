@@ -3,4 +3,4 @@
  :description "Linux-specific functions (epoll networking)"
  :requires ("epsilon.foreign")
  :platform "linux"
- :provides ("epsilon.net"))
+ :provides ("epsilon.net" "epsilon.async"))
