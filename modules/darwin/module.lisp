@@ -3,4 +3,4 @@
  :description "Darwin/macOS platform services including kqueue event system and async networking"
  :requires ("epsilon.foreign")
  :platform "darwin"
- :provides ("epsilon.net"))
+ :provides ("epsilon.net" "epsilon.async"))
