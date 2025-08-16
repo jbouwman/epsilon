@@ -14,6 +14,31 @@
 (in-package epsilon.process.tests)
 
 ;;; ============================================================================
+;;; Test Helpers
+;;; ============================================================================
+
+(defun poll-until (predicate &key (timeout-seconds 5) (poll-interval 0.01))
+  "Poll until predicate returns true or timeout is reached.
+   Returns T if predicate succeeded, NIL if timeout occurred."
+  (let ((end-time (+ (get-internal-real-time)
+                     (* timeout-seconds internal-time-units-per-second))))
+    (loop while (< (get-internal-real-time) end-time)
+          when (funcall predicate)
+            return t
+          do (sleep poll-interval)
+          finally (return nil))))
+
+(defun wait-for-process-state (subprocess target-state &key (timeout-seconds 5))
+  "Wait for a subprocess to reach a target state using polling.
+   Target state can be :running or :stopped."
+  (poll-until 
+   (lambda ()
+     (ecase target-state
+       (:running (process:running-p subprocess))
+       (:stopped (not (process:running-p subprocess)))))
+   :timeout-seconds timeout-seconds))
+
+;;; ============================================================================
 ;;; Command Building and Escaping Tests
 ;;; ============================================================================
 
@@ -137,17 +162,23 @@
 
 (deftest test-subprocess-lifecycle ()
   "Test subprocess creation and lifecycle"
-  (let ((subprocess (process:make-subprocess "sleep" :args '("0.1"))))
+  (let ((subprocess (process:make-subprocess "sleep" :args '("0.2"))))
     (is (typep subprocess 'process:subprocess))
     (is-equal "sleep" (process:subprocess-command subprocess))
-    (is-equal '("0.1") (process:subprocess-args subprocess))
+    (is-equal '("0.2") (process:subprocess-args subprocess))
     
     ;; Start the process
     (process:start subprocess :wait nil)
-    (is (process:running-p subprocess))
     
-    ;; Wait for completion
-    (process:wait-for-process subprocess 2)
+    ;; Poll until process is running (should be immediate, but CI can be slow)
+    (is (wait-for-process-state subprocess :running :timeout-seconds 2)
+        "Process did not start within timeout")
+    
+    ;; Use process:wait-for-process with a reasonable timeout
+    ;; This function handles the polling internally
+    (process:wait-for-process subprocess 5)
+    
+    ;; Now verify the process has completed
     (is (not (process:running-p subprocess)))
     (is-equal 0 (process:process-exit-code subprocess))))
 
@@ -156,13 +187,18 @@
   ;; Start a long-running process
   (let ((subprocess (process:make-subprocess "sleep" :args '("10"))))
     (process:start subprocess :wait nil)
-    (is (process:running-p subprocess))
+    
+    ;; Poll until process is running
+    (is (wait-for-process-state subprocess :running :timeout-seconds 2)
+        "Process did not start within timeout")
     
     ;; Terminate it gracefully
     (process:terminate-gracefully subprocess :timeout 1)
     
-    ;; Give it a moment to clean up
-    (sleep 0.1)
+    ;; Poll until process stops (instead of fixed sleep)
+    (is (wait-for-process-state subprocess :stopped :timeout-seconds 2)
+        "Process did not terminate within timeout")
+    
     (is (not (process:running-p subprocess)))))
 
 ;;; ============================================================================

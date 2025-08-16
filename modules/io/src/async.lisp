@@ -129,16 +129,20 @@
                    (setf ,error-var error)
                    (setf ,completed-var t))))
          
-         ;; Wait for completion
+         ;; Wait for completion with adaptive polling
          (let ((start-time (get-internal-real-time))
                (timeout-internal ,(if timeout
                                     `(* ,timeout internal-time-units-per-second)
-                                    `(* 30 internal-time-units-per-second)))) ; 30 second default
+                                    `(* 30 internal-time-units-per-second))) ; 30 second default
+               (poll-interval 0.001))
            (loop until (or ,completed-var
                           (> (- (get-internal-real-time) start-time) timeout-internal))
                  do (progn
                       (process-completions 10)
-                      (sleep 0.001)))
+                      (sleep poll-interval)
+                      ;; Gradually increase poll interval to reduce CPU usage
+                      (when (< poll-interval 0.1)
+                        (setf poll-interval (min 0.1 (* poll-interval 1.5))))))
            
            (cond
              (,error-var (error ,error-var))
