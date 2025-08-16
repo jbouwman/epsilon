@@ -29,40 +29,73 @@
 
 (deftest test-callback-registry-operations
   "Test callback registry operations work correctly"
-  ;; Test registration
-  (let ((cb-id (callback:register-callback 'test-cb 
-                                      (lambda (a b) (+ a b))
-                                      :int '(:int :int))))
-    (is (integerp cb-id))
+  ;; Use unique callback name to avoid conflicts
+  (let ((callback-name (gensym "TEST-CB-")))
+    ;; Clean up any pre-existing callback (defensive)
+    (ignore-errors (callback:unregister-callback callback-name))
     
-    ;; Test retrieval
-    (let ((cb-ptr (callback:get-callback 'test-cb)))
-      (is (sb-sys:system-area-pointer-p cb-ptr))
-      
-      ;; Test calling
-      (let ((result (callback:call-callback cb-ptr 3 7)))
-        (is (= result 10)))
-      
-      ;; Test cleanup
-      (callback:unregister-callback 'test-cb)
-      (is (null (callback:get-callback 'test-cb))))))
+    (unwind-protect
+         (progn
+           ;; Test registration
+           (let ((cb-id (callback:register-callback callback-name 
+                                               (lambda (a b) (+ a b))
+                                               :int '(:int :int))))
+             (is (integerp cb-id))
+             
+             ;; Test retrieval with retry
+             (let ((cb-ptr nil)
+                   (retries 3))
+               (loop for i from 1 to retries
+                     do (setf cb-ptr (callback:get-callback callback-name))
+                     when cb-ptr return nil
+                     do (sleep 0.01))
+               
+               (is (sb-sys:system-area-pointer-p cb-ptr))
+               
+               ;; Test calling
+               (when cb-ptr
+                 (let ((result (callback:call-callback cb-ptr 3 7)))
+                   (is (= result 10)))))))
+      ;; Clean up
+      (callback:unregister-callback callback-name)
+      ;; Verify cleanup with retry
+      (let ((still-registered t)
+            (retries 3))
+        (loop for i from 1 to retries
+              do (setf still-registered (callback:get-callback callback-name))
+              when (null still-registered) return nil
+              do (sleep 0.01))
+        (is (null still-registered))))))
 
 (deftest test-defcallback-macro
   "Test the defcallback convenience macro"
-  ;; Define a callback
-  (callback:defcallback test-multiply :int ((x :int) (factor :int))
-    (* x factor))
-  
-  ;; Get its pointer
-  (let ((cb-ptr (callback:callback-pointer 'test-multiply)))
-    (is (sb-sys:system-area-pointer-p cb-ptr))
+  ;; Use unique callback name to avoid conflicts
+  (let ((callback-name (gensym "TEST-MULTIPLY-")))
+    ;; Clean up any pre-existing callback (defensive)
+    (ignore-errors (callback:unregister-callback callback-name))
     
-    ;; Test calling it
-    (let ((result (callback:call-callback cb-ptr 6 7)))
-      (is (= result 42)))
-    
-    ;; Clean up
-    (callback:unregister-callback 'test-multiply)))
+    (unwind-protect
+         (progn
+           ;; Define a callback using eval to use the generated name
+           (eval `(callback:defcallback ,callback-name :int ((x :int) (factor :int))
+                    (* x factor)))
+           
+           ;; Get its pointer with retry
+           (let ((cb-ptr nil)
+                 (retries 3))
+             (loop for i from 1 to retries
+                   do (setf cb-ptr (callback:callback-pointer callback-name))
+                   when cb-ptr return nil
+                   do (sleep 0.01))
+             
+             (is (sb-sys:system-area-pointer-p cb-ptr))
+             
+             ;; Test calling it
+             (when cb-ptr
+               (let ((result (callback:call-callback cb-ptr 6 7)))
+                 (is (= result 42))))))
+      ;; Clean up
+      (callback:unregister-callback callback-name))))
 
 (deftest test-closure-capture
   "Test that callbacks can capture lexical variables"

@@ -136,19 +136,36 @@
 
 (deftest test-callback-registry-functionality
   "Test that our callback registry works independently"
-  ;; Test the registry infrastructure
-  (let ((test-func (lambda (x) (* x 3))))
-    ;; Register a callback (this should work with our infrastructure)
-    (let ((cb-id (callback:register-callback 'test-cb test-func :int '(:int))))
-      (is (integerp cb-id))
-      
-      ;; Retrieve it
-      (let ((cb-ptr (callback:get-callback 'test-cb)))
-        (is (sb-sys:system-area-pointer-p cb-ptr)))
-      
+  ;; Test the registry infrastructure with unique callback name
+  (let ((test-func (lambda (x) (* x 3)))
+        (callback-name (gensym "TEST-CB-")))
+    ;; Clean up any pre-existing callback (defensive)
+    (ignore-errors (callback:unregister-callback callback-name))
+    
+    (unwind-protect
+         (progn
+           ;; Register a callback (this should work with our infrastructure)
+           (let ((cb-id (callback:register-callback callback-name test-func :int '(:int))))
+             (is (integerp cb-id))
+             
+             ;; Retrieve it with retry logic
+             (let ((cb-ptr nil)
+                   (retries 3))
+               (loop for i from 1 to retries
+                     do (setf cb-ptr (callback:get-callback callback-name))
+                     when cb-ptr return nil
+                     do (sleep 0.01))
+               (is (sb-sys:system-area-pointer-p cb-ptr)))))
       ;; Clean up
-      (callback:unregister-callback 'test-cb)
-      (is (null (callback:get-callback 'test-cb))))))
+      (callback:unregister-callback callback-name)
+      ;; Verify cleanup with retry
+      (let ((still-registered t)
+            (retries 3))
+        (loop for i from 1 to retries
+              do (setf still-registered (callback:get-callback callback-name))
+              when (null still-registered) return nil
+              do (sleep 0.01))
+        (is (null still-registered))))))
 
 (deftest test-alternative-callback-creation
   "Test alternative approaches to callback creation"

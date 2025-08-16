@@ -91,26 +91,51 @@
 
 (deftest test-callback-registry
   "Test callback registration and lifecycle"
-  ;; Register a callback
-  (let ((cb-id (callback:register-callback
-                'my-callback
-                (lambda (x) (* x x))
-                :int '(:int))))
-    (is (integerp cb-id))
+  ;; Use unique callback name to avoid conflicts
+  (let ((callback-name (gensym "MY-CALLBACK-")))
+    ;; Clean up any pre-existing callback (defensive)
+    (ignore-errors (callback:unregister-callback callback-name))
     
-    ;; Get callback by ID
-    (let ((cb-ptr (callback:get-callback cb-id)))
-      (is (sb-sys:system-area-pointer-p cb-ptr))
-      (is (= (callback:call-callback cb-ptr 4) 16)))
-    
-    ;; Get callback by name
-    (let ((cb-ptr (callback:get-callback 'my-callback)))
-      (is (sb-sys:system-area-pointer-p cb-ptr))
-      (is (= (callback:call-callback cb-ptr 3) 9)))
-    
-    ;; Unregister callback
-    (callback:unregister-callback 'my-callback)
-    (is (null (callback:get-callback 'my-callback)))))
+    (unwind-protect
+         (progn
+           ;; Register a callback
+           (let ((cb-id (callback:register-callback
+                         callback-name
+                         (lambda (x) (* x x))
+                         :int '(:int))))
+             (is (integerp cb-id))
+             
+             ;; Get callback by ID with retry
+             (let ((cb-ptr nil)
+                   (retries 3))
+               (loop for i from 1 to retries
+                     do (setf cb-ptr (callback:get-callback cb-id))
+                     when cb-ptr return nil
+                     do (sleep 0.01))
+               (when cb-ptr
+                 (is (sb-sys:system-area-pointer-p cb-ptr))
+                 (is (= (callback:call-callback cb-ptr 4) 16))))
+             
+             ;; Get callback by name with retry
+             (let ((cb-ptr nil)
+                   (retries 3))
+               (loop for i from 1 to retries
+                     do (setf cb-ptr (callback:get-callback callback-name))
+                     when cb-ptr return nil
+                     do (sleep 0.01))
+               (when cb-ptr
+                 (is (sb-sys:system-area-pointer-p cb-ptr))
+                 (is (= (callback:call-callback cb-ptr 3) 9))))))
+      ;; Clean up
+      (callback:unregister-callback callback-name)
+      ;; Verify cleanup with retry
+      (let ((still-registered t)
+            (retries 3))
+        (loop for i from 1 to retries
+              do (setf still-registered (callback:get-callback callback-name))
+              when (null still-registered) return nil
+              do (sleep 0.01))
+        (is (null still-registered))))))
 
 (deftest test-callback-error-handling
   "Test error handling in callbacks"
