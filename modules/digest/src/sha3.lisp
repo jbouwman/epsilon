@@ -203,7 +203,8 @@
 ;;; SHA3-256 digest structure
 
 (defstruct (sha3-256
-             (:constructor %make-sha3-256-digest nil)
+             (:constructor %make-sha3-256-digest 
+                           (&aux (buffer (make-array +sha3-256-rate-bytes+ :element-type 'u8))))
              (:constructor %make-sha3-256-state 
                            (state buffer buffer-index total-bytes))
              (:copier nil)
@@ -233,7 +234,8 @@
      copy)
     (t
      (%make-sha3-256-state (copy-seq (sha3-256-state digest))
-                           (copy-seq (sha3-256-buffer digest))
+                           (make-array +sha3-256-rate-bytes+ :element-type 'u8
+                                       :initial-contents (sha3-256-buffer digest))
                            (sha3-256-buffer-index digest)
                            (sha3-256-total-bytes digest)))))
 
@@ -254,20 +256,10 @@
              (keccak-f (sha3-256-state digest-state)))))
     (declare (dynamic-extent #'compress))
     ;; Use the standard mdx-updater with our rate as block size
-    (let ((saved-buffer (sha3-256-buffer state)))
-      ;; Temporarily adjust buffer size for our rate
-      (setf (slot-value state 'epsilon.digest.generic::buffer)
-            (if (= (length saved-buffer) +sha3-256-rate-bytes+)
-                saved-buffer
-                (make-array +sha3-256-rate-bytes+ :element-type 'u8)))
-      ;; Ensure buffer content is preserved if switching
-      (when (/= (length saved-buffer) +sha3-256-rate-bytes+)
-        (replace (sha3-256-buffer state) saved-buffer 
-                 :end1 (min (length saved-buffer) +sha3-256-rate-bytes+)))
-      (prog1
-          (mdx-updater state #'compress sequence start end)
-        ;; Update total bytes
-        (incf (sha3-256-total-bytes state) (- end start))))))
+    (prog1
+        (mdx-updater state #'compress sequence start end)
+      ;; Update total bytes
+      (incf (sha3-256-total-bytes state) (- end start)))))
 
 (defmethod produce-digest ((state sha3-256) &key digest (digest-start 0))
   "Finalize SHA3-256 and return 32-byte digest"
