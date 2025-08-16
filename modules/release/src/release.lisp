@@ -62,6 +62,7 @@
 
 (defun generate-module-testsuite (module-name result)
   "Generate a testsuite XML element for a module's test results."
+  (declare (ignore module-name))
   (when (and result (find-package "EPSILON.TEST.SUITE") (find-package "EPSILON.TEST.REPORT"))
     ;; Use the test report's function to generate the testsuite
     (let ((suite-tests-fn (find-symbol "SUITE-TESTS" "EPSILON.TEST.SUITE"))
@@ -165,6 +166,7 @@
 
 (defun generate-junit-report (all-results file total-tested total-passed failed-modules)
   "Generate an aggregated JUnit XML report from all test results."
+  (declare (ignore failed-modules))
   (ensure-directories-exist file)
   
   ;; Check if we have actual test results with details
@@ -188,7 +190,6 @@
         (format stream "<?xml version=\"1.0\" encoding=\"UTF-8\"?>~%")
         (let ((xml-emit (find-symbol "EMIT" "EPSILON.XML"))
               (xml-element (find-symbol "ELEMENT" "EPSILON.XML"))
-              (xml-text (find-symbol "TEXT" "EPSILON.XML"))
               (all-testsuites '())
               (total-tests 0)
               (total-failures 0)
@@ -279,8 +280,7 @@
       (log:info "Testing ~A..." module)
       (incf total-tested)
       
-      (let ((result nil)
-            (test-error nil))
+      (let ((result nil))
         (handler-case
             (progn
               ;; Load the module
@@ -309,7 +309,6 @@
                   (funcall clear-tests-fn))))
           
           (error (e)
-            (setf test-error e)
             (unless (eq format :junit)
               (format t "  ✗ ERROR: ~A~%" e))
             (push module failed-modules)))
@@ -591,7 +590,7 @@
         (handler-case
             (fs:delete-directory release-dir)
           (error (e)
-            (log:error "Could not remove directory")
+            (log:error "Could not remove directory: ~A" e)
             (format t "Directory will be overwritten instead~%"))))
       
       (fs:make-dirs release-dir)

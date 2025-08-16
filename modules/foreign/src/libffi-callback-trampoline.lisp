@@ -135,6 +135,7 @@
 
 (defun register-callback-with-trampoline (function trampoline-addr return-type arg-types)
   "Register a callback with its trampoline"
+  (declare (ignore trampoline-addr return-type arg-types))
   ;; Generate a unique ID
   (let ((id (incf *callback-id-counter*)))
     ;; Register the Lisp function

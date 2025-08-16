@@ -786,6 +786,7 @@
 
 (defmacro with-foreign-struct ((var type) &body body)
   "Stub implementation - allocate foreign struct"
+  (declare (ignore type))
   `(let ((,var (foreign-alloc 64))) ; Allocate 64 bytes for any struct
      (unwind-protect
           (progn ,@body)
