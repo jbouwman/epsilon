@@ -100,12 +100,12 @@
          (port-bytes (sb-sys:sap-ref-16 sap 2))
          (port (logior (ash (logand port-bytes #xff) 8)
                        (ash (logand port-bytes #xff00) -8)))
-         (ip-bytes (sb-sys:sap-ref-32 sap 4))
+         ;; Read IP address bytes individually (they're in network byte order)
          (ip (format nil "~D.~D.~D.~D"
-                     (ldb (byte 8 24) ip-bytes)
-                     (ldb (byte 8 16) ip-bytes)
-                     (ldb (byte 8 8) ip-bytes)
-                     (ldb (byte 8 0) ip-bytes))))
+                     (sb-sys:sap-ref-8 sap 4)
+                     (sb-sys:sap-ref-8 sap 5)
+                     (sb-sys:sap-ref-8 sap 6)
+                     (sb-sys:sap-ref-8 sap 7))))
     (make-instance 'socket-address :ip ip :port port :family :ipv4)))
 
 (defun make-sockaddr-in6-into (addr ip-address port)
@@ -144,10 +144,13 @@
          (port (logior (ash (logand port-bytes #xff) 8)
                        (ash (logand port-bytes #xff00) -8)))
          (words (make-array 8 :element-type '(unsigned-byte 16))))
-    ;; Extract IPv6 address words
+    ;; Extract IPv6 address words (network byte order - need to swap bytes)
     (loop for i from 0 below 8
           for offset from 8 by 2
-          do (setf (aref words i) (sb-sys:sap-ref-16 sap offset)))
+          do (let ((word (sb-sys:sap-ref-16 sap offset)))
+               ;; Swap bytes from little-endian to big-endian
+               (setf (aref words i) (logior (ash (logand word #xff) 8)
+                                            (ash (logand word #xff00) -8)))))
     ;; Convert to string representation
     (let ((ip (format nil "~{~4,'0X~^:~}" (coerce words 'list))))
       (make-instance 'socket-address :ip ip :port port :family :ipv6))))
@@ -243,10 +246,10 @@
 (defun dns-resolve-hostname (hostname port)
   "Resolve hostname to IP addresses using getaddrinfo"
     (handler-case
-        (lib:with-foreign-memory ((hints :char :count 32)  ; sizeof(struct addrinfo)
+        (lib:with-foreign-memory ((hints :char :count 48)  ; sizeof(struct addrinfo) = 48 on Darwin
                                   (result-ptr :pointer :count 1))
           ;; Initialize hints structure
-          (loop for i from 0 below 32 do (setf (sb-sys:sap-ref-8 hints i) 0))
+          (loop for i from 0 below 48 do (setf (sb-sys:sap-ref-8 hints i) 0))
           
           ;; Set hints: ai_family = AF_UNSPEC (0), ai_socktype = SOCK_STREAM (1)
           (setf (sb-sys:sap-ref-32 hints 4) 0)    ; ai_family = AF_UNSPEC
@@ -279,18 +282,20 @@
     (let ((results '())
           (current addrinfo-ptr))
       (loop while (and current (not (sb-sys:sap= current (sb-sys:int-sap 0))))
-            do (let* ((ai-addr-ptr (sb-sys:sap-ref-sap current 24))  ; ai_addr offset
-                      (ai-family (sb-sys:sap-ref-16 ai-addr-ptr 1))  ; sa_family
-                      (socket-addr (cond 
-                                     ((= ai-family +af-inet+) 
-                                      (parse-sockaddr-in ai-addr-ptr))
-                                     ((= ai-family +af-inet6+) 
-                                      (parse-sockaddr-in6 ai-addr-ptr))
-                                     (t nil))))
-                 (when socket-addr
-                   (push socket-addr results))
+            do (let* ((ai-addr-ptr (sb-sys:sap-ref-sap current 32)))  ; ai_addr is at offset 32
+                 ;; Check if ai_addr is null before dereferencing
+                 (when (and ai-addr-ptr (not (sb-sys:sap= ai-addr-ptr (sb-sys:int-sap 0))))
+                   (let* ((ai-family (sb-sys:sap-ref-8 ai-addr-ptr 1))  ; sa_family is a single byte at offset 1
+                          (socket-addr (cond 
+                                         ((= ai-family +af-inet+) 
+                                          (parse-sockaddr-in ai-addr-ptr))
+                                         ((= ai-family +af-inet6+) 
+                                          (parse-sockaddr-in6 ai-addr-ptr))
+                                         (t nil))))
+                     (when socket-addr
+                       (push socket-addr results))))
                  ;; Move to next in linked list
-                 (setf current (sb-sys:sap-ref-sap current 0))))  ; ai_next offset
+                 (setf current (sb-sys:sap-ref-sap current 40))))  ; ai_next is at offset 40
       (nreverse results)))
 
 (defun parse-address (string)
