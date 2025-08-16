@@ -6,7 +6,8 @@
 (defpackage :epsilon.url
   (:use :cl)
   (:local-nicknames
-   (:path :epsilon.path))
+   (:path :epsilon.path)
+   (:map :epsilon.map))
   (:export
    ;; Core URL type
    :url
@@ -180,7 +181,7 @@
 ;;;; Protocol Handler Registry
 ;;;; ==========================================================================
 
-(defparameter *protocol-handlers* (make-hash-table :test 'equal)
+(defparameter *protocol-handlers* map:+empty+
   "Registry of protocol handlers")
 
 (defparameter *default-ports* 
@@ -200,20 +201,19 @@
 
 (defun register-protocol-handler (scheme handler)
   "Register a protocol handler for a scheme"
-  (setf (gethash (string-downcase scheme) *protocol-handlers*) handler))
+  (setf *protocol-handlers* (map:assoc *protocol-handlers* (string-downcase scheme) handler)))
 
 (defun unregister-protocol-handler (scheme)
   "Unregister a protocol handler"
-  (remhash (string-downcase scheme) *protocol-handlers*))
+  (setf *protocol-handlers* (map:dissoc *protocol-handlers* (string-downcase scheme))))
 
 (defun get-protocol-handler (scheme)
   "Get the protocol handler for a scheme"
-  (gethash (string-downcase scheme) *protocol-handlers*))
+  (map:get *protocol-handlers* (string-downcase scheme)))
 
 (defun supported-schemes ()
   "Get list of supported schemes"
-  (loop for scheme being the hash-keys of *protocol-handlers*
-        collect scheme))
+  (map:keys *protocol-handlers*))
 
 (defun default-port (scheme)
   "Get default port for a scheme"

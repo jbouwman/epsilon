@@ -5,6 +5,8 @@
 
 (defpackage epsilon.foreign.inline
   (:use cl)
+  (:local-nicknames
+   (:map :epsilon.map))
   (:export
    #:definline-foreign
    #:inline-foreign-call
@@ -45,7 +47,7 @@
 (defvar *inline-aggressive* nil
   "When true, inline even complex calls")
 
-(defvar *inlined-functions* (make-hash-table :test 'equal)
+(defvar *inlined-functions* map:+empty+
   "Cache of inlined function definitions")
 
 (defmacro definline-foreign (name c-name library return-type &rest args)
@@ -62,8 +64,8 @@
                                   ,@(mapcar #'lisp-type-to-alien-type ',arg-types)))
            ,,@arg-names))
        ;; Store in registry
-       (setf (gethash ',name *inlined-functions*)
-             '(,c-name ,library ,return-type ,arg-types)))))
+       (setf *inlined-functions* (map:assoc *inlined-functions* ',name
+                                            '(,c-name ,library ,return-type ,arg-types))))))
 
 (defmacro inline-foreign-call (c-name return-type arg-types &rest args)
   "Make an inline foreign function call"

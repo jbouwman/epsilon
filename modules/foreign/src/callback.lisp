@@ -50,7 +50,7 @@
 
 ;;; Global callback registry
 
-(defvar *callback-registry* (make-hash-table :test 'equal)
+(defvar *callback-registry* map:+empty+
   "Registry of all active callbacks")
 
 (defvar *callback-id-counter* 0
@@ -188,7 +188,7 @@
                                     :id (incf *callback-id-counter*))))
       ;; Register it
       (sb-thread:with-mutex (*callback-lock*)
-        (setf (gethash (callback-info-id info) *callback-registry*) info))
+        (setf *callback-registry* (map:assoc *callback-registry* (callback-info-id info) info)))
       ;; Return the pointer
       pointer)))
 
@@ -253,11 +253,16 @@
 
 (defun call-callback (callback-ptr &rest args)
   "Call a callback pointer with arguments (mainly for testing)"
-  ;; Find the callback info
+  ;; Find the callback info using a different approach to avoid hash table type issues
   (let ((info (sb-thread:with-mutex (*callback-lock*)
-                (loop for cb being the hash-values of *callback-registry*
-                      when (sb-sys:sap= (callback-info-pointer cb) callback-ptr)
-                      return cb))))
+                (block found
+                  (map:each (lambda (key val)
+                              (declare (ignore key))
+                              (when (and (callback-info-p val)
+                                        (sb-sys:sap= (callback-info-pointer val) callback-ptr))
+                                (return-from found val)))
+                            *callback-registry*)
+                  nil))))
     (unless info
       (error "Unknown callback pointer"))
     ;; Call the Lisp function directly for testing
@@ -271,26 +276,31 @@
   (let ((ptr (make-callback function return-type arg-types)))
     ;; Find the info that was just created
     (let ((info (sb-thread:with-mutex (*callback-lock*)
-                  (loop for cb being the hash-values of *callback-registry*
-                        when (sb-sys:sap= (callback-info-pointer cb) ptr)
-                        return cb))))
+                  (block found
+                    (map:each (lambda (key val)
+                                (declare (ignore key))
+                                (when (and (callback-info-p val)
+                                          (sb-sys:sap= (callback-info-pointer val) ptr))
+                                  (return-from found val)))
+                              *callback-registry*)
+                    nil))))
       (when info
         (setf (callback-info-name info) name)
         ;; Also index by name
         (sb-thread:with-mutex (*callback-lock*)
-          (setf (gethash name *callback-registry*) info)))
+          (setf *callback-registry* (map:assoc *callback-registry* name info))))
       (callback-info-id info))))
 
 (defun unregister-callback (name-or-id)
   "Unregister a callback by name or ID"
   (sb-thread:with-mutex (*callback-lock*)
-    (let ((info (gethash name-or-id *callback-registry*)))
+    (let ((info (map:get *callback-registry* name-or-id)))
       (when info
         ;; Remove from registry
-        (remhash name-or-id *callback-registry*)
+        (setf *callback-registry* (map:dissoc *callback-registry* name-or-id))
         (when (callback-info-name info)
-          (remhash (callback-info-name info) *callback-registry*))
-        (remhash (callback-info-id info) *callback-registry*)
+          (setf *callback-registry* (map:dissoc *callback-registry* (callback-info-name info))))
+        (setf *callback-registry* (map:dissoc *callback-registry* (callback-info-id info)))
         ;; Note: SB-ALIEN doesn't provide a way to invalidate alien-lambda callbacks
         ;; We just remove from registry
         t))))
@@ -298,19 +308,25 @@
 (defun get-callback (name-or-id)
   "Get a callback pointer by name or ID"
   (sb-thread:with-mutex (*callback-lock*)
-    (let ((info (gethash name-or-id *callback-registry*)))
+    (let ((info (map:get *callback-registry* name-or-id)))
       (when info
         (callback-info-pointer info)))))
 
 (defun list-callbacks ()
   "List all registered callbacks"
   (sb-thread:with-mutex (*callback-lock*)
-    (loop for info being the hash-values of *callback-registry*
-          when (callback-info-name info)
-          collect (list :name (callback-info-name info)
-                       :id (callback-info-id info)
-                       :return-type (callback-info-return-type info)
-                       :arg-types (callback-info-arg-types info)))))
+    (let ((result '()))
+      (map:each (lambda (key val)
+                  (declare (ignore key))
+                  (when (and (callback-info-p val)
+                            (callback-info-name val))
+                    (push (list :name (callback-info-name val)
+                               :id (callback-info-id val)
+                               :return-type (callback-info-return-type val)
+                               :arg-types (callback-info-arg-types val))
+                          result)))
+                *callback-registry*)
+      result)))
 
 ;;; Convenience macros
 
@@ -345,16 +361,21 @@
               (progn ,@body)
            ;; Cleanup callbacks
            (dolist (cb ,callbacks)
-             ;; Find and unregister
-             (sb-thread:with-mutex (*callback-lock*)
-               (loop for info being the hash-values of *callback-registry*
-                     when (sb-sys:sap= (callback-info-pointer info) cb)
-                     do (progn
-                          (remhash (callback-info-id info) *callback-registry*)
-                          (when (callback-info-name info)
-                            (remhash (callback-info-name info) *callback-registry*))
-                          ;; Cleanup - no explicit invalidation needed for alien-lambda
-                          (return))))))))))
+             ;; Find and unregister using map:each instead of map:vals
+             (handler-case
+                 (sb-thread:with-mutex (*callback-lock*)
+                   (map:each (lambda (key val)
+                               (declare (ignore key))
+                               (when (and (callback-info-p val)
+                                         (sb-sys:sap= (callback-info-pointer val) cb))
+                                 (setf *callback-registry* (map:dissoc *callback-registry* (callback-info-id val)))
+                                 (when (callback-info-name val)
+                                   (setf *callback-registry* (map:dissoc *callback-registry* (callback-info-name val))))
+                                 ;; Note: can't early return from map:each, but that's ok
+                                 ))
+                             *callback-registry*))
+               (error (e)
+                 (format *error-output* "Callback cleanup error: ~A~%" e)))))))))
 
 ;;; Helper function for getting callback pointer from defcallback
 

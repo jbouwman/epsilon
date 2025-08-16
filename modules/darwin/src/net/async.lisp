@@ -4,7 +4,8 @@
   (:use cl)
   (:local-nicknames
    (kqueue epsilon.kqueue)
-   (log epsilon.log))
+   (log epsilon.log)
+   (map epsilon.map))
   (:export
    ;; Async operation types
    async-operation
@@ -38,8 +39,8 @@
 (defvar *global-kqueue* nil
   "Global kqueue instance for async operations")
 
-(defvar *pending-operations* (make-hash-table :test 'equal)
-  "Hash table mapping (socket-fd . operation-type) to async-operation")
+(defvar *pending-operations* map:+empty+
+  "Map of (socket-fd . operation-type) to async-operation")
 
 (defvar *async-thread* nil
   "Background thread for async event processing")
@@ -68,7 +69,7 @@
   (when *global-kqueue*
     (kqueue:kqueue-close *global-kqueue*)
     (setf *global-kqueue* nil))
-  (clrhash *pending-operations*))
+  (setf *pending-operations* map:+empty+))
 
 (defun async-event-loop ()
   "Main async event processing loop"
@@ -89,9 +90,9 @@
                            (#.kqueue:+evfilt-write+ :write)
                            (t :unknown)))
          (key (cons socket-fd operation-type)))
-    (let ((async-op (gethash key *pending-operations*)))
+    (let ((async-op (map:get *pending-operations* key)))
       (when async-op
-        (remhash key *pending-operations*)
+        (setf *pending-operations* (map:dissoc *pending-operations* key))
         (funcall (async-operation-waker async-op))))))
 
 (defun register-async-operation (socket-fd operation-type waker)
@@ -102,7 +103,7 @@
                                  :socket-fd socket-fd
                                  :operation-type operation-type
                                  :waker waker)))
-    (setf (gethash key *pending-operations*) async-op)
+    (setf *pending-operations* (map:assoc *pending-operations* key async-op))
     ;; Add to kqueue
     (let ((filter (case operation-type
                     (:read kqueue:+evfilt-read+)

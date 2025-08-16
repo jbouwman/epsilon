@@ -43,14 +43,14 @@
 
 ;;; Known function signatures database
 
-(defvar *known-signatures* (make-hash-table :test 'equal)
+(defvar *known-signatures* map:+empty+
   "Database of known C function signatures")
 
 (defun register-known-signature (name return-type arg-types)
   "Register a known C function signature"
-  (setf (gethash name *known-signatures*)
-        (trampoline:make-ffi-signature :return-type return-type
-                                       :arg-types arg-types)))
+  (setf *known-signatures* (map:assoc *known-signatures* name
+                                      (trampoline:make-ffi-signature :return-type return-type
+                                                                     :arg-types arg-types))))
 
 ;; Initialize signatures lazily when needed
 (defvar *signatures-initialized-p* nil
@@ -93,7 +93,7 @@
                :arg-types (getf pattern-sig :arg-types)))))))
     
     (when signature
-      (setf (gethash function-name *known-signatures*) signature)
+      (setf *known-signatures* (map:assoc *known-signatures* function-name signature))
       signature)))
 
 (defvar *parsed-headers-cache* nil
@@ -107,7 +107,7 @@
 
 (defun parse-standard-headers ()
   "Parse common header declarations using clang parser"
-  (let ((sigs (make-hash-table :test 'equal)))
+  (let ((sigs map:+empty+))
     ;; Try to parse actual headers if clang parser is available
     (when (find-package "EPSILON.CLANG")
       (let ((parsed-sigs (parse-c-declarations)))
@@ -115,47 +115,47 @@
           (return-from parse-standard-headers parsed-sigs))))
     ;; Fall back to hardcoded signatures
     ;; String functions from string.h
-    (setf (gethash "strlen" sigs) 
-          (trampoline:make-ffi-signature :return-type :size-t :arg-types '(:string)))
-    (setf (gethash "strcpy" sigs)
-          (trampoline:make-ffi-signature :return-type :string :arg-types '(:string :string)))
-    (setf (gethash "strcmp" sigs)
-          (trampoline:make-ffi-signature :return-type :int :arg-types '(:string :string)))
-    (setf (gethash "strcat" sigs)
-          (trampoline:make-ffi-signature :return-type :string :arg-types '(:string :string)))
+    (setf sigs (map:assoc sigs "strlen"
+                          (trampoline:make-ffi-signature :return-type :size-t :arg-types '(:string))))
+    (setf sigs (map:assoc sigs "strcpy"
+                          (trampoline:make-ffi-signature :return-type :string :arg-types '(:string :string))))
+    (setf sigs (map:assoc sigs "strcmp"
+                          (trampoline:make-ffi-signature :return-type :int :arg-types '(:string :string))))
+    (setf sigs (map:assoc sigs "strcat"
+                          (trampoline:make-ffi-signature :return-type :string :arg-types '(:string :string))))
     
     ;; Memory functions from stdlib.h
-    (setf (gethash "malloc" sigs)
-          (trampoline:make-ffi-signature :return-type :pointer :arg-types '(:size-t)))
-    (setf (gethash "free" sigs)
-          (trampoline:make-ffi-signature :return-type :void :arg-types '(:pointer)))
-    (setf (gethash "memcpy" sigs)
-          (trampoline:make-ffi-signature :return-type :pointer :arg-types '(:pointer :pointer :size-t)))
+    (setf sigs (map:assoc sigs "malloc"
+                          (trampoline:make-ffi-signature :return-type :pointer :arg-types '(:size-t))))
+    (setf sigs (map:assoc sigs "free"
+                          (trampoline:make-ffi-signature :return-type :void :arg-types '(:pointer))))
+    (setf sigs (map:assoc sigs "memcpy"
+                          (trampoline:make-ffi-signature :return-type :pointer :arg-types '(:pointer :pointer :size-t))))
     
     ;; I/O functions from stdio.h
-    (setf (gethash "printf" sigs)
-          (trampoline:make-ffi-signature :return-type :int :arg-types '(:string &rest)))
-    (setf (gethash "puts" sigs)
-          (trampoline:make-ffi-signature :return-type :int :arg-types '(:string)))
-    (setf (gethash "getchar" sigs)
-          (trampoline:make-ffi-signature :return-type :int :arg-types '()))
+    (setf sigs (map:assoc sigs "printf"
+                          (trampoline:make-ffi-signature :return-type :int :arg-types '(:string &rest))))
+    (setf sigs (map:assoc sigs "puts"
+                          (trampoline:make-ffi-signature :return-type :int :arg-types '(:string))))
+    (setf sigs (map:assoc sigs "getchar"
+                          (trampoline:make-ffi-signature :return-type :int :arg-types '())))
     
     ;; System functions
-    (setf (gethash "getpid" sigs)
-          (trampoline:make-ffi-signature :return-type :pid-t :arg-types '()))
-    (setf (gethash "getenv" sigs)
-          (trampoline:make-ffi-signature :return-type :string :arg-types '(:string)))
+    (setf sigs (map:assoc sigs "getpid"
+                          (trampoline:make-ffi-signature :return-type :pid-t :arg-types '())))
+    (setf sigs (map:assoc sigs "getenv"
+                          (trampoline:make-ffi-signature :return-type :string :arg-types '(:string))))
     
     sigs))
 
 (defun extract-from-parsed-headers (function-name)
   "Look up function in parsed headers"
   (let ((cache (ensure-headers-parsed)))
-    (gethash function-name cache)))
+    (map:get cache function-name)))
 
 (defun parse-c-declarations ()
   "Parse C function declarations from standard headers"
-  (let ((sigs (make-hash-table :test 'equal))
+  (let ((sigs map:+empty+)
         (clang-pkg (find-package "EPSILON.CLANG")))
     (when clang-pkg
       ;; Parse some common function declarations
@@ -182,7 +182,7 @@
                       (when parsed
                         (let ((sig (extract-signature-from-ast parsed)))
                           (when sig
-                            (setf (gethash (first sig) sigs) (second sig))))))))))
+                            (setf sigs (map:assoc sigs (first sig) (second sig)))))))))))
           (error (e) 
 		 (declare (ignore e))
 		 nil))))
@@ -442,7 +442,7 @@
 
 (defun infer-function-signature (name)
   "Infer the signature of a C function by name"
-  (or (gethash name *known-signatures*)
+  (or (map:get *known-signatures* name)
       ;; If not in database, make educated guesses based on naming patterns
       (cond
        ;; Functions starting with 'is' usually return int (boolean)
@@ -534,13 +534,13 @@
 
 ;;; Enum support
 
-(defvar *enum-definitions* (make-hash-table :test 'eq)
+(defvar *enum-definitions* map:+empty+
   "Registry of enum definitions")
 
 (defun define-enum (name mappings)
   "Define a C enum type with keyword mappings"
-  (setf (gethash name *enum-definitions*) 
-        (map:from-pairs mappings))
+  (setf *enum-definitions* (map:assoc *enum-definitions* name
+                                      (map:from-pairs mappings)))
   ;; Register converters - create closures that capture the enum name
   (let ((enum-name name))
     (trampoline:register-c-type name
@@ -556,13 +556,13 @@
 
 (defun enum-value (enum-name keyword)
   "Get the integer value for an enum keyword"
-  (let ((enum-map (gethash enum-name *enum-definitions*)))
+  (let ((enum-map (map:get *enum-definitions* enum-name)))
     (or (map:get enum-map keyword)
         (error "Unknown enum value ~A for enum ~A" keyword enum-name))))
 
 (defun enum-keyword (enum-name value)
   "Get the keyword for an enum integer value"
-  (let ((enum-map (gethash enum-name *enum-definitions*)))
+  (let ((enum-map (map:get *enum-definitions* enum-name)))
     (block found
       (map:each (lambda (k v)
                   (when (= v value)
@@ -629,7 +629,7 @@
      ;; Try to ensure signatures are initialized
      (ensure-signatures-initialized)
      ;; Look up or extract signature
-     (let ((signature (or (gethash ,c-name *known-signatures*)
+     (let ((signature (or (map:get *known-signatures* ,c-name)
                           (extract-and-register-signature ,c-name ,library))))
        (if signature
            (let ((return-type (trampoline:ffi-signature-return-type signature))

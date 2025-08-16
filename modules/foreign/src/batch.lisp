@@ -6,6 +6,7 @@
 (defpackage epsilon.foreign.batch
   (:use cl)
   (:local-nicknames
+   (:map :epsilon.map)
    (pool epsilon.foreign.memory-pool))
   (:export
    #:with-foreign-batch
@@ -28,7 +29,7 @@
   (allocations '() :type list)
   (deallocations '() :type list)
   (pool nil)
-  (deferred-results (make-hash-table))
+  (deferred-results map:+empty+)
   (optimization-level 1 :type fixnum))
 
 (defvar *current-batch* nil
@@ -57,7 +58,7 @@
               (batch-context-calls *current-batch*))
         ;; Return a promise for the result
         (lambda ()
-          (gethash call-id (batch-context-deferred-results *current-batch*))))
+          (map:get (batch-context-deferred-results *current-batch*) call-id)))
       ;; No batch context, execute immediately  
       (if (find-package "EPSILON.FOREIGN")
           (apply (find-symbol "SHARED-CALL" "EPSILON.FOREIGN")
@@ -106,7 +107,8 @@
                            (apply (find-symbol "SHARED-CALL" "EPSILON.FOREIGN")
                                   name-lib return-type arg-types args)
                            (error "epsilon.foreign package not loaded"))))
-            (setf (gethash id (batch-context-deferred-results batch)) result)))))))
+            (setf (batch-context-deferred-results batch)
+                  (map:assoc (batch-context-deferred-results batch) id result))))))))
 
 (defun cleanup-batch (batch)
   "Clean up batch resources"
@@ -120,24 +122,25 @@
     (setf (batch-context-calls batch) nil)
     (setf (batch-context-allocations batch) nil)
     (setf (batch-context-deallocations batch) nil)
-    (clrhash (batch-context-deferred-results batch))))
+    (setf (batch-context-deferred-results batch) map:+empty+)))
 
 ;;; Call sequence optimization
 
 (defun optimize-call-sequence (calls)
   "Optimize sequence of FFI calls for better performance"
   ;; Group calls by library to improve locality
-  (let ((grouped (make-hash-table :test 'equal)))
+  (let ((grouped map:+empty+))
     (dolist (call calls)
       (let ((lib (second (second call))))  ; Extract library from name-lib
-        (push call (gethash lib grouped '()))))
+        (setf grouped (map:assoc grouped lib 
+                                 (cons call (map:get grouped lib '()))))))
     
     ;; Flatten grouped calls, keeping same-library calls together
     (let ((optimized '()))
-      (maphash (lambda (lib calls)
-                 (declare (ignore lib))
-                 (setf optimized (append optimized (nreverse calls))))
-               grouped)
+      (map:each (lambda (lib calls)
+                  (declare (ignore lib))
+                  (setf optimized (append optimized (nreverse calls))))
+                grouped)
       optimized)))
 
 (defun foreign-type-size (type)
@@ -190,27 +193,29 @@
 
 ;;; Performance monitoring
 
-(defvar *batch-statistics* (make-hash-table :test 'equal)
+(defvar *batch-statistics* map:+empty+
   "Statistics for batch operations")
 
 (defun record-batch-performance (batch-size execution-time)
   "Record performance statistics for batches"
-  (push (list :size batch-size :time execution-time)
-        (gethash batch-size *batch-statistics* '())))
+  (setf *batch-statistics*
+        (map:assoc *batch-statistics* batch-size
+                   (cons (list :size batch-size :time execution-time)
+                         (map:get *batch-statistics* batch-size '())))))
 
 (defun batch-performance-report ()
   "Generate performance report for batch operations"
   (format t "~%Batch Operations Performance Report~%")
   (format t "===================================~%")
-  (maphash (lambda (size stats)
-            (let ((times (mapcar (lambda (s) (getf s :time)) stats)))
-              (format t "~%Batch size ~D:~%" size)
-              (format t "  Executions:  ~D~%" (length times))
-              (format t "  Avg time:    ~,3f ms~%" 
-                     (/ (reduce #'+ times) (length times)))
-              (format t "  Min time:    ~,3f ms~%" (apply #'min times))
-              (format t "  Max time:    ~,3f ms~%" (apply #'max times))))
-          *batch-statistics*))
+  (map:each (lambda (size stats)
+             (let ((times (mapcar (lambda (s) (getf s :time)) stats)))
+               (format t "~%Batch size ~D:~%" size)
+               (format t "  Executions:  ~D~%" (length times))
+               (format t "  Avg time:    ~,3f ms~%" 
+                      (/ (reduce #'+ times) (length times)))
+               (format t "  Min time:    ~,3f ms~%" (apply #'min times))
+               (format t "  Max time:    ~,3f ms~%" (apply #'max times))))
+           *batch-statistics*))
 
 ;;; Compiler optimizations
 

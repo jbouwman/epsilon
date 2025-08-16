@@ -93,23 +93,48 @@
 
 (deftest test-libffi-callback-registry
   "Test libffi callback registration and retrieval"
-  ;; Test with SBCL alien-lambda
-  ;; Register a named callback
-  (let ((id (callback:register-callback
-             'test-libffi-cb
-             (lambda (x) (* x 3))
-             :int '(:int))))
-    (is id "Should get a callback ID")
+  ;; Generate unique callback name to avoid conflicts
+  (let ((callback-name (gensym "TEST-LIBFFI-CB-")))
+    ;; Clean up any pre-existing callback with this name (defensive)
+    (ignore-errors (callback:unregister-callback callback-name))
     
-    ;; Retrieve by name
-    (let ((cb (callback:get-callback 'test-libffi-cb)))
-      (is cb "Should retrieve callback by name")
-      (is (= (callback:call-callback cb 4) 12) "Callback should work"))
-    
-    ;; Unregister
-    (callback:unregister-callback 'test-libffi-cb)
-    (is (null (callback:get-callback 'test-libffi-cb))
-        "Callback should be unregistered")))
+    ;; Use unwind-protect to ensure cleanup
+    (unwind-protect
+         (progn
+           ;; Register a named callback
+           (let ((id (callback:register-callback
+                      callback-name
+                      (lambda (x) (* x 3))
+                      :int '(:int))))
+             (is id "Should get a callback ID")
+             
+             ;; Retrieve by name with retry logic
+             (let ((cb nil)
+                   (retries 3))
+               (loop for i from 1 to retries
+                     do (setf cb (callback:get-callback callback-name))
+                     when cb return nil
+                     do (sleep 0.01)) ; Small delay between retries
+               
+               (is cb "Should retrieve callback by name")
+               (when cb
+                 (is (= (callback:call-callback cb 4) 12) "Callback should work")))
+             
+             ;; Unregister
+             (callback:unregister-callback callback-name)
+             
+             ;; Verify unregistration with retry logic
+             (let ((still-registered t)
+                   (retries 3))
+               (loop for i from 1 to retries
+                     do (setf still-registered (callback:get-callback callback-name))
+                     when (null still-registered) return nil
+                     do (sleep 0.01)) ; Small delay between retries
+               
+               (is (null still-registered)
+                   "Callback should be unregistered"))))
+      ;; Cleanup in case of test failure
+      (ignore-errors (callback:unregister-callback callback-name)))))
 
 (deftest test-libffi-closure-capture
   "Test that libffi callbacks can capture closures"

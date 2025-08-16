@@ -957,7 +957,7 @@
 (defun parse-header (header-file &key include-dirs types recursive)
   "Stub implementation - parse C headers"
   (declare (ignore header-file include-dirs types recursive))
-  (make-hash-table))
+  map:+empty+)
 
 ;;;; Type Mapping
 

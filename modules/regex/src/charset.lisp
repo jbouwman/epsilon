@@ -12,6 +12,8 @@
 
 (defpackage :epsilon.charset
   (:use :cl)
+  (:local-nicknames
+   (:map :epsilon.map))
   (:export
    ;; Parameters
    :*char-code-limit*
@@ -240,13 +242,23 @@
 ;; Unified interface
 
 (defun create-hash-table-from-test-function (test-function)
-  "Create standard hash table from test function"
+  "Create standard hash table from test function. 
+   Note: Uses mutable hash table for regex performance optimization."
   (let ((hash-table (make-hash-table :test 'eql)))
     (loop for code from 0 below *char-code-limit*
           for char = (code-char code)
           when (and char (funcall test-function char))
             do (setf (gethash char hash-table) t))
     hash-table))
+
+(defun create-map-from-test-function (test-function)
+  "Create epsilon.map from test function (alternative implementation)"
+  (loop with result = map:+empty+
+        for code from 0 below *char-code-limit*
+        for char = (code-char code)
+        when (and char (funcall test-function char))
+          do (setf result (map:assoc result char t))
+        finally (return result)))
 
 (defun create-optimized-test-function (test-function)
   "Create optimized character set representation based on density analysis"
@@ -284,7 +296,11 @@
        (let ((charset (create-charset-from-test-function test-function)))
          (lambda (char) (in-charset-p char charset))))
       
-      ;; Large set - use standard hash table
+      ;; Large set - use standard hash table (for performance) or epsilon.map
       (t
        (let ((hash-table (create-hash-table-from-test-function test-function)))
-         (lambda (char) (gethash char hash-table)))))))
+         (lambda (char) (gethash char hash-table)))
+       ;; Alternative using epsilon.map (commented out for performance):
+       ;; (let ((char-map (create-map-from-test-function test-function)))
+       ;;   (lambda (char) (map:contains-p char-map char)))
+       ))))

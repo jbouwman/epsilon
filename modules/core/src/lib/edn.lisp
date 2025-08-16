@@ -126,26 +126,26 @@
 ;;;; Tagged Literals
 ;;;; ==========================================================================
 
-(defparameter *edn-tag-readers* (make-hash-table :test 'equal)
+(defparameter *edn-tag-readers* map:+empty+
   "Registry of EDN tag readers")
 
-(defparameter *edn-tag-writers* (make-hash-table :test 'equal)
+(defparameter *edn-tag-writers* map:+empty+
   "Registry of EDN tag writers")
 
 (defun register-tag-reader (tag reader-fn)
   "Register a reader function for a tagged literal"
-  (setf (gethash (string tag) *edn-tag-readers*) reader-fn))
+  (setf *edn-tag-readers* (map:assoc *edn-tag-readers* (string tag) reader-fn)))
 
 (defun register-tag-writer (tag writer-fn)
   "Register a writer function for a tagged literal"
-  (setf (gethash (string tag) *edn-tag-writers*) writer-fn))
+  (setf *edn-tag-writers* (map:assoc *edn-tag-writers* (string tag) writer-fn)))
 
 (defun read-edn-tagged (stream char n)
   "Read a tagged literal"
   (declare (ignore char n))
   (let* ((tag (read stream t nil t))
          (value (read stream t nil t))
-         (reader (gethash (string tag) *edn-tag-readers*)))
+         (reader (map:get *edn-tag-readers* (string tag))))
     (if reader
         (funcall reader value)
         (error "Unknown EDN tag: ~A" tag))))
@@ -257,7 +257,7 @@
               value))
   (write-char #\} stream))
 
-;; Hash tables (convert to EDN map notation)
+;; Hash tables (convert to EDN map notation) - legacy support
 (defmethod write-edn-value ((value hash-table) stream)
   (write-char #\{ stream)
   (let ((first t))
@@ -268,6 +268,19 @@
                (write-char #\Space stream)
                (write-edn-value v stream))
              value))
+  (write-char #\} stream))
+
+;; Epsilon maps (preferred)
+(defmethod write-edn-value ((value map:hamt) stream)
+  (write-char #\{ stream)
+  (let ((first t))
+    (map:each (lambda (k v)
+                (unless first (write-char #\Space stream))
+                (setf first nil)
+                (write-edn-value k stream)
+                (write-char #\Space stream)
+                (write-edn-value v stream))
+              value))
   (write-char #\} stream))
 
 ;; Sets (using epsilon.set)
