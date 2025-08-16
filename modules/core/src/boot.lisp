@@ -8,6 +8,7 @@
 (defparameter *files*
   '("lib/syntax"
     "lib/map"
+    "lib/set"
     "lib/sequence"
     "lib/string"
     "lib/table"
@@ -23,7 +24,6 @@
     "lib/char"
     "lib/function"
     "lib/list"
-    "lib/edn"
     "lib/hex"
     "lib/url"
     "lib/protocol"

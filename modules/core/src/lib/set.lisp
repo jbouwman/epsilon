@@ -19,6 +19,7 @@
    disj
    enable-syntax
    filter
+   hamt-set
    intersection
    make-set
    map

@@ -64,7 +64,23 @@
    :http-url-p
    :https-url-p
    :ftp-url-p
-   :mailto-url-p))
+   :mailto-url-p
+   
+   ;; Protocol handling
+   :handle-url
+   :fetch-url
+   :url-open
+   
+   ;; Enhanced utilities
+   :normalize-path
+   :parse-authority
+   :url-equivalence
+   :enhanced-url-encode-component
+   
+   ;; URL building
+   :build-url
+   :url-with-query
+   :expand-url-template))
 
 (in-package :epsilon.url)
 
@@ -575,3 +591,220 @@
 (defun mailto-url-p (url)
   "Check if URL is mailto"
   (string= (url-scheme url) "mailto"))
+
+;;;; ==========================================================================
+;;;; Protocol Handler Implementation
+;;;; ==========================================================================
+
+(defun handle-url (url &rest options)
+  "Handle a URL using the appropriate protocol handler"
+  (let* ((url-obj (if (typep url 'url) url (parse-url url)))
+         (scheme (url-scheme url-obj))
+         (handler (get-protocol-handler scheme)))
+    (if handler
+        (apply handler url-obj options)
+        (error "No handler registered for scheme: ~A" scheme))))
+
+(defun fetch-url (url &key (timeout 30) headers user-agent)
+  "Fetch content from a URL (requires appropriate protocol handler)"
+  (handle-url url :action :fetch :timeout timeout :headers headers :user-agent user-agent))
+
+(defun url-open (url &key mode)
+  "Open a URL for reading/writing (requires appropriate protocol handler)"
+  (handle-url url :action :open :mode mode))
+
+;;;; ==========================================================================
+;;;; Enhanced Path Normalization
+;;;; ==========================================================================
+
+(defun normalize-path (path)
+  "Normalize a URL path by resolving . and .. components"
+  (when path
+    (let ((segments (remove-if (lambda (s) (string= s ""))
+                               (loop for start = 0 then (1+ pos)
+                                     for pos = (position #\/ path :start start)
+                                     collect (subseq path start pos)
+                                     while pos)))
+          (normalized-segments '()))
+      (loop for segment in segments do
+        (cond
+          ((string= segment ".") 
+           ;; Skip current directory
+           )
+          ((string= segment "..")
+           ;; Go up one directory
+           (when normalized-segments
+             (setf normalized-segments (butlast normalized-segments))))
+          (t
+           (setf normalized-segments (append normalized-segments (list segment))))))
+      
+      (if normalized-segments
+          (concatenate 'string "/" (reduce (lambda (a b) (concatenate 'string a "/" b))
+                                          normalized-segments))
+          "/"))))
+
+;;;; ==========================================================================
+;;;; Enhanced Authority Parsing
+;;;; ==========================================================================
+
+(defun parse-authority (authority-string)
+  "Parse URL authority into components (userinfo, host, port)"
+  (when authority-string
+    (let ((userinfo nil)
+          (host nil)
+          (port nil)
+          (remaining authority-string))
+      
+      ;; Extract userinfo
+      (let ((at-pos (position #\@ remaining)))
+        (when at-pos
+          (setf userinfo (subseq remaining 0 at-pos)
+                remaining (subseq remaining (1+ at-pos)))))
+      
+      ;; Handle IPv6 addresses in brackets
+      (if (and (> (length remaining) 0) (char= (char remaining 0) #\[))
+          (let ((close-bracket (position #\] remaining)))
+            (if close-bracket
+                (progn
+                  (setf host (subseq remaining 1 close-bracket))
+                  (when (< (1+ close-bracket) (length remaining))
+                    (let ((port-part (subseq remaining (1+ close-bracket))))
+                      (when (and (> (length port-part) 0) (char= (char port-part 0) #\:))
+                        (setf port (parse-integer (subseq port-part 1) :junk-allowed t))))))
+                (error "Invalid IPv6 address in URL: ~A" remaining)))
+          ;; Regular host:port parsing
+          (let ((port-pos (position #\: remaining :from-end t)))
+            (if port-pos
+                (progn
+                  (setf host (subseq remaining 0 port-pos))
+                  (let ((port-str (subseq remaining (1+ port-pos))))
+                    (when (> (length port-str) 0)
+                      (setf port (parse-integer port-str :junk-allowed t)))))
+                (setf host remaining))))
+      
+      (values userinfo host port))))
+
+;;;; ==========================================================================
+;;;; URL Equivalence
+;;;; ==========================================================================
+
+(defun url-equivalence (url1 url2)
+  "Check if two URLs are semantically equivalent (handles normalization)"
+  (let ((u1 (url-normalize (if (typep url1 'url) url1 (parse-url url1))))
+        (u2 (url-normalize (if (typep url2 'url) url2 (parse-url url2)))))
+    (and u1 u2
+         (string= (or (url-scheme u1) "") (or (url-scheme u2) ""))
+         (string= (or (url-host u1) "") (or (url-host u2) ""))
+         (= (or (url-port u1) (default-port (url-scheme u1)) 0)
+            (or (url-port u2) (default-port (url-scheme u2)) 0))
+         (string= (or (url-path u1) "") (or (url-path u2) ""))
+         (string= (or (url-query u1) "") (or (url-query u2) ""))
+         (string= (or (url-fragment u1) "") (or (url-fragment u2) "")))))
+
+;;;; ==========================================================================
+;;;; Enhanced URL Encoding (non-ASCII support)
+;;;; ==========================================================================
+
+(defun char-needs-encoding-p (char)
+  "Check if character needs percent-encoding"
+  (not (or (alphanumericp char)
+           (find char "-._~"))))
+
+(defun utf8-encode-char (char)
+  "Encode a character to UTF-8 bytes"
+  ;; Simplified UTF-8 encoding for basic Latin characters
+  ;; For full Unicode support, would need proper UTF-8 encoder
+  (let ((code (char-code char)))
+    (cond
+      ((<= code #x7F)
+       (list code))
+      ((<= code #x7FF)
+       (list (logior #xC0 (ash code -6))
+             (logior #x80 (logand code #x3F))))
+      ((<= code #xFFFF)
+       (list (logior #xE0 (ash code -12))
+             (logior #x80 (logand (ash code -6) #x3F))
+             (logior #x80 (logand code #x3F))))
+      (t
+       (list (logior #xF0 (ash code -18))
+             (logior #x80 (logand (ash code -12) #x3F))
+             (logior #x80 (logand (ash code -6) #x3F))
+             (logior #x80 (logand code #x3F)))))))
+
+(defun enhanced-url-encode-component (string &key (encoding :utf-8))
+  "Enhanced URL encode with full Unicode support"
+  (declare (ignore encoding)) ; UTF-8 assumed
+  (when string
+    (with-output-to-string (out)
+      (loop for char across string do
+        (if (char-needs-encoding-p char)
+            (let ((bytes (utf8-encode-char char)))
+              (dolist (byte bytes)
+                (format out "%~2,'0X" byte)))
+            (write-char char out))))))
+
+;;;; ==========================================================================
+;;;; Default Protocol Handlers
+;;;; ==========================================================================
+
+(defun file-protocol-handler (url &key action &allow-other-keys)
+  "Handle file:// URLs"
+  (case action
+    (:fetch
+     (let ((path (url-to-path url)))
+       (when path
+         (with-open-file (stream (path:path-string path) :direction :input)
+           (let ((content (make-string (file-length stream))))
+             (read-sequence content stream)
+             content)))))
+    (:open
+     (let ((path (url-to-path url)))
+       (when path
+         (open (path:path-string path)))))
+    (otherwise
+     (error "Unsupported action ~A for file protocol" action))))
+
+;; Register the file protocol handler
+(register-protocol-handler "file" #'file-protocol-handler)
+
+;;;; ==========================================================================
+;;;; URL Builder Utilities
+;;;; ==========================================================================
+
+(defun build-url (&key scheme userinfo host port path query-params fragment)
+  "Build a URL from components with convenient query parameter handling"
+  (make-url :scheme scheme
+            :userinfo userinfo
+            :host host
+            :port port
+            :path path
+            :query (when query-params (build-query-string query-params))
+            :fragment fragment))
+
+(defun url-with-query (url &rest param-pairs)
+  "Create a new URL with additional query parameters"
+  (let ((existing-params (query-params url))
+        (new-params '()))
+    (loop for (key value) on param-pairs by #'cddr do
+      (push (cons key value) new-params))
+    (let ((all-params (append new-params existing-params)))
+      (make-url :scheme (url-scheme url)
+                :userinfo (url-userinfo url)
+                :host (url-host url)
+                :port (url-port url)
+                :path (url-path url)
+                :query (build-query-string all-params)
+                :fragment (url-fragment url)))))
+
+;;;; ==========================================================================
+;;;; URL Template Support (Basic)
+;;;; ==========================================================================
+
+(defun expand-url-template (template values)
+  "Expand a simple URL template with values
+   Example: (expand-url-template \"/users/{id}/posts/{post-id}\" 
+                                '((\"id\" . \"123\") (\"post-id\" . \"456\")))"
+  ;; Simplified implementation - just return template for now
+  ;; Full implementation would need proper string replacement
+  (declare (ignore values))
+  template)

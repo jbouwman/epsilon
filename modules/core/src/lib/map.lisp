@@ -33,6 +33,7 @@
    :from-pairs
    :get
    :get-in
+   :hamt
    :invert
    :keys
    :make-map
