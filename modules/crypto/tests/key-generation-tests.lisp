@@ -13,16 +13,11 @@
 
 (defun with-test-key (type &rest args)
   "Create a test key of specified type for testing"
-  (handler-case
-      (case type
+  (case type
         (:rsa (apply #'crypto:generate-rsa-key args))
         (:ec (apply #'crypto:generate-ec-key args))
         (:ed25519 (crypto:generate-ed25519-key))
-        (t (error "Unknown key type: ~A" type)))
-    (error (e)
-      ;; Return nil if OpenSSL is not available
-      (warn "Skipping test - OpenSSL not available: ~A" e)
-      nil)))
+        (t (error "Unknown key type: ~A" type))))
 
 ;;;; RSA Key Generation Tests
 
@@ -63,19 +58,14 @@
         (crypto:generate-rsa-key 1024)
         (is nil "Should have thrown error for 1024-bit key"))
     (crypto:crypto-error ()
-      (is t "Correctly rejected 1024-bit key"))
-    (error ()
-      ;; OpenSSL not available
-      (is t "Skipping - OpenSSL not available")))
+      (is t "Correctly rejected 1024-bit key")))
   
   (handler-case
       (progn
         (crypto:generate-rsa-key 512)
         (is nil "Should have thrown error for 512-bit key"))
     (crypto:crypto-error ()
-      (is t "Correctly rejected 512-bit key"))
-    (error ()
-      (is t "Skipping - OpenSSL not available"))))
+      (is t "Correctly rejected 512-bit key"))))
 
 ;;;; EC Key Generation Tests
 

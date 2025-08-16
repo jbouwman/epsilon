@@ -9,6 +9,14 @@
    (#:lib #:epsilon.foreign))
   (:export
    ;; Re-export all FFI functions with % prefix
+   ;; Modern OpenSSL 3.0 functions
+   #:%evp-pkey-ctx-new-from-name
+   #:%evp-pkey-ctx-free
+   #:%evp-pkey-keygen-init
+   #:%evp-pkey-generate
+   #:%evp-pkey-ctx-set-rsa-keygen-bits
+   #:%evp-pkey-ctx-set-ec-paramgen-curve-nid
+   #:%obj-sn2nid
    #:%tls-client-method
    #:%tls-server-method
    #:%ssl-ctx-new
@@ -20,6 +28,12 @@
    #:%ssl-ctx-set-cipher-list
    #:%ssl-ctx-use-certificate
    #:%ssl-ctx-use-privatekey
+   #:%ssl-ctx-load-verify-locations
+   #:%ssl-ctx-set-client-ca-list
+   #:%ssl-ctx-use-certificate-chain-file
+   #:%ssl-get-verify-result
+   #:%x509-name-stack-new
+   #:%x509-name-stack-push
    #:%ssl-new
    #:%ssl-free
    #:%ssl-set-fd
@@ -33,29 +47,27 @@
    #:%ssl-get-version
    #:%ssl-get-cipher
    #:%ssl-get-peer-certificate
+   #:%ssl-load-client-ca-file
    #:%evp-pkey-new
    #:%evp-pkey-free
    #:%evp-pkey-size
    #:%evp-pkey-bits
    #:%evp-pkey-id
-   #:%rsa-new
-   #:%rsa-free
-   #:%rsa-generate-key-ex
-   #:%evp-pkey-assign-rsa
-   #:%evp-pkey-get1-rsa
+   ;; #:%rsa-new  ; Deprecated in OpenSSL 3.0
+   ;; #:%rsa-free  ; Deprecated in OpenSSL 3.0
+   ;; #:%rsa-generate-key-ex  ; Deprecated in OpenSSL 3.0
+   ;; #:%evp-pkey-assign-rsa  ; Deprecated in OpenSSL 3.0
+   ;; #:%evp-pkey-get1-rsa  ; Deprecated in OpenSSL 3.0
    #:%bn-new
    #:%bn-free
    #:%bn-set-word
-   #:%ec-key-new-by-curve-name
-   #:%ec-key-free
-   #:%ec-key-generate-key
-   #:%evp-pkey-assign-ec-key
-   #:%evp-pkey-get1-ec-key
+   ;; #:%ec-key-new-by-curve-name  ; Deprecated in OpenSSL 3.0
+   ;; #:%ec-key-free  ; Deprecated in OpenSSL 3.0
+   ;; #:%ec-key-generate-key  ; Deprecated in OpenSSL 3.0
+   ;; #:%evp-pkey-assign-ec-key  ; Deprecated in OpenSSL 3.0
+   ;; #:%evp-pkey-get1-ec-key  ; Deprecated in OpenSSL 3.0
    #:%obj-txt2nid
    #:%evp-pkey-ctx-new-id
-   #:%evp-pkey-ctx-free
-   #:%evp-pkey-keygen-init
-   #:%evp-pkey-keygen
    #:%evp-pkey-ctx-new
    #:%pem-read-bio-pubkey
    #:%pem-read-bio-privatekey
@@ -88,6 +100,7 @@
    #:%x509-free
    #:%x509-set-version
    #:%x509-set-serialnumber
+   #:%x509-get-serialnumber
    #:%x509-set-notbefore
    #:%x509-set-notafter
    #:%x509-set-pubkey
@@ -104,6 +117,7 @@
    #:%x509-set-issuer-name
    #:%asn1-integer-new
    #:%asn1-integer-set
+   #:%asn1-integer-get
    #:%asn1-integer-free
    #:%x509-time-adj-ex
    #:%x509-req-new
@@ -164,6 +178,38 @@
   (ctx :pointer) (pkey :pointer)
   :documentation "Set private key in SSL context")
 
+(lib:defshared %ssl-ctx-load-verify-locations "SSL_CTX_load_verify_locations" "libssl" :int
+  (ctx :pointer) (ca-file :string) (ca-path :string)
+  :documentation "Load CA certificates for verification")
+
+(lib:defshared %ssl-ctx-set-client-ca-list "SSL_CTX_set_client_CA_list" "libssl" :void
+  (ctx :pointer) (list :pointer)
+  :documentation "Set list of acceptable client CAs")
+
+(lib:defshared %ssl-ctx-use-certificate-chain-file "SSL_CTX_use_certificate_chain_file" "libssl" :int
+  (ctx :pointer) (file :string)
+  :documentation "Load certificate chain from file")
+
+(lib:defshared %ssl-get-peer-certificate "SSL_get_peer_certificate" "libssl" :pointer
+  (ssl :pointer)
+  :documentation "Get peer certificate from SSL connection")
+
+(lib:defshared %ssl-get-verify-result "SSL_get_verify_result" "libssl" :long
+  (ssl :pointer)
+  :documentation "Get verification result")
+
+(lib:defshared %x509-name-stack-new "sk_X509_NAME_new_null" "libcrypto" :pointer
+  ()
+  :documentation "Create new X509_NAME stack")
+
+(lib:defshared %x509-name-stack-push "sk_X509_NAME_push" "libcrypto" :int
+  (stack :pointer) (name :pointer)
+  :documentation "Push X509_NAME to stack")
+
+(lib:defshared %ssl-load-client-ca-file "SSL_load_client_CA_file" "libssl" :pointer
+  (file :string)
+  :documentation "Load client CA list from file")
+
 ;; SSL Connection management
 (lib:defshared %ssl-new "SSL_new" "libssl" :pointer (ctx :pointer)
   :documentation "Create new SSL connection")
@@ -207,11 +253,36 @@
 (lib:defshared %ssl-get-cipher "SSL_get_cipher" "libssl" :pointer (ssl :pointer)
   :documentation "Get current cipher name")
 
-(lib:defshared %ssl-get-peer-certificate "SSL_get_peer_certificate" "libssl" :pointer
-  (ssl :pointer)
-  :documentation "Get peer certificate from SSL connection")
-
 ;;;; Cryptography Library FFI Bindings (libcrypto)
+
+;; Modern OpenSSL 3.0 EVP API for key generation
+(lib:defshared %evp-pkey-ctx-new-from-name "EVP_PKEY_CTX_new_from_name" "libcrypto" :pointer
+  (libctx :pointer) (name :string) (propquery :pointer)
+  :documentation "Create EVP_PKEY_CTX from algorithm name (OpenSSL 3.0)")
+
+(lib:defshared %evp-pkey-ctx-free "EVP_PKEY_CTX_free" "libcrypto" :void
+  (ctx :pointer)
+  :documentation "Free EVP_PKEY_CTX")
+
+(lib:defshared %evp-pkey-keygen-init "EVP_PKEY_keygen_init" "libcrypto" :int
+  (ctx :pointer)
+  :documentation "Initialize key generation")
+
+(lib:defshared %evp-pkey-generate "EVP_PKEY_generate" "libcrypto" :int
+  (ctx :pointer) (ppkey :pointer)
+  :documentation "Generate key pair")
+
+(lib:defshared %evp-pkey-ctx-set-rsa-keygen-bits "EVP_PKEY_CTX_set_rsa_keygen_bits" "libcrypto" :int
+  (ctx :pointer) (bits :int)
+  :documentation "Set RSA key size in bits")
+
+(lib:defshared %evp-pkey-ctx-set-ec-paramgen-curve-nid "EVP_PKEY_CTX_set_ec_paramgen_curve_nid" "libcrypto" :int
+  (ctx :pointer) (nid :int)
+  :documentation "Set EC curve by NID for key generation")
+
+(lib:defshared %obj-sn2nid "OBJ_sn2nid" "libcrypto" :int
+  (sn :string)
+  :documentation "Convert short name to NID")
 
 ;; EVP (Envelope) API - High-level cryptographic functions
 (lib:defshared %evp-pkey-new "EVP_PKEY_new" "libcrypto" :pointer ()
@@ -229,20 +300,20 @@
 (lib:defshared %evp-pkey-id "EVP_PKEY_get_id" "libcrypto" :int (pkey :pointer)
   :documentation "Get key type identifier")
 
-;; RSA key generation
-(lib:defshared %rsa-new "RSA_new" "libcrypto" :pointer ()
-  :documentation "Create new RSA structure")
-
-(lib:defshared %rsa-free "RSA_free" "libcrypto" :void (rsa :pointer)
-  :documentation "Free RSA structure")
-
-(lib:defshared %rsa-generate-key-ex "RSA_generate_key_ex" "libcrypto" :int
-  (rsa :pointer) (bits :int) (e :pointer) (cb :pointer)
-  :documentation "Generate RSA key pair")
-
-(lib:defshared %evp-pkey-assign-rsa "EVP_PKEY_assign_RSA" "libcrypto" :int
-  (pkey :pointer) (rsa :pointer)
-  :documentation "Assign RSA key to EVP_PKEY")
+;; RSA key generation - DEPRECATED in OpenSSL 3.0
+;; (lib:defshared %rsa-new "RSA_new" "libcrypto" :pointer ()
+;;   :documentation "Create new RSA structure")
+;;
+;; (lib:defshared %rsa-free "RSA_free" "libcrypto" :void (rsa :pointer)
+;;   :documentation "Free RSA structure")
+;;
+;; (lib:defshared %rsa-generate-key-ex "RSA_generate_key_ex" "libcrypto" :int
+;;   (rsa :pointer) (bits :int) (e :pointer) (cb :pointer)
+;;   :documentation "Generate RSA key pair")
+;;
+;; (lib:defshared %evp-pkey-assign-rsa "EVP_PKEY_assign_RSA" "libcrypto" :int
+;;   (pkey :pointer) (rsa :pointer)
+;;   :documentation "Assign RSA key to EVP_PKEY")
 
 (lib:defshared %evp-pkey-get1-rsa "EVP_PKEY_get1_RSA" "libcrypto" :pointer
   (pkey :pointer)
@@ -256,24 +327,24 @@
   :documentation "Free BIGNUM")
 
 (lib:defshared %bn-set-word "BN_set_word" "libcrypto" :int
-  (bn :pointer) (w :ulong)
+  (bn :pointer) (w :unsigned-long)
   :documentation "Set BIGNUM from word")
 
-;; EC key generation
-(lib:defshared %ec-key-new-by-curve-name "EC_KEY_new_by_curve_name" "libcrypto" :pointer
-  (nid :int)
-  :documentation "Create EC key for named curve")
-
-(lib:defshared %ec-key-free "EC_KEY_free" "libcrypto" :void (key :pointer)
-  :documentation "Free EC key")
-
-(lib:defshared %ec-key-generate-key "EC_KEY_generate_key" "libcrypto" :int
-  (key :pointer)
-  :documentation "Generate EC key pair")
-
-(lib:defshared %evp-pkey-assign-ec-key "EVP_PKEY_assign_EC_KEY" "libcrypto" :int
-  (pkey :pointer) (ec :pointer)
-  :documentation "Assign EC key to EVP_PKEY")
+;; EC key generation - DEPRECATED in OpenSSL 3.0
+;; (lib:defshared %ec-key-new-by-curve-name "EC_KEY_new_by_curve_name" "libcrypto" :pointer
+;;   (nid :int)
+;;   :documentation "Create EC key for named curve")
+;;
+;; (lib:defshared %ec-key-free "EC_KEY_free" "libcrypto" :void (key :pointer)
+;;   :documentation "Free EC key")
+;;
+;; (lib:defshared %ec-key-generate-key "EC_KEY_generate_key" "libcrypto" :int
+;;   (key :pointer)
+;;   :documentation "Generate EC key pair")
+;;
+;; (lib:defshared %evp-pkey-assign-ec-key "EVP_PKEY_assign_EC_KEY" "libcrypto" :int
+;;   (pkey :pointer) (ec :pointer)
+;;   :documentation "Assign EC key to EVP_PKEY")
 
 (lib:defshared %evp-pkey-get1-ec-key "EVP_PKEY_get1_EC_KEY" "libcrypto" :pointer
   (pkey :pointer)
@@ -288,17 +359,7 @@
   (id :int) (e :pointer)
   :documentation "Create EVP_PKEY_CTX for algorithm")
 
-(lib:defshared %evp-pkey-ctx-free "EVP_PKEY_CTX_free" "libcrypto" :void
-  (ctx :pointer)
-  :documentation "Free EVP_PKEY_CTX")
-
-(lib:defshared %evp-pkey-keygen-init "EVP_PKEY_keygen_init" "libcrypto" :int
-  (ctx :pointer)
-  :documentation "Initialize key generation")
-
-(lib:defshared %evp-pkey-keygen "EVP_PKEY_keygen" "libcrypto" :int
-  (ctx :pointer) (ppkey :pointer)
-  :documentation "Generate key pair")
+;; Removed duplicates - these are defined in the OpenSSL 3.0 section above
 
 (lib:defshared %evp-pkey-ctx-new "EVP_PKEY_CTX_new" "libcrypto" :pointer
   (pkey :pointer) (e :pointer)
@@ -365,7 +426,7 @@
   :documentation "Initialize digest context")
 
 (lib:defshared %evp-digestupdate "EVP_DigestUpdate" "libcrypto" :int
-  (ctx :pointer) (d :pointer) (cnt :size)
+  (ctx :pointer) (d :pointer) (cnt :unsigned-long)
   :documentation "Update digest with data")
 
 (lib:defshared %evp-digestfinal-ex "EVP_DigestFinal_ex" "libcrypto" :int
@@ -378,7 +439,7 @@
   :documentation "Initialize signing operation")
 
 (lib:defshared %evp-digestsignupdate "EVP_DigestSignUpdate" "libcrypto" :int
-  (ctx :pointer) (d :pointer) (cnt :size)
+  (ctx :pointer) (d :pointer) (cnt :unsigned-long)
   :documentation "Update data to be signed")
 
 (lib:defshared %evp-digestsignfinal "EVP_DigestSignFinal" "libcrypto" :int
@@ -391,11 +452,11 @@
   :documentation "Initialize verification operation")
 
 (lib:defshared %evp-digestverifyupdate "EVP_DigestVerifyUpdate" "libcrypto" :int
-  (ctx :pointer) (d :pointer) (cnt :size)
+  (ctx :pointer) (d :pointer) (cnt :unsigned-long)
   :documentation "Update data to be verified")
 
 (lib:defshared %evp-digestverifyfinal "EVP_DigestVerifyFinal" "libcrypto" :int
-  (ctx :pointer) (sig :pointer) (siglen :size)
+  (ctx :pointer) (sig :pointer) (siglen :unsigned-long)
   :documentation "Finalize verification operation")
 
 ;; Public key encryption
@@ -404,7 +465,7 @@
   :documentation "Initialize public key encryption")
 
 (lib:defshared %evp-pkey-encrypt "EVP_PKEY_encrypt" "libcrypto" :int
-  (ctx :pointer) (out :pointer) (outlen :pointer) (in :pointer) (inlen :size)
+  (ctx :pointer) (out :pointer) (outlen :pointer) (in :pointer) (inlen :unsigned-long)
   :documentation "Encrypt with public key")
 
 (lib:defshared %evp-pkey-decrypt-init "EVP_PKEY_decrypt_init" "libcrypto" :int
@@ -412,7 +473,7 @@
   :documentation "Initialize public key decryption")
 
 (lib:defshared %evp-pkey-decrypt "EVP_PKEY_decrypt" "libcrypto" :int
-  (ctx :pointer) (out :pointer) (outlen :pointer) (in :pointer) (inlen :size)
+  (ctx :pointer) (out :pointer) (outlen :pointer) (in :pointer) (inlen :unsigned-long)
   :documentation "Decrypt with private key")
 
 ;; X.509 Certificate operations
@@ -430,11 +491,15 @@
   (x509 :pointer) (serial :pointer)
   :documentation "Set certificate serial number")
 
-(lib:defshared %x509-set-notbefore "X509_set_notBefore" "libcrypto" :int
+(lib:defshared %x509-get-serialnumber "X509_get_serialNumber" "libcrypto" :pointer
+  (x509 :pointer)
+  :documentation "Get certificate serial number")
+
+(lib:defshared %x509-set-notbefore "X509_set1_notBefore" "libcrypto" :int
   (x509 :pointer) (tm :pointer)
   :documentation "Set certificate not-before time")
 
-(lib:defshared %x509-set-notafter "X509_set_notAfter" "libcrypto" :int
+(lib:defshared %x509-set-notafter "X509_set1_notAfter" "libcrypto" :int
   (x509 :pointer) (tm :pointer)
   :documentation "Set certificate not-after time")
 
@@ -475,7 +540,7 @@
   :documentation "Convert X509 name to string")
 
 (lib:defshared %x509-name-add-entry-by-txt "X509_NAME_add_entry_by_txt" "libcrypto" :int
-  (name :pointer) (field :string) (type :int) (bytes :pointer) (len :int) (loc :int) (set :int)
+  (name :pointer) (field :string) (type :int) (bytes :string) (len :int) (loc :int) (set :int)
   :documentation "Add entry to X509 name")
 
 (lib:defshared %x509-set-subject-name "X509_set_subject_name" "libcrypto" :int
@@ -493,6 +558,10 @@
 (lib:defshared %asn1-integer-set "ASN1_INTEGER_set" "libcrypto" :int
   (a :pointer) (v :long)
   :documentation "Set ASN1 integer value")
+
+(lib:defshared %asn1-integer-get "ASN1_INTEGER_get" "libcrypto" :long
+  (a :pointer)
+  :documentation "Get ASN1 integer value")
 
 (lib:defshared %asn1-integer-free "ASN1_INTEGER_free" "libcrypto" :void
   (a :pointer)
@@ -543,9 +612,9 @@
   :documentation "Generate random bytes")
 
 ;; Error handling
-(lib:defshared %err-get-error "ERR_get_error" "libcrypto" :ulong ()
+(lib:defshared %err-get-error "ERR_get_error" "libcrypto" :unsigned-long ()
   :documentation "Get error code")
 
 (lib:defshared %err-error-string "ERR_error_string" "libcrypto" :pointer
-  (e :ulong) (buf :pointer)
+  (e :unsigned-long) (buf :pointer)
   :documentation "Get error string")

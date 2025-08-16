@@ -5,9 +5,11 @@ pkgs.mkShell {
     sbcl
     nodejs_20
     nodePackages.npm
+    clang
     libffi
     openssl
     ripgrep
+    pkg-config
   ];
 
   shellHook = ''
