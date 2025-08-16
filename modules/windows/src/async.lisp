@@ -8,6 +8,7 @@
   (:export
    ;; Async operation types
    #:async-operation
+   #:async-operation-p
    #:async-operation-fd
    #:async-operation-type
    #:async-operation-buffer

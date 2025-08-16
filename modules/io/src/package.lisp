@@ -5,6 +5,7 @@
   (:export
    ;; Core buffer management
    #:buffer
+   #:buffer-p
    #:allocate-buffer
    #:free-buffer
    #:buffer-remaining
@@ -13,6 +14,9 @@
    
    ;; Buffer pool
    #:buffer-pool
+   #:buffer-pool-p
+   #:buffer-pool-size
+   #:buffer-pool-count
    #:create-buffer-pool
    #:acquire-buffer
    #:release-buffer
@@ -20,6 +24,8 @@
    
    ;; Enhanced async I/O using platform epsilon.async
    #:io-context
+   #:io-context-p
+   #:io-context-running-p
    #:create-io-context
    #:close-io-context
    #:async-read
