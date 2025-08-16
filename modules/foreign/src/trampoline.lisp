@@ -51,18 +51,19 @@
   converter-to  ; Lisp -> C converter function
   converter-from) ; C -> Lisp converter function
 
-(defvar *c-type-registry* (make-hash-table :test 'eq)
+(defvar *c-type-registry* map:+empty+
   "Registry of C type descriptors")
 
 (defun register-c-type (name &key base size alignment signed-p converter-to converter-from)
   "Register a C type descriptor"
-  (setf (gethash name *c-type-registry*)
-        (make-c-type :base (or base name)
-                     :size size
-                     :alignment alignment
-                     :signed-p signed-p
-                     :converter-to converter-to
-                     :converter-from converter-from)))
+  (setf *c-type-registry*
+        (map:assoc *c-type-registry* name
+                   (make-c-type :base (or base name)
+                                :size size
+                                :alignment alignment
+                                :signed-p signed-p
+                                :converter-to converter-to
+                                :converter-from converter-from))))
 
 ;; Register primitive types
 (register-c-type :void :size 0 :alignment 1)
@@ -93,7 +94,7 @@
 
 (defun get-c-type (name)
   "Get a C type descriptor"
-  (or (gethash name *c-type-registry*)
+  (or (map:get *c-type-registry* name)
       (error "Unknown C type: ~A" name)))
 
 ;;; Type conversion
@@ -155,7 +156,7 @@
 ;; Default method for unspecialized types (e.g., enum types)
 (defmethod convert-to-foreign (value type)
   ;; Check if it's a registered type with a converter
-  (let ((type-info (gethash type *c-type-registry*)))
+  (let ((type-info (map:get *c-type-registry* type)))
     (if (and type-info (c-type-converter-to type-info))
         (funcall (c-type-converter-to type-info) value type)
         value)))
@@ -165,7 +166,7 @@
 
 (defmethod convert-from-foreign (value type)
   ;; Default: check for registered converter, else return as-is
-  (let ((type-info (gethash type *c-type-registry*)))
+  (let ((type-info (map:get *c-type-registry* type)))
     (if (and type-info (c-type-converter-from type-info))
         (funcall (c-type-converter-from type-info) value type)
         value)))
@@ -197,27 +198,28 @@
   arg-types
   trampoline)
 
-(defvar *signature-registry* (make-hash-table :test 'equal)
+(defvar *signature-registry* map:+empty+
   "Registry of function signatures")
 
 (defun register-signature (name return-type arg-types)
   "Register a function signature"
-  (setf (gethash name *signature-registry*)
-        (make-ffi-signature :return-type return-type
-                           :arg-types arg-types
-                           :trampoline nil)))
+  (setf *signature-registry*
+        (map:assoc *signature-registry* name
+                   (make-ffi-signature :return-type return-type
+                                       :arg-types arg-types
+                                       :trampoline nil))))
 
 (defun get-signature (name)
   "Get a registered signature"
-  (gethash name *signature-registry*))
+  (map:get *signature-registry* name))
 
 (defun clear-signature-registry ()
   "Clear all registered signatures"
-  (clrhash *signature-registry*))
+  (setf *signature-registry* map:+empty+))
 
 ;;; Trampoline generation
 
-(defvar *trampoline-cache* (make-hash-table :test 'equal)
+(defvar *trampoline-cache* map:+empty+
   "Cache of compiled trampolines keyed by (return-type . arg-types)")
 
 (defun make-alien-type (type)
@@ -273,13 +275,14 @@
 (defun get-or-create-trampoline (return-type arg-types)
   "Get a cached trampoline or create a new one"
   (let ((key (cons return-type arg-types)))
-    (or (gethash key *trampoline-cache*)
-        (setf (gethash key *trampoline-cache*)
-              (make-ffi-trampoline return-type arg-types)))))
+    (or (map:get *trampoline-cache* key)
+        (let ((trampoline (make-ffi-trampoline return-type arg-types)))
+          (setf *trampoline-cache* (map:assoc *trampoline-cache* key trampoline))
+          trampoline))))
 
 (defun clear-trampoline-cache ()
   "Clear the trampoline cache"
-  (clrhash *trampoline-cache*))
+  (setf *trampoline-cache* map:+empty+))
 
 ;;; Integration with epsilon.foreign
 

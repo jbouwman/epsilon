@@ -22,7 +22,7 @@
   setup-fn
   teardown-fn)
 
-(defparameter *fixtures* (make-hash-table :test 'eq)
+(defparameter *fixtures* map:+empty+
   "Registry of defined fixtures")
 
 (defmacro fixture (name (&rest args) &body clauses)
@@ -48,13 +48,14 @@
           (:teardown (setf teardown-body body)))))
     
     `(progn
-       (setf (gethash ',name *fixtures*)
-             (make-fixture
-              :name ',name
-              :setup-fn (lambda ,args
-                          ,@setup-body)
-              :teardown-fn (lambda (,name)
-                            ,@teardown-body)))
+       (setf *fixtures*
+             (map:assoc *fixtures* ',name
+                        (make-fixture
+                         :name ',name
+                         :setup-fn (lambda ,args
+                                     ,@setup-body)
+                         :teardown-fn (lambda (,name)
+                                       ,@teardown-body))))
        ',name)))
 
 (defmacro with-fixture ((var fixture-name &rest args) &body body)
@@ -65,7 +66,7 @@
      (test-server-function server))"
   (let ((fixture-sym (gensym "FIXTURE"))
         (result-sym (gensym "RESULT")))
-    `(let ((,fixture-sym (gethash ',fixture-name *fixtures*)))
+    `(let ((,fixture-sym (map:get *fixtures* ',fixture-name)))
        (unless ,fixture-sym
          (error "Unknown fixture: ~S" ',fixture-name))
        (let ((,var (funcall (fixture-setup-fn ,fixture-sym) ,@args)))
@@ -77,9 +78,8 @@
 
 (defun clear-fixtures ()
   "Clear all registered fixtures"
-  (clrhash *fixtures*))
+  (setf *fixtures* map:+empty+))
 
 (defun list-fixtures ()
   "Return a list of all registered fixture names"
-  (loop for name being the hash-keys of *fixtures*
-        collect name))
+  (map:keys *fixtures*))

@@ -5,6 +5,11 @@
 
 (in-package #:epsilon.foreign)
 
+;;; Local nickname for epsilon.map
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (unless (find-package "EPSILON.MAP")
+    (error "epsilon.map package not found")))
+
 ;;; Type mapping constants (must match C extension)
 (defconstant +epsilon-type-void+    0)
 (defconstant +epsilon-type-int+     1)
@@ -22,7 +27,7 @@
 (defvar *libffi-available-p* nil
   "Whether libffi integration is available")
 
-(defvar *libffi-callbacks* (make-hash-table)
+(defvar *libffi-callbacks* (epsilon.map:make-map)
   "Registry mapping callback IDs to Lisp callback information")
 
 (defvar *libffi-mutex* (sb-thread:make-mutex :name "libffi-callbacks")
@@ -112,22 +117,22 @@
 (defun register-libffi-callback (id function return-type arg-types pointer)
   "Register a callback in the Lisp-side registry"
   (sb-thread:with-mutex (*libffi-mutex*)
-    (setf (gethash id *libffi-callbacks*)
-          (make-callback-info :id id
-                              :function function
-                              :return-type return-type
-                              :arg-types arg-types
-                              :pointer pointer))))
+    (setf *libffi-callbacks* (epsilon.map:assoc *libffi-callbacks* id
+                                               (make-callback-info :id id
+                                                                   :function function
+                                                                   :return-type return-type
+                                                                   :arg-types arg-types
+                                                                   :pointer pointer)))))
 
 (defun unregister-libffi-callback (id)
   "Remove a callback from the Lisp-side registry"
   (sb-thread:with-mutex (*libffi-mutex*)
-    (remhash id *libffi-callbacks*)))
+    (setf *libffi-callbacks* (epsilon.map:dissoc *libffi-callbacks* id))))
 
 (defun get-libffi-callback (id)
   "Retrieve callback info by ID"
   (sb-thread:with-mutex (*libffi-mutex*)
-    (gethash id *libffi-callbacks*)))
+    (epsilon.map:get *libffi-callbacks* id)))
 
 ;;; High-level callback creation interface
 (defun make-libffi-callback (function return-type arg-types)
@@ -190,7 +195,7 @@
   (when *libffi-available-p*
     (epsilon-cleanup-all-callbacks)
     (sb-thread:with-mutex (*libffi-mutex*)
-      (clrhash *libffi-callbacks*))))
+      (setf *libffi-callbacks* (epsilon.map:make-map)))))
 
 ;;; Integration with existing callback infrastructure
 (defun enhanced-make-callback (function return-type arg-types)

@@ -46,7 +46,7 @@
           (format t "  Found DEFINE-ALIEN-CALLABLE - testing...~%")
           (handler-case
               (progn
-                (eval `(,callable-sym test-callback sb-alien:int (x sb-alien:int)
+                (eval `(,callable-sym test-callback sb-alien:int ((x sb-alien:int))
                          (* x 2)))
                 (format t "    SUCCESS: Created callback with DEFINE-ALIEN-CALLABLE~%"))
             (error (e)

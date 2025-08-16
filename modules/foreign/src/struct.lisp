@@ -45,7 +45,7 @@
 
 ;;; Typedef resolution system
 
-(defvar *typedef-table* (make-hash-table :test 'equal)
+(defvar *typedef-table* map:+empty+
   "Registry of typedef mappings to primitive types")
 
 (defvar *system-typedefs*
@@ -71,7 +71,7 @@
 (defun initialize-typedef-table ()
   "Initialize the typedef table with common system types"
   (loop for (name . type) in *system-typedefs*
-        do (setf (gethash name *typedef-table*) type)))
+        do (setf *typedef-table* (map:assoc *typedef-table* name type))))
 
 ;; Initialize on load
 (initialize-typedef-table)
@@ -99,11 +99,11 @@
 
 (defun resolve-typedef (name)
   "Resolve a typedef name to its primitive type"
-  (gethash name *typedef-table*))
+  (map:get *typedef-table* name))
 
 (defun register-typedef (name primitive-type)
   "Register a new typedef mapping"
-  (setf (gethash name *typedef-table*) primitive-type))
+  (setf *typedef-table* (map:assoc *typedef-table* name primitive-type)))
 
 (defun discover-typedef-size (typedef-name)
   "Discover the size of a typedef at runtime using C compiler"
@@ -208,7 +208,7 @@
   bit-offset
   bit-width)
 
-(defvar *struct-layouts* (make-hash-table :test 'eq)
+(defvar *struct-layouts* map:+empty+
   "Registry of struct layouts")
 
 ;;; Basic type sizes and alignments (64-bit)
@@ -338,7 +338,7 @@
                                         :alignment alignment
                                         :fields field-map
                                         :field-order (mapcar #'field-info-name field-infos))))
-        (setf (gethash name *struct-layouts*) layout)
+        (setf *struct-layouts* (map:assoc *struct-layouts* name layout))
         ;; Register with trampoline system
         (trampoline:register-c-type name
                                     :base :struct
@@ -375,12 +375,12 @@
                                         :fields field-map
                                         :field-order (mapcar #'field-info-name
                                                            (nreverse field-infos)))))
-        (setf (gethash name *struct-layouts*) layout)
+        (setf *struct-layouts* (map:assoc *struct-layouts* name layout))
         layout))))
 
 (defun get-struct-layout (name)
   "Get the layout for a struct type"
-  (gethash name *struct-layouts*))
+  (map:get *struct-layouts* name))
 
 (defun struct-field-offset (layout field-name)
   "Get the offset of a field in a struct"

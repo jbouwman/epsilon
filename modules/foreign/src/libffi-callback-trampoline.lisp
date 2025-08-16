@@ -6,7 +6,7 @@
 (in-package #:epsilon.foreign)
 
 ;;; Global callback dispatch table
-(defvar *libffi-callback-table* (make-hash-table :test 'eql)
+(defvar *libffi-callback-table* (epsilon.map:make-map)
   "Maps callback IDs to Lisp functions for libffi callbacks")
 
 (defvar *libffi-callback-lock* (sb-thread:make-mutex :name "libffi-callback-table")
@@ -18,17 +18,17 @@
 (defun register-libffi-callback-function (id function)
   "Register a Lisp function for a libffi callback ID"
   (sb-thread:with-mutex (*libffi-callback-lock*)
-    (setf (gethash id *libffi-callback-table*) function)))
+    (setf *libffi-callback-table* (epsilon.map:assoc *libffi-callback-table* id function))))
 
 (defun unregister-libffi-callback-function (id)
   "Unregister a libffi callback by ID"
   (sb-thread:with-mutex (*libffi-callback-lock*)
-    (remhash id *libffi-callback-table*)))
+    (setf *libffi-callback-table* (epsilon.map:dissoc *libffi-callback-table* id))))
 
 (defun get-libffi-callback-function (id)
   "Get the Lisp function for a callback ID"
   (sb-thread:with-mutex (*libffi-callback-lock*)
-    (gethash id *libffi-callback-table*)))
+    (epsilon.map:get *libffi-callback-table* id)))
 
 ;;; Define trampolines for common callback signatures
 ;;; These are SBCL alien-callable functions that C can call
