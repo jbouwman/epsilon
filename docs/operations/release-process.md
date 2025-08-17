@@ -1,5 +1,7 @@
 # Release Process
 
+> **Note**: This document provides a quick reference. For the complete release guide, see [RELEASE.md](/RELEASE.md) in the project root.
+
 ## Overview
 
 Epsilon follows semantic versioning with git tags as the authoritative version source for releases.
@@ -32,32 +34,41 @@ Epsilon follows semantic versioning with git tags as the authoritative version s
 ```bash
 # Update CHANGELOG.md with release notes
 # Ensure all tests pass
-./epsilon --exec epsilon.release:selftest
+./scripts/test.sh
 
 # For release branches
 git checkout -b release/v0.11
 ```
 
-### 2. Create Release
+### 2. Create Release (Automated)
 
 ```bash
-# Tag the release
-git tag -a v0.11.0 -m "Release v0.11.0"
-git push origin v0.11.0
+# Use the automated release script
+./scripts/release.sh 0.11.0
 
-# GitHub Actions will automatically:
+# Or for pre-releases
+./scripts/release.sh 0.11.0-beta.1
+
+# Preview without making changes
+./scripts/release.sh --dry-run 0.11.0
+
+# The script will:
+# - Validate version format
+# - Check git status and branch
 # - Run all tests
-# - Build platform-specific releases
-# - Create GitHub release with artifacts
+# - Verify CHANGELOG entry
+# - Create and push git tag
+# - Trigger GitHub Actions for builds
 ```
 
 ### 3. Post-Release
 
 ```bash
-# Update VERSION file to next development version
-echo "0.12.0-dev" > VERSION
-git commit -am "Bump version to 0.12.0-dev"
-git push
+# Update VERSION file for next development cycle
+./scripts/bump-version.sh --commit --push
+
+# Or manually specify version
+./scripts/bump-version.sh --commit 0.12.0-dev
 ```
 
 ## Manual Release Build
@@ -136,13 +147,52 @@ If you get version mismatch errors:
 - **macOS**: May need to allow unsigned binaries in Security settings
 - **Windows**: Not yet supported
 
+## Release Scripts
+
+The following scripts automate the release process:
+
+### `scripts/release.sh`
+Automated release creation with validation:
+- Validates version format and git state
+- Checks branch conventions
+- Runs all tests
+- Creates and pushes release tag
+- Provides post-release instructions
+
+Options:
+- `--dry-run`: Preview without making changes
+- `--force`: Skip confirmation prompts
+- `--branch`: Release from specific branch
+
+### `scripts/bump-version.sh`
+Version management for development:
+- Updates VERSION file
+- Supports major/minor/patch increments
+- Can auto-commit and push changes
+
+Options:
+- `--commit`: Create git commit
+- `--push`: Push to origin (implies --commit)
+
+### `scripts/test.sh`
+Comprehensive test runner:
+- Runs CLI smoke tests
+- Executes module self-tests
+- Validates epsilon executable
+
+### `scripts/package.sh`
+Platform-specific packaging:
+- Builds runtime executable
+- Creates platform metadata
+- Used by CI/CD pipeline
+
 ## Release Checklist
 
 Before creating a release:
 
-- [ ] All tests pass (`./epsilon --exec epsilon.release:selftest`)
+- [ ] All tests pass (`./scripts/test.sh`)
 - [ ] CHANGELOG.md updated with release notes
 - [ ] Documentation updated for new features
-- [ ] VERSION file shows correct development version
+- [ ] VERSION file shows correct version
 - [ ] No uncommitted changes in working directory
 - [ ] Previous releases tested for upgrade path

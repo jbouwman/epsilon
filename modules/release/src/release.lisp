@@ -389,17 +389,54 @@
     (format t "  ✓ Source tree copied successfully~%")))
 
 (defun copy-epsilon-script (release-dir)
-  "Copy the existing epsilon script to the release bin directory."
+  "Create a release-specific epsilon wrapper script."
   (format t "Copying epsilon script...~%")
   
   (let ((bin-dir (path:path-string (path:path-join release-dir "bin")))
-        (epsilon-script (path:path-string (path:path-join (namestring (fs:current-directory)) "epsilon")))
         (target-script (path:path-string (path:path-join release-dir "bin" "epsilon"))))
     
     (fs:make-dirs bin-dir)
     
-    ;; Copy epsilon script using standard epsilon.sys.fs functions
-    (fs:copy-file epsilon-script target-script)
+    ;; Create a release-specific wrapper script
+    (fs:write-file-string target-script 
+"#!/bin/sh
+#
+# Epsilon command-line interface (Release version)
+#
+
+set -eu
+
+# The user's working directory
+export EPSILON_USER=\"$PWD\"
+# The directory where epsilon is installed (parent of bin)
+export EPSILON_HOME=\"$(cd \"$(dirname \"$0\")/..\" && pwd)\"
+EPSILON_BOOT=\"$EPSILON_HOME/modules/core/src/epsilon.lisp\"
+
+# Detect boot script
+if ! [ -f \"$EPSILON_BOOT\" ]; then
+    echo \"Error: epsilon boot script not found in $EPSILON_HOME\" >&2
+    exit 1
+fi
+
+# Use bundled SBCL if available, otherwise system SBCL
+if [ -x \"$EPSILON_HOME/bin/sbcl\" ]; then
+    SBCL=\"$EPSILON_HOME/bin/sbcl\"
+else
+    SBCL=\"sbcl\"
+fi
+
+# Set SBCL_HOME if using bundled SBCL
+if [ -d \"$EPSILON_HOME/lib/sbcl-libs\" ]; then
+    export SBCL_HOME=\"$EPSILON_HOME/lib/sbcl-libs\"
+fi
+
+# Change to EPSILON_HOME for relative path loading
+cd \"$EPSILON_HOME\"
+
+# Execute epsilon with all arguments
+exec \"$SBCL\" --script \"$EPSILON_BOOT\" \"$@\"
+")
+    
     ;; Make executable (assuming Unix-like system)
     #+unix
     (handler-case
@@ -412,7 +449,7 @@
         (log:warn "chmod command not found - script may not be executable"))
       (error (e)
         (log:warn "Could not make epsilon script executable: ~A" e)))
-    (format t "  ✓ Epsilon script copied successfully~%")))
+    (format t "  ✓ Epsilon script created successfully~%")))
 
 (defun create-sbcl-bundle (release-dir)
   "Bundle SBCL with the release."
@@ -542,7 +579,7 @@
       (progn
         (process:run-sync "tar" 
                           :args (list "czf" 
-                                      (format nil "~a.tgz" release-name)
+                                      (format nil "~a.tar.gz" release-name)
                                       release-name)
                           :working-directory working-dir
                           :check-executable nil)
@@ -550,7 +587,7 @@
         ;; Create checksum file - use full path in working directory
         (create-checksum-file (path:path-string 
                                (path:path-join working-dir 
-                                               (format nil "~A.tgz" release-name)))))
+                                               (format nil "~A.tar.gz" release-name)))))
     (process:process-error-condition (e)
       (error "tar command failed with exit code ~A~%Output: ~A~%Error: ~A" 
              (epsilon.process::process-error-exit-code e)

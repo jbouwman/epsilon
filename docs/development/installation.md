@@ -1,14 +1,20 @@
 # Installation
 
-Epsilon requires SBCL 2.0.0 or later.
+Epsilon provides pre-built binaries for Linux and macOS. Each release includes SBCL runtime and all core modules.
 
 ## Quick Install
 
 ```bash
+# Install latest release
 curl -sSL https://github.com/jbouwman/epsilon/releases/latest/download/install.sh | bash
+
+# Or download the script and run it
+wget https://github.com/jbouwman/epsilon/releases/latest/download/install.sh
+chmod +x install.sh
+./install.sh
 ```
 
-This installs Epsilon to `~/.epsilon` and adds it to your PATH.
+This installs Epsilon to `~/.epsilon` and creates a symlink in `~/.local/bin`.
 
 ## Manual Installation
 
@@ -60,10 +66,12 @@ epsilon
 ## Uninstallation
 
 ```bash
-# If installed via script
-rm -rf ~/.epsilon
-# Remove from PATH in ~/.bashrc or ~/.zshrc
+# If installed via install script
+~/.epsilon/scripts/uninstall.sh
 
-# If installed from source
-./scripts/uninstall.sh
+# Or manually
+rm -rf ~/.epsilon
+rm -f ~/.local/bin/epsilon
+
+# Remove PATH entry from ~/.bashrc or ~/.zshrc if added
 ```

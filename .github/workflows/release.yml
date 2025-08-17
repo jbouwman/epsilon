@@ -66,7 +66,7 @@ jobs:
     - name: Run all tests before release
       run: |
         echo "=== Running all tests before building release ==="
-        ./scripts/ci-test-all.sh || {
+        ./scripts/test.sh || {
           echo "Tests failed - aborting release"
           exit 1
         }
@@ -79,7 +79,7 @@ jobs:
         ./epsilon build epsilon.release
         
         # Build the runtime executable
-        ./scripts/build-epsilon-runtime.sh "${{ matrix.platform }}" "${{ matrix.arch }}"
+        ./scripts/package.sh "${{ matrix.platform }}" "${{ matrix.arch }}"
         
     - name: Build distribution package
       run: |

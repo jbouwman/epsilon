@@ -125,7 +125,7 @@ build-v1-${{ runner.os }}-${{ hashFiles('src/**/*.lisp') }}
 
 ## Release Workflow
 
-For detailed information about creating releases, version management, and release strategies, see the [Release Process documentation](release-process.md).
+For detailed information about creating releases, version management, and release strategies, see the [Release Guide](/RELEASE.md) in the project root.
 
 ### Quick Reference
 

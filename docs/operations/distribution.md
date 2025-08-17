@@ -81,6 +81,8 @@ exec sbcl --core "$SCRIPT_DIR/epsilon-core" "$@"
 
 ## Release Process
 
+> **Note**: For complete release documentation, see [RELEASE.md](/RELEASE.md) in the project root.
+
 ### GitHub Actions
 
 On tag push:

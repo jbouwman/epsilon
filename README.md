@@ -81,13 +81,24 @@ Download the appropriate release for your platform from [GitHub Releases](https:
 
 ### Development
 
+For development setup and contributing:
+
 ```bash
+# Clone repository
+git clone https://github.com/jbouwman/epsilon.git
+cd epsilon
+
+# Run tests
+./scripts/test.sh
+
 # Build documentation
 ./scripts/build.sh
 
-# Install epsilon
-./scripts/install.sh
+# Create a release (maintainers)
+./scripts/release.sh --dry-run 0.11.0
 ```
+
+See [RELEASE.md](RELEASE.md) for complete release documentation.
 
 ## Architecture
 
