@@ -210,17 +210,10 @@
       (fs:write-file-string test-file "test content for tar")
       
       ;; This should succeed
-      (handler-case
-          (progn
-            (release::create-tar-archive-with-working-directory 
-             release-dir
-             release-name
-             working-dir)
-            ;; Verify the archive was created
-            (is (fs:exists-p (path:path-join working-dir (format nil "~A.tgz" release-name)))
-                "Archive file should exist"))
-        (error (e)
-          ;; If tar is not available, that's ok for the test
-          (is (or (search "tar command not found" (format nil "~A" e))
-                  (search "tar command failed" (format nil "~A" e)))
-              "If tar fails, it should be with a clear error message"))))))
+      (release::create-tar-archive-with-working-directory 
+       release-dir
+       release-name
+       working-dir)
+      ;; Verify the archive was created
+      (is (fs:exists-p (path:path-join working-dir (format nil "~A.tar.gz" release-name)))
+          "Archive file should exist"))))
