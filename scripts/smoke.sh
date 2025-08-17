@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 # CLI smoke test suite for epsilon
 
 set -euo pipefail
