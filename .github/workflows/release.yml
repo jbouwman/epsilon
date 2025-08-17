@@ -55,10 +55,16 @@ jobs:
     - name: Extract version from tag
       id: version
       run: |
-        if [[ "${GITHUB_REF}" =~ ^refs/tags/v(.+)$ ]]; then
-          VERSION="${BASH_REMATCH[1]}"
+        # Use VERSION file since our release script enforces consistency
+        if [ -f VERSION ]; then
+          VERSION=$(cat VERSION)
         else
-          VERSION="0.0.0-dev"
+          # Fallback: extract from tag (POSIX-compliant)
+          if echo "${GITHUB_REF}" | grep -q '^refs/tags/v'; then
+            VERSION=$(echo "${GITHUB_REF}" | sed 's|refs/tags/v||')
+          else
+            VERSION="0.0.0-dev"
+          fi
         fi
         echo "version=${VERSION}" >> $GITHUB_OUTPUT
         echo "Building version: ${VERSION}"
