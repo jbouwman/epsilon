@@ -37,6 +37,7 @@ jobs:
       uses: actions/checkout@v4
       
     - name: Setup build environment
+      shell: bash
       run: |
         # Container setup for Linux
         if [ -n "${{ matrix.container }}" ]; then
@@ -54,6 +55,7 @@ jobs:
         
     - name: Extract version from tag
       id: version
+      shell: bash
       run: |
         # Use VERSION file since our release script enforces consistency
         if [ -f VERSION ]; then
@@ -70,6 +72,7 @@ jobs:
         echo "Building version: ${VERSION}"
         
     - name: Run all tests before release
+      shell: bash
       run: |
         echo "=== Running all tests before building release ==="
         ./scripts/test.sh || {
@@ -78,6 +81,7 @@ jobs:
         }
         
     - name: Build runtime executable
+      shell: bash
       run: |
         echo "=== Building epsilon runtime for ${{ matrix.platform }}-${{ matrix.arch }} ==="
         
@@ -88,6 +92,7 @@ jobs:
         ./scripts/package.sh "${{ matrix.platform }}" "${{ matrix.arch }}"
         
     - name: Build distribution package
+      shell: bash
       run: |
         VERSION="${{ steps.version.outputs.version }}"
         
@@ -100,6 +105,7 @@ jobs:
         find releases -type f -name "*.tar.gz" -o -name "*.sha256" | sort
         
     - name: Test runtime executable
+      shell: bash
       run: |
         # Extract and test the runtime
         TARBALL=$(find releases -name "epsilon-*.tar.gz" | head -1)
