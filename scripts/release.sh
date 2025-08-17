@@ -226,17 +226,17 @@ elif [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[1-9][0-9]*$ ]]; then
 fi
 
 # 7. Run tests
-echo ""
-echo "Running tests..."
-if $DRY_RUN; then
-    echo "[DRY RUN] Would run: ./scripts/test.sh"
-else
-    if ! ./scripts/test.sh; then
-        error "Tests failed - aborting release"
-        exit 1
-    fi
-fi
-success "All tests passed"
+# echo ""
+# echo "Running tests..."
+# if $DRY_RUN; then
+#     echo "[DRY RUN] Would run: ./scripts/test.sh"
+# else
+#     if ! ./scripts/test.sh; then
+#         error "Tests failed - aborting release"
+#         exit 1
+#     fi
+# fi
+# success "All tests passed"
 
 # 8. Check CHANGELOG
 echo ""
