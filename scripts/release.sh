@@ -183,7 +183,7 @@ if [[ "$VERSION_FILE" == *"-dev" ]]; then
 elif [ "$VERSION_FILE" != "$VERSION" ]; then
     warning "VERSION file ($VERSION_FILE) doesn't match release version ($VERSION)"
     if ! $FORCE; then
-        read -p "Continue anyway? (y/N) " -n 1 -r
+        read -p "Continue anyway? (y/N) " -n 1 -r < /dev/tty
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             exit 1
@@ -244,7 +244,7 @@ echo "Checking CHANGELOG..."
 if ! grep -q "\[$VERSION\]" CHANGELOG.md 2>/dev/null; then
     warning "Version $VERSION not found in CHANGELOG.md"
     if ! $FORCE; then
-        read -p "Continue without CHANGELOG entry? (y/N) " -n 1 -r
+        read -p "Continue without CHANGELOG entry? (y/N) " -n 1 -r < /dev/tty
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             error "Please update CHANGELOG.md before releasing"
@@ -287,8 +287,18 @@ if ! $FORCE && ! $DRY_RUN; then
     echo "  2. Push tag to origin"
     echo "  3. Trigger GitHub Actions to build and publish release"
     echo ""
-    read -p "Proceed with release? (y/N) " -n 1 -r
-    echo
+    
+    # Fix for read error in some terminal environments
+    if [ -t 0 ]; then
+        # Terminal is available
+        read -p "Proceed with release? (y/N) " -n 1 -r < /dev/tty
+        echo
+    else
+        # No terminal available, check for force flag or exit
+        error "No terminal available for confirmation. Use --force to skip confirmation."
+        exit 1
+    fi
+    
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         warning "Release cancelled"
         exit 0

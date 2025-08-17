@@ -158,7 +158,7 @@ download_and_extract() {
     # Clean up existing installation
     if [ -d "$INSTALL_DIR" ]; then
         warning "Existing installation found at $INSTALL_DIR"
-        read -p "Remove existing installation? (y/N) " -n 1 -r
+        read -p "Remove existing installation? (y/N) " -n 1 -r < /dev/tty
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             rm -rf "$INSTALL_DIR"

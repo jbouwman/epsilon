@@ -85,7 +85,7 @@ check_running_processes() {
         echo "Running processes:"
         pgrep -fl "epsilon" || true
         echo ""
-        read -p "Continue anyway? (y/N) " -n 1 -r
+        read -p "Continue anyway? (y/N) " -n 1 -r < /dev/tty
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             error "Uninstallation cancelled"
@@ -123,7 +123,7 @@ main() {
     
     # Confirm
     echo "This action cannot be undone."
-    read -p "Remove Epsilon? (y/N) " -n 1 -r
+    read -p "Remove Epsilon? (y/N) " -n 1 -r < /dev/tty
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         warning "Uninstallation cancelled"
