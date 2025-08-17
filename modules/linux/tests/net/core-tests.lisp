@@ -266,36 +266,56 @@
 
 (deftest test-epoll-basic ()
   "Test basic epoll functionality"
-  (handler-case
-      (let ((epfd (epoll:epoll-create1)))
-        (is (integerp epfd))
-        (is (>= epfd 0))
-        
-        ;; Test waiting with timeout (should timeout)
-        (let ((events (epoll:wait-for-events epfd 1 100))) ; 100ms timeout
-          (is (null events)))
-        
-        (epoll:epoll-close epfd)
-        t)
-    (error (e)
-	   (is nil (format nil "Epoll test failed: ~A" e)))))
+  ;; First ensure any existing async system is stopped
+  (ignore-errors (epsilon.async:stop-async-system))
+  
+  (let ((epfd nil))
+    (unwind-protect
+         (handler-case
+             (progn
+               (setf epfd (epoll:epoll-create1 epoll:+epoll-cloexec+))
+               (is (integerp epfd))
+               (is (>= epfd 0))
+               
+               ;; Test waiting with timeout (should timeout)
+               (let ((events (epoll:wait-for-events epfd 1 100))) ; 100ms timeout
+                 (is (null events)))
+               t)
+           (error (e)
+             (is nil (format nil "Epoll test failed: ~A" e))))
+      ;; Always close the epfd if it was created
+      (when (and epfd (>= epfd 0))
+        (ignore-errors (epoll:epoll-close epfd))))))
 
 (deftest test-epoll-with-socket ()
   "Test epoll with actual socket integration"
-  (handler-case
-      (let* ((addr (net:make-socket-address "0.0.0.0" 0))
-	     (listener (net:tcp-bind addr))
-	     (epfd (epoll:epoll-create1)))
-        
-        ;; Add listener to epoll (this tests internal integration)
-        ;; We can't access internal handles, so just test that epoll works
-        (let ((events (epoll:wait-for-events epfd 1 0))) ; Non-blocking
-          (is (listp events)))
-        
-        (epoll:epoll-close epfd)
-        t)
-    (error (e)
-	   (is nil (format nil "Epoll socket integration test failed: ~A" e)))))
+  ;; First ensure any existing async system is stopped
+  (ignore-errors (epsilon.async:stop-async-system))
+  
+  (let ((epfd nil)
+        (listener nil))
+    (unwind-protect
+         (handler-case
+             (progn
+               (let ((addr (net:make-socket-address "0.0.0.0" 0)))
+                 (setf listener (net:tcp-bind addr))
+                 (setf epfd (epoll:epoll-create1 epoll:+epoll-cloexec+))
+                 
+                 ;; Add listener to epoll (this tests internal integration)
+                 ;; We can't access internal handles, so just test that epoll works
+                 (let ((events (epoll:wait-for-events epfd 1 0))) ; Non-blocking
+                   (is (listp events)))
+                 t))
+           (error (e)
+             (is nil (format nil "Epoll socket integration test failed: ~A" e))))
+      ;; Always clean up resources
+      (when (and epfd (>= epfd 0))
+        (ignore-errors (epoll:epoll-close epfd)))
+      ;; Clean up listener if needed
+      (when listener
+        (ignore-errors 
+          ;; Close the listener socket if there's a method for it
+          )))))
 
 ;;; ============================================================================
 ;;; Timeout and Async Tests

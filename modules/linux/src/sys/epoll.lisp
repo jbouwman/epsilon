@@ -214,7 +214,15 @@
     (lib:with-foreign-memory ((events-buf 1024))
       (let ((result (%epoll-wait epfd events-buf max-events timeout)))
         (when (= result -1)
-          (error "epoll_wait failed"))
+          (let ((errno (sb-alien:get-errno)))
+            (error "epoll_wait failed with errno ~D (~A)" 
+                   errno
+                   (case errno
+                     (9 "EBADF - epfd is not a valid file descriptor")
+                     (14 "EFAULT - memory area not accessible")
+                     (22 "EINVAL - epfd not an epoll fd or maxevents <= 0")
+                     (4 "EINTR - interrupted by signal")
+                     (t "Unknown error")))))
         ;; Unpack returned events
         (loop for i from 0 below result
               collect (unpack-epoll-event events-buf (* i (epoll-event-size))))))))
