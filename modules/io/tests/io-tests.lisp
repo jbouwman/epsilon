@@ -94,9 +94,13 @@
 
 (deftest test-async-system-initialization
   "Test that async system initializes properly"
-  (epsilon.async:ensure-async-system)
-  ;; Should not error
-  (is t))
+  (unwind-protect
+       (progn
+         (epsilon.async:ensure-async-system)
+         ;; Should not error
+         (is t))
+    ;; Clean up the async system after test
+    (epsilon.async:stop-async-system)))
 
 (deftest test-set-nonblocking
   "Test set-nonblocking utility"

@@ -101,9 +101,15 @@
 
 (defun ensure-async-system ()
   "Ensure the async system is initialized"
-  (unless *global-epfd*
-    (setf *global-epfd* (epoll:epoll-create1 epoll:+epoll-cloexec+))
-    (start-async-thread)))
+  (unless (and *global-epfd* (>= *global-epfd* 0))
+    (handler-case
+        (progn
+          (setf *global-epfd* (epoll:epoll-create1 epoll:+epoll-cloexec+))
+          (start-async-thread))
+      (error (e)
+        (warn "Failed to initialize async system: ~A" e)
+        (setf *global-epfd* nil)
+        (error e)))))
 
 (defun start-async-thread ()
   "Start the background async event processing thread"
@@ -116,9 +122,16 @@
   "Stop the async system and clean up resources"
   (setf *async-running* nil)
   (when (and *async-thread* (sb-thread:thread-alive-p *async-thread*))
-    (sb-thread:join-thread *async-thread*))
-  (when *global-epfd*
-    (epoll:epoll-close *global-epfd*)
+    (handler-case
+        (sb-thread:join-thread *async-thread*)
+      (error (e)
+        (warn "Error joining async thread: ~A" e))))
+  (setf *async-thread* nil)
+  (when (and *global-epfd* (>= *global-epfd* 0))
+    (handler-case
+        (epoll:epoll-close *global-epfd*)
+      (error (e)
+        (warn "Error closing epoll fd: ~A" e)))
     (setf *global-epfd* nil))
   (clrhash *pending-operations*)
   (setf *completion-queue* '()))
