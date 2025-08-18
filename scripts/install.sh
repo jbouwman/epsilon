@@ -40,9 +40,7 @@ detect_platform() {
             platform="linux"
             ;;
         mingw*|msys*|cygwin*)
-            error "Windows is not yet supported"
-            echo "Please use WSL2 for Windows installation"
-            exit 1
+            platform="windows"
             ;;
         *)
             error "Unsupported platform: $platform"

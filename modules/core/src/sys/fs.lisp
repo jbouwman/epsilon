@@ -252,6 +252,7 @@
                                                   path-string
                                                   (path:path-from-uri path-string)))))
     (when (and full-path (> (length full-path) 0))
+      #+(or linux darwin)
       (let ((is-absolute (char= (char full-path 0) #\/))
             (components (seq:realize
                          (seq:filter (complement #'str:empty-p)
@@ -260,10 +261,14 @@
               :for component :in components
               :do (setf path (path:string-path-join path component))
                   (unless (probe-file path)
-                    #+(or linux darwin)
-                    (sb-unix:unix-mkdir path #o775)
-                    #+(or windows win32)
-                    (ensure-directories-exist (pathname path))))))))
+                    (sb-unix:unix-mkdir path #o775))))
+      #+(or windows win32)
+      ;; On Windows, use ensure-directories-exist which handles the complexity
+      ;; Need to add trailing slash to indicate it's a directory
+      (let ((dir-path (if (char= (char full-path (1- (length full-path))) #\/)
+                          full-path
+                          (str:concat full-path "/"))))
+        (ensure-directories-exist (pathname dir-path))))))
   
 (defun list-files (path-string extension)
   (let (files)
@@ -316,6 +321,7 @@
   (eql :symlink (sb-impl::native-file-kind file)))
 
 (defun create-symbolic-link (link-file destination-file)
+  #+win32 (declare (ignore link-file destination-file))
   #-win32 (sb-posix:symlink destination-file link-file)
   #+win32 (error "Symbolic links not supported on Windows in this implementation"))
 

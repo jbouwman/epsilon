@@ -196,7 +196,10 @@
 (defmethod stop ((subprocess subprocess))
   "Stop the subprocess."
   (when (subprocess-process subprocess)
-    (sb-ext:process-kill (subprocess-process subprocess) sb-unix:sigterm))
+    #+(or linux darwin)
+    (sb-ext:process-kill (subprocess-process subprocess) sb-unix:sigterm)
+    #+win32
+    (sb-ext:process-kill (subprocess-process subprocess) 15)) ; SIGTERM equivalent on Windows
   subprocess)
 
 (defmethod running-p ((subprocess subprocess))

@@ -24,10 +24,9 @@ jobs:
           - os: macos-13
             platform: darwin
             arch: x86_64
-          # Windows can be added when ready
-          # - os: windows-latest
-          #   platform: windows
-          #   arch: x86_64
+          - os: windows-latest
+            platform: windows
+            arch: x86_64
             
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
@@ -48,6 +47,12 @@ jobs:
         # macOS setup
         if [[ "${{ runner.os }}" == "macOS" ]]; then
           brew install sbcl || true
+        fi
+        
+        # Windows setup
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          choco install sbcl --version=2.5.6 -y
+          echo "C:\Program Files\Steel Bank Common Lisp" >> $GITHUB_PATH
         fi
         
         # Set TMPDIR for tar compatibility
@@ -170,6 +175,10 @@ jobs:
         # macOS x86_64 (Intel)
         curl -LO https://github.com/jbouwman/epsilon/releases/download/v${VERSION}/epsilon-${VERSION}-darwin-x86_64.tar.gz
         tar xzf epsilon-${VERSION}-darwin-x86_64.tar.gz
+        
+        # Windows x86_64
+        curl -LO https://github.com/jbouwman/epsilon/releases/download/v${VERSION}/epsilon-${VERSION}-windows-x86_64.tar.gz
+        tar xzf epsilon-${VERSION}-windows-x86_64.tar.gz
         \`\`\`
         
         ### Verify checksums
