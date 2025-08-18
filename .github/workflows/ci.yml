@@ -33,12 +33,14 @@ jobs:
     - name: Setup environment (Container)
       if: matrix.container
       run: |
-        apt-get update && apt-get install -y git tar gzip
+        apt-get update && apt-get install -y git tar gzip libffi-dev build-essential
         git config --global --add safe.directory /__w/epsilon/epsilon
     
     - name: Install SBCL (macOS)
       if: runner.os == 'macOS'
-      run: brew install sbcl
+      run: |
+        brew install sbcl
+        brew install libffi
         
     - name: Cache build artifacts
       uses: actions/cache@v4
@@ -46,9 +48,18 @@ jobs:
         path: |
           src/*/target
           .epsilon-cache
-        key: build-${{ env.CACHE_VERSION }}-${{ runner.os }}-${{ hashFiles('src/**/package.lisp', 'src/**/*.lisp') }}
+          modules/foreign/lib
+        key: build-${{ env.CACHE_VERSION }}-${{ runner.os }}-${{ hashFiles('src/**/package.lisp', 'src/**/*.lisp', 'modules/foreign/c/*') }}
         restore-keys: |
           build-${{ env.CACHE_VERSION }}-${{ runner.os }}-
+    
+    - name: Build libffi extension
+      run: |
+        echo "=== Building libffi extension ==="
+        cd modules/foreign/c
+        make clean
+        make
+        ls -la ../lib/
     
     - name: Run tests for all packages
       run: |

@@ -61,8 +61,8 @@
                        (let ((path (or *load-pathname* *compile-file-pathname*)))
                          (make-pathname 
                           :directory (butlast (butlast (pathname-directory path))))))
-                     ;; Method 2: Use known absolute path
-                     #P"/home/jbouwman/git/epsilon-8/modules/foreign/"
+                     ;; Method 2: Try relative to current directory
+                     (probe-file #P"modules/foreign/")
                      ;; Method 3: Error if we can't find it
                      (error "Cannot determine module directory")))
                    ;; Try platform-specific name in lib directory

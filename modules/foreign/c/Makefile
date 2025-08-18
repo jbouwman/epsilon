@@ -21,8 +21,8 @@ ifdef NIX_CC
     # In Nix environment, use the wrapped gcc
     CC = $(NIX_CC)/bin/gcc
 else
-    # Outside Nix, use clang
-    CC = clang
+    # Outside Nix, prefer gcc if available, otherwise clang
+    CC = $(shell which gcc 2>/dev/null || which clang 2>/dev/null || echo cc)
 endif
 
 # Build flags
