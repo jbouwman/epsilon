@@ -38,84 +38,25 @@ jobs:
       
     - name: Setup build environment
       shell: bash
-      run: |
-        # Container setup for Linux
-        if [ -n "${{ matrix.container }}" ]; then
-          apt-get update && apt-get install -y git tar gzip xz-utils
-          git config --global --add safe.directory /__w/epsilon/epsilon
-        fi
+      run: ./scripts/setup.sh "${{ matrix.container }}"
         
-        # macOS setup
-        if [[ "${{ runner.os }}" == "macOS" ]]; then
-          brew install sbcl || true
-        fi
-        
-        # Set TMPDIR for tar compatibility
-        export TMPDIR="${TMPDIR:-/tmp}"
-        
-    - name: Extract version from tag
+    - name: Extract version
       id: version
       shell: bash
       run: |
-        # Use VERSION file since our release script enforces consistency
-        if [ -f VERSION ]; then
-          VERSION=$(cat VERSION)
-        else
-          # Fallback: extract from tag (POSIX-compliant)
-          if echo "${GITHUB_REF}" | grep -q '^refs/tags/v'; then
-            VERSION=$(echo "${GITHUB_REF}" | sed 's|refs/tags/v||')
-          else
-            VERSION="0.0.0-dev"
-          fi
-        fi
+        VERSION=$(./scripts/get-version.sh)
         echo "version=${VERSION}" >> $GITHUB_OUTPUT
         echo "Building version: ${VERSION}"
         
-    - name: Run all tests before release
+    - name: Run tests
       shell: bash
-      run: |
-        echo "=== Running all tests before building release ==="
-        ./scripts/test.sh || {
-          echo "Tests failed - aborting release"
-          exit 1
-        }
+      run: ./scripts/run-tests.sh
         
-    - name: Build runtime executable
-      shell: bash
-      run: |
-        echo "=== Building epsilon runtime for ${{ matrix.platform }}-${{ matrix.arch }} ==="
-        
-        # Build the release module first
-        ./epsilon build epsilon.release
-        
-        # Build the runtime executable
-        ./scripts/package.sh "${{ matrix.platform }}" "${{ matrix.arch }}"
-        
-    - name: Build distribution package
+    - name: Build and verify release
       shell: bash
       run: |
         VERSION="${{ steps.version.outputs.version }}"
-        
-        # Create distribution archive using epsilon.release:generate
-        # Note: This builds for the current platform only
-        ./epsilon --exec epsilon.release:generate -- "${VERSION}"
-        
-        # List generated artifacts
-        echo "=== Generated artifacts ==="
-        find releases -type f -name "*.tar.gz" -o -name "*.sha256" | sort
-        
-    - name: Test runtime executable
-      shell: bash
-      run: |
-        # Extract and test the runtime
-        TARBALL=$(find releases -name "epsilon-*.tar.gz" | head -1)
-        if [ -f "$TARBALL" ]; then
-          tar -xzf "$TARBALL"
-          # The directory name should match the tarball name without .tar.gz
-          DIR_NAME=$(basename "$TARBALL" .tar.gz)
-          ./"$DIR_NAME"/epsilon version
-          ./"$DIR_NAME"/epsilon test epsilon.core
-        fi
+        ./scripts/orchestrate-release.sh "${VERSION}"
         
     - name: Upload release artifacts
       uses: actions/upload-artifact@v4

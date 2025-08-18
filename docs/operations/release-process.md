@@ -186,6 +186,61 @@ Platform-specific packaging:
 - Creates platform metadata
 - Used by CI/CD pipeline
 
+### Release Build Scripts
+
+These scripts handle the release build process and can be run both locally and in CI:
+
+#### `scripts/run-tests.sh`
+Comprehensive test runner:
+```bash
+# Run all tests
+./scripts/run-tests.sh
+
+# Run with JUnit output
+./scripts/run-tests.sh junit target/test-results.xml
+```
+
+#### `scripts/generate-release.sh`
+Generate release archive:
+```bash
+# Generate release for current platform (auto-detects platform/arch)
+./scripts/generate-release.sh 0.11.0
+```
+
+#### `scripts/verify-release.sh`
+Verify release archive works:
+```bash
+# Verify latest release
+./scripts/verify-release.sh
+
+# Verify specific archive
+./scripts/verify-release.sh releases/epsilon-0.11.0-linux-x86_64.tar.gz
+```
+
+#### `scripts/orchestrate-release.sh`
+Complete release pipeline:
+```bash
+# Full release build and verification (auto-detects platform/arch)
+./scripts/orchestrate-release.sh 0.11.0
+```
+
+#### `scripts/setup.sh`
+Environment setup:
+```bash
+# Local setup
+./scripts/setup.sh
+
+# Container setup (used in CI)
+./scripts/setup.sh container-name
+```
+
+#### `scripts/get-version.sh`
+Version extraction:
+```bash
+# Get current version
+./scripts/get-version.sh
+```
+
 ## Release Checklist
 
 Before creating a release:

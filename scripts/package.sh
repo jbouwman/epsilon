@@ -1,23 +1,39 @@
 #!/usr/bin/env bash
-# Build epsilon runtime executable for a specific platform
+# Build epsilon runtime executable for current platform
 
 set -euo pipefail
 
-# Parse arguments
-PLATFORM="${1:-$(uname -s | tr '[:upper:]' '[:lower:]')}"
-ARCH="${2:-$(uname -m)}"
+# Auto-detect platform and architecture
+detect_platform() {
+    local platform=$(uname -s | tr '[:upper:]' '[:lower:]')
+    case "$platform" in
+        darwin) platform="macos" ;;
+        linux) platform="linux" ;;
+        *) 
+            echo "Error: Unsupported platform: $platform" >&2
+            exit 1
+            ;;
+    esac
+    echo "$platform"
+}
 
-# Normalize architecture names
-case "$ARCH" in
-    x86_64|amd64)
-        ARCH="x86_64"
-        ;;
-    aarch64|arm64)
-        ARCH="arm64"
-        ;;
-esac
+detect_arch() {
+    local arch=$(uname -m)
+    case "$arch" in
+        x86_64|amd64) arch="x86_64" ;;
+        arm64|aarch64) arch="arm64" ;;
+        *)
+            echo "Error: Unsupported architecture: $arch" >&2
+            exit 1
+            ;;
+    esac
+    echo "$arch"
+}
 
-echo "=== Building epsilon runtime for $PLATFORM-$ARCH ==="
+PLATFORM=$(detect_platform)
+ARCH=$(detect_arch)
+
+echo "=== Building epsilon runtime for $PLATFORM-$ARCH (auto-detected) ==="
 
 # Ensure we're in the project root
 if [ ! -f "epsilon" ]; then
