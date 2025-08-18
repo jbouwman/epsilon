@@ -33,14 +33,22 @@ jobs:
     - name: Setup environment (Container)
       if: matrix.container
       run: |
-        apt-get update && apt-get install -y git tar gzip libffi-dev build-essential
+        # Verify OpenSSL version (should be 3.0 on Ubuntu 22.04)
+        openssl version
+        # Configure git for the CI environment
         git config --global --add safe.directory /__w/epsilon/epsilon
     
-    - name: Install SBCL (macOS)
+    - name: Install dependencies (macOS)
       if: runner.os == 'macOS'
       run: |
         brew install sbcl
         brew install libffi
+        # Install OpenSSL 3.x (Homebrew typically has 3.x)
+        brew install openssl@3
+        # Link OpenSSL 3 so it's found by default
+        brew link openssl@3 --force
+        # Verify OpenSSL version
+        openssl version
         
     - name: Cache build artifacts
       uses: actions/cache@v4
@@ -60,10 +68,37 @@ jobs:
         make clean
         make
         ls -la ../lib/
+        
+    - name: Verify OpenSSL setup
+      run: |
+        echo "=== OpenSSL Configuration ==="
+        openssl version
+        echo "=== Checking for OpenSSL libraries ==="
+        # On Linux
+        if [ -f /usr/lib/x86_64-linux-gnu/libssl.so ]; then
+          echo "Found libssl.so"
+          ls -la /usr/lib/x86_64-linux-gnu/libssl* | head -5
+        fi
+        # On macOS
+        if [ -d /opt/homebrew/opt/openssl@3 ]; then
+          echo "Found Homebrew OpenSSL 3"
+          ls -la /opt/homebrew/opt/openssl@3/lib/libssl* | head -5
+        elif [ -d /usr/local/opt/openssl@3 ]; then
+          echo "Found Homebrew OpenSSL 3 (Intel)"
+          ls -la /usr/local/opt/openssl@3/lib/libssl* | head -5
+        fi
     
     - name: Run tests for all packages
       run: |
         echo "=== Testing all epsilon packages ==="
+        # Set library paths for OpenSSL on macOS
+        if [ "${{ runner.os }}" = "macOS" ]; then
+          if [ -d /opt/homebrew/opt/openssl@3 ]; then
+            export DYLD_LIBRARY_PATH="/opt/homebrew/opt/openssl@3/lib:${DYLD_LIBRARY_PATH:-}"
+          elif [ -d /usr/local/opt/openssl@3 ]; then
+            export DYLD_LIBRARY_PATH="/usr/local/opt/openssl@3/lib:${DYLD_LIBRARY_PATH:-}"
+          fi
+        fi
         ./epsilon --exec epsilon.release:selftest --format junit --file "target/TEST-epsilon-${{ runner.os }}.xml"
         
     - name: Publish Test Report
