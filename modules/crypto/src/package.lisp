@@ -142,11 +142,16 @@
    #:make-openssl-context
    #:openssl-context-p
    #:openssl-context-handle
+   #:openssl-context-server-p
+   #:openssl-context-cert-file
+   #:openssl-context-key-file
+   #:openssl-context-verify-mode
    #:openssl-connection
    #:make-openssl-connection
    #:openssl-connection-p
    #:openssl-connection-ssl
    #:openssl-connection-socket
+   #:openssl-connection-context
    #:openssl-connection-connected-p
    #:openssl-connect
    #:openssl-accept

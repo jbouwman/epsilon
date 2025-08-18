@@ -1,0 +1,173 @@
+;;;; libffi-calls.lisp - Unified FFI calls using libffi
+;;;;
+;;;; This module provides a complete replacement for the hardcoded
+;;;; signature-based shared-call function, using libffi for all calls.
+
+(in-package #:epsilon.foreign)
+
+;;; Main entry point - replaces all hardcoded signatures
+
+(defun shared-call-unified (function-designator return-type arg-types &rest args)
+  "Unified shared-call using libffi for all FFI calls"
+  ;; Validate inputs
+  (validate-call-signature return-type arg-types args)
+  
+  ;; Resolve function address
+  (let ((function-address (resolve-function-address function-designator)))
+    (unless function-address
+      (error "Could not find function ~A" function-designator))
+    
+    ;; Use libffi for the call
+    (libffi-call function-address return-type arg-types args)))
+
+(defun resolve-function-address (function-designator)
+  "Resolve function designator to memory address"
+  (etypecase function-designator
+    (string
+     ;; String function name, assume libc
+     (lib-function (lib-open "libc") function-designator))
+    (symbol 
+     (lib-function (lib-open "libc") (string function-designator)))
+    (list 
+     (destructuring-bind (fn-name lib-name) function-designator
+       (lib-function (lib-open lib-name) (string fn-name))))
+    (integer 
+     function-designator))) ; Already an address
+
+;;; Type validation helpers
+
+(defun validate-call-signature (return-type arg-types args)
+  "Validate that call signature is consistent"
+  (unless (= (length arg-types) (length args))
+    (error "Argument count mismatch: expected ~D, got ~D" 
+           (length arg-types) (length args)))
+  
+  ;; Type-specific validation
+  (loop for arg in args
+        for type in arg-types
+        do (validate-argument-type arg type)))
+
+(defun validate-argument-type (arg type)
+  "Validate that argument matches expected type"
+  (case type
+    (:int (unless (integerp arg)
+            (error "Expected integer for :int type, got ~A" (type-of arg))))
+    (:string (unless (stringp arg)
+               (error "Expected string for :string type, got ~A" (type-of arg))))
+    (:pointer (unless (or (sb-sys:system-area-pointer-p arg) (integerp arg) (null arg))
+                (error "Expected pointer for :pointer type, got ~A" (type-of arg))))
+    ;; Add more type validations as needed
+    ))
+
+;;; Performance tracking (optional)
+
+(defvar *call-statistics* (make-hash-table :test 'equal)
+  "Statistics for function call frequency and performance")
+
+(defvar *use-libffi-calls* t
+  "Always use libffi for FFI calls (compatibility variable)")
+
+(defvar *libffi-function-whitelist* nil
+  "List of function names to use with libffi (nil = all)")
+
+(defvar *libffi-function-blacklist* '()
+  "List of function names to avoid with libffi")
+
+(defvar *track-call-performance* nil
+  "Whether to track call performance statistics")
+
+(defstruct call-stats
+  count
+  total-time
+  last-called)
+
+(defun track-function-call (function-designator elapsed-time)
+  "Track function call for performance optimization"
+  (when *track-call-performance*
+    (let* ((key (if (listp function-designator)
+                    function-designator
+                    (list function-designator "libc")))
+           (stats (or (gethash key *call-statistics*)
+                      (setf (gethash key *call-statistics*)
+                            (make-call-stats :count 0 :total-time 0)))))
+      (incf (call-stats-count stats))
+      (incf (call-stats-total-time stats) elapsed-time)
+      (setf (call-stats-last-called stats) (get-universal-time)))))
+
+(defun get-call-statistics (&optional function-designator)
+  "Get call statistics for analysis"
+  (if function-designator
+      (gethash function-designator *call-statistics*)
+      (loop for key being the hash-keys of *call-statistics*
+            using (hash-value value)
+            collect (cons key value))))
+
+;;; Smart FFI with automatic signature detection
+
+(defun ffi-call-auto (function-designator &rest args)
+  "Smart FFI call with automatic signature detection"
+  (let ((signature (auto-discover-signature function-designator)))
+    (if signature
+        (apply #'shared-call-unified function-designator 
+               (getf signature :return-type)
+               (getf signature :arg-types)
+               args)
+        (error "Could not determine signature for function ~A" function-designator))))
+
+(defun auto-discover-signature (function-designator)
+  "Attempt to automatically discover function signature"
+  ;; Try to get from clang signatures module
+  (handler-case
+      (let ((sig (clang-sigs:auto-discover-signature function-designator)))
+        (when sig
+          (list :return-type (clang-sigs:function-signature-return-type sig)
+                :arg-types (clang-sigs:function-signature-arg-types sig))))
+    (error () nil)))
+
+;;; Debugging and diagnostics
+
+(defun diagnose-ffi-call (function-designator return-type arg-types &rest args)
+  "Diagnose FFI call without executing it"
+  (format t "FFI Call Diagnosis:~%")
+  (format t "  Function: ~A~%" function-designator)
+  (format t "  Return Type: ~A~%" return-type)
+  (format t "  Arg Types: ~A~%" arg-types)
+  (format t "  Args: ~A~%" args)
+  (format t "  libffi Available: ~A~%" *libffi-available-p*)
+  
+  ;; Validate signature
+  (handler-case
+      (progn
+        (validate-call-signature return-type arg-types args)
+        (format t "  Signature: Valid~%"))
+    (error (e)
+      (format t "  Signature: Invalid - ~A~%" e)))
+  
+  ;; Check function resolution
+  (handler-case
+      (let ((addr (resolve-function-address function-designator)))
+        (format t "  Function Address: ~A~%" 
+                (if addr (format nil "0x~X" addr) "Not found")))
+    (error (e)
+      (format t "  Function Resolution: Failed - ~A~%" e))))
+
+;;; Testing
+
+(defun test-libffi-integration ()
+  "Test basic libffi integration"
+  (format t "Testing libffi integration...~%")
+  
+  ;; Test simple function calls
+  (handler-case
+      (progn
+        (let ((result (shared-call-unified "getpid" :int '())))
+          (format t "getpid() = ~A~%" result))
+        
+        (let ((result (shared-call-unified "strlen" :unsigned-long '(:string) "hello")))
+          (format t "strlen(\"hello\") = ~A~%" result))
+        
+        (format t "libffi integration tests passed~%")
+        t)
+    (error (e)
+      (format t "libffi integration test failed: ~A~%" e)
+      nil)))

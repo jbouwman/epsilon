@@ -12,14 +12,16 @@
 #include <ffi.h>
 
 /* Type constants matching Lisp-side definitions */
-#define EPSILON_TYPE_VOID       0
-#define EPSILON_TYPE_INT        1
-#define EPSILON_TYPE_LONG       2
-#define EPSILON_TYPE_FLOAT      3
-#define EPSILON_TYPE_DOUBLE     4
-#define EPSILON_TYPE_POINTER    5
-#define EPSILON_TYPE_STRING     6
-#define EPSILON_TYPE_BOOL       7
+#define EPSILON_TYPE_VOID          0
+#define EPSILON_TYPE_INT           1
+#define EPSILON_TYPE_LONG          2
+#define EPSILON_TYPE_FLOAT         3
+#define EPSILON_TYPE_DOUBLE        4
+#define EPSILON_TYPE_POINTER       5
+#define EPSILON_TYPE_STRING        6
+#define EPSILON_TYPE_BOOL          7
+#define EPSILON_TYPE_UNSIGNED_INT  8
+#define EPSILON_TYPE_UNSIGNED_LONG 9
 
 /* Callback registry entry */
 typedef struct epsilon_callback {
@@ -62,14 +64,16 @@ static void epsilon_set_error(const char* format, ...) {
  */
 static ffi_type* epsilon_type_to_ffi_type(int epsilon_type) {
     switch (epsilon_type) {
-        case EPSILON_TYPE_VOID:     return &ffi_type_void;
-        case EPSILON_TYPE_INT:      return &ffi_type_sint;
-        case EPSILON_TYPE_LONG:     return &ffi_type_slong;
-        case EPSILON_TYPE_FLOAT:    return &ffi_type_float;
-        case EPSILON_TYPE_DOUBLE:   return &ffi_type_double;
-        case EPSILON_TYPE_POINTER:  return &ffi_type_pointer;
-        case EPSILON_TYPE_STRING:   return &ffi_type_pointer;
-        case EPSILON_TYPE_BOOL:     return &ffi_type_sint;
+        case EPSILON_TYPE_VOID:          return &ffi_type_void;
+        case EPSILON_TYPE_INT:           return &ffi_type_sint;
+        case EPSILON_TYPE_LONG:          return &ffi_type_slong;
+        case EPSILON_TYPE_FLOAT:         return &ffi_type_float;
+        case EPSILON_TYPE_DOUBLE:        return &ffi_type_double;
+        case EPSILON_TYPE_POINTER:       return &ffi_type_pointer;
+        case EPSILON_TYPE_STRING:        return &ffi_type_pointer;
+        case EPSILON_TYPE_BOOL:          return &ffi_type_sint;
+        case EPSILON_TYPE_UNSIGNED_INT:  return &ffi_type_uint;
+        case EPSILON_TYPE_UNSIGNED_LONG: return &ffi_type_ulong;
         default:
             epsilon_set_error("Unknown Epsilon type: %d", epsilon_type);
             return NULL;
@@ -320,4 +324,118 @@ int epsilon_get_callback_count(void) {
  */
 int epsilon_libffi_test(void) {
     return 42;
+}
+
+/*
+ * Function call support - prepare call interface (CIF)
+ */
+int epsilon_prep_cif(int return_type, int *arg_types, int nargs, void **cif_ptr) {
+    ffi_cif *cif = NULL;
+    ffi_type **ffi_arg_types = NULL;
+    ffi_type *ffi_return_type = NULL;
+    ffi_status status;
+    
+    /* Validate parameters */
+    if (nargs < 0 || nargs > 32) {
+        epsilon_set_error("Invalid argument count for CIF: %d", nargs);
+        return -1;
+    }
+    
+    if (nargs > 0 && arg_types == NULL) {
+        epsilon_set_error("arg_types is NULL but nargs > 0 for CIF");
+        return -1;
+    }
+    
+    if (cif_ptr == NULL) {
+        epsilon_set_error("cif_ptr is NULL");
+        return -1;
+    }
+    
+    /* Allocate CIF structure */
+    cif = (ffi_cif*)malloc(sizeof(ffi_cif));
+    if (!cif) {
+        epsilon_set_error("Failed to allocate CIF structure");
+        return -1;
+    }
+    
+    /* Convert return type */
+    ffi_return_type = epsilon_type_to_ffi_type(return_type);
+    if (!ffi_return_type) {
+        free(cif);
+        return -1;
+    }
+    
+    /* Convert argument types */
+    if (nargs > 0) {
+        ffi_arg_types = (ffi_type**)malloc(nargs * sizeof(ffi_type*));
+        if (!ffi_arg_types) {
+            epsilon_set_error("Failed to allocate FFI argument types array for CIF");
+            free(cif);
+            return -1;
+        }
+        
+        for (int i = 0; i < nargs; i++) {
+            ffi_arg_types[i] = epsilon_type_to_ffi_type(arg_types[i]);
+            if (!ffi_arg_types[i]) {
+                free(ffi_arg_types);
+                free(cif);
+                return -1;
+            }
+        }
+    }
+    
+    /* Prepare the call interface */
+    status = ffi_prep_cif(cif, FFI_DEFAULT_ABI, nargs, ffi_return_type, ffi_arg_types);
+    if (status != FFI_OK) {
+        epsilon_set_error("ffi_prep_cif failed with status %d", status);
+        if (ffi_arg_types) free(ffi_arg_types);
+        free(cif);
+        return -1;
+    }
+    
+    /* Store the argument types array in the CIF for later cleanup */
+    /* Note: This is a hack - we store the pointer in an unused field */
+    /* In production, we'd use a proper structure */
+    *((void**)&cif->rtype - 1) = ffi_arg_types;  /* Store for cleanup */
+    
+    *cif_ptr = cif;
+    return 0;  /* Success */
+}
+
+/*
+ * Make a function call using prepared CIF
+ */
+int epsilon_call_function(void *cif, void *function_ptr, void **args, void *result) {
+    if (!cif) {
+        epsilon_set_error("CIF is NULL");
+        return -1;
+    }
+    
+    if (!function_ptr) {
+        epsilon_set_error("Function pointer is NULL");
+        return -1;
+    }
+    
+    /* Make the call using libffi */
+    ffi_call((ffi_cif*)cif, function_ptr, result, args);
+    
+    return 0;  /* Success */
+}
+
+/*
+ * Free a prepared CIF
+ */
+void epsilon_free_cif(void *cif) {
+    if (!cif) return;
+    
+    ffi_cif *cif_ptr = (ffi_cif*)cif;
+    
+    /* Free the argument types array we stored during prep */
+    void **stored_arg_types = (void**)((void**)&cif_ptr->rtype - 1);
+    if (*stored_arg_types) {
+        free(*stored_arg_types);
+    }
+    
+    /* Free the CIF itself */
+    free(cif_ptr);
 }

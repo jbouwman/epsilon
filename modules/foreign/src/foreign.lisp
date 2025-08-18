@@ -8,14 +8,27 @@
    (marshalling epsilon.foreign.marshalling)
    (struct epsilon.foreign.struct)
    (callback epsilon.foreign.callback)
-   (callback-impl epsilon.foreign.callback-impl))
+   (callback-impl epsilon.foreign.callback-impl)
+   (clang-sigs epsilon.clang.signatures))
   (:export
    ;; Core FFI
    shared-call
+   shared-call-unified
    lib-open
    lib-close
    lib-function
    defshared
+   
+   ;; libffi bridge functions
+   load-libffi-extension
+   libffi-call
+   *libffi-available-p*
+   resolve-function-address
+   ffi-call
+   ffi-call-auto
+   auto-discover-signature
+   *use-libffi-calls*
+   *track-call-performance*
    
    ;; Type Management
    define-foreign-struct
@@ -126,9 +139,48 @@
    callback-info-p
    callback-info-function
    callback-info-signature
-   callback-info-pointer))
+   callback-info-pointer
+   
+   ;; New libffi-first architecture
+   shared-call-unified
+   ffi-call
+   ffi-call-cached
+   defshared-auto
+   defshared-smart
+   auto-discover-signature
+   
+   ;; Public API and configuration
+   ffi-help
+   ffi-system-status
+   *use-libffi-calls*
+   *track-call-performance*
+   *libffi-available-p*
+   
+   ;; Performance and debugging
+   benchmark-ffi-approach
+   with-ffi-debugging
+   audit-ffi-usage
+   get-call-statistics))
 
 (in-package epsilon.foreign)
+
+;;; Forward declarations to force loading of libffi-bridge
+(declaim (ftype function load-libffi-extension))
+(declaim (ftype function libffi-call))
+
+;;; Ensure libffi is initialized
+(defun ensure-libffi-initialized ()
+  "Ensure libffi extension is loaded and ready"
+  (unless (boundp '*libffi-available-p*)
+    (defvar *libffi-available-p* nil))
+  (unless *libffi-available-p*
+    (when (fboundp 'load-libffi-extension)
+      (funcall (symbol-function 'load-libffi-extension))))
+  *libffi-available-p*)
+
+;; Initialize on load
+(eval-when (:load-toplevel :execute)
+  (ensure-libffi-initialized))
 
 ;;;; Core FFI Functions
 
@@ -265,7 +317,12 @@
           fn-ptr))))
 
 (defun shared-call (function-designator return-type arg-types &rest args)
-  "Main entry point for efficient FFI calls"
+  "Main entry point for FFI calls using libffi"
+  ;; Delegate to the libffi implementation
+  (apply #'shared-call-unified function-designator return-type arg-types args))
+
+(defun shared-call-old-sbcl (function-designator return-type arg-types &rest args)
+  "Old SBCL-based implementation - DEPRECATED, will be removed"
   (let ((function-address
           (etypecase function-designator
             (symbol (lib-function 
@@ -847,6 +904,10 @@
 
 ;;;; Memory Management
 
+;; Global hash table to track allocated memory
+(defvar *allocated-memory* (make-hash-table :test 'eql)
+  "Maps SAPs to their underlying alien pointers for proper cleanup")
+
 (defun foreign-alloc (type-or-size &key count initial-element initial-contents finalize)
   "Allocates foreign memory and returns a system area pointer"
   (let* ((element-size (if (keywordp type-or-size)
@@ -855,6 +916,9 @@
          (total-size (* element-size (or count 1)))
          (alien-ptr (sb-alien:make-alien sb-alien:char total-size))
          (sap (sb-alien:alien-sap alien-ptr)))
+    
+    ;; Store the alien pointer for later cleanup
+    (setf (gethash (sb-sys:sap-int sap) *allocated-memory*) alien-ptr)
     
     ;; Initialize memory if requested
     (cond
@@ -865,22 +929,36 @@
              do (setf (sb-alien:deref alien-ptr i) value)))
       (initial-element
        (loop for i from 0 below total-size
-             do (setf (sb-alien:deref alien-ptr i) initial-element))))
+             do (setf (sb-alien:deref alien-ptr i) initial-element)))
+      (t ;; Zero-initialize by default for safety
+       (loop for i from 0 below total-size
+             do (setf (sb-alien:deref alien-ptr i) 0))))
     
     ;; Register finalizer if requested
     (when finalize
-      (sb-ext:finalize sap (lambda () (sb-alien:free-alien alien-ptr))))
+      (let ((sap-int (sb-sys:sap-int sap)))
+        (sb-ext:finalize sap (lambda () 
+                               (let ((ptr (gethash sap-int *allocated-memory*)))
+                                 (when ptr
+                                   (sb-alien:free-alien ptr)
+                                   (remhash sap-int *allocated-memory*)))))))
     
     ;; Return the system area pointer
     sap))
 
 (defun foreign-free (pointer)
   "Explicitly frees foreign memory"
-  ;; Note: This is simplified - in a real implementation we'd need to
-  ;; track the alien pointer associated with each SAP for cleanup For
-  ;; now, we rely on GC cleanup of the underlying alien objects
-  (declare (ignore pointer))
-  nil)
+  (when pointer
+    (let* ((sap-int (if (sb-sys:system-area-pointer-p pointer)
+                        (sb-sys:sap-int pointer)
+                        pointer))
+           (alien-ptr (gethash sap-int *allocated-memory*)))
+      (when alien-ptr
+        ;; Free the alien memory
+        (sb-alien:free-alien alien-ptr)
+        ;; Remove from tracking table
+        (remhash sap-int *allocated-memory*)
+        t))))
 
 (defun alien-type-size (type)
   "Get size in bytes of alien type"
@@ -1076,10 +1154,7 @@
   "Define a new C type"
   (apply #'marshalling:define-c-type name size args))
 
-;; Re-export smart defshared macro
-(defmacro defshared-smart (name c-name &optional (library "libc"))
-  "Define a foreign function with fully automatic signature inference"
-  `(marshalling:defshared-smart ,name ,c-name ,library))
+;; Re-export smart defshared macro - now handled by smart-ffi module
 
 ;; Re-export array handling macros
 (defmacro with-output-array ((var count type) &body body)
@@ -1102,6 +1177,5 @@
 (defun (setf struct-ref) (value struct field)
   "Set struct field value"
   (setf (struct:struct-ref struct field) value))
-
 
 

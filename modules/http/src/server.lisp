@@ -114,16 +114,23 @@
         (write-string response-text stream)
         (force-output stream)))))
 
-(defun handle-client (connection ssl-p application)
-  "Handle a client connection using application pipeline"
+(defun handle-client (connection ssl-p application &key require-client-cert)
+  "Handle a client connection using application pipeline with optional client cert verification"
   (log:info "Handle-client called with connection: ~A, ssl-p: ~A" connection ssl-p)
   (handler-case
       (progn
+        ;; Verify client certificate if required
+        ;; Note: Certificate verification would be handled at TLS handshake level
+        ;; This is a placeholder for when full mutual TLS is implemented
+        
         (log:debug "Reading HTTP request...")
         (let ((req (read-http-request connection ssl-p)))
           (log:info "Request read: ~A" req)
           (if req
               (progn
+                ;; Add client certificate info to request if available
+                ;; This would be populated from the TLS handshake in a full implementation
+                
                 (log:debug "Calling application with request...")
                 (let ((response (funcall application req)))
                   (log:info "Application returned response: ~A" response)
@@ -148,7 +155,7 @@
   (log:debug "Closing connection...")
   (if ssl-p
       (tls:tls-close connection)
-    (net:tcp-shutdown connection :both))
+    (net:tcp-shutdown connection))
   (log:debug "Connection closed"))
 
 (defun server-loop (server)
@@ -163,20 +170,21 @@
                    (when raw-connection
                      (let ((connection (if (server-ssl-p server)
                                            (tls:tls-accept raw-connection 
-                                                           (server-tls-context server))
+                                                           :context (server-tls-context server))
                                          raw-connection))
                            (app (server-application server)))
                        (log:debug "Creating client handler thread...")
                        (sb-thread:make-thread 
 		        (lambda () 
                           (log:debug "Client handler thread started")
-                          (handle-client connection (server-ssl-p server) app)
+                          (handle-client connection (server-ssl-p server) app
+                                         :require-client-cert (server-require-client-cert server))
                           (log:debug "Client handler thread finished"))
-		        :name "HTTP client handler")))))
+		        :name "HTTP client handler"))))))
              (error (e)
 		    (log:error "Error in server loop: ~A" e)
 		    (unless (server-running-p server)
-		      (return))))))
+		      (return)))))
 
 (defun start-server (application &key (port *default-port*) (address "0.0.0.0") 
                                  tls-context ssl-p cert-file key-file)
@@ -219,7 +227,7 @@
                   (map:get *servers* port-or-server))))
     (when server
       (setf (server-running-p server) nil)
-      (net:tcp-shutdown (server-socket server) :both)
+      (net:tcp-shutdown (server-socket server))
       (sb-thread:join-thread (server-thread server))
       (setf *servers* (map:dissoc *servers* (server-port server)))
       t)))

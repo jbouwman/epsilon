@@ -27,36 +27,56 @@
    (host :initarg :host :accessor connection-host)
    (port :initarg :port :accessor connection-port)
    (ssl-p :initarg :ssl-p :accessor connection-ssl-p :initform nil)
-   (tls-connection :initarg :tls-connection :accessor connection-tls-connection :initform nil)))
+   (tls-connection :initarg :tls-connection :accessor connection-tls-connection :initform nil)
+   (tls-context :initarg :tls-context :accessor connection-tls-context :initform nil)))
 
-(defun make-http-connection (host port &key ssl-p)
+(defun make-http-connection (host port &key ssl-p tls-context cert-file key-file ca-file)
   "Create an HTTP connection to HOST:PORT, optionally with SSL.
-   Example: (make-http-connection \"example.com\" 443 :ssl-p t)"
+   Parameters:
+   - ssl-p: Enable SSL/TLS
+   - tls-context: Pre-configured TLS context to use
+   - cert-file: Client certificate file for mutual TLS
+   - key-file: Client private key file for mutual TLS
+   - ca-file: CA certificate file for server verification
+   Example: (make-http-connection \"example.com\" 443 :ssl-p t :cert-file \"client.pem\" :key-file \"key.pem\")"
   (let* ((address (net:make-socket-address host port))
          (socket (net:tcp-connect address))
-         (tls-conn nil))
+         (tls-conn nil)
+         (tls-ctx nil))
     (when ssl-p
-      (let ((tls-context (tls:create-tls-context :server-p nil)))
-        (setf tls-conn (tls:tls-connect socket tls-context))))
+      (setf tls-ctx (or tls-context
+                        (tls:create-openssl-context 
+                         :server-p nil
+                         :cert-file cert-file
+                         :key-file key-file
+                         :ca-file ca-file
+                         :verify-mode (if ca-file
+                                          tls:+ssl-verify-peer+
+                                          tls:+ssl-verify-none+))))
+      (setf tls-conn (tls:tls-connect socket :context tls-ctx :hostname host)))
     (make-instance 'http-connection
                    :socket socket
                    :host host
                    :port port
                    :ssl-p ssl-p
-                   :tls-connection tls-conn)))
+                   :tls-connection tls-conn
+                   :tls-context tls-ctx)))
 
-(defmacro with-connection ((conn host port &key ssl-p) &body body)
-  "Execute body with an HTTP connection"
-  `(let ((,conn (make-http-connection ,host ,port :ssl-p ,ssl-p)))
+(defmacro with-connection ((conn host port &key ssl-p tls-context cert-file key-file ca-file) &body body)
+  "Execute body with an HTTP connection, supporting mutual TLS"
+  `(let ((,conn (make-http-connection ,host ,port 
+                                      :ssl-p ,ssl-p
+                                      :tls-context ,tls-context
+                                      :cert-file ,cert-file
+                                      :key-file ,key-file
+                                      :ca-file ,ca-file)))
      (unwind-protect
           (progn ,@body)
        (progn
          (when (connection-tls-connection ,conn)
-           ;; TODO: Fix TLS load order
-           ;; (tls:tls-close (connection-tls-connection ,conn))
-           )
+           (tls:tls-close (connection-tls-connection ,conn)))
          (when (connection-socket ,conn)
-           (net:tcp-shutdown (connection-socket ,conn) :both))))))
+           (net:tcp-shutdown (connection-socket ,conn)))))))
 
 (defun parse-url (url-string)
   "Parse URL-STRING into scheme, host, port, path, and query components.
@@ -197,38 +217,75 @@
                     (str:join #\Linefeed (seq:from-list (subseq lines-list body-start))))))
         (values status-code headers body)))))
 
-(defun request (url &key (method "GET") headers body)
-  "Make an HTTP request to URL"
+(defun request (url &key (method "GET") headers body tls-context cert-file key-file ca-file)
+  "Make an HTTP request to URL with optional mutual TLS support.
+   Parameters:
+   - method: HTTP method (GET, POST, etc.)
+   - headers: HTTP headers as a map
+   - body: Request body
+   - tls-context: Pre-configured TLS context
+   - cert-file: Client certificate for mutual TLS
+   - key-file: Client private key for mutual TLS
+   - ca-file: CA certificate for server verification"
   (multiple-value-bind (scheme host port path query)
       (parse-url url)
     (let ((ssl-p (string= scheme "https")))
-      (with-connection (conn host port :ssl-p ssl-p)
+      (with-connection (conn host port 
+                        :ssl-p ssl-p
+                        :tls-context tls-context
+                        :cert-file cert-file
+                        :key-file key-file
+                        :ca-file ca-file)
         (send-request conn method path 
                       :headers headers 
                       :body body
                       :query query)
         (read-response conn)))))
 
-(defun http-get (url &key headers)
-  "Make GET request"
-  (request url :method "GET" :headers headers))
+(defun http-get (url &key headers tls-context cert-file key-file ca-file)
+  "Make GET request with optional mutual TLS"
+  (request url :method "GET" :headers headers
+           :tls-context tls-context
+           :cert-file cert-file
+           :key-file key-file
+           :ca-file ca-file))
 
-(defun http-post (url &key headers body)
-  "Make POST request"
-  (request url :method "POST" :headers headers :body body))
+(defun http-post (url &key headers body tls-context cert-file key-file ca-file)
+  "Make POST request with optional mutual TLS"
+  (request url :method "POST" :headers headers :body body
+           :tls-context tls-context
+           :cert-file cert-file
+           :key-file key-file
+           :ca-file ca-file))
 
-(defun http-put (url &key headers body)
-  "Make PUT request"
-  (request url :method "PUT" :headers headers :body body))
+(defun http-put (url &key headers body tls-context cert-file key-file ca-file)
+  "Make PUT request with optional mutual TLS"
+  (request url :method "PUT" :headers headers :body body
+           :tls-context tls-context
+           :cert-file cert-file
+           :key-file key-file
+           :ca-file ca-file))
 
-(defun http-delete (url &key headers)
-  "Make DELETE request"
-  (request url :method "DELETE" :headers headers))
+(defun http-delete (url &key headers tls-context cert-file key-file ca-file)
+  "Make DELETE request with optional mutual TLS"
+  (request url :method "DELETE" :headers headers
+           :tls-context tls-context
+           :cert-file cert-file
+           :key-file key-file
+           :ca-file ca-file))
 
-(defun http-head (url &key headers)
-  "Make HEAD request"
-  (request url :method "HEAD" :headers headers))
+(defun http-head (url &key headers tls-context cert-file key-file ca-file)
+  "Make HEAD request with optional mutual TLS"
+  (request url :method "HEAD" :headers headers
+           :tls-context tls-context
+           :cert-file cert-file
+           :key-file key-file
+           :ca-file ca-file))
 
-(defun http-options (url &key headers)
-  "Make OPTIONS request"
-  (request url :method "OPTIONS" :headers headers))
+(defun http-options (url &key headers tls-context cert-file key-file ca-file)
+  "Make OPTIONS request with optional mutual TLS"
+  (request url :method "OPTIONS" :headers headers
+           :tls-context tls-context
+           :cert-file cert-file
+           :key-file key-file
+           :ca-file ca-file))
