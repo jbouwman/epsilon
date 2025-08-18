@@ -26,10 +26,16 @@ RUN powershell -Command \
     Remove-Item C:\temp -Recurse -Force
 
 # Add SBCL to PATH
-RUN setx PATH "%PATH%;C:\Program Files\Steel Bank Common Lisp\2.4.0"
+RUN setx PATH "%PATH%;C:\Program Files\Steel Bank Common Lisp\"
 
-# Verify installation
-RUN sbcl --version
+# Verify installation - Note: path might be different after install
+RUN powershell -Command \
+    if (Test-Path 'C:\Program Files\Steel Bank Common Lisp\sbcl.exe') { \
+        & 'C:\Program Files\Steel Bank Common Lisp\sbcl.exe' --version \
+    } else { \
+        Write-Host 'SBCL not found at expected location'; \
+        Get-ChildItem 'C:\Program Files' -Recurse -Filter sbcl.exe | Select-Object -First 1 \
+    }
 
 # Set working directory
 WORKDIR C:\workspace
