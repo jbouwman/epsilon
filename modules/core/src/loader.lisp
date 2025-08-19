@@ -681,7 +681,7 @@
                      ;; Suppress verbose output - will be shown only on build abort
                      (let ((*compile-verbose* nil)
                            (*compile-print* nil))
-                       (log:info "Compiling: ~A" (path:path-from-uri (source-uri build-input)))
+                       (log:debug "Compiling: ~A" (path:path-from-uri (source-uri build-input)))
                        (compile-file (path:path-from-uri (source-uri build-input))
                                      :output-file (path:path-from-uri (target-uri build-input))
                                      :verbose nil

@@ -269,7 +269,7 @@
   (format t "FFI Usage Audit:~%")
   
   ;; Check libffi availability
-  (format t "  libffi available: ~A~%" *libffi-available-p*)
+  (format t "  libffi available: ~A~%" (and (boundp '*libffi-library*) *libffi-library* t))
   (format t "  libffi for calls: ~A~%" (libffi-available-for-calls-p))
   
   ;; Check signature database
@@ -284,7 +284,7 @@
   
   ;; Suggestions
   (format t "  Suggestions:~%")
-  (unless *libffi-available-p*
+  (unless (and (boundp '*libffi-library*) *libffi-library*)
     (format t "    - Install libffi for better performance~%"))
   (unless *track-call-performance*
     (format t "    - Enable call tracking for optimization~%"))
