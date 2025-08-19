@@ -28,13 +28,19 @@ RUN powershell -Command \
 # Add SBCL to PATH
 RUN setx PATH "%PATH%;C:\Program Files\Steel Bank Common Lisp\"
 
-# Verify installation - Note: path might be different after install
+# Verify installation and find actual SBCL location
 RUN powershell -Command \
-    if (Test-Path 'C:\Program Files\Steel Bank Common Lisp\sbcl.exe') { \
-        & 'C:\Program Files\Steel Bank Common Lisp\sbcl.exe' --version \
+    Write-Host 'Searching for SBCL installation...'; \
+    $sbclPath = Get-ChildItem 'C:\Program Files' -Recurse -Filter sbcl.exe -ErrorAction SilentlyContinue | Select-Object -First 1; \
+    if ($sbclPath) { \
+        Write-Host "Found SBCL at: $($sbclPath.FullName)"; \
+        & $sbclPath.FullName --version; \
+        $sbclDir = Split-Path -Parent $sbclPath.FullName; \
+        [Environment]::SetEnvironmentVariable('SBCL_HOME', $sbclDir, 'Machine'); \
+        [Environment]::SetEnvironmentVariable('PATH', "$sbclDir;$env:PATH", 'Machine') \
     } else { \
-        Write-Host 'SBCL not found at expected location'; \
-        Get-ChildItem 'C:\Program Files' -Recurse -Filter sbcl.exe | Select-Object -First 1 \
+        Write-Host 'ERROR: SBCL not found after installation'; \
+        exit 1 \
     }
 
 # Set working directory
