@@ -40,6 +40,7 @@ jobs:
         # Verify OpenSSL version (should be 3.0 on Ubuntu 22.04)
         openssl version
         # Configure git for the CI environment
+        apt-get update && apt-get install -y git tar gzip libffi-dev build-essential
         git config --global --add safe.directory /__w/epsilon/epsilon
     
     - name: Install dependencies (macOS)

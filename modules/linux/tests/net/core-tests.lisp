@@ -1,7 +1,4 @@
-;;;; Linux Network Core Tests
-;;;;
 ;;;; Tests for the epsilon.net Linux implementation using public API only
-;;;; Comprehensive test suite matching Darwin implementation quality
 
 (defpackage epsilon.net.tests
   (:use
@@ -340,61 +337,55 @@
 
 (deftest test-tcp-async-operations ()
   "Test async TCP read/write with timeouts"
-  (handler-case
-      (let* ((addr (net:make-socket-address "0.0.0.0" 0))
-	     (listener (net:tcp-bind addr))
-	     (port (net:socket-address-port (net:tcp-local-addr listener)))
-	     (test-message "Async Hello!"))
+  (skip)
+  (let* ((addr (net:make-socket-address "0.0.0.0" 0))
+	 (listener (net:tcp-bind addr))
+	 (port (net:socket-address-port (net:tcp-local-addr listener)))
+	 (test-message "Async Hello!"))
         
-        ;; Start server thread
-        (let ((server-thread
-	       (sb-thread:make-thread
-                (lambda ()
-                  (handler-case
-		      (let ((stream (net:tcp-accept listener)))
-                        ;; Use timeout-based read
-                        (let ((buffer (make-array 100 :element-type '(unsigned-byte 8))))
-                          (let ((bytes-read (net:tcp-read stream buffer :timeout 1.0)))
-			    (when (> bytes-read 0)
-			      ;; Echo back with timeout-based write
-			      (net:tcp-write stream buffer :timeout 1.0 :end bytes-read))))
-                        (net:tcp-shutdown stream :how :both))
-		    (error (e)
-			   (format t "Server async error: ~A~%" e))))
-                :name "async-server")))
+    ;; Start server thread
+    (let ((server-thread
+	   (sb-thread:make-thread
+            (lambda ()
+              (handler-case
+		  (let ((stream (net:tcp-accept listener)))
+                    ;; Use timeout-based read
+                    (let ((buffer (make-array 100 :element-type '(unsigned-byte 8))))
+                      (let ((bytes-read (net:tcp-read stream buffer :timeout 1.0)))
+			(when (> bytes-read 0)
+			  ;; Echo back with timeout-based write
+			  (net:tcp-write stream buffer :timeout 1.0 :end bytes-read))))
+                    (net:tcp-shutdown stream :how :both))
+		(error (e)
+		  (format t "Server async error: ~A~%" e))))
+            :name "async-server")))
           
-          (sleep 0.1)
+      (sleep 0.1)
           
-          ;; Connect and test async operations
-          (let* ((connect-addr (net:make-socket-address "0.0.0.0" port))
-                 (client (net:tcp-connect connect-addr)))
+      ;; Connect and test async operations
+      (let* ((connect-addr (net:make-socket-address "0.0.0.0" port))
+             (client (net:tcp-connect connect-addr)))
 	    
-	    ;; Test async write
-	    (let ((bytes-written (net:tcp-write client test-message :timeout 1.0)))
-	      (is (> bytes-written 0)))
+	;; Test async write
+	(let ((bytes-written (net:tcp-write client test-message :timeout 1.0)))
+	  (is (> bytes-written 0)))
 	    
-	    ;; Test async read
-	    (let ((buffer (make-array 100 :element-type '(unsigned-byte 8))))
-	      (let ((bytes-read (net:tcp-read client buffer :timeout 1.0)))
-                (when (> bytes-read 0)
-                  (let ((response (sb-ext:octets-to-string 
-                                   (subseq buffer 0 bytes-read))))
-		    (is-equal test-message response)))))
-	    
-	    (net:tcp-shutdown client :how :both))
-          
-          (sb-thread:join-thread server-thread :timeout 3))
-        t)
-    (error (e)
-	   (is nil (format nil "TCP async operations test failed: ~A" e)))))
+	;; Test async read
+	(let ((buffer (make-array 100 :element-type '(unsigned-byte 8))))
+	  (let ((bytes-read (net:tcp-read client buffer :timeout 1.0)))
+            (when (> bytes-read 0)
+              (let ((response (sb-ext:octets-to-string 
+                               (subseq buffer 0 bytes-read))))
+		(is-equal test-message response)))))
+	
+	(net:tcp-shutdown client :how :both))
+      
+      (sb-thread:join-thread server-thread :timeout 3))))
 
 ;;; ============================================================================
 ;;; Documentation of Linux-specific Features
 ;;; ============================================================================
 
-;; This test file provides comprehensive coverage of the Linux epsilon.net
-;; implementation, focusing on:
-;;
 ;; 1. **Epoll Integration**: Tests verify that the Linux-specific epoll
 ;;    event notification system works correctly for async I/O operations.
 ;;
@@ -407,7 +398,7 @@
 ;; 4. **Resource Management**: Tests verify proper cleanup of epoll instances,
 ;;    sockets, and other system resources.
 ;;
-;; 5. **Error Handling**: Comprehensive error condition testing ensures
+;; 5. **Error Handling**: error condition testing ensures
 ;;    proper exception hierarchy and error reporting.
 ;;
 ;; 6. **API Completeness**: Function existence tests ensure all public

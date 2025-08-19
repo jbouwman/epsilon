@@ -21,7 +21,7 @@
 (deftest test-system-components
   "Test that all system components are available"
   ;; Core libffi
-  (is (boundp 'foreign:*libffi-available-p*) "libffi availability flag should exist")
+  (is (boundp 'foreign:*libffi-library*) "libffi library handle should exist")
   
   ;; Signature extraction
   (is (find-package :epsilon.clang.signatures) "Clang signatures package should exist")
@@ -184,7 +184,7 @@
 (deftest test-configuration-system
   "Test configuration and toggles"
   ;; Test that libffi is properly initialized
-  (is foreign::*libffi-available-p* "libffi should be available")
+  (is (and (boundp 'foreign:*libffi-library*) foreign:*libffi-library*) "libffi should be loaded")
   
   ;; Test that we can make calls with libffi
   (let ((result (foreign:shared-call-unified "getpid" :int '())))

@@ -19,10 +19,13 @@
    lib-function
    defshared
    
+   ;; Module utilities
+   get-module-root
+   
    ;; libffi bridge functions
    load-libffi-extension
    libffi-call
-   *libffi-available-p*
+   *libffi-library*
    resolve-function-address
    ffi-call
    ffi-call-auto
@@ -154,7 +157,6 @@
    ffi-system-status
    *use-libffi-calls*
    *track-call-performance*
-   *libffi-available-p*
    
    ;; Performance and debugging
    benchmark-ffi-approach
@@ -164,23 +166,414 @@
 
 (in-package epsilon.foreign)
 
-;;; Forward declarations to force loading of libffi-bridge
-(declaim (ftype function load-libffi-extension))
-(declaim (ftype function libffi-call))
+;;;; libffi Integration
+;;;; SBCL bridge to libffi C extension, enabling real callback creation
 
-;;; Ensure libffi is initialized
-(defun ensure-libffi-initialized ()
-  "Ensure libffi extension is loaded and ready"
-  (unless (boundp '*libffi-available-p*)
-    (defvar *libffi-available-p* nil))
-  (unless *libffi-available-p*
-    (when (fboundp 'load-libffi-extension)
-      (funcall (symbol-function 'load-libffi-extension))))
-  *libffi-available-p*)
+;;; Type mapping constants (must match C extension)
+(defconstant +epsilon-type-void+          0)
+(defconstant +epsilon-type-int+           1)
+(defconstant +epsilon-type-long+          2)
+(defconstant +epsilon-type-float+         3)
+(defconstant +epsilon-type-double+        4)
+(defconstant +epsilon-type-pointer+       5)
+(defconstant +epsilon-type-string+        6)
+(defconstant +epsilon-type-bool+          7)
+(defconstant +epsilon-type-unsigned-int+  8)
+(defconstant +epsilon-type-unsigned-long+ 9)
 
-;; Initialize on load
+;;; Global state
+(defvar *libffi-library* nil
+  "Handle to the loaded libffi extension library")
+
+(defvar *libffi-callbacks* (map:make-map)
+  "Registry mapping callback IDs to Lisp callback information")
+
+(defvar *libffi-mutex* (sb-thread:make-mutex :name "libffi-callbacks")
+  "Mutex for thread-safe callback operations")
+
+;;; Module path resolution
+(defun get-module-root ()
+  "Get the root directory of the current module"
+  (or 
+   ;; Method 1: Use load/compile pathname - go up from src/foreign.lisp to module root
+   (when (or *load-pathname* *compile-file-pathname*)
+     (let* ((path (or *load-pathname* *compile-file-pathname*))
+            (dir (pathname-directory path)))
+       ;; Check if we're in a fasl directory structure
+       (if (member "fasl" dir :test #'string=)
+           ;; In fasl dir: find "modules" in path and construct from there
+           (let ((modules-pos (position "modules" dir :test #'string= :from-end t)))
+             (when modules-pos
+               (make-pathname 
+                :directory (append (subseq dir 0 (1+ modules-pos)) '("foreign")))))
+           ;; Normal source path: go up two levels from src/foreign.lisp
+           (make-pathname 
+            :directory (butlast (butlast dir))))))
+   ;; Method 2: Try relative to current directory
+   (probe-file #P"modules/foreign/")
+   ;; Method 3: Error if we can't find it
+   (error "Cannot determine module directory")))
+
+;;; Library loading
+(defun load-libffi-extension ()
+  "Load the libffi C extension library"
+  (when *libffi-library*
+    (return-from load-libffi-extension *libffi-library*))
+  
+  (let* ((module-root (get-module-root))
+         ;; Convert SBCL's "X86-64" to standard "x86_64"
+         (arch (string-downcase (substitute #\_ #\- (machine-type))))
+         (platform-lib (format nil "lib/libepsilon-libffi-~A-~A.~A"
+                              #+linux "linux" #+darwin "darwin" #-(or linux darwin) "unknown"
+                              arch
+                              #+linux "so" #+darwin "dylib" #-(or linux darwin) "so"))
+         (extension-path (merge-pathnames platform-lib module-root)))
+    
+    (unless (probe-file extension-path)
+      (error "libffi extension not found at ~A" extension-path))
+    
+    (setf *libffi-library* (sb-alien:load-shared-object extension-path))
+    (format t "Loaded libffi extension from ~A~%" extension-path)
+    *libffi-library*))
+
+;;; Foreign function definitions
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro define-libffi-function (name return-type &rest args)
+    "Define a foreign function from the libffi extension"
+    `(sb-alien:define-alien-routine ,name ,return-type ,@args)))
+
+(define-libffi-function epsilon-libffi-test sb-alien:int)
+
+(define-libffi-function epsilon-create-callback sb-alien:int
+  (lisp-function sb-alien:system-area-pointer)
+  (return-type sb-alien:int)
+  (arg-types (* sb-alien:int))
+  (nargs sb-alien:int))
+
+(define-libffi-function epsilon-get-callback-pointer sb-alien:system-area-pointer
+  (callback-id sb-alien:int))
+
+(define-libffi-function epsilon-destroy-callback sb-alien:int
+  (callback-id sb-alien:int))
+
+(define-libffi-function epsilon-cleanup-all-callbacks sb-alien:void)
+
+(define-libffi-function epsilon-get-callback-count sb-alien:int)
+
+(define-libffi-function epsilon-get-last-error sb-alien:c-string)
+
+;;; Function call support
+(define-libffi-function epsilon-prep-cif sb-alien:int
+  (return-type sb-alien:int)
+  (arg-types (* sb-alien:int))
+  (nargs sb-alien:int)
+  (cif-ptr (* sb-alien:system-area-pointer)))
+
+(define-libffi-function epsilon-call-function sb-alien:int
+  (cif sb-alien:system-area-pointer)
+  (function-ptr sb-alien:system-area-pointer)
+  (args (* sb-alien:system-area-pointer))
+  (result sb-alien:system-area-pointer))
+
+(define-libffi-function epsilon-free-cif sb-alien:void
+  (cif sb-alien:system-area-pointer))
+
+;;; Type conversion utilities
+(defun lisp-type-to-epsilon-type (lisp-type)
+  "Convert Lisp type symbols to epsilon type constants"
+  (case lisp-type
+    ((:void void) +epsilon-type-void+)
+    ((:int int integer) +epsilon-type-int+)
+    ((:long long) +epsilon-type-long+)
+    ((:unsigned-int unsigned-int) +epsilon-type-unsigned-int+)
+    ((:unsigned-long unsigned-long) +epsilon-type-unsigned-long+)
+    ((:float float single-float) +epsilon-type-float+)
+    ((:double double double-float) +epsilon-type-double+)
+    ((:pointer pointer sb-alien:system-area-pointer) +epsilon-type-pointer+)
+    ((:string :c-string string c-string) +epsilon-type-string+)
+    ((:bool boolean) +epsilon-type-bool+)
+    (t (error "Unsupported type for libffi callback: ~A" lisp-type))))
+
+(defun make-epsilon-type-array (arg-types)
+  "Create C array of epsilon type constants from Lisp type list"
+  (let* ((count (length arg-types))
+         (array (sb-alien:make-alien sb-alien:int count)))
+    (loop for i from 0
+          for type in arg-types
+          do (setf (sb-alien:deref array i) (lisp-type-to-epsilon-type type)))
+    array))
+
+;;; Callback registry management
+(defstruct callback-info
+  id
+  function
+  return-type
+  arg-types
+  pointer)
+
+(defun register-libffi-callback (id function return-type arg-types pointer)
+  "Register a callback in the Lisp-side registry"
+  (sb-thread:with-mutex (*libffi-mutex*)
+    (setf *libffi-callbacks* (map:assoc *libffi-callbacks* id
+                                               (make-callback-info :id id
+                                                                   :function function
+                                                                   :return-type return-type
+                                                                   :arg-types arg-types
+                                                                   :pointer pointer)))))
+
+(defun unregister-libffi-callback (id)
+  "Remove a callback from the Lisp-side registry"
+  (sb-thread:with-mutex (*libffi-mutex*)
+    (setf *libffi-callbacks* (map:dissoc *libffi-callbacks* id))))
+
+(defun get-libffi-callback (id)
+  "Retrieve callback info by ID"
+  (sb-thread:with-mutex (*libffi-mutex*)
+    (map:get *libffi-callbacks* id)))
+
+;;; High-level callback creation interface
+(defun make-libffi-callback (function return-type arg-types)
+  "Create a real callback using libffi
+   Returns the C function pointer or signals an error"
+  (unless *libffi-library*
+    (load-libffi-extension))
+  
+  ;; Validate arguments
+  (unless (functionp function)
+    (error "First argument must be a function"))
+  
+  (unless (and (listp arg-types) (every #'symbolp arg-types))
+    (error "arg-types must be a list of type symbols"))
+  
+  (let* ((epsilon-return-type (lisp-type-to-epsilon-type return-type))
+         (nargs (length arg-types))
+         (epsilon-arg-types (make-epsilon-type-array arg-types))
+         (lisp-function-ptr (sb-sys:int-sap 
+                             (sb-kernel:get-lisp-obj-address function))))
+    
+    (unwind-protect
+         (let ((callback-id (epsilon-create-callback lisp-function-ptr
+                                                     epsilon-return-type
+                                                     epsilon-arg-types
+                                                     nargs)))
+           (if (< callback-id 0)
+               (error "Failed to create libffi callback: ~A" 
+                      (epsilon-get-last-error))
+               (let ((pointer (epsilon-get-callback-pointer callback-id)))
+                 (if (zerop (sb-sys:sap-int pointer))
+                     (progn
+                       (epsilon-destroy-callback callback-id)
+                       (error "Failed to get callback pointer: ~A"
+                              (epsilon-get-last-error)))
+                     (progn
+                       (register-libffi-callback callback-id function 
+                                                 return-type arg-types pointer)
+                       pointer)))))
+      ;; Clean up the temporary array
+      (sb-alien:free-alien epsilon-arg-types))))
+
+;;; Cleanup utilities
+(defun cleanup-libffi-callbacks ()
+  "Clean up all libffi callbacks"
+  (when *libffi-library*
+    (epsilon-cleanup-all-callbacks)
+    (sb-thread:with-mutex (*libffi-mutex*)
+      (setf *libffi-callbacks* (map:make-map)))))
+
+;;; Test and diagnostic functions
+(defun test-libffi-extension ()
+  "Test if libffi extension is working"
+  (unless *libffi-library*
+    (load-libffi-extension))
+  
+  (let ((result (epsilon-libffi-test)))
+    (if (= result 42)
+        (format t "libffi extension test passed (returned ~A)~%" result)
+        (format t "libffi extension test failed (returned ~A, expected 42)~%" result))
+    (= result 42)))
+
+(defun libffi-callback-count ()
+  "Get count of active libffi callbacks"
+  (if *libffi-library*
+      (epsilon-get-callback-count)
+      0))
+
+;;; CIF (Call Interface) management for function calls
+
+(defvar *cif-cache* (make-hash-table :test 'equal)
+  "Cache of prepared call interfaces")
+
+(defvar *cif-mutex* (sb-thread:make-mutex :name "libffi-cif")
+  "Mutex for thread-safe CIF operations")
+
+(defstruct cif-info
+  pointer
+  return-type
+  arg-types
+  ref-count)
+
+(defun get-or-create-cif (return-type arg-types)
+  "Get cached or create new call interface"
+  ;; Ensure extension is loaded
+  (unless *libffi-library*
+    (load-libffi-extension))
+  
+  (let ((signature (list return-type arg-types)))
+    (sb-thread:with-mutex (*cif-mutex*)
+      (let ((existing (gethash signature *cif-cache*)))
+        (if existing
+            (progn
+              (incf (cif-info-ref-count existing))
+              existing)
+            (let ((cif-info (prepare-cif return-type arg-types)))
+              (setf (gethash signature *cif-cache*) cif-info)
+              cif-info))))))
+
+(defun prepare-cif (return-type arg-types)
+  "Prepare a call interface for the given signature"
+  (let* ((epsilon-return-type (lisp-type-to-epsilon-type return-type))
+         (nargs (length arg-types))
+         (epsilon-arg-types (make-epsilon-type-array arg-types))
+         (cif-ptr-holder (sb-alien:make-alien sb-alien:system-area-pointer)))
+    
+    (unwind-protect
+         (let ((result (epsilon-prep-cif epsilon-return-type
+                                        epsilon-arg-types
+                                        nargs
+                                        cif-ptr-holder)))
+           (if (< result 0)
+               (error "Failed to prepare CIF: ~A" (epsilon-get-last-error))
+               (let ((cif-ptr (sb-alien:deref cif-ptr-holder)))
+                 (make-cif-info :pointer cif-ptr
+                               :return-type return-type
+                               :arg-types arg-types
+                               :ref-count 1))))
+      ;; Clean up the temporary array
+      (sb-alien:free-alien epsilon-arg-types))))
+
+(defun release-cif (cif-info)
+  "Release a call interface (reference counted)"
+  (sb-thread:with-mutex (*cif-mutex*)
+    (when (zerop (decf (cif-info-ref-count cif-info)))
+      ;; Remove from cache when ref count reaches zero
+      (let ((signature (list (cif-info-return-type cif-info)
+                            (cif-info-arg-types cif-info))))
+        (remhash signature *cif-cache*)
+        (epsilon-free-cif (cif-info-pointer cif-info))))))
+
+;;; High-level function call interface
+
+(defun libffi-call (function-address return-type arg-types args)
+  "Make FFI call using libffi instead of hardcoded signatures"
+  (let ((cif-info (get-or-create-cif return-type arg-types)))
+    (unwind-protect
+         (multiple-value-bind (converted-args holders)
+             (convert-args-to-pointers args arg-types)
+           (unwind-protect
+                (let* ((result-holder (allocate-result-holder return-type))
+                       (call-result (epsilon-call-function (cif-info-pointer cif-info)
+                                                           (sb-sys:int-sap function-address)
+                                                           converted-args
+                                                           result-holder)))
+                  (if (< call-result 0)
+                      (error "FFI call failed: ~A" (epsilon-get-last-error))
+                      (extract-result result-holder return-type)))
+             ;; Keep holders alive during the entire call
+             (declare (ignore holders))))
+      (release-cif cif-info))))
+
+(defun convert-args-to-pointers (args arg-types)
+  "Convert Lisp arguments to array of pointers for libffi"
+  (let* ((nargs (length args))
+         (arg-array (sb-alien:make-alien sb-alien:system-area-pointer nargs))
+         ;; Keep holders alive during the call
+         (holders '()))
+    (loop for i from 0
+          for arg in args
+          for type in arg-types
+          do (multiple-value-bind (converted holder) 
+                 (convert-arg-to-pointer arg type)
+               (setf (sb-alien:deref arg-array i) converted)
+               (when holder
+                 (push holder holders))))
+    ;; Return both array and holders to keep them alive
+    (values arg-array holders)))
+
+(defun convert-arg-to-pointer (arg type)
+  "Convert single argument to pointer for libffi call. Returns (values pointer holder-to-keep-alive)"
+  (case type
+    (:int (let ((holder (sb-alien:make-alien sb-alien:int)))
+            (setf (sb-alien:deref holder) arg)
+            (values (sb-alien:alien-sap holder) holder)))
+    (:long (let ((holder (sb-alien:make-alien sb-alien:long)))
+             (setf (sb-alien:deref holder) arg)
+             (values (sb-alien:alien-sap holder) holder)))
+    (:unsigned-int (let ((holder (sb-alien:make-alien sb-alien:unsigned-int)))
+                    (setf (sb-alien:deref holder) arg)
+                    (values (sb-alien:alien-sap holder) holder)))
+    (:unsigned-long (let ((holder (sb-alien:make-alien sb-alien:unsigned-long)))
+                     (setf (sb-alien:deref holder) arg)
+                     (values (sb-alien:alien-sap holder) holder)))
+    (:pointer (let* ((ptr (if (sb-sys:system-area-pointer-p arg)
+                              arg
+                              (sb-sys:int-sap (if (integerp arg) arg 0))))
+                    (holder (sb-alien:make-alien sb-alien:system-area-pointer)))
+                (setf (sb-alien:deref holder) ptr)
+                (values (sb-alien:alien-sap holder) holder)))
+    ((:string :c-string) (if (stringp arg)
+                 ;; Convert Lisp string to C string and wrap in pointer
+                 (let* ((c-string (sb-alien:make-alien-string arg))
+                        (string-sap (sb-alien:alien-sap c-string))
+                        (holder (sb-alien:make-alien sb-alien:system-area-pointer)))
+                   (setf (sb-alien:deref holder) string-sap)
+                   ;; Return both pointer and objects to keep alive
+                   (values (sb-alien:alien-sap holder) (list holder c-string)))
+                 (error "Expected string for :string type")))
+    (otherwise (error "Unsupported argument type: ~A" type))))
+
+(defun allocate-result-holder (return-type)
+  "Allocate memory to hold function result"
+  (case return-type
+    (:void (sb-sys:int-sap 0))
+    (:int (sb-alien:alien-sap (sb-alien:make-alien sb-alien:int)))
+    (:long (sb-alien:alien-sap (sb-alien:make-alien sb-alien:long)))
+    (:unsigned-int (sb-alien:alien-sap (sb-alien:make-alien sb-alien:unsigned-int)))
+    (:unsigned-long (sb-alien:alien-sap (sb-alien:make-alien sb-alien:unsigned-long)))
+    (:pointer (sb-alien:alien-sap (sb-alien:make-alien sb-alien:system-area-pointer)))
+    (otherwise (error "Unsupported return type: ~A" return-type))))
+
+(defun extract-result (result-holder return-type)
+  "Extract result from libffi call"
+  (case return-type
+    (:void nil)
+    (:int (sb-alien:deref (sb-alien:sap-alien result-holder (* sb-alien:int))))
+    (:long (sb-alien:deref (sb-alien:sap-alien result-holder (* sb-alien:long))))
+    (:unsigned-int (sb-alien:deref (sb-alien:sap-alien result-holder (* sb-alien:unsigned-int))))
+    (:unsigned-long (sb-alien:deref (sb-alien:sap-alien result-holder (* sb-alien:unsigned-long))))
+    (:pointer (sb-alien:deref (sb-alien:sap-alien result-holder (* sb-alien:system-area-pointer))))
+    (otherwise (error "Unsupported return type: ~A" return-type))))
+
+;;; Integration with existing FFI infrastructure
+
+(defun libffi-available-for-calls-p ()
+  "Check if libffi is available for function calls (not just callbacks)"
+  (and *libffi-library*
+       (let ((addr (sb-sys:find-dynamic-foreign-symbol-address "epsilon_prep_cif")))
+         (and addr (not (zerop addr))))))
+
+;;; Ensure foreign functions are available
+(defun ensure-libffi-functions ()
+  "Ensure libffi foreign functions are properly linked"
+  (when *libffi-library*
+    ;; Check if functions are available
+    (let ((test-addr (sb-sys:find-dynamic-foreign-symbol-address "epsilon_libffi_test")))
+      (when (and test-addr (not (zerop test-addr)))
+        t))))
+
+;;; Initialize on load
 (eval-when (:load-toplevel :execute)
-  (ensure-libffi-initialized))
+  (load-libffi-extension)
+  (ensure-libffi-functions))
 
 ;;;; Core FFI Functions
 

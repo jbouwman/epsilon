@@ -133,7 +133,7 @@
   (format t "  Return Type: ~A~%" return-type)
   (format t "  Arg Types: ~A~%" arg-types)
   (format t "  Args: ~A~%" args)
-  (format t "  libffi Available: ~A~%" *libffi-available-p*)
+  (format t "  libffi Available: ~A~%" (and (boundp '*libffi-library*) *libffi-library* t))
   
   ;; Validate signature
   (handler-case

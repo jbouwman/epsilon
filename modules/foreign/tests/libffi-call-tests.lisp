@@ -18,8 +18,8 @@
 (defun libffi-calls-available-p ()
   "Check if libffi function calls are available"
   (and (find-package '#:epsilon.foreign)
-       (find-symbol "*LIBFFI-AVAILABLE-P*" '#:epsilon.foreign)
-       (symbol-value (find-symbol "*LIBFFI-AVAILABLE-P*" '#:epsilon.foreign))
+       (find-symbol "*LIBFFI-LIBRARY*" '#:epsilon.foreign)
+       (symbol-value (find-symbol "*LIBFFI-LIBRARY*" '#:epsilon.foreign))
        (find-symbol "LIBFFI-AVAILABLE-FOR-CALLS-P" '#:epsilon.foreign)
        (funcall (find-symbol "LIBFFI-AVAILABLE-FOR-CALLS-P" '#:epsilon.foreign))))
 

@@ -77,7 +77,7 @@
   (format t "  *libffi-function-blacklist* ; Functions to avoid with libffi~%~%")
   
   (format t "SYSTEM STATUS:~%")
-  (format t "  libffi available: ~A~%" *libffi-available-p*)
+  (format t "  libffi available: ~A~%" (and (boundp '*libffi-library*) *libffi-library* t))
   (format t "  libffi for calls: ~A~%" (if (fboundp 'libffi-available-for-calls-p)
                                           (libffi-available-for-calls-p)
                                           "Unknown"))
@@ -191,7 +191,7 @@
      (error (e)
        (format t "FFI error: ~A~%" e)
        (format t "System status:~%")
-       (format t "  libffi available: ~A~%" *libffi-available-p*)
+       (format t "  libffi available: ~A~%" (and (boundp '*libffi-library*) *libffi-library* t))
        (when (find-package :epsilon.clang.signatures)
          (format t "  Signature extraction available: Yes~%"))
        (error e))))
@@ -233,7 +233,7 @@
   
   ;; libffi status
   (format t "~%libffi Integration:~%")
-  (format t "  libffi available: ~A~%" *libffi-available-p*)
+  (format t "  libffi available: ~A~%" (and (boundp '*libffi-library*) *libffi-library* t))
   (format t "  Function calls: ~A~%" (if (fboundp 'libffi-available-for-calls-p)
                                          (libffi-available-for-calls-p)
                                          "Unknown"))
