@@ -130,6 +130,21 @@
    #:crypto-error-string
    #:get-crypto-errors
    
+   ;; Key Derivation Functions (KDF)
+   #:pbkdf2
+   #:hkdf
+   #:scrypt
+   
+   ;; BLAKE2 Hash Functions
+   #:blake2b
+   #:blake2s
+   
+   ;; Authenticated Encryption (AEAD)
+   #:aes-gcm-encrypt
+   #:aes-gcm-decrypt
+   #:chacha20-poly1305-encrypt
+   #:chacha20-poly1305-decrypt
+   
    ;; Integration functions
    #:tls-context-set-key
    #:tls-context-set-certificate
@@ -248,24 +263,12 @@
    - Always use +TLS-VERIFY-PEER+ in production for proper certificate validation
    - Consider cipher-list restrictions to enforce strong cryptographic algorithms
    - Private key files should have restricted file permissions (0600)"
-  (server-p nil 
-            :type boolean
-            :documentation "Whether this context is configured for server-side TLS")
-  (cert-file nil 
-             :type (or null string)
-             :documentation "Path to X.509 certificate file in PEM format")
-  (key-file nil 
-            :type (or null string)
-            :documentation "Path to private key file corresponding to cert-file")
-  (verify-mode +tls-verify-peer+ 
-               :type integer
-               :documentation "Certificate verification mode (see +TLS-VERIFY-*+ constants)")
-  (cipher-list nil 
-               :type (or null string)
-               :documentation "OpenSSL cipher list string to restrict allowed algorithms")
-  (handle nil 
-          :type (or null sb-sys:system-area-pointer)
-          :documentation "Internal OpenSSL SSL_CTX pointer (implementation detail)"))
+  (server-p nil :type boolean)
+  (cert-file nil :type (or null string))
+  (key-file nil :type (or null string))
+  (verify-mode +tls-verify-peer+ :type integer)
+  (cipher-list nil :type (or null string))
+  (handle nil :type (or null sb-sys:system-area-pointer)))
 
 ;; TLS Connection Structure
 (defstruct tls-connection
@@ -280,21 +283,11 @@
    2. Perform TLS handshake (sets handshake-complete-p to t)
    3. Exchange application data
    4. Close connection (invalidates ssl-handle)"
-  (socket nil 
-          :type t
-          :documentation "Underlying network socket (from epsilon.net)")
-  (context nil 
-           :type (or null tls-context)
-           :documentation "TLS context containing certificates and configuration")
-  (connected-p nil 
-               :type boolean
-               :documentation "Whether the underlying socket connection is active")
-  (handshake-complete-p nil 
-                        :type boolean
-                        :documentation "Whether the TLS handshake has completed successfully")
-  (ssl-handle nil 
-              :type (or null sb-sys:system-area-pointer)
-              :documentation "Internal OpenSSL SSL pointer (implementation detail)"))
+  (socket nil :type t)
+  (context nil :type (or null tls-context))
+  (connected-p nil :type boolean)
+  (handshake-complete-p nil :type boolean)
+  (ssl-handle nil :type (or null sb-sys:system-area-pointer)))
 
 ;; Crypto Key Structure
 (defstruct crypto-key
@@ -314,21 +307,11 @@
    - Private key material is stored in OpenSSL's secure memory when possible
    - Keys should be freed promptly after use to minimize exposure
    - Use appropriate key sizes: RSA ≥2048 bits, EC curves ≥256 bits"
-  (handle nil 
-          :type (or null sb-sys:system-area-pointer)
-          :documentation "Internal OpenSSL EVP_PKEY pointer (implementation detail)")
-  (type nil 
-        :type (or null keyword)
-        :documentation "Key type: :RSA, :EC, :ED25519, or :X25519")
-  (bits 0 
-        :type (integer 0 *)
-        :documentation "Key size in bits (RSA) or curve size (EC)")
-  (public-p nil 
-            :type boolean
-            :documentation "Whether this key contains public key material")
-  (private-p nil 
-             :type boolean
-             :documentation "Whether this key contains private key material"))
+  (handle nil :type (or null sb-sys:system-area-pointer))
+  (type nil :type (or null keyword))
+  (bits 0 :type (integer 0 *))
+  (public-p nil :type boolean)
+  (private-p nil :type boolean))
 
 ;; X.509 Certificate Structure
 (defstruct x509-certificate
@@ -351,24 +334,12 @@
    - Always verify certificate chain back to trusted root CA
    - Check validity dates and revocation status before trusting
    - Validate subject name matches expected identity"
-  (handle nil 
-          :type (or null sb-sys:system-area-pointer)
-          :documentation "Internal OpenSSL X509 pointer (implementation detail)")
-  (subject nil 
-           :type (or null string)
-           :documentation "Certificate subject DN (e.g., '/CN=example.com/O=Example Corp')")
-  (issuer nil 
-          :type (or null string)
-          :documentation "Issuing CA's subject DN")
-  (serial nil 
-          :type (or null string)
-          :documentation "Certificate serial number as string")
-  (not-before nil 
-              :type (or null integer)
-              :documentation "Certificate validity start time (Unix timestamp)")
-  (not-after nil 
-             :type (or null integer)
-             :documentation "Certificate validity end time (Unix timestamp)"))
+  (handle nil :type (or null sb-sys:system-area-pointer))
+  (subject nil :type (or null string))
+  (issuer nil :type (or null string))
+  (serial nil :type (or null string))
+  (not-before nil :type (or null integer))
+  (not-after nil :type (or null integer)))
 
 ;; OpenSSL Implementation Structures
 (defstruct openssl-context
@@ -381,59 +352,28 @@
    Use the high-level TLS-CONTEXT structure for most applications.
    This structure is intended for advanced use cases requiring specific
    OpenSSL features or compatibility with existing OpenSSL-based code."
-  (handle nil 
-          :type (or null sb-sys:system-area-pointer)
-          :documentation "OpenSSL SSL_CTX pointer")
-  (server-p nil 
-            :type boolean
-            :documentation "Whether this context is for server-side connections")
-  (cert-file nil 
-             :type (or null string)
-             :documentation "Path to certificate file")
-  (key-file nil 
-            :type (or null string)
-            :documentation "Path to private key file")
-  (verify-mode 0 
-               :type (integer 0 *)
-               :documentation "SSL verification mode bitmask"))
+  (handle nil :type (or null sb-sys:system-area-pointer))
+  (server-p nil :type boolean)
+  (cert-file nil :type (or null string))
+  (key-file nil :type (or null string))
+  (verify-mode 0 :type (integer 0 *)))
 
 (defstruct openssl-connection
   "Low-level OpenSSL SSL connection wrapper.
    
    Provides direct access to OpenSSL's SSL connection object for advanced
    operations. Use the high-level TLS-CONNECTION structure for most applications."
-  (ssl nil 
-       :type (or null sb-sys:system-area-pointer)
-       :documentation "OpenSSL SSL pointer")
-  (socket nil
-          :type t
-          :documentation "Underlying network socket")
-  (context nil 
-           :type (or null openssl-context)
-           :documentation "Associated OpenSSL context")
-  (connected-p nil 
-               :type boolean
-               :documentation "Whether the SSL connection is established"))
+  (ssl nil :type (or null sb-sys:system-area-pointer))
+  (socket nil :type t)
+  (context nil :type (or null openssl-context))
+  (connected-p nil :type boolean))
 
 ;;;; Error Handling
 
 (define-condition crypto-error (error)
-  "Cryptographic error condition signaled when cryptographic operations fail.
-   
-   This condition is used for all cryptographic errors including:
-   - Key generation failures
-   - Certificate operations failures
-   - TLS/SSL connection errors
-   - Signature/verification failures
-   - Encryption/decryption errors
-   
-   The error includes both a numeric code (from OpenSSL) and a human-readable message."
-  ((code :initarg :code :reader crypto-error-code 
-         :type integer
-         :documentation "Numeric error code from underlying cryptographic library")
-   (message :initarg :message :reader crypto-error-string
-            :type string
-            :documentation "Human-readable error description"))
+  ((code :initarg :code :reader crypto-error-code :type integer)
+   (message :initarg :message :reader crypto-error-string :type string))
+  (:documentation "Cryptographic error condition signaled when cryptographic operations fail.")
   (:report (lambda (condition stream)
              (format stream "Crypto error ~A: ~A"
                      (crypto-error-code condition)

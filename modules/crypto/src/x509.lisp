@@ -186,7 +186,61 @@
                            key
                            subject-cn
                            issuer-cn)
-  "Create a new X.509 certificate"
+  "Create a new X.509 certificate with specified attributes.
+   
+   Creates an X.509 v3 certificate suitable for TLS, code signing, or other PKI uses.
+   Can create self-signed certificates (when issuer equals subject) or certificates
+   signed by a CA (when issuer differs from subject).
+   
+   Parameters:
+     subject (list): Subject DN as property list (\"CN\" \"example.com\" \"O\" \"Corp\")
+     issuer (list): Issuer DN as property list (defaults to subject for self-signed)
+     serial (integer): Certificate serial number (default: 1)
+     days (integer): Validity period in days from now (default: 365)
+     public-key (crypto-key): Public key to embed in certificate
+     signing-key (crypto-key): Private key to sign certificate (issuer's key)
+     
+     Compatibility parameters (deprecated):
+     key: Same key for both public-key and signing-key (self-signed)
+     subject-cn: Simple common name for subject
+     issuer-cn: Simple common name for issuer
+   
+   Returns:
+     X509-CERTIFICATE structure containing the created certificate
+   
+   Distinguished Name (DN) Fields:
+     \"CN\" - Common Name (e.g., domain name)
+     \"O\" - Organization
+     \"OU\" - Organizational Unit
+     \"C\" - Country (2-letter code)
+     \"ST\" - State/Province
+     \"L\" - Locality/City
+     \"emailAddress\" - Email address
+   
+   Example - Self-signed certificate:
+     (create-certificate
+       :subject (list \"CN\" \"example.com\" \"O\" \"Example Corp\" \"C\" \"US\")
+       :public-key my-key
+       :signing-key my-key
+       :days 365)
+   
+   Example - CA-signed certificate:
+     (create-certificate
+       :subject (list \"CN\" \"server.example.com\")
+       :issuer (list \"CN\" \"Example CA\" \"O\" \"Example Corp\")
+       :public-key server-key
+       :signing-key ca-key
+       :serial 12345
+       :days 90)
+   
+   Security Notes:
+     - Serial numbers must be unique per issuer
+     - Use appropriate validity periods (shorter is more secure)
+     - For production, use proper CA infrastructure
+     - Self-signed certificates require explicit trust
+   
+   Errors:
+     Signals CRYPTO-ERROR if certificate creation or signing fails"
   ;; Handle compatibility arguments
   (when key
     (setf public-key (or public-key key)
