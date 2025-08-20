@@ -130,10 +130,53 @@
    #:%pem-read-bio-x509-req
    #:%pem-write-bio-x509-req
    #:%rand-bytes
+   #:%rand-status
+   #:%rand-seed
    #:%err-get-error
-   #:%err-error-string))
+   #:%err-error-string
+   ;; Security functions
+   #:%openssl-init-crypto
+   #:%openssl-cleanse
+   #:%crypto-memcmp
+   #:%openssl-version
+   ;; KDF functions
+   #:%pkcs5-pbkdf2-hmac
+   #:%evp-pbe-scrypt
+   #:%evp-pkey-ctx-set-hkdf-md
+   #:%evp-pkey-ctx-set1-hkdf-salt
+   #:%evp-pkey-ctx-set1-hkdf-key
+   #:%evp-pkey-ctx-add1-hkdf-info
+   #:%evp-pkey-derive-init
+   #:%evp-pkey-derive
+   #:+evp-pkey-hkdf+
+   ;; Cipher functions for AEAD
+   #:%evp-cipher-ctx-new
+   #:%evp-cipher-ctx-free
+   #:%evp-get-cipherbyname
+   #:%evp-encryptinit-ex
+   #:%evp-encryptupdate
+   #:%evp-encryptfinal-ex
+   #:%evp-decryptinit-ex
+   #:%evp-decryptupdate
+   #:%evp-decryptfinal-ex
+   #:%evp-cipher-ctx-ctrl
+   ;; Error condition and accessors
+   #:crypto-error
+   #:crypto-error-code
+   #:crypto-error-string))
 
 (in-package :epsilon.crypto.ffi)
+
+;;;; Error Handling
+
+(define-condition crypto-error (error)
+  ((code :initarg :code :reader crypto-error-code :type integer)
+   (message :initarg :message :reader crypto-error-string :type string))
+  (:documentation "Cryptographic error condition signaled when cryptographic operations fail.")
+  (:report (lambda (condition stream)
+             (format stream "Crypto error ~A: ~A"
+                     (crypto-error-code condition)
+                     (crypto-error-string condition)))))
 
 ;;;; SSL/TLS Library FFI Bindings (libssl)
 
@@ -611,10 +654,130 @@
   (buf :pointer) (num :int)
   :documentation "Generate random bytes")
 
+;; Random number status and seeding
+(lib:defshared %rand-status "RAND_status" "libcrypto" :int ()
+  :documentation "Check if PRNG is seeded")
+
+(lib:defshared %rand-seed "RAND_seed" "libcrypto" :void
+  (buf :pointer) (num :int)
+  :documentation "Seed the PRNG")
+
+;; Security functions
+(lib:defshared %openssl-init-crypto "OPENSSL_init_crypto" "libcrypto" :int
+  (opts :unsigned-long) (settings :pointer)
+  :documentation "Initialize OpenSSL crypto library")
+
+(lib:defshared %openssl-cleanse "OPENSSL_cleanse" "libcrypto" :void
+  (ptr :pointer) (len :unsigned-long)
+  :documentation "Securely clear memory")
+
+(lib:defshared %crypto-memcmp "CRYPTO_memcmp" "libcrypto" :int
+  (a :pointer) (b :pointer) (len :unsigned-long)
+  :documentation "Constant-time memory comparison")
+
+(lib:defshared %openssl-version "OpenSSL_version" "libcrypto" :pointer
+  (type :int)
+  :documentation "Get OpenSSL version string")
+
 ;; Error handling
 (lib:defshared %err-get-error "ERR_get_error" "libcrypto" :unsigned-long ()
   :documentation "Get error code")
 
+;; Might not be available in all versions
+;; (lib:defshared %err-load-crypto-strings "ERR_load_crypto_strings" "libcrypto" :void ()
+;;   :documentation "Load crypto error strings")
+
 (lib:defshared %err-error-string "ERR_error_string" "libcrypto" :pointer
   (e :unsigned-long) (buf :pointer)
   :documentation "Get error string")
+
+;;;; Key Derivation Functions (KDF) FFI Bindings
+
+;; PBKDF2
+(lib:defshared %pkcs5-pbkdf2-hmac "PKCS5_PBKDF2_HMAC" "libcrypto" :int
+  (pass :pointer) (passlen :int)
+  (salt :pointer) (saltlen :int)
+  (iter :int)
+  (digest :pointer)
+  (keylen :int)
+  (out :pointer)
+  :documentation "PBKDF2 key derivation function")
+
+;; Scrypt
+(lib:defshared %evp-pbe-scrypt "EVP_PBE_scrypt" "libcrypto" :int
+  (pass :pointer) (passlen :unsigned-long)
+  (salt :pointer) (saltlen :unsigned-long)
+  (n :unsigned-long) (r :unsigned-long) (p :unsigned-long)
+  (maxmem :unsigned-long)
+  (key :pointer) (keylen :unsigned-long)
+  :documentation "Scrypt key derivation function")
+
+;; HKDF constants
+(defconstant +evp-pkey-hkdf+ 1036
+  "EVP_PKEY type for HKDF")
+
+;; HKDF functions
+(lib:defshared %evp-pkey-ctx-set-hkdf-md "EVP_PKEY_CTX_set_hkdf_md" "libcrypto" :int
+  (ctx :pointer) (md :pointer)
+  :documentation "Set HKDF message digest")
+
+(lib:defshared %evp-pkey-ctx-set1-hkdf-salt "EVP_PKEY_CTX_set1_hkdf_salt" "libcrypto" :int
+  (ctx :pointer) (salt :pointer) (saltlen :int)
+  :documentation "Set HKDF salt")
+
+(lib:defshared %evp-pkey-ctx-set1-hkdf-key "EVP_PKEY_CTX_set1_hkdf_key" "libcrypto" :int
+  (ctx :pointer) (key :pointer) (keylen :int)
+  :documentation "Set HKDF key material")
+
+(lib:defshared %evp-pkey-ctx-add1-hkdf-info "EVP_PKEY_CTX_add1_hkdf_info" "libcrypto" :int
+  (ctx :pointer) (info :pointer) (infolen :int)
+  :documentation "Add HKDF info")
+
+(lib:defshared %evp-pkey-derive-init "EVP_PKEY_derive_init" "libcrypto" :int
+  (ctx :pointer)
+  :documentation "Initialize key derivation")
+
+(lib:defshared %evp-pkey-derive "EVP_PKEY_derive" "libcrypto" :int
+  (ctx :pointer) (key :pointer) (keylen :pointer)
+  :documentation "Perform key derivation")
+
+;;;; Symmetric Cipher Operations for AEAD
+
+(lib:defshared %evp-cipher-ctx-new "EVP_CIPHER_CTX_new" "libcrypto" :pointer ()
+  :documentation "Create new cipher context")
+
+(lib:defshared %evp-cipher-ctx-free "EVP_CIPHER_CTX_free" "libcrypto" :void
+  (ctx :pointer)
+  :documentation "Free cipher context")
+
+(lib:defshared %evp-get-cipherbyname "EVP_get_cipherbyname" "libcrypto" :pointer
+  (name :string)
+  :documentation "Get cipher by name")
+
+(lib:defshared %evp-encryptinit-ex "EVP_EncryptInit_ex" "libcrypto" :int
+  (ctx :pointer) (cipher :pointer) (impl :pointer) (key :pointer) (iv :pointer)
+  :documentation "Initialize encryption operation")
+
+(lib:defshared %evp-encryptupdate "EVP_EncryptUpdate" "libcrypto" :int
+  (ctx :pointer) (out :pointer) (outl :pointer) (in :pointer) (inl :int)
+  :documentation "Encrypt data")
+
+(lib:defshared %evp-encryptfinal-ex "EVP_EncryptFinal_ex" "libcrypto" :int
+  (ctx :pointer) (out :pointer) (outl :pointer)
+  :documentation "Finalize encryption")
+
+(lib:defshared %evp-decryptinit-ex "EVP_DecryptInit_ex" "libcrypto" :int
+  (ctx :pointer) (cipher :pointer) (impl :pointer) (key :pointer) (iv :pointer)
+  :documentation "Initialize decryption operation")
+
+(lib:defshared %evp-decryptupdate "EVP_DecryptUpdate" "libcrypto" :int
+  (ctx :pointer) (out :pointer) (outl :pointer) (in :pointer) (inl :int)
+  :documentation "Decrypt data")
+
+(lib:defshared %evp-decryptfinal-ex "EVP_DecryptFinal_ex" "libcrypto" :int
+  (ctx :pointer) (out :pointer) (outl :pointer)
+  :documentation "Finalize decryption")
+
+(lib:defshared %evp-cipher-ctx-ctrl "EVP_CIPHER_CTX_ctrl" "libcrypto" :int
+  (ctx :pointer) (type :int) (arg :int) (ptr :pointer)
+  :documentation "Cipher context control operations")

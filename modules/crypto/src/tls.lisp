@@ -75,7 +75,46 @@
 (defun create-openssl-context (&key server-p cert-file key-file 
                                     ca-file (verify-mode +ssl-verify-peer+)
                                     require-client-cert verify-depth)
-  "Create an OpenSSL-backed TLS context with mutual authentication support"
+  "Create an OpenSSL-backed TLS context with comprehensive security configuration.
+   
+   Creates a low-level OpenSSL SSL_CTX for advanced TLS operations including
+   mutual authentication, certificate validation, and cipher suite control.
+   
+   Parameters:
+     server-p (boolean): Create server context if T, client context if NIL
+     cert-file (string): Path to X.509 certificate in PEM format
+     key-file (string): Path to private key in PEM format
+     ca-file (string): Path to CA certificates for peer verification
+     verify-mode (integer): SSL verification mode (default: +SSL-VERIFY-PEER+)
+     require-client-cert (boolean): Require client certificates (server only)
+     verify-depth (integer): Maximum certificate chain depth to verify
+   
+   Returns:
+     OPENSSL-CONTEXT structure with configured SSL_CTX handle
+   
+   Security Configuration:
+     - Automatic certificate/key matching verification
+     - CA certificate chain loading for peer validation
+     - Client certificate requirement for mutual TLS
+     - Configurable verification depth to prevent long chains
+   
+   Common verify-mode values:
+     +SSL-VERIFY-NONE+ (0): No certificate verification (insecure)
+     +SSL-VERIFY-PEER+ (1): Verify peer certificate
+     +SSL-VERIFY-FAIL-IF-NO-PEER-CERT+ (2): Fail if no peer cert
+     
+   Security Notes:
+     - Always use +SSL-VERIFY-PEER+ in production
+     - Set require-client-cert for mutual TLS authentication
+     - Limit verify-depth to prevent DoS from long chains (typical: 4-10)
+     - Ensure cert-file and key-file have proper permissions (0600)
+   
+   Errors:
+     Signals CRYPTO-ERROR if:
+     - SSL context creation fails
+     - Certificate or key loading fails
+     - Certificate/key mismatch detected
+     - CA certificate loading fails"
   (let* ((method (if server-p (ffi:%tls-server-method) (ffi:%tls-client-method)))
          (ctx (ffi:%ssl-ctx-new method)))
     
@@ -137,7 +176,22 @@
                           :verify-mode verify-mode)))
 
 (defun load-cert-file (context cert-file)
-  "Load certificate file into TLS context"
+  "Load an X.509 certificate from file into TLS context.
+   
+   Parameters:
+     context: TLS-CONTEXT or OPENSSL-CONTEXT structure
+     cert-file (string): Path to certificate file in PEM format
+   
+   Side Effects:
+     Updates the context's certificate configuration
+   
+   Security Notes:
+     - Certificate should match the previously loaded private key
+     - File should contain the full certificate chain if needed
+     - PEM format supports multiple certificates in one file
+   
+   Errors:
+     Signals CRYPTO-ERROR if certificate loading fails or format is invalid"
   (cond
    ((openssl-context-p context)
     (when (zerop (ffi:%ssl-ctx-use-certificate-file 

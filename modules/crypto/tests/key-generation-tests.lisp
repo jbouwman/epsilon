@@ -14,8 +14,12 @@
 (defun with-test-key (type &rest args)
   "Create a test key of specified type for testing"
   (case type
-        (:rsa (apply #'crypto:generate-rsa-key args))
-        (:ec (apply #'crypto:generate-ec-key args))
+        (:rsa (if args 
+                  (crypto:generate-rsa-key :bits (first args))
+                  (crypto:generate-rsa-key)))
+        (:ec (if args 
+                 (crypto:generate-ec-key :curve (first args))
+                 (crypto:generate-ec-key)))
         (:ed25519 (crypto:generate-ed25519-key))
         (t (error "Unknown key type: ~A" type))))
 
@@ -55,17 +59,27 @@
   "Test that invalid RSA key sizes are rejected"
   (handler-case
       (progn
-        (crypto:generate-rsa-key 1024)
+        (crypto:generate-rsa-key :bits 1024)
         (is nil "Should have thrown error for 1024-bit key"))
     (crypto:crypto-error ()
       (is t "Correctly rejected 1024-bit key")))
   
   (handler-case
       (progn
-        (crypto:generate-rsa-key 512)
+        (crypto:generate-rsa-key :bits 512)
         (is nil "Should have thrown error for 512-bit key"))
     (crypto:crypto-error ()
       (is t "Correctly rejected 512-bit key"))))
+
+(deftest test-rsa-default-size
+  "Test that RSA key generation uses 2048-bit default"
+  (let ((key (crypto:generate-rsa-key)))
+    (when key
+      (is (crypto:crypto-key-p key))
+      (is (eq (crypto:crypto-key-type key) :rsa))
+      (is-= (crypto:crypto-key-bits key) 2048)
+      (is (crypto:crypto-key-public-p key))
+      (is (crypto:crypto-key-private-p key)))))
 
 ;;;; EC Key Generation Tests
 
@@ -112,13 +126,24 @@
       (is (crypto:crypto-key-private-p key))
       (is (<= 256 (crypto:crypto-key-bits key) 257)))))
 
+(deftest test-ec-default-curve
+  "Test that EC key generation uses P-256 default"
+  (let ((key (crypto:generate-ec-key)))
+    (when key
+      (is (crypto:crypto-key-p key))
+      (is (eq (crypto:crypto-key-type key) :ec))
+      (is (crypto:crypto-key-public-p key))
+      (is (crypto:crypto-key-private-p key))
+      ;; P-256 should have ~256 bits
+      (is (<= 256 (crypto:crypto-key-bits key) 257)))))
+
 (deftest test-ec-invalid-curve
   "Test that invalid EC curves are rejected"
   (handler-case
       (progn
-        (crypto:generate-ec-key :invalid-curve)
+        (crypto:generate-ec-key :curve :invalid-curve)
         (is nil "Should have thrown error for invalid curve"))
-    (error ()
+    (crypto:crypto-error ()
       (is t "Correctly rejected invalid curve"))))
 
 ;;;; Ed25519 Key Generation Tests
@@ -252,7 +277,7 @@
   (when (with-test-key :rsa 2048)  ; Check if OpenSSL is available
     ;; RSA 2048 should complete in reasonable time
     (let ((start-time (get-internal-real-time)))
-      (crypto:generate-rsa-key 2048)
+      (crypto:generate-rsa-key :bits 2048)
       (let ((elapsed (- (get-internal-real-time) start-time)))
         ;; Should complete in less than 5 seconds
         (is (< elapsed (* 5 internal-time-units-per-second)))))

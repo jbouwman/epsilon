@@ -21,7 +21,7 @@
 
 (deftest test-rsa-sign-verify-sha256
   "Test RSA signing and verification with SHA-256"
-  (let ((key (crypto:generate-rsa-key 2048)))
+  (let ((key (crypto:generate-rsa-key :bits 2048)))
     ;; Sign message
     (let ((signature (crypto:sign-message key *test-message*
                                           :digest-algo crypto:+digest-sha256+)))
@@ -45,7 +45,7 @@
 
 (deftest test-rsa-sign-verify-sha512
   "Test RSA signing and verification with SHA-512"
-  (let ((key (crypto:generate-rsa-key 2048)))
+  (let ((key (crypto:generate-rsa-key :bits 2048)))
     ;; Sign with SHA-512
     (let ((signature (crypto:sign-message key *test-message*
                                           :digest-algo crypto:+digest-sha512+)))
@@ -62,7 +62,7 @@
 
 (deftest test-rsa-sign-binary-data
   "Test RSA signing of binary data"
-  (let ((key (crypto:generate-rsa-key 2048)))
+  (let ((key (crypto:generate-rsa-key :bits 2048)))
     ;; Sign binary data
     (let ((signature (crypto:sign-message key *test-binary-data*)))
       (is (typep signature '(vector (unsigned-byte 8))))
@@ -79,7 +79,7 @@
 
 (deftest test-ec-p256-sign-verify
   "Test EC P-256 signing and verification"
-  (let ((key (crypto:generate-ec-key :p256)))
+  (let ((key (crypto:generate-ec-key :curve :p256)))
     ;; Sign message
     (let ((signature (crypto:sign-message key *test-message*)))
       (is (typep signature '(vector (unsigned-byte 8))))
@@ -95,7 +95,7 @@
 
 (deftest test-ec-p384-sign-verify
   "Test EC P-384 signing and verification"
-  (let ((key (crypto:generate-ec-key :p384)))
+  (let ((key (crypto:generate-ec-key :curve :p384)))
     (let ((signature (crypto:sign-message key *test-message*)))
       (is (typep signature '(vector (unsigned-byte 8))))
       ;; P-384 signatures are larger than P-256
@@ -107,7 +107,7 @@
 
 (deftest test-ec-secp256k1-sign-verify
   "Test secp256k1 signing (Bitcoin/Ethereum curve)"
-  (let ((key (crypto:generate-ec-key :secp256k1)))
+  (let ((key (crypto:generate-ec-key :curve :secp256k1)))
     (let ((signature (crypto:sign-message key *test-message*)))
       (is (typep signature '(vector (unsigned-byte 8))))
       
@@ -151,7 +151,7 @@
 
 (deftest test-cross-key-verification-rsa
   "Test verification with exported/imported RSA keys"
-  (let* ((original-key (crypto:generate-rsa-key 2048))
+  (let* ((original-key (crypto:generate-rsa-key :bits 2048))
          (message "Test cross-key verification")
          (signature (crypto:sign-message original-key message)))
     
@@ -171,7 +171,7 @@
 
 (deftest test-cross-key-verification-ec
   "Test verification with exported/imported EC keys"
-  (let* ((original-key (crypto:generate-ec-key :p256))
+  (let* ((original-key (crypto:generate-ec-key :curve :p256))
          (message "Test EC cross-key")
          (signature (crypto:sign-message original-key message)))
     
@@ -184,8 +184,8 @@
 
 (deftest test-verify-with-wrong-key-type
   "Test that verification with wrong key type fails"
-  (let ((rsa-key (crypto:generate-rsa-key 2048))
-        (ec-key (crypto:generate-ec-key :p256)))
+  (let ((rsa-key (crypto:generate-rsa-key :bits 2048))
+        (ec-key (crypto:generate-ec-key :curve :p256)))
     
     ;; Sign with RSA
     (let ((rsa-sig (crypto:sign-message rsa-key *test-message*)))
@@ -201,7 +201,7 @@
 
 (deftest test-sign-large-data
   "Test signing large amounts of data"
-  (let ((key (crypto:generate-rsa-key 2048))
+  (let ((key (crypto:generate-rsa-key :bits 2048))
         ;; Create 10KB of data
         (large-data (make-string 10000 :initial-element #\A)))
     
@@ -222,7 +222,7 @@
 
 (deftest test-sign-without-private-key
   "Test that signing without private key fails"
-  (let* ((key (crypto:generate-rsa-key 2048))
+  (let* ((key (crypto:generate-rsa-key :bits 2048))
          ;; Get public key only
          (public-pem (crypto:key-to-pem key :private-p nil))
          (public-key (crypto:key-from-pem public-pem :private-p nil)))
@@ -237,7 +237,7 @@
 
 (deftest test-verify-without-public-key
   "Test that verification requires public key component"
-  (let ((key (crypto:generate-rsa-key 2048)))
+  (let ((key (crypto:generate-rsa-key :bits 2048)))
     ;; Normal key has both public and private
     (let ((signature (crypto:sign-message key *test-message*)))
       ;; Should verify successfully
@@ -247,7 +247,7 @@
 
 (deftest test-signature-algorithm-mismatch
   "Test that mismatched signature algorithms fail verification"
-  (let ((key (crypto:generate-rsa-key 2048)))
+  (let ((key (crypto:generate-rsa-key :bits 2048)))
     ;; Sign with SHA-256
     (let ((sig256 (crypto:sign-message key *test-message*
                                        :digest-algo crypto:+digest-sha256+)))
@@ -267,8 +267,8 @@
 (deftest test-signing-performance
   "Test performance of signing operations"
   (skip)
-  (let ((rsa-key (crypto:generate-rsa-key 2048))
-            (ec-key (crypto:generate-ec-key :p256))
+  (let ((rsa-key (crypto:generate-rsa-key :bits 2048))
+            (ec-key (crypto:generate-ec-key :curve :p256))
             (ed-key (crypto:generate-ed25519-key)))
         
         ;; RSA signing performance
