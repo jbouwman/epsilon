@@ -81,6 +81,10 @@
                            :action 'append
                            :metavar "MODULE[:PACKAGE[:NAME]]"
                            :help "Test specified module, package, or individual test (can be used multiple times)")
+    ;; Add list-tests option
+    (argparse:add-argument parser "--list-tests"
+                           :action 'store-true
+                           :help "List all tests with their hash identifiers")
     ;; Add verbose option
     (argparse:add-argument parser "--verbose"
                            :action 'store-true
@@ -227,22 +231,34 @@
 
 (defun parse-test-spec (spec)
   "Parse a test specification into module, package, and name components.
-   Returns (values module package name)."
-  (let* ((parts (seq:realize (str:split #\: spec)))
-         (num-parts (length parts)))
-    (case num-parts
-      (1 ;; Just module
-       (values (first parts) nil nil))
-      (2 ;; module:package or :package
-       (if (string= "" (first parts))
-           (values nil (second parts) nil)
-           (values (first parts) (second parts) nil)))
-      (3 ;; module:package:name or :package:name
-       (if (string= "" (first parts))
-           (values nil (second parts) (third parts))
-           (values (first parts) (second parts) (third parts))))
-      (otherwise
-       (error "Invalid test specification: ~A" spec)))))
+   Returns (values module package name).
+   Also supports hash format for individual test selection."
+  ;; Check if spec looks like a hash (short hex string)
+  (if (and (<= (length spec) 8)
+           (not (find #\: spec))
+           (every (lambda (c) 
+                    (or (digit-char-p c)
+                        (member c '(#\a #\b #\c #\d #\e #\f
+                                   #\A #\B #\C #\D #\E #\F))))
+                  spec))
+      ;; It's a hash - return it as the test name with no module/package
+      (values nil nil spec)
+      ;; Regular parsing
+      (let* ((parts (seq:realize (str:split #\: spec)))
+             (num-parts (length parts)))
+        (case num-parts
+          (1 ;; Just module
+           (values (first parts) nil nil))
+          (2 ;; module:package or :package
+           (if (string= "" (first parts))
+               (values nil (second parts) nil)
+               (values (first parts) (second parts) nil)))
+          (3 ;; module:package:name or :package:name
+           (if (string= "" (first parts))
+               (values nil (second parts) (third parts))
+               (values (first parts) (second parts) (third parts))))
+          (otherwise
+           (error "Invalid test specification: ~A" spec))))))
 
 (defun test-modules (environment modules &key verbose quiet)
   "Test multiple modules with result collection."
@@ -457,6 +473,46 @@
     ;; Summary
     (format t "~%Found ~D module~:P~%" (length module-data))))
 
+(defun list-all-tests (environment)
+  "List all available tests with their hash identifiers"
+  ;; Load test module
+  (handler-case
+      (loader:load-module environment "epsilon.test")
+    (error (e)
+      (format *error-output* "Error loading test module: ~A~%" e)
+      (return-from list-all-tests)))
+  
+  ;; Load all test modules to populate the registry
+  (let ((modules (loader:query-modules environment)))
+    (dolist (module modules)
+      (handler-case
+          (let ((module-name (loader:module-name module)))
+            ;; Only load test resources for modules that are already loaded
+            (when (loader:module-loaded-p module)
+              (loader:load-module-resources environment module-name :tests)))
+        (error (e)
+          ;; Ignore modules without tests or with errors
+          (log:debug "Skipping tests for module: ~A" e)
+          nil))))
+  
+  ;; Get the list of tests with hashes
+  (let ((list-fn (find-symbol "LIST-ALL-TESTS-WITH-HASHES" 
+                              (find-package "EPSILON.TEST.SUITE"))))
+    (when list-fn
+      (let ((tests (funcall list-fn)))
+        (if tests
+            (progn
+              (format t "~&Test ID   Package                              Test Name~%")
+              (format t "--------  -----------------------------------  --------------------------~%")
+              (dolist (entry tests)
+                (destructuring-bind (hash symbol test-id) entry
+                  (declare (ignore test-id))
+                  (let* ((package-name (package-name (symbol-package symbol)))
+                         (test-name (symbol-name symbol)))
+                    (format t "~8A  ~35A  ~A~%" 
+                            hash package-name test-name)))))
+            (format t "~&No tests registered.~%"))))))
+
 (defun start-interactive-repl ()
   "Start the epsilon interactive REPL."
   (format t "Epsilon REPL~%")
@@ -464,8 +520,19 @@
   (sb-impl::toplevel-init))
 
 (defun process-test-option (environment parsed-args)
-  "Process --test option from parsed arguments.
+  "Process --test and --list-tests options from parsed arguments.
    Returns T if tests were run and should exit."
+  ;; Handle --list-tests
+  (when (map:get (argparse:parsed-options parsed-args) "list_tests")
+    (handler-case
+        (progn
+          (list-all-tests environment)
+          (return-from process-test-option t))
+      (error (e)
+        (format *error-output* "Error listing tests: ~A~%" e)
+        (return-from process-test-option t))))
+  
+  ;; Handle --test
   (let ((modules-to-test (map:get (argparse:parsed-options parsed-args) "test"))
         (verbose (map:get (argparse:parsed-options parsed-args) "verbose"))
         (quiet (map:get (argparse:parsed-options parsed-args) "quiet")))
