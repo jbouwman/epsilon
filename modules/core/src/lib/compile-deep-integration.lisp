@@ -84,7 +84,6 @@
     
     (with-open-file (stream pathname :direction :input)
       (let ((char-pos 0)
-            (forms '())
             (*read-suppress* nil))
         
         ;; First pass: collect line starts
@@ -196,7 +195,7 @@
                  (t nil)))
     
     ;; NEW: Extract line numbers from SBCL source path system
-    (multiple-value-bind (extracted-line extracted-column extracted-pos)
+    (multiple-value-bind (extracted-line extracted-column)
         (extract-line-from-sbcl-source-path path)
       (when extracted-line
         (setf line extracted-line
@@ -308,13 +307,7 @@
   "Convert SBCL source path to our location structure."
   (when source-path
     (let ((form-number (length source-path))
-          (toplevel-form-index nil)
           (file nil))
-      
-      ;; Extract toplevel form index from path
-      (when (and (listp source-path)
-                 (eq (car source-path) 'sb-c::original-source-start))
-        (setf toplevel-form-index (third source-path)))
       
       ;; Get file from compilation state
       (when (and (boundp 'sb-c::*compile-file-pathname*)
@@ -355,8 +348,7 @@
                     (let ((char-pos (aref positions form-index)))
                       ;; Convert character position to line number
                       (values (file-position-to-line-number file-info char-pos)
-                              nil ; column (TODO: implement)
-                              char-pos))))))))))))
+                              nil))))))))))))  ; column (TODO: implement)
 
 (defun file-position-to-line-number (file-info char-position)
   "Convert file character position to line number using SBCL file info."

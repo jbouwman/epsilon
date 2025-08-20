@@ -114,6 +114,7 @@
 
 (defun generate-ec-key (curve)
   "Generate an EC key pair using OpenSSL 3.0 API"
+  (declare (ignore curve)) ;; TODO: Implement curve parameter
   ;; For now, use the same pattern as RSA but with "EC" algorithm
   (let* ((ctx (%evp-pkey-ctx-new-from-name 
                 (sb-sys:int-sap 0) "EC" (sb-sys:int-sap 0)))

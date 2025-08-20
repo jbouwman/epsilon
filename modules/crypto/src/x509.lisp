@@ -351,6 +351,7 @@
 
 (defun sign-csr (csr-handle issuer subject signing-key &key (days 365) (serial 1))
   "Sign a CSR to create a certificate"
+  (declare (ignore subject)) ;; Subject is copied from CSR
   (with-x509 (x509)
     ;; Set certificate fields
     (set-x509-version x509 2)  ; X509 v3

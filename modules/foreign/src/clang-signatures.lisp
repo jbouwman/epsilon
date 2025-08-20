@@ -289,6 +289,7 @@
 
 (defun extract-function-signature (function-name &key headers include-paths)
   "Extract function signature using clang parser"
+  (declare (ignore include-paths))
   (let* ((header-content (generate-minimal-header function-name headers))
          (signatures (parse-header-for-signatures header-content)))
     (find-if (lambda (sig)
@@ -367,7 +368,6 @@
   "Complete signature extraction pipeline"
   (handler-case
       (let* ((detected-headers (or headers (detect-function-headers function-name)))
-             (header-content (generate-minimal-header function-name detected-headers))
              (signature (extract-function-signature function-name :headers detected-headers)))
         (when signature
           (cache-signature function-name signature :library library :headers detected-headers)

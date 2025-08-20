@@ -766,6 +766,7 @@ exec \"$SBCL\" --script \"$EPSILON_BOOT\" \"$@\"
 
 (defun create-tar-archive-with-working-directory (release-dir release-name working-dir)
   "Create a tar.gz archive for Unix releases with explicit working directory."
+  (declare (ignore release-dir))
   (handler-case
       (progn
         (process:run-sync "tar" 

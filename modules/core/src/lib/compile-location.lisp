@@ -187,6 +187,7 @@
 
 (defun track-source-location (form)
   "Track the source location of a form being compiled."
+  (declare (ignore form))
   (when *source-tracking-enabled*
     (setf *current-tracked-location* (get-current-source-location))))
 
