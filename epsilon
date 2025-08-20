@@ -27,9 +27,10 @@ if ! command -v sbcl >/dev/null 2>&1; then
     exit 1
 fi
 
-# Parse debug and rebuild flags before passing to SBCL
+# Parse debug, rebuild, and quiet flags before passing to SBCL
 DEBUG_MODE="false"
 REBUILD_BOOT="false"
+QUIET_MODE="false"
 
 # Check for our custom flags
 while [ $# -gt 0 ]; do
@@ -40,6 +41,10 @@ while [ $# -gt 0 ]; do
             ;;
         --rebuild)
             REBUILD_BOOT="true"
+            shift
+            ;;
+        --quiet)
+            QUIET_MODE="true"
             shift
             ;;
         *)
@@ -63,6 +68,16 @@ else
 fi
 
 cd "$EPSILON_HOME"
+
+# Pass --quiet flag back to the Lisp side if quiet mode is enabled
+if [ "$QUIET_MODE" = "true" ]; then
+    if [ $# -eq 0 ]; then
+        set -- "--quiet"
+    else
+        set -- "--quiet" "$@"
+    fi
+fi
+
 # Note: SBCL args must be unquoted, user args must be quoted
 if [ $# -eq 0 ]; then
     exec sbcl $SBCL_RUNTIME_ARGS \

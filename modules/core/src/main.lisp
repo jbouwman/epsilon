@@ -85,6 +85,10 @@
     (argparse:add-argument parser "--verbose"
                            :action 'store-true
                            :help "Enable verbose test output")
+    ;; Add quiet option
+    (argparse:add-argument parser "--quiet"
+                           :action 'store-true
+                           :help "Suppress warnings and minimize output")
     parser))
 
 ;;; Pure Data Transformation Functions
@@ -240,10 +244,10 @@
       (otherwise
        (error "Invalid test specification: ~A" spec)))))
 
-(defun test-modules (environment modules &key verbose)
+(defun test-modules (environment modules &key verbose quiet)
   "Test multiple modules with result collection."
-  (log:debug "test-modules called with environment: ~A, modules: ~A, verbose: ~A" 
-             environment modules verbose)
+  (log:debug "test-modules called with environment: ~A, modules: ~A, verbose: ~A, quiet: ~A" 
+             environment modules verbose quiet)
   (loader:load-module environment "epsilon.test")
   (let ((run-fn (find-symbol "RUN" (find-package "EPSILON.TEST"))))
     (dolist (spec modules)
@@ -255,7 +259,9 @@
         (when module
           (loader:load-module environment module))
         ;; Run tests with filters
-        (let* ((format (if verbose :verbose :shell))
+        (let* ((format (cond (quiet :minimal)
+                            (verbose :verbose)
+                            (t :shell)))
                (result (funcall run-fn environment module 
                                :package package-filter
                                :test-name name-filter
@@ -461,9 +467,10 @@
   "Process --test option from parsed arguments.
    Returns T if tests were run and should exit."
   (let ((modules-to-test (map:get (argparse:parsed-options parsed-args) "test"))
-        (verbose (map:get (argparse:parsed-options parsed-args) "verbose")))
+        (verbose (map:get (argparse:parsed-options parsed-args) "verbose"))
+        (quiet (map:get (argparse:parsed-options parsed-args) "quiet")))
     (when modules-to-test
-      (test-modules environment modules-to-test :verbose verbose)
+      (test-modules environment modules-to-test :verbose verbose :quiet quiet)
       ;; Check if we should exit
       (let ((has-other-actions 
              (or (and (map:get (argparse:parsed-options parsed-args) "eval")
@@ -545,6 +552,11 @@
         (let* ((filtered-args (remove-exec-args epsilon-args))
                (parsed-args (argparse:parse-args arg-parser filtered-args)))
         ;; Check global options
+        (when (map:get (argparse:parsed-options parsed-args) "quiet")
+          ;; Set minimal logging and suppress warnings
+          (map:assoc! (loader:environment-config environment) :warning-behavior :muffle)
+          (log:configure-from-string "warn"))
+        
         (when (map:get (argparse:parsed-options parsed-args) "log")
           (log:configure-from-string (map:get (argparse:parsed-options parsed-args) "log")))
             

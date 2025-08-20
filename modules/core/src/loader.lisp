@@ -808,6 +808,12 @@
   COMPILE-ONLY - Only compile, don't load (for backward compatibility with build)
   
   Returns T if successfully loaded/compiled, NIL otherwise."
+  ;; Check if module is already loaded
+  (let ((module-info (get-module environment package)))
+    (when (and module-info (module-loaded-p module-info) (not force))
+      (log:debug "Module ~A already loaded, skipping" package)
+      (return-from load-module t)))
+  
   (let* ((module-info (get-module environment package))
          (location (when module-info (module-location module-info)))
          (module-dir (if location

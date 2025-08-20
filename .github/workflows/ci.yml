@@ -9,6 +9,8 @@ on:
 permissions:
   contents: read
   packages: write
+  checks: write
+  id-token: write
 
 env:
   CACHE_VERSION: v1

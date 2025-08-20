@@ -5,4 +5,6 @@
 
 (boot)
 
-(epsilon.loader:load-module (epsilon.loader:environment) "epsilon.core")
+;; Suppress redefinition warnings during module loading
+(handler-bind ((sb-kernel:redefinition-warning #'muffle-warning))
+  (epsilon.loader:load-module (epsilon.loader:environment) "epsilon.core"))
