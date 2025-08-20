@@ -115,6 +115,58 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
   nil)
 
 ;;;
+;;; 'minimal' formatter
+;;;
+
+(defclass minimal-report ()
+  ((failure-count :initform 0 :accessor failure-count)
+   (error-count :initform 0 :accessor error-count)
+   (test-count :initform 0 :accessor test-count)
+   (start-time :initform nil :accessor start-time)))
+
+(defmethod event ((formatter minimal-report) (event-type (eql :start)) event-data)
+  (setf (start-time formatter) (get-internal-real-time))
+  (format t "Running tests...~%"))
+
+(defmethod event ((formatter minimal-report) (event-type (eql :end-test)) result)
+  (incf (test-count formatter))
+  (case (suite:status result)
+    (:failure
+     (incf (failure-count formatter))
+     (format t "✗ ~A~%" (suite:test result))
+     (when (suite:condition result)
+       (format t "  ~A~%" (suite::failure-message (suite:condition result)))))
+    (:error
+     (incf (error-count formatter))
+     (format t "✗ ~A (ERROR)~%" (suite:test result))
+     (when (suite:condition result)
+       (format t "  ~A~%" (suite::original-error (suite:condition result)))))
+    (:skip
+     ;; Don't output anything for skipped tests in minimal mode
+     nil)
+    (otherwise
+     ;; Don't output anything for passing tests in minimal mode
+     nil)))
+
+(defmethod event ((formatter minimal-report) (event-type (eql :end)) run)
+  (let* ((total-tests (test-count formatter))
+         (failures (failure-count formatter))
+         (errors (error-count formatter))
+         (passed (- total-tests failures errors (length (suite:skipped run))))
+         (elapsed-time (/ (- (get-internal-real-time) (start-time formatter))
+                         internal-time-units-per-second)))
+    (format t "~%")
+    (if (and (zerop failures) (zerop errors))
+        (format t "✓ All ~D tests passed (~,2fs)~%" total-tests elapsed-time)
+        (format t "Tests: ~D passed, ~D failed~@[, ~D errors~] (~,2fs)~%"
+                passed failures (when (> errors 0) errors) elapsed-time))))
+
+(defmethod event ((formatter minimal-report) event-type event-data)
+  ;; Ignore other events
+  (declare (ignore formatter event-type event-data))
+  nil)
+
+;;;
 ;;; 'junit' XML formatter
 ;;;
 
@@ -465,6 +517,7 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
   (map:make-map :none 'null-report
                 :shell 'shell-report
                 :verbose 'verbose-report
+                :minimal 'minimal-report
                 :junit 'junit-report
                 :tap 'tap-report))
 

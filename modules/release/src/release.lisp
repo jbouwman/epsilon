@@ -253,11 +253,13 @@
         (format stream "</testsuites>~%"))))
   (log:info "JUnit report written to ~A" file))
 
-(defun selftest (&key (environment (loader:environment)) (format :shell) (file nil))
+(defun selftest (&key (environment (loader:environment)) (format :shell) (file nil) quiet)
   "Discover all modules and test them sequentially.
    FORMAT can be :shell (default) or :junit for XML output.
-   FILE specifies the output file for junit format."
-  (log:info "Starting Epsilon Release Self-Test")
+   FILE specifies the output file for junit format.
+   QUIET suppresses informational messages."
+  (unless quiet
+    (log:info "Starting Epsilon Release Self-Test"))
   
   ;; Convert string format to keyword for compatibility
   (when (stringp format)
@@ -270,14 +272,16 @@
         (failed-modules '())
         (all-results '()))
     
-    (log:info "Found ~D modules to test" (length modules))
+    (unless quiet
+      (log:info "Found ~D modules to test" (length modules)))
     
     ;; Ensure epsilon.test is loaded once
     (unless (find-package "EPSILON.TEST")
       (loader:load-module environment "epsilon.test"))
     
     (dolist (module modules)
-      (log:info "Testing ~A..." module)
+      (unless quiet
+        (log:info "Testing ~A..." module))
       (incf total-tested)
       
       (let ((result nil))
