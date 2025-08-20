@@ -416,9 +416,17 @@
                          (when *load-pathname*
                            (enough-namestring *load-pathname*))
                          nil))
-         ;; Line number capture would require compiler cooperation
-         ;; For now, we could use a counter or debug info if available
-         (,line-var nil))
+         ;; Try to get line number from deep integration if available
+         (,line-var (when (find-package :epsilon.compile-deep-integration)
+                      (let ((deep-pkg (find-package :epsilon.compile-deep-integration))
+                            (api-pkg (find-package :epsilon.compile-api)))
+                        (when (and deep-pkg api-pkg)
+                          (let ((location-var (find-symbol "*CURRENT-COMPILATION-LOCATION*" deep-pkg))
+                                (line-fn (find-symbol "SOURCE-LOCATION-LINE" api-pkg)))
+                            (when (and location-var line-fn 
+                                       (boundp location-var)
+                                       (symbol-value location-var))
+                              (funcall line-fn (symbol-value location-var)))))))))
      ,@body))
 
 (defmacro log (level format-string &rest args)

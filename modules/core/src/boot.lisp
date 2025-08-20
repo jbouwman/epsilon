@@ -27,6 +27,11 @@
     "lib/hex"
     "lib/url"
     "lib/protocol"
+    "lib/compile-api"
+    "lib/compile-location"
+    "lib/compile-hooks"
+    "lib/compile"
+    "lib/compile-deep-integration"
     "loader"
     "main"))
 
