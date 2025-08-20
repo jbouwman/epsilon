@@ -15,7 +15,7 @@
   "Create a test certificate for testing"
   (let ((key (case key-type
                    (:rsa (crypto:generate-rsa-key key-size))
-                   (:ec (crypto:generate-ec-key :p256))
+                   (:ec (crypto:generate-ec-key :curve :p256))
                    (:ed25519 (crypto:generate-ed25519-key)))))
     (crypto:create-certificate 
      :key key
@@ -28,7 +28,7 @@
 
 (deftest test-create-csr-rsa
   "Test creating a CSR with RSA key"
-  (let ((key (crypto:generate-rsa-key 2048)))
+  (let ((key (crypto:generate-rsa-key :bits 2048)))
     (let ((csr-pem (crypto:create-csr key :subject-cn "test.example.com")))
       (is (stringp csr-pem))
       (is (search "-----BEGIN CERTIFICATE REQUEST-----" csr-pem))
@@ -36,7 +36,7 @@
 
 (deftest test-create-csr-ec
   "Test creating a CSR with EC key"
-  (let ((key (crypto:generate-ec-key :p256)))
+  (let ((key (crypto:generate-ec-key :curve :p256)))
     (let ((csr-pem (crypto:create-csr key :subject-cn "ec.example.com")))
       (is (stringp csr-pem))
       (is (search "-----BEGIN CERTIFICATE REQUEST-----" csr-pem))
@@ -52,7 +52,7 @@
 
 (deftest test-csr-without-private-key
   "Test that CSR creation requires private key"
-  (let* ((key (crypto:generate-rsa-key 2048))
+  (let* ((key (crypto:generate-rsa-key :bits 2048))
          ;; Get public key only
          (public-pem (crypto:key-to-pem key :private-p nil))
          (public-key (crypto:key-from-pem public-pem :private-p nil)))
@@ -72,7 +72,7 @@
   (format t "~%[TEST] Starting self-signed certificate test~%")
   (let* ((key (progn 
                 (format t "[TEST] Generating RSA key...~%")
-                (crypto:generate-rsa-key 2048))))
+                (crypto:generate-rsa-key :bits 2048))))
     (format t "[TEST] RSA key generated successfully: ~A~%" (crypto:crypto-key-p key))
     (format t "[TEST] Creating certificate with subject/issuer: Self Signed Test~%")
     (handler-case
@@ -98,7 +98,7 @@
 
 (deftest test-create-certificate-with-ec-key
   "Test creating certificate with EC key"
-  (let* ((key (crypto:generate-ec-key :p384))
+  (let* ((key (crypto:generate-ec-key :curve :p384))
 	 (cert (crypto:create-certificate
 		:key key
 		:subject-cn "EC Certificate"
@@ -115,7 +115,7 @@
 
 (deftest test-certificate-validity-period
   "Test certificate validity period settings"
-  (let* ((key (crypto:generate-rsa-key 2048))
+  (let* ((key (crypto:generate-rsa-key :bits 2048))
 	 (cert (crypto:create-certificate
 		:key key
 		:subject-cn "Validity Test"
@@ -136,7 +136,7 @@
 
 (deftest test-certificate-pem-export-import
   "Test exporting and importing certificates in PEM format"
-  (let* ((key (crypto:generate-rsa-key 2048))
+  (let* ((key (crypto:generate-rsa-key :bits 2048))
 	 (original-cert (crypto:create-certificate
 			 :key key
 			 :subject-cn "Export Test"
@@ -168,7 +168,7 @@
 
 (deftest test-extract-public-key-from-certificate
   "Test extracting public key from certificate"
-  (let* ((key (crypto:generate-rsa-key 2048))
+  (let* ((key (crypto:generate-rsa-key :bits 2048))
 	 (cert (crypto:create-certificate
 		:key key
 		:subject-cn "Key Extraction Test"))
@@ -189,7 +189,7 @@
 
 (deftest test-verify-self-signed-certificate
   "Test verification of self-signed certificate"
-  (let* ((key (crypto:generate-rsa-key 2048))
+  (let* ((key (crypto:generate-rsa-key :bits 2048))
 	 (cert (crypto:create-certificate
 		:key key
 		:subject-cn "Self Signed"
@@ -202,8 +202,8 @@
 
 (deftest test-verify-certificate-with-wrong-key
   "Test that certificate verification fails with wrong key"
-  (let* ((key1 (crypto:generate-rsa-key 2048))
-	 (key2 (crypto:generate-rsa-key 2048))
+  (let* ((key1 (crypto:generate-rsa-key :bits 2048))
+	 (key2 (crypto:generate-rsa-key :bits 2048))
 	 (cert (crypto:create-certificate
 		:key key1
 		:subject-cn "Test Cert")))
@@ -216,7 +216,7 @@
 (deftest test-certificate-chain-scenario
   "Test a simulated certificate chain scenario"
   (let* (;; Create CA key and certificate
-	 (ca-key (crypto:generate-rsa-key 2048))
+	 (ca-key (crypto:generate-rsa-key :bits 2048))
 	 (ca-cert (crypto:create-certificate
 		   :key ca-key
 		   :subject-cn "Test Root CA"
@@ -225,7 +225,7 @@
 		   :days 3650))
 	 
 	 ;; Create server key
-	 (server-key (crypto:generate-rsa-key 2048))
+	 (server-key (crypto:generate-rsa-key :bits 2048))
 	 ;; In real scenario, CA would sign server's CSR
 	 ;; Here we simulate with self-signed cert
 	 (server-cert (crypto:create-certificate
@@ -251,7 +251,7 @@
 
 (deftest test-load-save-key-cert-pair
   "Test loading and saving key/certificate pairs"
-  (let* ((key (crypto:generate-rsa-key 2048))
+  (let* ((key (crypto:generate-rsa-key :bits 2048))
 	 (cert (crypto:create-certificate
 		:key key
 		:subject-cn "Pair Test"))
@@ -283,7 +283,7 @@
 
 (deftest test-certificate-distinguished-names
   "Test certificate subject and issuer distinguished names"
-  (let* ((key (crypto:generate-rsa-key 2048))
+  (let* ((key (crypto:generate-rsa-key :bits 2048))
 	 (cert (crypto:create-certificate
 		:key key
 		:subject-cn "Test Subject CN"
@@ -301,7 +301,7 @@
 
 (deftest test-certificate-creation-performance
   "Test performance of certificate creation"
-  (let ((key (crypto:generate-rsa-key 2048)))
+  (let ((key (crypto:generate-rsa-key :bits 2048)))
     ;; Measure certificate creation time
     (let ((start (get-internal-real-time)))
       (dotimes (i 10)
@@ -315,7 +315,7 @@
 
 (deftest test-csr-creation-performance
   "Test performance of CSR creation"
-  (let ((key (crypto:generate-rsa-key 2048)))
+  (let ((key (crypto:generate-rsa-key :bits 2048)))
     ;; Measure CSR creation time
     (let ((start (get-internal-real-time)))
       (dotimes (i 10)

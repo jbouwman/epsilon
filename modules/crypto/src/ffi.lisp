@@ -669,11 +669,11 @@
 
 ;; Scrypt
 (lib:defshared %evp-pbe-scrypt "EVP_PBE_scrypt" "libcrypto" :int
-  (pass :pointer) (passlen :size-t)
-  (salt :pointer) (saltlen :size-t)
-  (n :uint64) (r :uint64) (p :uint64)
-  (maxmem :uint64)
-  (key :pointer) (keylen :size-t)
+  (pass :pointer) (passlen :unsigned-long)
+  (salt :pointer) (saltlen :unsigned-long)
+  (n :unsigned-long) (r :unsigned-long) (p :unsigned-long)
+  (maxmem :unsigned-long)
+  (key :pointer) (keylen :unsigned-long)
   :documentation "Scrypt key derivation function")
 
 ;; HKDF constants

@@ -460,7 +460,10 @@
    Example:
      (crypto-random-integer 100)  ; Returns 0-99"
   (declare (type (integer 1 *) max))
-  (let* ((bytes-needed (ceiling (log max 256)))
+  ;; Special case for max=1
+  (when (= max 1)
+    (return-from crypto-random-integer 0))
+  (let* ((bytes-needed (max 1 (ceiling (log max 256))))
          (bytes (crypto-random-bytes bytes-needed))
          (value 0))
     (loop for i from 0 below bytes-needed

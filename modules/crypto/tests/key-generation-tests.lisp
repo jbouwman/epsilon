@@ -277,7 +277,7 @@
   (when (with-test-key :rsa 2048)  ; Check if OpenSSL is available
     ;; RSA 2048 should complete in reasonable time
     (let ((start-time (get-internal-real-time)))
-      (crypto:generate-rsa-key 2048)
+      (crypto:generate-rsa-key :bits 2048)
       (let ((elapsed (- (get-internal-real-time) start-time)))
         ;; Should complete in less than 5 seconds
         (is (< elapsed (* 5 internal-time-units-per-second)))))

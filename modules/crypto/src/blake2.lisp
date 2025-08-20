@@ -135,7 +135,7 @@
                 (sb-alien:with-alien ((len-holder sb-alien:unsigned-int 64))
                   (when (zerop (ffi:%evp-digestfinal-ex ctx
                                                         (sb-sys:vector-sap full-hash)
-                                                        (sb-alien:addr len-holder)))
+                                                        (sb-alien:alien-sap (sb-alien:addr len-holder))))
                     (error 'crypto-error :code (ffi:%err-get-error)
                            :message "Failed to finalize BLAKE2b"))))
               
@@ -237,7 +237,7 @@
                 (sb-alien:with-alien ((len-holder sb-alien:unsigned-int 32))
                   (when (zerop (ffi:%evp-digestfinal-ex ctx
                                                         (sb-sys:vector-sap full-hash)
-                                                        (sb-alien:addr len-holder)))
+                                                        (sb-alien:alien-sap (sb-alien:addr len-holder))))
                     (error 'crypto-error :code (ffi:%err-get-error)
                            :message "Failed to finalize BLAKE2s"))))
               

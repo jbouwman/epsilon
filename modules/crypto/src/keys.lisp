@@ -60,7 +60,7 @@
    
    Errors:
      Signals CRYPTO-ERROR if key generation fails or invalid bit size specified."
-  (declare (type (member 2048 3072 4096) bits))
+  ;; Don't declare type here so we can handle invalid sizes gracefully
   (unless (member bits '(2048 3072 4096))
     (error 'crypto-error :code -1 
            :message (format nil "RSA key size must be 2048, 3072, or 4096 bits, got ~A" bits)))
@@ -146,7 +146,7 @@
    
    Errors:
      Signals CRYPTO-ERROR if key generation fails or unsupported curve specified."
-  (declare (type (member :p256 :p384 :p521 :secp256k1) curve))
+  ;; Don't declare type here so we can handle invalid curves gracefully
   (let* ((curve-name (case curve
 			   (:p256 "prime256v1")
 			   (:p384 "secp384r1")
@@ -597,7 +597,10 @@
 
 (defun crypto-random-integer (max)
   "Generate random integer from 0 to max-1"
-  (let* ((bytes-needed (ceiling (log max 256)))
+  ;; Special case for max=1
+  (when (= max 1)
+    (return-from crypto-random-integer 0))
+  (let* ((bytes-needed (max 1 (ceiling (log max 256))))
          (bytes (utils:crypto-random-bytes bytes-needed))
          (value 0))
     (loop for i from 0 below bytes-needed

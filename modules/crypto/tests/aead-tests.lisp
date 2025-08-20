@@ -77,7 +77,7 @@
     
     ;; Decrypt with wrong AAD should fail
     (let ((wrong-aad (sb-ext:string-to-octets "wrong" :external-format :utf-8)))
-      (is-thrown crypto-error
+      (is-thrown (crypto-error)
                  (crypto:aes-gcm-decrypt 
                   (getf result :ciphertext)
                   key
@@ -86,7 +86,7 @@
                   :aad wrong-aad)))
     
     ;; Decrypt with no AAD should also fail
-    (is-thrown crypto-error
+    (is-thrown (crypto-error)
                (crypto:aes-gcm-decrypt 
                 (getf result :ciphertext)
                 key
@@ -122,7 +122,7 @@
     (let ((tampered-ciphertext (copy-seq (getf result :ciphertext))))
       (setf (aref tampered-ciphertext 0) 
             (logxor (aref tampered-ciphertext 0) #xFF))
-      (is-thrown crypto-error
+      (is-thrown (crypto-error)
                  (crypto:aes-gcm-decrypt 
                   tampered-ciphertext
                   key
@@ -133,7 +133,7 @@
     (let ((tampered-tag (copy-seq (getf result :tag))))
       (setf (aref tampered-tag 0)
             (logxor (aref tampered-tag 0) #xFF))
-      (is-thrown crypto-error
+      (is-thrown (crypto-error)
                  (crypto:aes-gcm-decrypt 
                   (getf result :ciphertext)
                   key
@@ -186,7 +186,7 @@
                   decrypted)))
     
     ;; Decrypt with wrong AAD should fail
-    (is-thrown crypto-error
+    (is-thrown (crypto-error)
                (crypto:chacha20-poly1305-decrypt 
                 (getf result :ciphertext)
                 key
@@ -222,7 +222,7 @@
     ;; Tamper with ciphertext
     (let ((tampered (copy-seq (getf result :ciphertext))))
       (setf (aref tampered 0) (logxor (aref tampered 0) #xFF))
-      (is-thrown crypto-error
+      (is-thrown (crypto-error)
                  (crypto:chacha20-poly1305-decrypt 
                   tampered
                   key
@@ -232,7 +232,7 @@
     ;; Tamper with tag
     (let ((tampered-tag (copy-seq (getf result :tag))))
       (setf (aref tampered-tag 0) (logxor (aref tampered-tag 0) #xFF))
-      (is-thrown crypto-error
+      (is-thrown (crypto-error)
                  (crypto:chacha20-poly1305-decrypt 
                   (getf result :ciphertext)
                   key
@@ -291,19 +291,19 @@
 (deftest test-aead-invalid-parameters
   "Test AEAD with invalid parameters"
   ;; Invalid key sizes
-  (is-thrown crypto-error
+  (is-thrown (crypto-error)
              (crypto:aes-gcm-encrypt "data" (crypto:crypto-random-bytes 24)))
   
-  (is-thrown crypto-error
+  (is-thrown (crypto-error)
              (crypto:chacha20-poly1305-encrypt "data" (crypto:crypto-random-bytes 16)))
   
   ;; Invalid IV/nonce sizes
-  (is-thrown crypto-error
+  (is-thrown (crypto-error)
              (crypto:aes-gcm-encrypt "data" 
                                      (crypto:crypto-random-bytes 32)
                                      :iv (crypto:crypto-random-bytes 16)))
   
-  (is-thrown crypto-error
+  (is-thrown (crypto-error)
              (crypto:chacha20-poly1305-encrypt "data"
                                                (crypto:crypto-random-bytes 32)
                                                :nonce (crypto:crypto-random-bytes 16))))

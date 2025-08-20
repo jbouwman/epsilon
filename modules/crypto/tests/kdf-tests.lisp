@@ -186,9 +186,9 @@
   "Test that scrypt rejects non-power-of-2 N values"
   (handler-case
       (progn
-        (is-thrown crypto-error
+        (is-thrown (crypto-error)
                    (crypto:scrypt "password" "salt" :n 16383))  ; Not power of 2
-        (is-thrown crypto-error
+        (is-thrown (crypto-error)
                    (crypto:scrypt "password" "salt" :n 24576))) ; Not power of 2
     (crypto-error ()
       ;; If scrypt itself is not available, skip this test

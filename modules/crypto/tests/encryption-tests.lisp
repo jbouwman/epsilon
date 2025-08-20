@@ -23,7 +23,7 @@
 
 (deftest test-rsa-encrypt-decrypt-basic
   "Test basic RSA encryption and decryption"
-  (let ((key (crypto:generate-rsa-key 2048))
+  (let ((key (crypto:generate-rsa-key :bits 2048))
         (plaintext "Secret message!"))
     
     ;; Encrypt with public key
@@ -42,7 +42,7 @@
 
 (deftest test-rsa-encrypt-decrypt-various-sizes
   "Test RSA encryption with various plaintext sizes"
-  (let ((key (crypto:generate-rsa-key 2048)))
+  (let ((key (crypto:generate-rsa-key :bits 2048)))
     (dolist (plaintext *test-plaintexts*)
       (unless (string= plaintext "")  ; Skip empty string
         (let* ((ciphertext (crypto:encrypt key plaintext))
@@ -52,7 +52,7 @@
 
 (deftest test-rsa-encrypt-max-size
   "Test RSA encryption with maximum allowed plaintext size"
-  (let* ((key (crypto:generate-rsa-key 2048))
+  (let* ((key (crypto:generate-rsa-key :bits 2048))
          ;; Max plaintext size for RSA-2048 with PKCS1 padding is ~245 bytes
          (max-plaintext (make-string 200 :initial-element #\X)))
     
@@ -62,8 +62,8 @@
 
 (deftest test-rsa-decrypt-with-wrong-key
   "Test that decryption with wrong key fails or produces garbage"
-  (let ((key1 (crypto:generate-rsa-key 2048))
-        (key2 (crypto:generate-rsa-key 2048))
+  (let ((key1 (crypto:generate-rsa-key :bits 2048))
+        (key2 (crypto:generate-rsa-key :bits 2048))
         (plaintext "Secret"))
     
     (let ((ciphertext (crypto:encrypt key1 plaintext)))
@@ -79,7 +79,7 @@
 
 (deftest test-rsa-encrypt-binary-data
   "Test RSA encryption of binary data"
-  (let ((key (crypto:generate-rsa-key 2048))
+  (let ((key (crypto:generate-rsa-key :bits 2048))
         (binary-data (make-array 100 :element-type '(unsigned-byte 8)
                                  :initial-contents (loop for i from 0 below 100
                                                          collect (mod i 256)))))
@@ -94,7 +94,7 @@
 
 (deftest test-non-rsa-encryption
   "Test that non-RSA keys cannot be used for encryption"
-  (let ((ec-key (crypto:generate-ec-key :p256))
+  (let ((ec-key (crypto:generate-ec-key :curve :p256))
         (ed-key (crypto:generate-ed25519-key)))
     
     ;; EC key should not support encryption
@@ -197,7 +197,7 @@
 
 (deftest test-encrypt-with-public-key-only
   "Test encryption with public key only (no private key)"
-  (let* ((key (crypto:generate-rsa-key 2048))
+  (let* ((key (crypto:generate-rsa-key :bits 2048))
 	 ;; Export and reimport public key only
 	 (public-pem (crypto:key-to-pem key :private-p nil))
 	 (public-key (crypto:key-from-pem public-pem :private-p nil))
@@ -223,7 +223,7 @@
 
 (deftest test-cross-key-encryption
   "Test encryption/decryption with exported/imported keys"
-  (let* ((original-key (crypto:generate-rsa-key 2048))
+  (let* ((original-key (crypto:generate-rsa-key :bits 2048))
 	 (plaintext "Cross-key test message"))
     
     ;; Export and reimport the full key
@@ -244,7 +244,7 @@
 
 (deftest test-encryption-performance
   "Test performance of encryption operations"
-  (let ((key (crypto:generate-rsa-key 2048))
+  (let ((key (crypto:generate-rsa-key :bits 2048))
 	(plaintext "Performance test message"))
     
     ;; Measure encryption time
@@ -286,7 +286,7 @@
 
 (deftest test-encrypt-empty-string
   "Test encryption of empty string"
-  (let ((key (crypto:generate-rsa-key 2048))
+  (let ((key (crypto:generate-rsa-key :bits 2048))
 	(plaintext ""))
     ;; Some implementations might not handle empty string
     (handler-case
