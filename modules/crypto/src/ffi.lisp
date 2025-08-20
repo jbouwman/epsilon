@@ -153,6 +153,14 @@
    #:%evp-decryptupdate
    #:%evp-decryptfinal-ex
    #:%evp-cipher-ctx-ctrl
+   ;; Security and initialization functions
+   #:%rand-status
+   #:%rand-seed
+   #:%openssl-init-crypto
+   #:%openssl-cleanse
+   #:%crypto-memcmp
+   #:%openssl-version
+   #:%err-load-crypto-strings
    ;; Error condition and accessors
    #:crypto-error
    #:crypto-error-code
@@ -647,9 +655,36 @@
   (buf :pointer) (num :int)
   :documentation "Generate random bytes")
 
+(lib:defshared %rand-status "RAND_status" "libcrypto" :int ()
+  :documentation "Check if PRNG is seeded")
+
+(lib:defshared %rand-seed "RAND_seed" "libcrypto" :void
+  (buf :pointer) (num :int)
+  :documentation "Seed the PRNG")
+
+;; Security functions
+(lib:defshared %openssl-init-crypto "OPENSSL_init_crypto" "libcrypto" :int
+  (opts :unsigned-long) (settings :pointer)
+  :documentation "Initialize OpenSSL crypto library")
+
+(lib:defshared %openssl-cleanse "OPENSSL_cleanse" "libcrypto" :void
+  (ptr :pointer) (len :unsigned-long)
+  :documentation "Securely clear memory")
+
+(lib:defshared %crypto-memcmp "CRYPTO_memcmp" "libcrypto" :int
+  (a :pointer) (b :pointer) (len :unsigned-long)
+  :documentation "Constant-time memory comparison")
+
+(lib:defshared %openssl-version "OpenSSL_version" "libcrypto" :pointer
+  (type :int)
+  :documentation "Get OpenSSL version string")
+
 ;; Error handling
 (lib:defshared %err-get-error "ERR_get_error" "libcrypto" :unsigned-long ()
   :documentation "Get error code")
+
+(lib:defshared %err-load-crypto-strings "ERR_load_crypto_strings" "libcrypto" :void ()
+  :documentation "Load crypto error strings")
 
 (lib:defshared %err-error-string "ERR_error_string" "libcrypto" :pointer
   (e :unsigned-long) (buf :pointer)

@@ -4,5 +4,6 @@
  :documentation "API.md"
  :requires ("epsilon.foreign" "epsilon.net")
  :provides ("crypto" "tls" "x509" "digital-signatures" "key-generation" "kdf" "blake2" "aead")
+ :tests ("tests")
  :author "Jesse Bouwman"
  :license "MIT")
