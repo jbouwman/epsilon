@@ -5,7 +5,8 @@
 (defpackage :epsilon.crypto.aead-tests
   (:use :cl :epsilon.test)
   (:local-nicknames
-   (#:crypto #:epsilon.crypto))
+   (#:crypto #:epsilon.crypto)
+   (#:aead #:epsilon.crypto.aead))
   (:import-from :epsilon.crypto
                 #:crypto-error))
 
@@ -17,7 +18,7 @@
   "Test basic AES-128-GCM encryption and decryption"
   (let* ((plaintext "Hello, World! This is a secret message.")
          (key (crypto:crypto-random-bytes 16))  ; 128-bit key
-         (result (crypto:aes-gcm-encrypt plaintext key)))
+         (result (aead:aes-gcm-encrypt plaintext key)))
     
     ;; Check that we got all required components
     (is (getf result :ciphertext))
@@ -35,7 +36,7 @@
     (is (= 12 (length (getf result :iv))))
     
     ;; Decrypt and verify
-    (let ((decrypted (crypto:aes-gcm-decrypt 
+    (let ((decrypted (aead:aes-gcm-decrypt 
                       (getf result :ciphertext)
                       key
                       (getf result :tag)
@@ -47,10 +48,10 @@
   "Test basic AES-256-GCM encryption and decryption"
   (let* ((plaintext "Secret data that needs strong encryption")
          (key (crypto:crypto-random-bytes 32))  ; 256-bit key
-         (result (crypto:aes-gcm-encrypt plaintext key)))
+         (result (aead:aes-gcm-encrypt plaintext key)))
     
     ;; Decrypt and verify
-    (let ((decrypted (crypto:aes-gcm-decrypt 
+    (let ((decrypted (aead:aes-gcm-decrypt 
                       (getf result :ciphertext)
                       key
                       (getf result :tag)
@@ -63,10 +64,10 @@
   (let* ((plaintext "Encrypted message")
          (aad (sb-ext:string-to-octets "metadata" :external-format :utf-8))
          (key (crypto:crypto-random-bytes 32))
-         (result (crypto:aes-gcm-encrypt plaintext key :aad aad)))
+         (result (aead:aes-gcm-encrypt plaintext key :aad aad)))
     
     ;; Decrypt with correct AAD should succeed
-    (let ((decrypted (crypto:aes-gcm-decrypt 
+    (let ((decrypted (aead:aes-gcm-decrypt 
                       (getf result :ciphertext)
                       key
                       (getf result :tag)
@@ -78,7 +79,7 @@
     ;; Decrypt with wrong AAD should fail
     (let ((wrong-aad (sb-ext:string-to-octets "wrong" :external-format :utf-8)))
       (is-thrown (crypto-error)
-                 (crypto:aes-gcm-decrypt 
+                 (aead:aes-gcm-decrypt 
                   (getf result :ciphertext)
                   key
                   (getf result :tag)
@@ -87,7 +88,7 @@
     
     ;; Decrypt with no AAD should also fail
     (is-thrown (crypto-error)
-               (crypto:aes-gcm-decrypt 
+               (aead:aes-gcm-decrypt 
                 (getf result :ciphertext)
                 key
                 (getf result :tag)
@@ -98,13 +99,13 @@
   (let* ((plaintext "Test message")
          (key (crypto:crypto-random-bytes 32))
          (custom-iv (crypto:crypto-random-bytes 12))
-         (result (crypto:aes-gcm-encrypt plaintext key :iv custom-iv)))
+         (result (aead:aes-gcm-encrypt plaintext key :iv custom-iv)))
     
     ;; Should use the provided IV
     (is (equalp custom-iv (getf result :iv)))
     
     ;; Should decrypt successfully
-    (let ((decrypted (crypto:aes-gcm-decrypt 
+    (let ((decrypted (aead:aes-gcm-decrypt 
                       (getf result :ciphertext)
                       key
                       (getf result :tag)
@@ -116,14 +117,14 @@
   "Test that AES-GCM detects tampering"
   (let* ((plaintext "Sensitive data")
          (key (crypto:crypto-random-bytes 32))
-         (result (crypto:aes-gcm-encrypt plaintext key)))
+         (result (aead:aes-gcm-encrypt plaintext key)))
     
     ;; Tamper with ciphertext
     (let ((tampered-ciphertext (copy-seq (getf result :ciphertext))))
       (setf (aref tampered-ciphertext 0) 
             (logxor (aref tampered-ciphertext 0) #xFF))
       (is-thrown (crypto-error)
-                 (crypto:aes-gcm-decrypt 
+                 (aead:aes-gcm-decrypt 
                   tampered-ciphertext
                   key
                   (getf result :tag)
@@ -134,7 +135,7 @@
       (setf (aref tampered-tag 0)
             (logxor (aref tampered-tag 0) #xFF))
       (is-thrown (crypto-error)
-                 (crypto:aes-gcm-decrypt 
+                 (aead:aes-gcm-decrypt 
                   (getf result :ciphertext)
                   key
                   tampered-tag
@@ -146,7 +147,7 @@
   "Test basic ChaCha20-Poly1305 encryption and decryption"
   (let* ((plaintext "ChaCha20-Poly1305 test message")
          (key (crypto:crypto-random-bytes 32))
-         (result (crypto:chacha20-poly1305-encrypt plaintext key)))
+         (result (aead:chacha20-poly1305-encrypt plaintext key)))
     
     ;; Check components
     (is (getf result :ciphertext))
@@ -160,7 +161,7 @@
     (is (= 12 (length (getf result :nonce))))
     
     ;; Decrypt
-    (let ((decrypted (crypto:chacha20-poly1305-decrypt 
+    (let ((decrypted (aead:chacha20-poly1305-decrypt 
                       (getf result :ciphertext)
                       key
                       (getf result :tag)
@@ -173,10 +174,10 @@
   (let* ((plaintext "Secret message")
          (aad (sb-ext:string-to-octets "header data" :external-format :utf-8))
          (key (crypto:crypto-random-bytes 32))
-         (result (crypto:chacha20-poly1305-encrypt plaintext key :aad aad)))
+         (result (aead:chacha20-poly1305-encrypt plaintext key :aad aad)))
     
     ;; Decrypt with correct AAD
-    (let ((decrypted (crypto:chacha20-poly1305-decrypt 
+    (let ((decrypted (aead:chacha20-poly1305-decrypt 
                       (getf result :ciphertext)
                       key
                       (getf result :tag)
@@ -187,7 +188,7 @@
     
     ;; Decrypt with wrong AAD should fail
     (is-thrown (crypto-error)
-               (crypto:chacha20-poly1305-decrypt 
+               (aead:chacha20-poly1305-decrypt 
                 (getf result :ciphertext)
                 key
                 (getf result :tag)
@@ -199,13 +200,13 @@
   (let* ((plaintext "Test data")
          (key (crypto:crypto-random-bytes 32))
          (custom-nonce (crypto:crypto-random-bytes 12))
-         (result (crypto:chacha20-poly1305-encrypt plaintext key :nonce custom-nonce)))
+         (result (aead:chacha20-poly1305-encrypt plaintext key :nonce custom-nonce)))
     
     ;; Should use provided nonce
     (is (equalp custom-nonce (getf result :nonce)))
     
     ;; Should decrypt successfully
-    (let ((decrypted (crypto:chacha20-poly1305-decrypt 
+    (let ((decrypted (aead:chacha20-poly1305-decrypt 
                       (getf result :ciphertext)
                       key
                       (getf result :tag)
@@ -217,13 +218,13 @@
   "Test ChaCha20-Poly1305 tampering detection"
   (let* ((plaintext "Important data")
          (key (crypto:crypto-random-bytes 32))
-         (result (crypto:chacha20-poly1305-encrypt plaintext key)))
+         (result (aead:chacha20-poly1305-encrypt plaintext key)))
     
     ;; Tamper with ciphertext
     (let ((tampered (copy-seq (getf result :ciphertext))))
       (setf (aref tampered 0) (logxor (aref tampered 0) #xFF))
       (is-thrown (crypto-error)
-                 (crypto:chacha20-poly1305-decrypt 
+                 (aead:chacha20-poly1305-decrypt 
                   tampered
                   key
                   (getf result :tag)
@@ -233,7 +234,7 @@
     (let ((tampered-tag (copy-seq (getf result :tag))))
       (setf (aref tampered-tag 0) (logxor (aref tampered-tag 0) #xFF))
       (is-thrown (crypto-error)
-                 (crypto:chacha20-poly1305-decrypt 
+                 (aead:chacha20-poly1305-decrypt 
                   (getf result :ciphertext)
                   key
                   tampered-tag
@@ -248,8 +249,8 @@
          (key-chacha (crypto:crypto-random-bytes 32)))
     
     ;; Test AES-GCM with binary
-    (let* ((result-aes (crypto:aes-gcm-encrypt binary-data key-aes))
-           (decrypted-aes (crypto:aes-gcm-decrypt 
+    (let* ((result-aes (aead:aes-gcm-encrypt binary-data key-aes))
+           (decrypted-aes (aead:aes-gcm-decrypt 
                            (getf result-aes :ciphertext)
                            key-aes
                            (getf result-aes :tag)
@@ -257,8 +258,8 @@
       (is (equalp binary-data decrypted-aes)))
     
     ;; Test ChaCha20-Poly1305 with binary
-    (let* ((result-chacha (crypto:chacha20-poly1305-encrypt binary-data key-chacha))
-           (decrypted-chacha (crypto:chacha20-poly1305-decrypt 
+    (let* ((result-chacha (aead:chacha20-poly1305-encrypt binary-data key-chacha))
+           (decrypted-chacha (aead:chacha20-poly1305-decrypt 
                               (getf result-chacha :ciphertext)
                               key-chacha
                               (getf result-chacha :tag)
@@ -271,8 +272,8 @@
   "Test AEAD with empty plaintext"
   (let ((key (crypto:crypto-random-bytes 32)))
     ;; AES-GCM with empty plaintext
-    (let* ((result (crypto:aes-gcm-encrypt "" key))
-           (decrypted (crypto:aes-gcm-decrypt 
+    (let* ((result (aead:aes-gcm-encrypt "" key))
+           (decrypted (aead:aes-gcm-decrypt 
                        (getf result :ciphertext)
                        key
                        (getf result :tag)
@@ -280,8 +281,8 @@
       (is (= 0 (length decrypted))))
     
     ;; ChaCha20-Poly1305 with empty plaintext
-    (let* ((result (crypto:chacha20-poly1305-encrypt "" key))
-           (decrypted (crypto:chacha20-poly1305-decrypt 
+    (let* ((result (aead:chacha20-poly1305-encrypt "" key))
+           (decrypted (aead:chacha20-poly1305-decrypt 
                        (getf result :ciphertext)
                        key
                        (getf result :tag)
@@ -292,19 +293,19 @@
   "Test AEAD with invalid parameters"
   ;; Invalid key sizes
   (is-thrown (crypto-error)
-             (crypto:aes-gcm-encrypt "data" (crypto:crypto-random-bytes 24)))
+             (aead:aes-gcm-encrypt "data" (crypto:crypto-random-bytes 24)))
   
   (is-thrown (crypto-error)
-             (crypto:chacha20-poly1305-encrypt "data" (crypto:crypto-random-bytes 16)))
+             (aead:chacha20-poly1305-encrypt "data" (crypto:crypto-random-bytes 16)))
   
   ;; Invalid IV/nonce sizes
   (is-thrown (crypto-error)
-             (crypto:aes-gcm-encrypt "data" 
+             (aead:aes-gcm-encrypt "data" 
                                      (crypto:crypto-random-bytes 32)
                                      :iv (crypto:crypto-random-bytes 16)))
   
   (is-thrown (crypto-error)
-             (crypto:chacha20-poly1305-encrypt "data"
+             (aead:chacha20-poly1305-encrypt "data"
                                                (crypto:crypto-random-bytes 32)
                                                :nonce (crypto:crypto-random-bytes 16))))
 
@@ -323,7 +324,7 @@
     ;; Benchmark AES-256-GCM encryption
     (let ((start (get-internal-real-time)))
       (dotimes (i iterations)
-        (crypto:aes-gcm-encrypt data key-aes))
+        (aead:aes-gcm-encrypt data key-aes))
       (let ((elapsed (/ (* (- (get-internal-real-time) start) 1000.0)
                        internal-time-units-per-second)))
         (format t "AES-256-GCM encrypt: ~,1Fms for ~D iterations~%" elapsed iterations)))
@@ -331,7 +332,7 @@
     ;; Benchmark ChaCha20-Poly1305 encryption
     (let ((start (get-internal-real-time)))
       (dotimes (i iterations)
-        (crypto:chacha20-poly1305-encrypt data key-chacha))
+        (aead:chacha20-poly1305-encrypt data key-chacha))
       (let ((elapsed (/ (* (- (get-internal-real-time) start) 1000.0)
                        internal-time-units-per-second)))
         (format t "ChaCha20-Poly1305 encrypt: ~,1Fms for ~D iterations~%" elapsed iterations)))))

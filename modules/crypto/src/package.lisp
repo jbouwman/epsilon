@@ -134,20 +134,6 @@
    #:crypto-error-string
    #:get-crypto-errors
    
-   ;; Key Derivation Functions (KDF)
-   #:pbkdf2
-   #:hkdf
-   #:scrypt
-   
-   ;; BLAKE2 Hash Functions
-   #:blake2b
-   #:blake2s
-   
-   ;; Authenticated Encryption (AEAD)
-   #:aes-gcm-encrypt
-   #:aes-gcm-decrypt
-   #:chacha20-poly1305-encrypt
-   #:chacha20-poly1305-decrypt
    
    ;; Integration functions
    #:tls-context-set-key

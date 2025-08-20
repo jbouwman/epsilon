@@ -5,7 +5,8 @@
 (defpackage :epsilon.crypto.blake2-tests
   (:use :cl :epsilon.test)
   (:local-nicknames
-   (#:crypto #:epsilon.crypto))
+   (#:crypto #:epsilon.crypto)
+   (#:blake2 #:epsilon.crypto.blake2))
   (:import-from :epsilon.crypto
                 #:crypto-error))
 
@@ -16,21 +17,21 @@
 (deftest test-blake2b-basic
   "Test basic BLAKE2b hashing"
   (let* ((data "The quick brown fox jumps over the lazy dog")
-         (hash1 (crypto:blake2b data))
-         (hash2 (crypto:blake2b data)))
+         (hash1 (blake2:blake2b data))
+         (hash2 (blake2:blake2b data)))
     ;; Same input should produce same hash
     (is (equalp hash1 hash2))
     ;; Default output should be 64 bytes
     (is (= 64 (length hash1)))
     ;; Different data should produce different hash
-    (let ((hash3 (crypto:blake2b "Different data")))
+    (let ((hash3 (blake2:blake2b "Different data")))
       (is (not (equalp hash1 hash3))))))
 
 (deftest test-blake2b-output-lengths
   "Test BLAKE2b with different output lengths"
   (let ((data "Test data"))
     (dolist (length '(1 16 32 48 64))
-      (let ((hash (crypto:blake2b data :output-length length)))
+      (let ((hash (blake2:blake2b data :output-length length)))
         (is (= length (length hash)))))))
 
 (deftest test-blake2b-keyed
@@ -38,9 +39,9 @@
   (let* ((data "Message to authenticate")
          (key1 (crypto:crypto-random-bytes 32))
          (key2 (crypto:crypto-random-bytes 32))
-         (mac1 (crypto:blake2b data :key key1))
-         (mac2 (crypto:blake2b data :key key1))
-         (mac3 (crypto:blake2b data :key key2)))
+         (mac1 (blake2:blake2b data :key key1))
+         (mac2 (blake2:blake2b data :key key1))
+         (mac3 (blake2:blake2b data :key key2)))
     ;; Same key should produce same MAC
     (is (equalp mac1 mac2))
     ;; Different keys should produce different MACs
@@ -50,17 +51,17 @@
 
 (deftest test-blake2b-empty-input
   "Test BLAKE2b with empty input"
-  (let ((hash (crypto:blake2b "")))
+  (let ((hash (blake2:blake2b "")))
     ;; Should produce consistent hash for empty input
     (is (= 64 (length hash)))
-    (is (equalp hash (crypto:blake2b "")))))
+    (is (equalp hash (blake2:blake2b "")))))
 
 (deftest test-blake2b-binary-input
   "Test BLAKE2b with binary input"
   (let* ((binary-data (make-array 256 
                                  :element-type '(unsigned-byte 8)
                                  :initial-contents (loop for i from 0 to 255 collect i)))
-         (hash (crypto:blake2b binary-data :output-length 32)))
+         (hash (blake2:blake2b binary-data :output-length 32)))
     (is (= 32 (length hash)))
     (is (typep hash '(vector (unsigned-byte 8))))))
 
@@ -69,29 +70,29 @@
 (deftest test-blake2s-basic
   "Test basic BLAKE2s hashing"
   (let* ((data "The quick brown fox jumps over the lazy dog")
-         (hash1 (crypto:blake2s data))
-         (hash2 (crypto:blake2s data)))
+         (hash1 (blake2:blake2s data))
+         (hash2 (blake2:blake2s data)))
     ;; Same input should produce same hash
     (is (equalp hash1 hash2))
     ;; Default output should be 32 bytes
     (is (= 32 (length hash1)))
     ;; Different data should produce different hash
-    (let ((hash3 (crypto:blake2s "Different data")))
+    (let ((hash3 (blake2:blake2s "Different data")))
       (is (not (equalp hash1 hash3))))))
 
 (deftest test-blake2s-output-lengths
   "Test BLAKE2s with different output lengths"
   (let ((data "Test data"))
     (dolist (length '(1 8 16 24 32))
-      (let ((hash (crypto:blake2s data :output-length length)))
+      (let ((hash (blake2:blake2s data :output-length length)))
         (is (= length (length hash)))))))
 
 (deftest test-blake2s-keyed
   "Test BLAKE2s keyed hashing"
   (let* ((data "Message to authenticate")
          (key (crypto:crypto-random-bytes 16))
-         (mac1 (crypto:blake2s data :key key))
-         (mac2 (crypto:blake2s data :key key)))
+         (mac1 (blake2:blake2s data :key key))
+         (mac2 (blake2:blake2s data :key key)))
     ;; Same key should produce same MAC
     (is (equalp mac1 mac2))
     ;; Output should be 32 bytes by default
@@ -112,7 +113,7 @@
     (let* ((iterations 1000)
            (start (get-internal-real-time)))
       (dotimes (i iterations)
-        (crypto:blake2b data :output-length 32))
+        (blake2:blake2b data :output-length 32))
       (let ((elapsed (/ (* (- (get-internal-real-time) start) 1000.0)
                        internal-time-units-per-second)))
         (format t "BLAKE2b (32 bytes): ~,1Fms for ~D iterations~%" elapsed iterations)))
@@ -121,7 +122,7 @@
     (let* ((iterations 1000)
            (start (get-internal-real-time)))
       (dotimes (i iterations)
-        (crypto:blake2s data))
+        (blake2:blake2s data))
       (let ((elapsed (/ (* (- (get-internal-real-time) start) 1000.0)
                        internal-time-units-per-second)))
         (format t "BLAKE2s (32 bytes): ~,1Fms for ~D iterations~%" elapsed iterations)))
@@ -136,24 +137,24 @@
   "Test BLAKE2b with invalid parameters"
   ;; Output length too large
   (is-thrown (crypto-error)
-             (crypto:blake2b "data" :output-length 65))
+             (blake2:blake2b "data" :output-length 65))
   ;; Output length of zero
   (is-thrown (crypto-error)
-             (crypto:blake2b "data" :output-length 0))
+             (blake2:blake2b "data" :output-length 0))
   ;; Key too large
   (let ((large-key (make-array 65 :element-type '(unsigned-byte 8))))
     (is-thrown (crypto-error)
-               (crypto:blake2b "data" :key large-key))))
+               (blake2:blake2b "data" :key large-key))))
 
 (deftest test-blake2s-invalid-parameters
   "Test BLAKE2s with invalid parameters"
   ;; Output length too large
   (is-thrown (crypto-error)
-             (crypto:blake2s "data" :output-length 33))
+             (blake2:blake2s "data" :output-length 33))
   ;; Key too large
   (let ((large-key (make-array 33 :element-type '(unsigned-byte 8))))
     (is-thrown (crypto-error)
-               (crypto:blake2s "data" :key large-key))))
+               (blake2:blake2s "data" :key large-key))))
 
 ;;;; Test Runner
 
