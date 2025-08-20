@@ -5,7 +5,9 @@
 (defpackage :epsilon.crypto.blake2-tests
   (:use :cl :epsilon.test)
   (:local-nicknames
-   (#:crypto #:epsilon.crypto)))
+   (#:crypto #:epsilon.crypto))
+  (:import-from :epsilon.crypto
+                #:crypto-error))
 
 (in-package :epsilon.crypto.blake2-tests)
 
@@ -133,24 +135,24 @@
 (deftest test-blake2b-invalid-parameters
   "Test BLAKE2b with invalid parameters"
   ;; Output length too large
-  (is-thrown 'crypto:crypto-error
+  (is-thrown crypto-error
              (crypto:blake2b "data" :output-length 65))
   ;; Output length of zero
-  (is-thrown 'crypto:crypto-error
+  (is-thrown crypto-error
              (crypto:blake2b "data" :output-length 0))
   ;; Key too large
   (let ((large-key (make-array 65 :element-type '(unsigned-byte 8))))
-    (is-thrown 'crypto:crypto-error
+    (is-thrown crypto-error
                (crypto:blake2b "data" :key large-key))))
 
 (deftest test-blake2s-invalid-parameters
   "Test BLAKE2s with invalid parameters"
   ;; Output length too large
-  (is-thrown 'crypto:crypto-error
+  (is-thrown crypto-error
              (crypto:blake2s "data" :output-length 33))
   ;; Key too large
   (let ((large-key (make-array 33 :element-type '(unsigned-byte 8))))
-    (is-thrown 'crypto:crypto-error
+    (is-thrown crypto-error
                (crypto:blake2s "data" :key large-key))))
 
 ;;;; Test Runner

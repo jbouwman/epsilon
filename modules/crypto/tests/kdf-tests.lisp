@@ -5,7 +5,9 @@
 (defpackage :epsilon.crypto.kdf-tests
   (:use :cl :epsilon.test)
   (:local-nicknames
-   (#:crypto #:epsilon.crypto)))
+   (#:crypto #:epsilon.crypto))
+  (:import-from :epsilon.crypto
+                #:crypto-error))
 
 (in-package :epsilon.crypto.kdf-tests)
 
@@ -163,7 +165,7 @@
         (let ((key3 (crypto:scrypt password "different" :n 16384 :r 8 :p 1)))
           (is (not (equalp key1 key3)))))
     ;; Scrypt might not be available in all OpenSSL versions
-    (crypto:crypto-error ()
+    (crypto-error ()
       (format t "~%Scrypt not available in this OpenSSL version - skipping test~%"))))
 
 (deftest test-scrypt-parameters
@@ -177,18 +179,18 @@
         ;; Test with higher memory cost
         (let ((key2 (crypto:scrypt password salt :n 32768 :r 8 :p 1)))
           (is (= 32 (length key2)))))
-    (crypto:crypto-error ()
+    (crypto-error ()
       (format t "~%Scrypt not available - skipping parameter test~%"))))
 
 (deftest test-scrypt-invalid-n
   "Test that scrypt rejects non-power-of-2 N values"
   (handler-case
       (progn
-        (is-thrown 'crypto:crypto-error
+        (is-thrown crypto-error
                    (crypto:scrypt "password" "salt" :n 16383))  ; Not power of 2
-        (is-thrown 'crypto:crypto-error
+        (is-thrown crypto-error
                    (crypto:scrypt "password" "salt" :n 24576))) ; Not power of 2
-    (crypto:crypto-error ()
+    (crypto-error ()
       ;; If scrypt itself is not available, skip this test
       (format t "~%Scrypt not available - skipping validation test~%"))))
 
@@ -247,7 +249,7 @@
                (elapsed (/ (* (- (get-internal-real-time) start) 1000.0)
                           internal-time-units-per-second)))
           (format t "Scrypt (N=16384): ~,1Fms~%" elapsed))
-      (crypto:crypto-error ()
+      (crypto-error ()
         (format t "Scrypt: Not available~%")))))
 
 ;;;; Test Runner

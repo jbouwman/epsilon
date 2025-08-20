@@ -14,8 +14,7 @@
   (format t "Testing AES-GCM high-level functions...~%")
   
   (let* ((key (crypto:crypto-random-bytes 32))
-         (plaintext "Hello, World! This is a test message.")
-         (plaintext-bytes (sb-ext:string-to-octets plaintext :external-format :utf-8)))
+         (plaintext "Hello, World! This is a test message."))
     
     (format t "Key: ~{~2,'0X~^ ~}~%" (coerce key 'list))
     (format t "Plaintext: ~A~%" plaintext)

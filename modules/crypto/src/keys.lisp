@@ -661,9 +661,9 @@
   (loop for err = (ffi:%err-get-error)
         while (plusp err)
         collect (sb-alien:with-alien ((buf (sb-alien:array sb-alien:char 256)))
-				     (let ((str-ptr (ffi:%err-error-string err (sb-alien:alien-sap buf))))
-				       (unless (sb-sys:sap= str-ptr (sb-sys:int-sap 0))
-					 (sb-alien:cast str-ptr sb-alien:c-string))))))
+                                     (ffi:%err-error-string err (sb-alien:alien-sap buf))
+                                     ;; Convert buffer to string
+                                     (sb-alien:cast buf sb-alien:c-string))))
 
 ;;;; Cleanup
 
