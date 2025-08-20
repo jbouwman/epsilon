@@ -67,3 +67,9 @@
 (deftest test-extract-content-length-negative ()
   "Test content length extraction with no Content-Length header"
   (is (null (client::extract-content-length (format nil "User-Agent: test-agent~C~C" #\Return #\Linefeed)))))
+
+;; Load TLS integration tests
+(when (probe-file (merge-pathnames "tls-integration-tests.lisp" 
+                                   (make-pathname :directory (pathname-directory *load-truename*))))
+  (load (merge-pathnames "tls-integration-tests.lisp" 
+                        (make-pathname :directory (pathname-directory *load-truename*)))))

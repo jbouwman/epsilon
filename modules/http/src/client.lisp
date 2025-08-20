@@ -75,8 +75,9 @@
        (progn
          (when (connection-tls-connection ,conn)
            (tls:tls-close (connection-tls-connection ,conn)))
-         (when (connection-socket ,conn)
-           (net:tcp-shutdown (connection-socket ,conn)))))))
+         (when (and (connection-socket ,conn)
+                    (not (connection-ssl-p ,conn)))
+           (net:tcp-shutdown (connection-socket ,conn) :how :both))))))
 
 (defun parse-url (url-string)
   "Parse URL-STRING into scheme, host, port, path, and query components.
@@ -157,36 +158,83 @@
                           request-line #\Return #\Linefeed
                           (format-headers final-headers) #\Return #\Linefeed
                           body)))
-    (let ((stream (if (connection-ssl-p connection)
-                      ;; TODO: Fix TLS load order
-                      (error "TLS streams not yet implemented")
-                      (make-two-way-stream (net:tcp-stream-reader (connection-socket connection))
-                                           (net:tcp-stream-writer (connection-socket connection))))))
-      (write-string request stream)
-      (force-output stream))))
+    (if (connection-ssl-p connection)
+        ;; Use TLS write directly
+        (tls:tls-write (connection-tls-connection connection) request)
+        ;; Use regular socket stream
+        (let ((stream (make-two-way-stream 
+                       (net:tcp-stream-reader (connection-socket connection))
+                       (net:tcp-stream-writer (connection-socket connection)))))
+          (write-string request stream)
+          (force-output stream)))))
 
 (defun read-response (connection)
   "Read HTTP response from connection"
-  (let* ((stream (if (connection-ssl-p connection)
-                     ;; TODO: Fix TLS load order
-                     (error "TLS streams not yet implemented")
-                     (make-two-way-stream (net:tcp-stream-reader (connection-socket connection))
-                                          (net:tcp-stream-writer (connection-socket connection)))))
-         (response-lines '())
-         (line nil))
-    ;; Read status line and headers
-    (loop while (setf line (read-line stream nil nil))
-          do (push line response-lines)
-          when (string= line "") do (return))
-    ;; Try to read body based on Content-Length header
-    (let* ((headers-text (str:join #\Linefeed (seq:from-list (reverse response-lines))))
-           (content-length (extract-content-length headers-text))
-           (body (when (and content-length (> content-length 0))
-                   (let ((buffer (make-string content-length)))
-                     (read-sequence buffer stream)
-                     buffer)))
-           (response-text (format nil "~A~@[~A~]" headers-text body)))
-      (parse-response response-text))))
+  (if (connection-ssl-p connection)
+      ;; TLS connection - read directly from TLS
+      (read-tls-response connection)
+      ;; Regular connection - use socket streams
+      (let* ((stream (make-two-way-stream 
+                      (net:tcp-stream-reader (connection-socket connection))
+                      (net:tcp-stream-writer (connection-socket connection))))
+             (response-lines '())
+             (line nil))
+        ;; Read status line and headers
+        (loop while (setf line (read-line stream nil nil))
+              do (push line response-lines)
+              when (string= line "") do (return))
+        ;; Try to read body based on Content-Length header
+        (let* ((headers-text (str:join #\Linefeed (seq:from-list (reverse response-lines))))
+               (content-length (extract-content-length headers-text))
+               (body (when (and content-length (> content-length 0))
+                       (let ((buffer (make-string content-length)))
+                         (read-sequence buffer stream)
+                         buffer)))
+               (response-text (format nil "~A~@[~A~]" headers-text body)))
+          (parse-response response-text)))))
+
+(defun read-tls-response (connection)
+  "Read HTTP response from TLS connection"
+  (let* ((tls-conn (connection-tls-connection connection))
+         (buffer-size 4096)
+         (buffer (make-string buffer-size))
+         (response-data (make-array 0 :element-type 'character 
+                                    :adjustable t :fill-pointer 0))
+         (headers-complete nil)
+         (content-length nil))
+    
+    ;; Read headers first
+    (loop until headers-complete
+          do (let ((bytes-read (tls:tls-read tls-conn buffer 0 buffer-size)))
+               (when (and bytes-read (> bytes-read 0))
+                 (loop for i from 0 below bytes-read
+                       do (vector-push-extend (char buffer i) response-data))
+                 ;; Check if headers are complete
+                 (let ((current-data (coerce response-data 'string)))
+                   (when (search (format nil "~C~C~C~C" 
+                                         #\Return #\Linefeed #\Return #\Linefeed) 
+                                 current-data)
+                     (setf headers-complete t)
+                     (setf content-length (extract-content-length current-data)))))))
+    
+    ;; Read body if Content-Length specified
+    (when (and content-length (> content-length 0))
+      (let* ((current-data (coerce response-data 'string))
+             (header-end (+ (search (format nil "~C~C~C~C" 
+                                            #\Return #\Linefeed #\Return #\Linefeed)
+                                    current-data) 4))
+             (body-bytes-read (- (length response-data) header-end))
+             (bytes-remaining (- content-length body-bytes-read)))
+        (when (> bytes-remaining 0)
+          (loop while (> bytes-remaining 0)
+                do (let* ((to-read (min bytes-remaining buffer-size))
+                          (bytes-read (tls:tls-read tls-conn buffer 0 to-read)))
+                     (when (and bytes-read (> bytes-read 0))
+                       (loop for i from 0 below bytes-read
+                             do (vector-push-extend (char buffer i) response-data))
+                       (decf bytes-remaining bytes-read)))))))
+    
+    (parse-response (coerce response-data 'string))))
 
 (defun parse-response (response-string)
   "Parse HTTP response into status, headers, and body"
@@ -215,7 +263,7 @@
       ;; Extract body
       (let ((body (when body-start
                     (str:join #\Linefeed (seq:from-list (subseq lines-list body-start))))))
-        (values status-code headers body)))))
+        (list :status status-code :headers headers :body body)))))
 
 (defun request (url &key (method "GET") headers body tls-context cert-file key-file ca-file)
   "Make an HTTP request to URL with optional mutual TLS support.
