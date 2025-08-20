@@ -130,8 +130,15 @@
    #:%pem-read-bio-x509-req
    #:%pem-write-bio-x509-req
    #:%rand-bytes
+   #:%rand-status
+   #:%rand-seed
    #:%err-get-error
    #:%err-error-string
+   ;; Security functions
+   #:%openssl-init-crypto
+   #:%openssl-cleanse
+   #:%crypto-memcmp
+   #:%openssl-version
    ;; KDF functions
    #:%pkcs5-pbkdf2-hmac
    #:%evp-pbe-scrypt
@@ -647,9 +654,7 @@
   (buf :pointer) (num :int)
   :documentation "Generate random bytes")
 
-;; These functions might not be available in all OpenSSL versions
-;; Commenting out to avoid CI failures
-#|
+;; Random number status and seeding
 (lib:defshared %rand-status "RAND_status" "libcrypto" :int ()
   :documentation "Check if PRNG is seeded")
 
@@ -673,7 +678,6 @@
 (lib:defshared %openssl-version "OpenSSL_version" "libcrypto" :pointer
   (type :int)
   :documentation "Get OpenSSL version string")
-|#
 
 ;; Error handling
 (lib:defshared %err-get-error "ERR_get_error" "libcrypto" :unsigned-long ()

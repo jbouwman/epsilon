@@ -43,13 +43,19 @@
 
 (deftest test-openssl-version
   "Test OpenSSL version reporting"
-  ;; Skip for now as init package may not be loaded yet
-  (skip))
+  (let ((version-string (sb-sys:with-pinned-objects ()
+                          (sb-alien:alien-funcall 
+                           (sb-alien:extern-alien "OpenSSL_version"
+                                                  (function sb-alien:c-string sb-alien:int))
+                           0)))) ; 0 = OPENSSL_VERSION
+    (is (stringp version-string) "OpenSSL version should be a string")
+    (is (> (length version-string) 0) "OpenSSL version should not be empty")
+    (format t "~%OpenSSL version: ~A~%" version-string)))
 
 (deftest test-prng-status
   "Test that PRNG is properly seeded"
-  ;; Skip this test as %rand-status might not be available in all versions
-  (skip))
+  (let ((status (ffi:%rand-status)))
+    (is (= status 1) "PRNG should be properly seeded (status = 1)")))
 
 (deftest test-key-algorithm-support
   "Test support for key generation algorithms"
