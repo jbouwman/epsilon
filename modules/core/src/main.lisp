@@ -229,68 +229,15 @@
         (format *error-output* "Error loading file ~A: ~A~%" file e)
         (sb-ext:exit :code 1)))))
 
-(defun parse-test-spec (spec)
-  "Parse a test specification into module, package, and name components.
-   Returns (values module package name).
-   Also supports hash format for individual test selection."
-  ;; Check if spec looks like a hash (short hex string)
-  (if (and (<= (length spec) 8)
-           (not (find #\: spec))
-           (every (lambda (c) 
-                    (or (digit-char-p c)
-                        (member c '(#\a #\b #\c #\d #\e #\f
-                                   #\A #\B #\C #\D #\E #\F))))
-                  spec))
-      ;; It's a hash - return it as the test name with no module/package
-      (values nil nil spec)
-      ;; Regular parsing
-      (let* ((parts (seq:realize (str:split #\: spec)))
-             (num-parts (length parts)))
-        (case num-parts
-          (1 ;; Just module
-           (values (first parts) nil nil))
-          (2 ;; module:package or :package
-           (if (string= "" (first parts))
-               (values nil (second parts) nil)
-               (values (first parts) (second parts) nil)))
-          (3 ;; module:package:name or :package:name
-           (if (string= "" (first parts))
-               (values nil (second parts) (third parts))
-               (values (first parts) (second parts) (third parts))))
-          (otherwise
-           (error "Invalid test specification: ~A" spec))))))
-
-(defun test-modules (environment modules &key verbose quiet)
-  "Test multiple modules with result collection."
-  (log:debug "test-modules called with environment: ~A, modules: ~A, verbose: ~A, quiet: ~A" 
-             environment modules verbose quiet)
+(defun test-modules (environment specs &key verbose)
+  "Test multiple modules with result collection by delegating to epsilon.test."
+  (log:debug "test-modules called with environment: ~A, specs: ~A, verbose: ~A" 
+             environment specs verbose)
   (loader:load-module environment "epsilon.test")
-  (let ((run-fn (find-symbol "RUN" (find-package "EPSILON.TEST"))))
-    (dolist (spec modules)
-      (multiple-value-bind (module package-filter name-filter)
-          (parse-test-spec spec)
-        (log:debug "Parsed test spec ~A -> module: ~A, package: ~A, name: ~A"
-                   spec module package-filter name-filter)
-        ;; Load the module if specified
-        (when module
-          (loader:load-module environment module))
-        ;; Run tests with filters
-        (let* ((format (cond (quiet :minimal)
-                            (verbose :verbose)
-                            (t :shell)))
-               (result (funcall run-fn environment module 
-                               :package package-filter
-                               :test-name name-filter
-                               :format format)))
-          (log:debug "EPSILON.TEST:RUN returned: ~A" result)
-          ;; Check if tests passed
-          (let ((success-p-fn (find-symbol "SUCCESS-P" (find-package "EPSILON.TEST"))))
-            (unless success-p-fn
-              (error "EPSILON.TEST:SUCCESS-P not found"))
-            (log:debug "Calling SUCCESS-P with result: ~A" result)
-            (unless (funcall success-p-fn result)
-              (error "Tests failed for ~A" spec))))
-        (format t "Successfully tested ~A~%" spec)))))
+  (let ((run-tests-fn (find-symbol "RUN-TESTS" (find-package "EPSILON.TEST"))))
+    (unless run-tests-fn
+      (error "EPSILON.TEST:RUN-TESTS not found"))
+    (funcall run-tests-fn environment specs :verbose verbose)))
 
 ;;; Command Execution Functions
 

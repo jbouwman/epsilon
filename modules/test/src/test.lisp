@@ -18,7 +18,9 @@
    (suite epsilon.test.suite)
    (fixture epsilon.test.fixture)
    (path epsilon.path)
-   (log epsilon.log))
+   (log epsilon.log)
+   (seq epsilon.sequence)
+   (str epsilon.string))
   (:export
 
    ;; defining tests
@@ -33,6 +35,8 @@
    ;; executing tests
    skip
    run
+   run-tests
+   parse-test-spec
    success-p
    ;; main removed - test command handled directly by main.lisp
 
@@ -72,6 +76,37 @@
          ,@(when docstring (list docstring))
          ,@real-body)
        (suite:register-test ',name ,docstring))))
+
+(defun parse-test-spec (spec)
+  "Parse a test specification into module, package, and name components.
+   Returns (values module package name).
+   Also supports hash format for individual test selection."
+  ;; Check if spec looks like a hash (short hex string)
+  (if (and (<= (length spec) 8)
+           (not (find #\: spec))
+           (every (lambda (c) 
+                    (or (digit-char-p c)
+                        (member c '(#\a #\b #\c #\d #\e #\f
+                                   #\A #\B #\C #\D #\E #\F))))
+                  spec))
+      ;; It's a hash - return it as the test name with no module/package
+      (values nil nil spec)
+      ;; Regular parsing
+      (let* ((parts (seq:realize (str:split #\: spec)))
+             (num-parts (length parts)))
+        (case num-parts
+          (1 ;; Just module
+           (values (first parts) nil nil))
+          (2 ;; module:package or :package
+           (if (string= "" (first parts))
+               (values nil (second parts) nil)
+               (values (first parts) (second parts) nil)))
+          (3 ;; module:package:name or :package:name
+           (if (string= "" (first parts))
+               (values nil (second parts) (third parts))
+               (values (first parts) (second parts) (third parts))))
+          (otherwise
+           (error "Invalid test specification: ~A" spec))))))
 
 (defun run (environment module &key package test-name (format :shell) file)
   "Test an epsilon module.
@@ -147,6 +182,37 @@
     (suite:run selected-tests
                (report:make :format format
                             :file file))))
+
+(defun run-tests (environment specs &key verbose)
+  "Run tests for multiple test specifications.
+  
+  ENVIRONMENT - The loader environment with repositories configured
+  SPECS - List of test specification strings (e.g., \"module:package:test\")
+  VERBOSE - Use verbose output format (default: nil)
+  
+  Returns T if all tests pass, raises error if any fail."
+  (log:debug "run-tests called with environment: ~A, specs: ~A, verbose: ~A" 
+             environment specs verbose)
+  (dolist (spec specs)
+    (multiple-value-bind (module package-filter name-filter)
+        (parse-test-spec spec)
+      (log:debug "Parsed test spec ~A -> module: ~A, package: ~A, name: ~A"
+                 spec module package-filter name-filter)
+      ;; Load the module if specified
+      (when module
+        (loader:load-module environment module))
+      ;; Run tests with filters
+      (let* ((format (if verbose :verbose :shell))
+             (result (run environment module 
+                         :package package-filter
+                         :test-name name-filter
+                         :format format)))
+        (log:debug "EPSILON.TEST:RUN returned: ~A" result)
+        ;; Check if tests passed
+        (log:debug "Calling SUCCESS-P with result: ~A" result)
+        (unless (success-p result)
+          (error "Tests failed for ~A" spec)))
+      (format t "Successfully tested ~A~%" spec))))
 
 (defun success-p (run)
   "Return T if test RUN completed successfully with no failures.
