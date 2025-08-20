@@ -3,10 +3,10 @@
 ;;;; This file implements BLAKE2b and BLAKE2s cryptographic hash functions
 
 (defpackage :epsilon.crypto.blake2
-  (:use :cl :epsilon.crypto)
+  (:use :cl)
   (:local-nicknames
    (#:ffi #:epsilon.crypto.ffi))
-  (:import-from :epsilon.crypto
+  (:import-from :epsilon.crypto.ffi
                 #:crypto-error)
   (:export #:blake2b #:blake2s #:blake2-compare))
 

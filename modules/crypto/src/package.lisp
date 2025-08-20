@@ -7,6 +7,10 @@
   (:local-nicknames
    (#:map #:epsilon.map)
    (#:stream #:epsilon.stream))
+  (:import-from :epsilon.crypto.ffi
+                #:crypto-error
+                #:crypto-error-code
+                #:crypto-error-string)
   (:export
    ;;;; TLS/SSL functionality
    ;; TLS context management
@@ -370,14 +374,7 @@
 
 ;;;; Error Handling
 
-(define-condition crypto-error (error)
-  ((code :initarg :code :reader crypto-error-code :type integer)
-   (message :initarg :message :reader crypto-error-string :type string))
-  (:documentation "Cryptographic error condition signaled when cryptographic operations fail.")
-  (:report (lambda (condition stream)
-             (format stream "Crypto error ~A: ~A"
-                     (crypto-error-code condition)
-                     (crypto-error-string condition)))))
+;; crypto-error is imported from epsilon.crypto.ffi in the defpackage
 
 ;;;; Utility Functions
 
@@ -409,3 +406,63 @@
                                 (sb-sys:int-sap 0))))
              (push error-string errors))
         finally (return (reverse errors))))
+
+;;;; Random Number Generation (Public API)
+
+(defun crypto-random-bytes (n)
+  "Generate cryptographically secure random bytes.
+   
+   Uses OpenSSL's RAND_bytes function to generate cryptographically
+   secure random data suitable for keys, IVs, nonces, and other
+   security-critical values.
+   
+   Parameters:
+     n (integer): Number of random bytes to generate
+   
+   Returns:
+     Byte vector of length n containing random data
+   
+   Security Notes:
+     - Uses system entropy sources (e.g., /dev/urandom)
+     - Automatically reseeds from system entropy
+     - Thread-safe and fork-safe
+     - Suitable for all cryptographic purposes
+   
+   Example - Generate a 256-bit key:
+     (crypto-random-bytes 32)  ; Returns 32 random bytes
+   
+   Example - Generate a random IV:
+     (crypto-random-bytes 16)  ; For AES block size
+   
+   Errors:
+     Signals CRYPTO-ERROR if random generation fails"
+  (declare (type (integer 1 *) n))
+  (let ((buffer (make-array n :element-type '(unsigned-byte 8))))
+    (sb-sys:with-pinned-objects (buffer)
+      (let ((result (epsilon.crypto.ffi:%rand-bytes (sb-sys:vector-sap buffer) n)))
+        (when (zerop result)
+          (error 'crypto-error :code (epsilon.crypto.ffi:%err-get-error)
+                 :message "Failed to generate random bytes"))))
+    buffer))
+
+(defun crypto-random-integer (max)
+  "Generate random integer from 0 to max-1.
+   
+   Uses cryptographically secure random number generation
+   to produce uniformly distributed integers.
+   
+   Parameters:
+     max (integer): Upper bound (exclusive)
+   
+   Returns:
+     Random integer in range [0, max)
+   
+   Example:
+     (crypto-random-integer 100)  ; Returns 0-99"
+  (declare (type (integer 1 *) max))
+  (let* ((bytes-needed (ceiling (log max 256)))
+         (bytes (crypto-random-bytes bytes-needed))
+         (value 0))
+    (loop for i from 0 below bytes-needed
+          do (setf value (+ (* value 256) (aref bytes i))))
+    (mod value max)))

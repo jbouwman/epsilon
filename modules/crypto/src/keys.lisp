@@ -5,7 +5,8 @@
 (defpackage :epsilon.crypto.keys
   (:use :cl :epsilon.crypto)
   (:local-nicknames
-   (#:ffi #:epsilon.crypto.ffi))
+   (#:ffi #:epsilon.crypto.ffi)
+   (#:utils #:epsilon.crypto.utils))
   (:import-from :epsilon.crypto
 		;; Import all needed types and constants
 		#:crypto-key
@@ -594,24 +595,10 @@
 
 ;;;; Random Number Generation
 
-(defun crypto-random-bytes (n)
-  "Generate n random bytes"
-  (sb-alien:with-alien ((buf (sb-alien:array sb-alien:unsigned-char 4096)))
-		       (when (> n 4096)
-			 (error "Maximum 4096 random bytes at once"))
-		       
-		       (when (zerop (ffi:%rand-bytes (sb-alien:alien-sap buf) n))
-			 (error 'crypto-error :code (ffi:%err-get-error) :message "Failed to generate random bytes"))
-		       
-		       (let ((bytes (make-array n :element-type '(unsigned-byte 8))))
-			 (loop for i from 0 below n
-			       do (setf (aref bytes i) (sb-alien:deref buf i)))
-			 bytes)))
-
 (defun crypto-random-integer (max)
   "Generate random integer from 0 to max-1"
   (let* ((bytes-needed (ceiling (log max 256)))
-         (bytes (crypto-random-bytes bytes-needed))
+         (bytes (utils:crypto-random-bytes bytes-needed))
          (value 0))
     (loop for i from 0 below bytes-needed
           do (setf value (+ (* value 256) (aref bytes i))))

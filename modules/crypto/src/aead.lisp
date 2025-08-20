@@ -3,12 +3,12 @@
 ;;;; This file implements modern AEAD ciphers: AES-GCM and ChaCha20-Poly1305
 
 (defpackage :epsilon.crypto.aead
-  (:use :cl :epsilon.crypto)
+  (:use :cl)
   (:local-nicknames
-   (#:ffi #:epsilon.crypto.ffi))
-  (:import-from :epsilon.crypto
-                #:crypto-error
-                #:crypto-random-bytes)
+   (#:ffi #:epsilon.crypto.ffi)
+   (#:utils #:epsilon.crypto.utils))
+  (:import-from :epsilon.crypto.ffi
+                #:crypto-error)
   (:export #:aes-gcm-encrypt #:aes-gcm-decrypt 
            #:chacha20-poly1305-encrypt #:chacha20-poly1305-decrypt))
 
@@ -84,7 +84,7 @@
            :message "AES-GCM key must be 16 or 32 bytes"))
   
   ;; Generate IV if not provided
-  (let ((iv (or iv (crypto-random-bytes +aes-gcm-iv-size+))))
+  (let ((iv (or iv (utils:crypto-random-bytes +aes-gcm-iv-size+))))
     
     ;; Validate IV size
     (unless (= (length iv) +aes-gcm-iv-size+)
@@ -127,7 +127,7 @@
               (sb-sys:with-pinned-objects (aad)
                 (sb-alien:with-alien ((outlen sb-alien:int))
                   (when (zerop (ffi:%evp-encryptupdate ctx (sb-sys:int-sap 0)
-                                                       (sb-alien:addr outlen)
+                                                       (sb-alien:alien-sap (sb-alien:addr outlen))
                                                        (sb-sys:vector-sap aad)
                                                        (length aad)))
                     (error 'crypto-error :code (ffi:%err-get-error)
@@ -138,7 +138,7 @@
               (sb-alien:with-alien ((outlen sb-alien:int))
                 (when (zerop (ffi:%evp-encryptupdate ctx
                                                      (sb-sys:vector-sap ciphertext)
-                                                     (sb-alien:addr outlen)
+                                                     (sb-alien:alien-sap (sb-alien:addr outlen))
                                                      (sb-sys:vector-sap plaintext-bytes)
                                                      (length plaintext-bytes)))
                   (error 'crypto-error :code (ffi:%err-get-error)
@@ -148,7 +148,7 @@
             (sb-alien:with-alien ((outlen sb-alien:int))
               (when (zerop (ffi:%evp-encryptfinal-ex ctx
                                                      (sb-sys:int-sap 0)
-                                                     (sb-alien:addr outlen)))
+                                                     (sb-alien:alien-sap (sb-alien:addr outlen))))
                 (error 'crypto-error :code (ffi:%err-get-error)
                        :message "Failed to finalize encryption")))
             
@@ -243,7 +243,7 @@
             (sb-sys:with-pinned-objects (aad)
               (sb-alien:with-alien ((outlen sb-alien:int))
                 (when (zerop (ffi:%evp-decryptupdate ctx (sb-sys:int-sap 0)
-                                                     (sb-alien:addr outlen)
+                                                     (sb-alien:alien-sap (sb-alien:addr outlen))
                                                      (sb-sys:vector-sap aad)
                                                      (length aad)))
                   (error 'crypto-error :code (ffi:%err-get-error)
@@ -254,7 +254,7 @@
             (sb-alien:with-alien ((outlen sb-alien:int))
               (when (zerop (ffi:%evp-decryptupdate ctx
                                                    (sb-sys:vector-sap plaintext)
-                                                   (sb-alien:addr outlen)
+                                                   (sb-alien:alien-sap (sb-alien:addr outlen))
                                                    (sb-sys:vector-sap ciphertext)
                                                    (length ciphertext)))
                 (error 'crypto-error :code (ffi:%err-get-error)
@@ -273,7 +273,7 @@
           (sb-alien:with-alien ((outlen sb-alien:int))
             (when (zerop (ffi:%evp-decryptfinal-ex ctx
                                                    (sb-sys:int-sap 0)
-                                                   (sb-alien:addr outlen)))
+                                                   (sb-alien:alien-sap (sb-alien:addr outlen))))
               (error 'crypto-error :code (ffi:%err-get-error)
                      :message "Authentication failed - data may be tampered")))
           
@@ -334,7 +334,7 @@
            :message "ChaCha20-Poly1305 key must be 32 bytes"))
   
   ;; Generate nonce if not provided
-  (let ((nonce (or nonce (crypto-random-bytes +chacha20-poly1305-nonce-size+))))
+  (let ((nonce (or nonce (utils:crypto-random-bytes +chacha20-poly1305-nonce-size+))))
     
     ;; Validate nonce size
     (unless (= (length nonce) +chacha20-poly1305-nonce-size+)
@@ -374,7 +374,7 @@
               (sb-sys:with-pinned-objects (aad)
                 (sb-alien:with-alien ((outlen sb-alien:int))
                   (when (zerop (ffi:%evp-encryptupdate ctx (sb-sys:int-sap 0)
-                                                       (sb-alien:addr outlen)
+                                                       (sb-alien:alien-sap (sb-alien:addr outlen))
                                                        (sb-sys:vector-sap aad)
                                                        (length aad)))
                     (error 'crypto-error :code (ffi:%err-get-error)
@@ -385,7 +385,7 @@
               (sb-alien:with-alien ((outlen sb-alien:int))
                 (when (zerop (ffi:%evp-encryptupdate ctx
                                                      (sb-sys:vector-sap ciphertext)
-                                                     (sb-alien:addr outlen)
+                                                     (sb-alien:alien-sap (sb-alien:addr outlen))
                                                      (sb-sys:vector-sap plaintext-bytes)
                                                      (length plaintext-bytes)))
                   (error 'crypto-error :code (ffi:%err-get-error)
@@ -395,7 +395,7 @@
             (sb-alien:with-alien ((outlen sb-alien:int))
               (when (zerop (ffi:%evp-encryptfinal-ex ctx
                                                      (sb-sys:int-sap 0)
-                                                     (sb-alien:addr outlen)))
+                                                     (sb-alien:alien-sap (sb-alien:addr outlen))))
                 (error 'crypto-error :code (ffi:%err-get-error)
                        :message "Failed to finalize encryption")))
             
@@ -482,7 +482,7 @@
             (sb-sys:with-pinned-objects (aad)
               (sb-alien:with-alien ((outlen sb-alien:int))
                 (when (zerop (ffi:%evp-decryptupdate ctx (sb-sys:int-sap 0)
-                                                     (sb-alien:addr outlen)
+                                                     (sb-alien:alien-sap (sb-alien:addr outlen))
                                                      (sb-sys:vector-sap aad)
                                                      (length aad)))
                   (error 'crypto-error :code (ffi:%err-get-error)
@@ -493,7 +493,7 @@
             (sb-alien:with-alien ((outlen sb-alien:int))
               (when (zerop (ffi:%evp-decryptupdate ctx
                                                    (sb-sys:vector-sap plaintext)
-                                                   (sb-alien:addr outlen)
+                                                   (sb-alien:alien-sap (sb-alien:addr outlen))
                                                    (sb-sys:vector-sap ciphertext)
                                                    (length ciphertext)))
                 (error 'crypto-error :code (ffi:%err-get-error)
@@ -512,7 +512,7 @@
           (sb-alien:with-alien ((outlen sb-alien:int))
             (when (zerop (ffi:%evp-decryptfinal-ex ctx
                                                    (sb-sys:int-sap 0)
-                                                   (sb-alien:addr outlen)))
+                                                   (sb-alien:alien-sap (sb-alien:addr outlen))))
               (error 'crypto-error :code (ffi:%err-get-error)
                      :message "Authentication failed - data may be tampered")))
           

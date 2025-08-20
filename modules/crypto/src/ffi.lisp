@@ -152,9 +152,24 @@
    #:%evp-decryptinit-ex
    #:%evp-decryptupdate
    #:%evp-decryptfinal-ex
-   #:%evp-cipher-ctx-ctrl))
+   #:%evp-cipher-ctx-ctrl
+   ;; Error condition and accessors
+   #:crypto-error
+   #:crypto-error-code
+   #:crypto-error-string))
 
 (in-package :epsilon.crypto.ffi)
+
+;;;; Error Handling
+
+(define-condition crypto-error (error)
+  ((code :initarg :code :reader crypto-error-code :type integer)
+   (message :initarg :message :reader crypto-error-string :type string))
+  (:documentation "Cryptographic error condition signaled when cryptographic operations fail.")
+  (:report (lambda (condition stream)
+             (format stream "Crypto error ~A: ~A"
+                     (crypto-error-code condition)
+                     (crypto-error-string condition)))))
 
 ;;;; SSL/TLS Library FFI Bindings (libssl)
 

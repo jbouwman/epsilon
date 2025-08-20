@@ -4,11 +4,12 @@
 ;;;; PBKDF2, HKDF, and other password-based cryptographic functions
 
 (defpackage :epsilon.crypto.kdf
-  (:use :cl :epsilon.crypto)
+  (:use :cl)
   (:local-nicknames
    (#:ffi #:epsilon.crypto.ffi))
+  (:import-from :epsilon.crypto.ffi
+                #:crypto-error)
   (:import-from :epsilon.crypto
-                #:crypto-error
                 #:+digest-sha256+
                 #:+digest-sha384+
                 #:+digest-sha512+)
@@ -219,7 +220,7 @@
                 (sb-alien:with-alien ((len-holder sb-alien:size-t outlen))
                   (when (zerop (ffi:%evp-pkey-derive ctx 
                                                      (sb-sys:vector-sap output)
-                                                     (sb-alien:addr len-holder)))
+                                                     (sb-alien:alien-sap (sb-alien:addr len-holder))))
                     (error 'crypto-error :code (ffi:%err-get-error)
                            :message "HKDF derivation failed")))))
             

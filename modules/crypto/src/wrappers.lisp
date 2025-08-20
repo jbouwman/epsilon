@@ -1,11 +1,10 @@
 ;;;; Wrapper Functions for Specialized Modules
 ;;;;
-;;;; This file provides the main API functions that wrap specialized modules
+;;;; This file provides wrapper functions that call specialized packages
 
 (in-package :epsilon.crypto)
 
-;;;; Key Derivation Functions
-
+;;;; KDF wrapper functions
 (defun pbkdf2 (password salt &key 
                        (iterations 100000)
                        (key-length 32)
@@ -30,8 +29,7 @@
                             :n n :r r :p p
                             :key-length key-length))
 
-;;;; BLAKE2 Hash Functions
-
+;;;; BLAKE2 wrapper functions
 (defun blake2b (data &key (output-length 64) key salt personalization)
   "Compute BLAKE2b hash."
   (epsilon.crypto.blake2:blake2b data 
@@ -46,8 +44,7 @@
                                  :output-length output-length
                                  :key key))
 
-;;;; Authenticated Encryption (AEAD)
-
+;;;; AEAD wrapper functions
 (defun aes-gcm-encrypt (plaintext key &key iv aad)
   "Encrypt data using AES-GCM."
   (epsilon.crypto.aead:aes-gcm-encrypt plaintext key :iv iv :aad aad))
