@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main ]
   pull_request:
     branches: [ main ]
 
@@ -50,8 +50,6 @@ jobs:
         restore-keys: |
           build-${{ env.CACHE_VERSION }}-${{ runner.os }}-
     
-    # libffi extension is now built by ci-setup.sh
-        
     - name: Verify OpenSSL setup
       run: |
         echo "=== OpenSSL Configuration ==="
@@ -101,5 +99,3 @@ jobs:
       with:
         name: test-results-${{ runner.os }}
         path: target/TEST-*.xml
-        
-    # Test coverage is now reported by epsilon.release:test
