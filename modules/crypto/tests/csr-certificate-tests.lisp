@@ -5,7 +5,8 @@
 (defpackage :epsilon.crypto.cert-tests
   (:use :cl :epsilon.test)
   (:local-nicknames
-   (#:crypto #:epsilon.crypto)))
+   (#:crypto #:epsilon.crypto)
+   (#:log #:epsilon.log)))
 
 (in-package :epsilon.crypto.cert-tests)
 
@@ -69,12 +70,12 @@
 
 (deftest test-create-self-signed-certificate
   "Test creating a self-signed certificate"
-  (format t "~%[TEST] Starting self-signed certificate test~%")
+  (log:info "Starting self-signed certificate test")
   (let* ((key (progn 
-                (format t "[TEST] Generating RSA key...~%")
+                (log:info "Generating RSA key")
                 (crypto:generate-rsa-key :bits 2048))))
-    (format t "[TEST] RSA key generated successfully: ~A~%" (crypto:crypto-key-p key))
-    (format t "[TEST] Creating certificate with subject/issuer: Self Signed Test~%")
+    (log:info "RSA key generated successfully: ~A" (crypto:crypto-key-p key))
+    (log:info "Creating certificate with subject/issuer: Self Signed Test")
     (handler-case
         (let ((cert (crypto:create-certificate
                      :key key
@@ -82,10 +83,10 @@
                      :issuer-cn "Self Signed Test"
                      :serial 42
                      :days 730)))
-          (format t "[TEST] Certificate created successfully: ~A~%" (crypto:x509-certificate-p cert))
+          (log:info "Certificate created successfully: ~A" (crypto:x509-certificate-p cert))
           (is (crypto:x509-certificate-p cert))
-          (format t "[TEST] Certificate subject: ~A~%" (crypto:x509-certificate-subject cert))
-          (format t "[TEST] Certificate issuer: ~A~%" (crypto:x509-certificate-issuer cert))
+          (log:info "Certificate subject: ~A" (crypto:x509-certificate-subject cert))
+          (log:info "Certificate issuer: ~A" (crypto:x509-certificate-issuer cert))
           (is (search "Self Signed Test" (crypto:x509-certificate-subject cert)))
           (is (search "Self Signed Test" (crypto:x509-certificate-issuer cert)))
           (is (equal (crypto:x509-certificate-serial cert) "42"))
@@ -93,7 +94,7 @@
           (let ((pub-key (crypto:certificate-public-key cert)))
             (is (crypto:verify-certificate cert pub-key))))
       (error (e)
-        (format t "[TEST] Certificate creation failed with error: ~A~%" e)
+        (log:error "Certificate creation failed with error: ~A" e)
         (is nil (format nil "Certificate creation failed: ~A" e))))))
 
 (deftest test-create-certificate-with-ec-key

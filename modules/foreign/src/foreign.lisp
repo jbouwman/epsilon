@@ -4,6 +4,7 @@
    (map epsilon.map)
    (seq epsilon.sequence)
    (path epsilon.path)
+   (log epsilon.log)
    (trampoline epsilon.foreign.trampoline)
    (marshalling epsilon.foreign.marshalling)
    (struct epsilon.foreign.struct)
@@ -233,7 +234,7 @@
       (error "libffi extension not found at ~A" extension-path))
     
     (setf *libffi-library* (sb-alien:load-shared-object extension-path))
-    (format t "Loaded libffi extension from ~A~%" extension-path)
+    (log:info "Loaded libffi extension from ~A" extension-path)
     *libffi-library*))
 
 ;;; Foreign function definitions

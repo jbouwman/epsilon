@@ -8,6 +8,7 @@
   (:local-nicknames
    (clang epsilon.clang)
    (p epsilon.parser)
+   (log epsilon.log)
    (lexer epsilon.lexer)
    (map epsilon.map)
    (str epsilon.string)
@@ -360,7 +361,7 @@
             signature))
         
         ;; Interactive fallback could go here
-        (warn "Could not auto-discover signature for ~A" fn-name))))
+        (log:warn "Could not auto-discover signature for ~A" fn-name))))
 
 ;;;; Complete Pipeline
 

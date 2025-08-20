@@ -1,11 +1,11 @@
 ;;;; clang-signature-tests.lisp - Tests for clang signature extraction
 
 (defpackage epsilon.clang.signatures.tests
-  (:use cl epsilon.syntax epsilon.test)
+  (:use cl epsilon.test)
   (:local-nicknames
    (clang-sig epsilon.clang.signatures)
    (clang epsilon.clang)
-   (p epsilon.parser))
+   (process epsilon.process))
   (:export
    #:run-clang-signature-tests
    #:test-header-detection
@@ -20,222 +20,237 @@
 
 (defun clang-signatures-available-p ()
   "Check if clang signature extraction is available"
-  (find-package :epsilon.clang.signatures))
+  (and (find-package :epsilon.clang.signatures)
+       ;; Also check if clang binary is available
+       (handler-case
+           (progn
+             (epsilon.process:run-sync "clang" :args '("--version") 
+                                       :check-executable nil)
+             t)
+         (epsilon.process:command-not-found () nil)
+         (error () nil))))
 
 ;;;; Header Detection Tests
 
 (deftest test-function-header-detection
   "Test automatic header detection for functions"
-  (if (clang-signatures-available-p)
-      (progn
-        ;; String functions
-        (let ((headers (clang-sig:detect-function-headers "strlen")))
-          (is (member "string.h" headers :test #'string=) "strlen should suggest string.h"))
-        
-        ;; Memory functions
-        (let ((headers (clang-sig:detect-function-headers "malloc")))
-          (is (member "stdlib.h" headers :test #'string=) "malloc should suggest stdlib.h"))
-        
-        ;; I/O functions
-        (let ((headers (clang-sig:detect-function-headers "printf")))
-          (is (member "stdio.h" headers :test #'string=) "printf should suggest stdio.h"))
-        
-        ;; System functions
-        (let ((headers (clang-sig:detect-function-headers "getpid")))
-          (is (member "unistd.h" headers :test #'string=) "getpid should suggest unistd.h"))
-        
-        ;; Unknown functions should get default headers
-        (let ((headers (clang-sig:detect-function-headers "unknown_function")))
-          (is (>= (length headers) 1) "Unknown functions should get default headers")))
-      (format t "Skipping header detection test - clang signatures not available~%")))
+  (unless (clang-signatures-available-p)
+    (skip "Clang signature extraction not available - clang binary or epsilon.clang.signatures package missing"))
+  
+  ;; String functions
+  (let ((headers (clang-sig:detect-function-headers "strlen")))
+    (is (member "string.h" headers :test #'string=) "strlen should suggest string.h"))
+  
+  ;; Memory functions
+  (let ((headers (clang-sig:detect-function-headers "malloc")))
+    (is (member "stdlib.h" headers :test #'string=) "malloc should suggest stdlib.h"))
+  
+  ;; I/O functions
+  (let ((headers (clang-sig:detect-function-headers "printf")))
+    (is (member "stdio.h" headers :test #'string=) "printf should suggest stdio.h"))
+  
+  ;; System functions
+  (let ((headers (clang-sig:detect-function-headers "getpid")))
+    (is (member "unistd.h" headers :test #'string=) "getpid should suggest unistd.h"))
+  
+  ;; Unknown functions should get default headers
+  (let ((headers (clang-sig:detect-function-headers "unknown_function")))
+    (is (>= (length headers) 1) "Unknown functions should get default headers")))
 
 (deftest test-minimal-header-generation
   "Test minimal header generation"
-  (if (clang-signatures-available-p)
-      (progn
-        (let ((header (clang-sig:generate-minimal-header "strlen")))
-          (is (stringp header) "Should generate string header")
-          (is (search "#include <string.h>" header) "Should include string.h for strlen")
-          (is (search "strlen" header) "Should mention the function name"))
-        
-        (let ((header (clang-sig:generate-minimal-header "custom_func" '("custom.h"))))
-          (is (search "#include <custom.h>" header) "Should include custom headers")))
-      (format t "Skipping header generation test - clang signatures not available~%")))
+  (unless (clang-signatures-available-p)
+    (skip "Clang signature extraction not available - clang binary or epsilon.clang.signatures package missing"))
+  
+  (let ((header (clang-sig:generate-minimal-header "strlen")))
+    (is (stringp header) "Should generate string header")
+    (is (search "#include <string.h>" header) "Should include string.h for strlen")
+    (is (search "strlen" header) "Should mention the function name"))
+  
+  (let ((header (clang-sig:generate-minimal-header "custom_func" '("custom.h"))))
+    (is (search "#include <custom.h>" header) "Should include custom headers")))
 
 ;;;; Type Conversion Tests
 
 (deftest test-c-type-to-epsilon-mapping
   "Test C type to epsilon type conversion"
-  (if (clang-signatures-available-p)
-      (progn
-        ;; Basic types
-        (is-eq (clang-sig:c-type-to-epsilon-type "void") :void)
-        (is-eq (clang-sig:c-type-to-epsilon-type "int") :int)
-        (is-eq (clang-sig:c-type-to-epsilon-type "long") :long)
-        (is-eq (clang-sig:c-type-to-epsilon-type "char") :char)
-        (is-eq (clang-sig:c-type-to-epsilon-type "float") :float)
-        (is-eq (clang-sig:c-type-to-epsilon-type "double") :double)
-        
-        ;; Special types
-        (is-eq (clang-sig:c-type-to-epsilon-type "size_t") :unsigned-long)
+  (unless (clang-signatures-available-p)
+    (skip "Clang signature extraction not available - clang binary or epsilon.clang.signatures package missing"))
+  
+  ;; Basic types
+  (is-eq (clang-sig:c-type-to-epsilon-type "void") :void)
+  (is-eq (clang-sig:c-type-to-epsilon-type "int") :int)
+  (is-eq (clang-sig:c-type-to-epsilon-type "long") :long)
+  (is-eq (clang-sig:c-type-to-epsilon-type "char") :char)
+  (is-eq (clang-sig:c-type-to-epsilon-type "float") :float)
+  (is-eq (clang-sig:c-type-to-epsilon-type "double") :double)
+  
+  ;; Special types
+  (is-eq (clang-sig:c-type-to-epsilon-type "size_t") :unsigned-long)
         (is-eq (clang-sig:c-type-to-epsilon-type "ssize_t") :long)
         
         ;; Type lists
         (is-eq (clang-sig:c-type-to-epsilon-type '("const" "char")) :char)
         (is-eq (clang-sig:c-type-to-epsilon-type '("static" "int")) :int))
-      (format t "Skipping type conversion test - clang signatures not available~%")))
+    (skip "Clang signature extraction not available - clang binary or epsilon.clang.signatures package missing"))
 
 (deftest test-c-type-normalization
   "Test C type specifier normalization"
-  (if (clang-signatures-available-p)
-      (progn
-        ;; Unsigned types
-        (is-eq (clang-sig:normalize-c-types '("unsigned" "int")) :unsigned-int)
-        (is-eq (clang-sig:normalize-c-types '("unsigned" "long")) :unsigned-long)
-        (is-eq (clang-sig:normalize-c-types '("unsigned" "char")) :unsigned-char)
-        
-        ;; With qualifiers
-        (is-eq (clang-sig:normalize-c-types '("const" "int")) :int)
-        (is-eq (clang-sig:normalize-c-types '("static" "void")) :void)
-        (is-eq (clang-sig:normalize-c-types '("extern" "const" "char")) :char)
-        
-        ;; Long long
-        (is-eq (clang-sig:normalize-c-types '("long" "long")) :long-long)
-        
-        ;; Special POSIX types
-        (is-eq (clang-sig:normalize-c-types '("size_t")) :size-t)
-        (is-eq (clang-sig:normalize-c-types '("ssize_t")) :ssize-t))
-      (format t "Skipping type normalization test - clang signatures not available~%")))
+  (unless (clang-signatures-available-p)
+    (skip "Clang signature extraction not available - clang binary or epsilon.clang.signatures package missing"))
+  
+  ;; Unsigned types
+  (is-eq (clang-sig:normalize-c-types '("unsigned" "int")) :unsigned-int)
+  (is-eq (clang-sig:normalize-c-types '("unsigned" "long")) :unsigned-long)
+  (is-eq (clang-sig:normalize-c-types '("unsigned" "char")) :unsigned-char)
+  
+  ;; With qualifiers
+  (is-eq (clang-sig:normalize-c-types '("const" "int")) :int)
+  (is-eq (clang-sig:normalize-c-types '("static" "void")) :void)
+  (is-eq (clang-sig:normalize-c-types '("extern" "const" "char")) :char)
+  
+  ;; Long long
+  (is-eq (clang-sig:normalize-c-types '("long" "long")) :long-long)
+  
+  ;; Special POSIX types
+  (is-eq (clang-sig:normalize-c-types '("size_t")) :size-t)
+  (is-eq (clang-sig:normalize-c-types '("ssize_t")) :ssize-t))
 
 ;;;; AST Analysis Tests
 
 (deftest test-function-signature-structure
   "Test function signature data structure"
-  (if (clang-signatures-available-p)
-      (let ((sig (clang-sig:make-function-signature
-                  :name "test_func"
-                  :return-type :int
-                  :arg-types '(:int :string)
-                  :headers '("test.h"))))
-        (is-equal (clang-sig:function-signature-name sig) "test_func")
-        (is-eq (clang-sig:function-signature-return-type sig) :int)
-        (is-equal (clang-sig:function-signature-arg-types sig) '(:int :string))
-        (is-equal (clang-sig:function-signature-headers sig) '("test.h")))
-      (format t "Skipping signature structure test - clang signatures not available~%")))
+  (unless (clang-signatures-available-p)
+    (skip "Clang signature extraction not available - clang binary or epsilon.clang.signatures package missing"))
+  
+  (let ((sig (clang-sig:make-function-signature
+              :name "test_func"
+              :return-type :int
+              :arg-types '(:int :string)
+              :headers '("test.h"))))
+    (is-equal (clang-sig:function-signature-name sig) "test_func")
+    (is-eq (clang-sig:function-signature-return-type sig) :int)
+    (is-equal (clang-sig:function-signature-arg-types sig) '(:int :string))
+    (is-equal (clang-sig:function-signature-headers sig) '("test.h"))))
 
 (deftest test-signature-to-epsilon-types
   "Test conversion of signature to epsilon types"
-  (if (clang-signatures-available-p)
-      (let* ((sig (clang-sig:make-function-signature
-                   :name "strlen"
-                   :return-type :unsigned-long
-                   :arg-types '(:string)))
-             (epsilon-types (clang-sig:signature-to-epsilon-types sig)))
-        (is-eq (getf epsilon-types :return-type) :unsigned-long)
-        (is-equal (getf epsilon-types :arg-types) '(:string)))
-      (format t "Skipping epsilon types conversion test - clang signatures not available~%")))
+  (unless (clang-signatures-available-p)
+    (skip "Clang signature extraction not available - clang binary or epsilon.clang.signatures package missing"))
+  
+  (let* ((sig (clang-sig:make-function-signature
+               :name "strlen"
+               :return-type :unsigned-long
+               :arg-types '(:string)))
+         (epsilon-types (clang-sig:signature-to-epsilon-types sig)))
+    (is-eq (getf epsilon-types :return-type) :unsigned-long)
+    (is-equal (getf epsilon-types :arg-types) '(:string))))
 
 ;;;; Database Operations Tests
 
 (deftest test-signature-caching
   "Test signature database caching"
-  (if (clang-signatures-available-p)
-      (let ((original-db clang-sig:*signature-database*))
-        (unwind-protect
-             (progn
-               ;; Clear database for testing
-               (setf clang-sig:*signature-database* (make-hash-table :test 'equal))
-               
-               ;; Test caching
-               (let ((sig (clang-sig:make-function-signature
-                           :name "test_func"
-                           :return-type :int
-                           :arg-types '(:int))))
-                 (clang-sig:cache-signature "test_func" sig :library "libc")
-                 
-                 ;; Test retrieval
-                 (let ((retrieved (clang-sig:get-cached-signature "test_func" "libc")))
-                   (is retrieved "Should retrieve cached signature")
-                   (when retrieved
-                     (is-equal (clang-sig:function-signature-name retrieved) "test_func")))))
-          ;; Restore original database
-          (setf clang-sig:*signature-database* original-db)))
-      (format t "Skipping caching test - clang signatures not available~%")))
+  (unless (clang-signatures-available-p)
+    (skip "Clang signature extraction not available - clang binary or epsilon.clang.signatures package missing"))
+  
+  (let ((original-db clang-sig:*signature-database*))
+    (unwind-protect
+         (progn
+           ;; Clear database for testing
+           (setf clang-sig:*signature-database* (make-hash-table :test 'equal))
+           
+           ;; Test caching
+           (let ((sig (clang-sig:make-function-signature
+                       :name "test_func"
+                       :return-type :int
+                       :arg-types '(:int))))
+             (clang-sig:cache-signature "test_func" sig :library "libc")
+             
+             ;; Test retrieval
+             (let ((retrieved (clang-sig:get-cached-signature "test_func" "libc")))
+               (is retrieved "Should retrieve cached signature")
+               (when retrieved
+                 (is-equal (clang-sig:function-signature-name retrieved) "test_func")))))
+      ;; Restore original database
+      (setf clang-sig:*signature-database* original-db)))
 
 ;;;; Integration Tests
 
 (deftest test-clang-parser-integration
   "Test integration with epsilon.clang parser"
-  (if (and (clang-signatures-available-p) (find-package :epsilon.clang))
-      (handler-case
-          (let ((header-content "#include <string.h>\nsize_t strlen(const char *s);"))
-            ;; This should work if clang parser is functioning
-            (let ((signatures (clang-sig:parse-header-for-signatures header-content)))
-              (if signatures
-                  (is (> (length signatures) 0) "Should find at least one signature")
-                  (format t "No signatures found in header~%"))))
-        (error (e)
-          (format t "Clang parser integration test failed: ~A~%" e)))
-      (format t "Skipping clang parser integration test - dependencies not available~%")))
+  (unless (and (clang-signatures-available-p) (find-package :epsilon.clang))
+    (skip "Clang signature extraction not available - clang binary or epsilon.clang.signatures package missing"))
+  
+  (handler-case
+      (let ((header-content "#include <string.h>\nsize_t strlen(const char *s);"))
+        ;; This should work if clang parser is functioning
+        (let ((signatures (clang-sig:parse-header-for-signatures header-content)))
+          (if signatures
+              (is (> (length signatures) 0) "Should find at least one signature")
+              (format t "No signatures found in header~%"))))
+    (error (e)
+      (format t "Clang parser integration test failed: ~A~%" e)))
 
 (deftest test-auto-discovery-pipeline
   "Test complete auto-discovery pipeline"
-  (if (clang-signatures-available-p)
-      (handler-case
-          ;; Test the complete pipeline for a known function
-          (let ((signature (clang-sig:clang-signature-pipeline "strlen")))
-            (if signature
-                (progn
-                  (is-equal (clang-sig:function-signature-name signature) "strlen")
-                  (is (clang-sig:function-signature-return-type signature) "Should have return type")
-                  (is (clang-sig:function-signature-arg-types signature) "Should have arg types"))
-                (format t "Auto-discovery pipeline returned no signature for strlen~%")))
-        (error (e)
-          (format t "Auto-discovery pipeline test failed: ~A~%" e)))
-      (format t "Skipping auto-discovery test - clang signatures not available~%")))
+  (unless (clang-signatures-available-p)
+    (skip "Clang signature extraction not available - clang binary or epsilon.clang.signatures package missing"))
+  
+  (handler-case
+      ;; Test the complete pipeline for a known function
+      (let ((signature (clang-sig:clang-signature-pipeline "strlen")))
+        (if signature
+            (progn
+              (is-equal (clang-sig:function-signature-name signature) "strlen")
+              (is (clang-sig:function-signature-return-type signature) "Should have return type")
+              (is (clang-sig:function-signature-arg-types signature) "Should have arg types"))
+            (format t "Auto-discovery pipeline returned no signature for strlen~%")))
+    (error (e)
+      (format t "Auto-discovery pipeline test failed: ~A~%" e)))
 
 ;;;; Performance Tests
 
 (deftest test-signature-extraction-performance
   "Test performance of signature extraction"
-  (if (clang-signatures-available-p)
-      (let ((start-time (get-internal-real-time))
-            (function-list '("strlen" "malloc" "printf" "getpid" "free")))
-        (dolist (fn function-list)
-          (handler-case
-              (clang-sig:clang-signature-pipeline fn)
-            (error (e)
-              (format t "Failed to extract signature for ~A: ~A~%" fn e))))
-        
-        (let* ((end-time (get-internal-real-time))
-               (elapsed (/ (- end-time start-time) internal-time-units-per-second)))
-          (format t "Extracted signatures for ~D functions in ~,3F seconds~%" 
-                  (length function-list) elapsed)
-          (is (< elapsed 5.0) "Should extract signatures reasonably quickly")))
-      (format t "Skipping performance test - clang signatures not available~%")))
+  (unless (clang-signatures-available-p)
+    (skip "Clang signature extraction not available - clang binary or epsilon.clang.signatures package missing"))
+  
+  (let ((start-time (get-internal-real-time))
+        (function-list '("strlen" "malloc" "printf" "getpid" "free")))
+    (dolist (fn function-list)
+      (handler-case
+          (clang-sig:clang-signature-pipeline fn)
+        (error (e)
+          (format t "Failed to extract signature for ~A: ~A~%" fn e))))
+    
+    (let* ((end-time (get-internal-real-time))
+           (elapsed (/ (- end-time start-time) internal-time-units-per-second)))
+      (format t "Extracted signatures for ~D functions in ~,3F seconds~%" 
+              (length function-list) elapsed)
+      (is (< elapsed 5.0) "Should extract signatures reasonably quickly"))))
 
 ;;;; Error Handling Tests
 
 (deftest test-signature-extraction-errors
   "Test error handling in signature extraction"
-  (if (clang-signatures-available-p)
-      (progn
-        ;; Test with invalid function name
-        (handler-case
-            (let ((sig (clang-sig:extract-function-signature "nonexistent_function_xyz")))
-              (if sig
-                  (format t "Unexpectedly found signature for nonexistent function~%")
-                  (is t "Should handle nonexistent functions gracefully")))
-          (error (e)
-            (is t "Should handle errors gracefully")))
-        
-        ;; Test with invalid header content
-        (handler-case
-            (let ((sigs (clang-sig:parse-header-for-signatures "invalid C syntax {")))
-              (is (null sigs) "Should return empty list for invalid syntax"))
-          (error (e)
-            (is t "Should handle parse errors gracefully"))))
-      (format t "Skipping error handling test - clang signatures not available~%")))
+  (unless (clang-signatures-available-p)
+    (skip "Clang signature extraction not available - clang binary or epsilon.clang.signatures package missing"))
+  
+  ;; Test with invalid function name
+  (handler-case
+      (let ((sig (clang-sig:extract-function-signature "nonexistent_function_xyz")))
+        (if sig
+            (format t "Unexpectedly found signature for nonexistent function~%")
+            (is t "Should handle nonexistent functions gracefully")))
+    (error (e)
+      (is t "Should handle errors gracefully")))
+  
+  ;; Test with invalid header content
+  (handler-case
+      (let ((sigs (clang-sig:parse-header-for-signatures "invalid C syntax {")))
+        (is (null sigs) "Should return empty list for invalid syntax"))
+    (error (e)
+      (is t "Should handle parse errors gracefully"))))
 
 ;;;; Test Suite Runner
 

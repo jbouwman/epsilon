@@ -28,8 +28,8 @@
        (eval-when (:compile-toplevel :load-toplevel)
          (let ((signature (auto-discover-signature ',function-designator)))
            (when signature
-             (format t "Auto-discovered signature for ~A: ~A~%" 
-                     ',c-name signature))))
+             (log:debug "Auto-discovered signature for ~A: ~A" 
+                        ',c-name signature))))
        
        ;; Define the function with runtime signature discovery
        (defun ,lisp-name (&rest args)
@@ -102,8 +102,8 @@
            ("read" "libc")
            ("write" "libc"))))
     
-    (format t "Preloading signatures for ~D common functions...~%" 
-            (length common-functions))
+    (log:info "Preloading signatures for ~D common functions" 
+              (length common-functions))
     
     (dolist (func-spec common-functions)
       (handler-case
@@ -115,7 +115,7 @@
 
 (defun validate-signature-database ()
   "Validate cached signatures against current system"
-  (format t "Validating signature database...~%")
+  (log:debug "Validating signature database")
   (let ((validated 0)
         (failed 0))
     
@@ -131,12 +131,12 @@
                                (resolve-function-address fn-name)
                                (incf validated))))
                        (error (e)
-                         (format t "  Validation failed for ~A: ~A~%" key e)
+                         (log:warn "Validation failed for ~A: ~A" key e)
                          (incf failed))))
                    (symbol-value db-symbol)))))
     
-    (format t "Signature validation complete: ~D valid, ~D failed~%" 
-            validated failed)))
+    (log:info "Signature validation complete: ~D valid, ~D failed" 
+              validated failed)))
 
 ;;;; Development and debugging utilities
 
@@ -233,7 +233,7 @@
 
 (defun test-smart-ffi ()
   "Test smart FFI functionality"
-  (format t "Testing smart FFI functionality...~%")
+  (log:debug "Testing smart FFI functionality")
   
   ;; Test auto-discovery
   (handler-case
@@ -276,11 +276,11 @@
   (when (find-package :epsilon.clang.signatures)
     (let ((db-symbol (find-symbol "*SIGNATURE-DATABASE*" :epsilon.clang.signatures)))
       (when db-symbol
-        (format t "  Cached signatures: ~D~%" 
-                (hash-table-count (symbol-value db-symbol))))))
+        (log:info "Cached signatures: ~D" 
+                  (hash-table-count (symbol-value db-symbol))))))
   
   ;; Check call statistics
-  (format t "  Tracked calls: ~D~%" (hash-table-count *call-statistics*))
+  (log:info "Tracked calls: ~D" (hash-table-count *call-statistics*))
   
   ;; Suggestions
   (format t "  Suggestions:~%")
@@ -289,28 +289,28 @@
   (unless *track-call-performance*
     (format t "    - Enable call tracking for optimization~%"))
   (when (< (hash-table-count *call-statistics*) 10)
-    (format t "    - Consider preloading common signatures~%")))
+    (log:info "Consider preloading common signatures")))
 
 ;;;; Initialize smart FFI system
 
 (defun initialize-smart-ffi ()
   "Initialize the smart FFI system"
-  (format t "Initializing smart FFI system...~%")
+  (log:info "Initializing smart FFI system")
   
   ;; Load signature database if available
   (when (find-package :epsilon.clang.signatures)
     (handler-case
         (funcall (find-symbol "LOAD-SIGNATURE-DATABASE" :epsilon.clang.signatures))
       (error (e)
-        (format t "Could not load signature database: ~A~%" e))))
+        (log:warn "Could not load signature database: ~A" e))))
   
   ;; Preload common signatures
   (handler-case
       (preload-common-signatures)
     (error (e)
-      (format t "Could not preload signatures: ~A~%" e)))
+      (log:warn "Could not preload signatures: ~A" e)))
   
-  (format t "Smart FFI initialization complete~%"))
+  (log:info "Smart FFI initialization complete")))
 
 ;; Initialize when loaded
 (eval-when (:load-toplevel :execute)
