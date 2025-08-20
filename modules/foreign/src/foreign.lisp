@@ -469,6 +469,7 @@
     (unwind-protect
          (multiple-value-bind (converted-args holders)
              (convert-args-to-pointers args arg-types)
+           ;; Keep holders alive during the entire call by binding them
            (unwind-protect
                 (let* ((result-holder (allocate-result-holder return-type))
                        (call-result (epsilon-call-function (cif-info-pointer cif-info)
@@ -478,8 +479,8 @@
                   (if (< call-result 0)
                       (error "FFI call failed: ~A" (epsilon-get-last-error))
                       (extract-result result-holder return-type)))
-             ;; Keep holders alive during the entire call
-             (declare (ignore holders))))
+             ;; holders keeps memory alive through lexical binding
+             (when holders nil)))
       (release-cif cif-info))))
 
 (defun convert-args-to-pointers (args arg-types)

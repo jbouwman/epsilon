@@ -296,6 +296,7 @@
                                     (cookie-name "csrf_token")
                                     (safe-methods '("GET" "HEAD" "OPTIONS")))
   "CSRF protection middleware"
+  (declare (ignore cookie-name)) ;; TODO: Implement cookie-based CSRF token lookup
   (lambda (request)
     (let ((method (request:request-method request)))
       (if (member method safe-methods :test #'string=)

@@ -116,6 +116,7 @@
 
 (defun handle-client (connection ssl-p application &key require-client-cert)
   "Handle a client connection using application pipeline with optional client cert verification"
+  (declare (ignore require-client-cert)) ;; TODO: Implement client certificate verification
   (log:info "Handle-client called with connection: ~A, ssl-p: ~A" connection ssl-p)
   (handler-case
       (progn

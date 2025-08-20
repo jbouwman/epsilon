@@ -202,20 +202,21 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
   "Format assertion history for detailed output"
   (if (null assertions)
       "No assertions recorded"
-    (with-output-to-string (s)
-			   (let ((count 0))
-			     (dolist (assertion (reverse assertions))
-			       (incf count)
-			       (destructuring-bind (result report-fn) assertion
-						   (cond
-						    ((and (listp result) (eq (first result) :label-start))
-						     (format s "  ~D. Label: ~A~%" count (second result)))
-						    ((and (listp result) (eq (first result) :label-end))
-						     nil) ; Skip end labels
-						    (result
-						     (format s "  ~D. ✓ PASSED~%" count))
-						    (t
-						     (format s "  ~D. ✗ FAILED~%" count)))))))))
+      (with-output-to-string (s)
+	(let ((count 0))
+	  (dolist (assertion (reverse assertions))
+	    (incf count)
+	    (destructuring-bind (result report-fn) assertion
+	      (declare (ignore report-fn))
+	      (cond
+	       ((and (listp result) (eq (first result) :label-start))
+		(format s "  ~D. Label: ~A~%" count (second result)))
+	       ((and (listp result) (eq (first result) :label-end))
+		nil) ; Skip end labels
+	       (result
+		(format s "  ~D. ✓ PASSED~%" count))
+	       (t
+		(format s "  ~D. ✗ FAILED~%" count)))))))))
 
 (defun make-junit-testsuites (run)
   "Create JUnit XML testsuites element"
@@ -423,6 +424,7 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
 (defmethod event ((formatter verbose-report) (event-type (eql :end-test)) result)
   (let* ((test (suite:test result))
          (status (suite:status result))
+    (declare (ignore test))
          (elapsed (suite::elapsed-time result))
          (assertions (suite:assertions result))
          (status-symbol (case status
@@ -445,6 +447,7 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
       (format t "│     Assertions:~%")
       (dolist (assertion (reverse assertions))
         (destructuring-bind (result report-fn) assertion
+          (declare (ignore report-fn))
 			    (cond
 			     ((and (listp result) (eq (first result) :label-start))
 			      (format t "│       ├─ ~A~%" (second result)))

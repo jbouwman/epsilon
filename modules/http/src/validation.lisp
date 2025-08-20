@@ -225,8 +225,7 @@
   (lambda (data)
     (let ((result (make-validation-result)))
       (map:each (lambda (field validators)
-                  (let ((value (map:get data field))
-                        (final-value value))
+                  (let ((final-value (map:get data field)))
                     (dolist (validator (if (listp validators) validators (list validators)))
                       (handler-case
                           (setf final-value (funcall validator field final-value))
