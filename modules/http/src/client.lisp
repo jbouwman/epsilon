@@ -30,19 +30,26 @@
    (tls-connection :initarg :tls-connection :accessor connection-tls-connection :initform nil)
    (tls-context :initarg :tls-context :accessor connection-tls-context :initform nil)))
 
-(defun make-http-connection (host port &key ssl-p tls-context cert-file key-file ca-file)
-  "Create an HTTP connection to HOST:PORT, optionally with SSL.
+(defun make-http-connection (host port &key ssl-p tls-context cert-file key-file ca-file
+                                        alpn-protocols verify-depth session-cache-p)
+  "Create an HTTP connection to HOST:PORT with full mTLS and HTTP/2 support.
    Parameters:
    - ssl-p: Enable SSL/TLS
    - tls-context: Pre-configured TLS context to use
    - cert-file: Client certificate file for mutual TLS
    - key-file: Client private key file for mutual TLS
    - ca-file: CA certificate file for server verification
-   Example: (make-http-connection \"example.com\" 443 :ssl-p t :cert-file \"client.pem\" :key-file \"key.pem\")"
+   - alpn-protocols: List of ALPN protocols (default: '(\"h2\" \"http/1.1\"))
+   - verify-depth: Certificate chain verification depth
+   - session-cache-p: Enable session resumption
+   Example: (make-http-connection \"example.com\" 443 :ssl-p t 
+                                  :cert-file \"client.pem\" :key-file \"key.pem\"
+                                  :alpn-protocols '(\"h2\" \"http/1.1\"))"
   (let* ((address (net:make-socket-address host port))
          (socket (net:tcp-connect address))
          (tls-conn nil)
-         (tls-ctx nil))
+         (tls-ctx nil)
+         (effective-alpn-protocols (or alpn-protocols '("h2" "http/1.1"))))
     (when ssl-p
       (setf tls-ctx (or tls-context
                         (tls:create-openssl-context 
@@ -52,8 +59,13 @@
                          :ca-file ca-file
                          :verify-mode (if ca-file
                                           tls:+ssl-verify-peer+
-                                          tls:+ssl-verify-none+))))
-      (setf tls-conn (tls:tls-connect socket :context tls-ctx :hostname host)))
+                                          tls:+ssl-verify-none+)
+                         :verify-depth verify-depth
+                         :alpn-protocols effective-alpn-protocols
+                         :session-cache-p session-cache-p)))
+      (setf tls-conn (tls:openssl-connect socket tls-ctx 
+                                          :hostname host
+                                          :alpn-protocols effective-alpn-protocols)))
     (make-instance 'http-connection
                    :socket socket
                    :host host
@@ -62,14 +74,18 @@
                    :tls-connection tls-conn
                    :tls-context tls-ctx)))
 
-(defmacro with-connection ((conn host port &key ssl-p tls-context cert-file key-file ca-file) &body body)
-  "Execute body with an HTTP connection, supporting mutual TLS"
+(defmacro with-connection ((conn host port &key ssl-p tls-context cert-file key-file ca-file
+                                             alpn-protocols verify-depth session-cache-p) &body body)
+  "Execute body with an HTTP connection, supporting mutual TLS and HTTP/2"
   `(let ((,conn (make-http-connection ,host ,port 
                                       :ssl-p ,ssl-p
                                       :tls-context ,tls-context
                                       :cert-file ,cert-file
                                       :key-file ,key-file
-                                      :ca-file ,ca-file)))
+                                      :ca-file ,ca-file
+                                      :alpn-protocols ,alpn-protocols
+                                      :verify-depth ,verify-depth
+                                      :session-cache-p ,session-cache-p)))
      (unwind-protect
           (progn ,@body)
        (progn
@@ -265,8 +281,9 @@
                     (str:join #\Linefeed (seq:from-list (subseq lines-list body-start))))))
         (list :status status-code :headers headers :body body)))))
 
-(defun request (url &key (method "GET") headers body tls-context cert-file key-file ca-file)
-  "Make an HTTP request to URL with optional mutual TLS support.
+(defun request (url &key (method "GET") headers body tls-context cert-file key-file ca-file
+                    alpn-protocols verify-depth session-cache-p)
+  "Make an HTTP request to URL with full mTLS and HTTP/2 support.
    Parameters:
    - method: HTTP method (GET, POST, etc.)
    - headers: HTTP headers as a map
@@ -274,7 +291,10 @@
    - tls-context: Pre-configured TLS context
    - cert-file: Client certificate for mutual TLS
    - key-file: Client private key for mutual TLS
-   - ca-file: CA certificate for server verification"
+   - ca-file: CA certificate for server verification
+   - alpn-protocols: ALPN protocols to advertise (default: '(\"h2\" \"http/1.1\"))
+   - verify-depth: Certificate chain verification depth
+   - session-cache-p: Enable session resumption"
   (multiple-value-bind (scheme host port path query)
       (parse-url url)
     (let ((ssl-p (string= scheme "https")))
@@ -283,57 +303,84 @@
                         :tls-context tls-context
                         :cert-file cert-file
                         :key-file key-file
-                        :ca-file ca-file)
+                        :ca-file ca-file
+                        :alpn-protocols alpn-protocols
+                        :verify-depth verify-depth
+                        :session-cache-p session-cache-p)
         (send-request conn method path 
                       :headers headers 
                       :body body
                       :query query)
         (read-response conn)))))
 
-(defun http-get (url &key headers tls-context cert-file key-file ca-file)
-  "Make GET request with optional mutual TLS"
+(defun http-get (url &key headers tls-context cert-file key-file ca-file
+                      alpn-protocols verify-depth session-cache-p)
+  "Make GET request with full mTLS and HTTP/2 support"
   (request url :method "GET" :headers headers
            :tls-context tls-context
            :cert-file cert-file
            :key-file key-file
-           :ca-file ca-file))
+           :ca-file ca-file
+           :alpn-protocols alpn-protocols
+           :verify-depth verify-depth
+           :session-cache-p session-cache-p))
 
-(defun http-post (url &key headers body tls-context cert-file key-file ca-file)
-  "Make POST request with optional mutual TLS"
+(defun http-post (url &key headers body tls-context cert-file key-file ca-file
+                       alpn-protocols verify-depth session-cache-p)
+  "Make POST request with full mTLS and HTTP/2 support"
   (request url :method "POST" :headers headers :body body
            :tls-context tls-context
            :cert-file cert-file
            :key-file key-file
-           :ca-file ca-file))
+           :ca-file ca-file
+           :alpn-protocols alpn-protocols
+           :verify-depth verify-depth
+           :session-cache-p session-cache-p))
 
-(defun http-put (url &key headers body tls-context cert-file key-file ca-file)
-  "Make PUT request with optional mutual TLS"
+(defun http-put (url &key headers body tls-context cert-file key-file ca-file
+                      alpn-protocols verify-depth session-cache-p)
+  "Make PUT request with full mTLS and HTTP/2 support"
   (request url :method "PUT" :headers headers :body body
            :tls-context tls-context
            :cert-file cert-file
            :key-file key-file
-           :ca-file ca-file))
+           :ca-file ca-file
+           :alpn-protocols alpn-protocols
+           :verify-depth verify-depth
+           :session-cache-p session-cache-p))
 
-(defun http-delete (url &key headers tls-context cert-file key-file ca-file)
-  "Make DELETE request with optional mutual TLS"
+(defun http-delete (url &key headers tls-context cert-file key-file ca-file
+                         alpn-protocols verify-depth session-cache-p)
+  "Make DELETE request with full mTLS and HTTP/2 support"
   (request url :method "DELETE" :headers headers
            :tls-context tls-context
            :cert-file cert-file
            :key-file key-file
-           :ca-file ca-file))
+           :ca-file ca-file
+           :alpn-protocols alpn-protocols
+           :verify-depth verify-depth
+           :session-cache-p session-cache-p))
 
-(defun http-head (url &key headers tls-context cert-file key-file ca-file)
-  "Make HEAD request with optional mutual TLS"
+(defun http-head (url &key headers tls-context cert-file key-file ca-file
+                       alpn-protocols verify-depth session-cache-p)
+  "Make HEAD request with full mTLS and HTTP/2 support"
   (request url :method "HEAD" :headers headers
            :tls-context tls-context
            :cert-file cert-file
            :key-file key-file
-           :ca-file ca-file))
+           :ca-file ca-file
+           :alpn-protocols alpn-protocols
+           :verify-depth verify-depth
+           :session-cache-p session-cache-p))
 
-(defun http-options (url &key headers tls-context cert-file key-file ca-file)
-  "Make OPTIONS request with optional mutual TLS"
+(defun http-options (url &key headers tls-context cert-file key-file ca-file
+                          alpn-protocols verify-depth session-cache-p)
+  "Make OPTIONS request with full mTLS and HTTP/2 support"
   (request url :method "OPTIONS" :headers headers
            :tls-context tls-context
            :cert-file cert-file
            :key-file key-file
-           :ca-file ca-file))
+           :ca-file ca-file
+           :alpn-protocols alpn-protocols
+           :verify-depth verify-depth
+           :session-cache-p session-cache-p))

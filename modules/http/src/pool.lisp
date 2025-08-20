@@ -9,7 +9,7 @@
    (#:pool #:epsilon.pool)
    (#:client #:epsilon.http.client)
    (#:net #:epsilon.net)
-   (#:tls #:epsilon.tls)
+   (#:crypto #:epsilon.crypto)
    (#:map #:epsilon.map)
    (#:str #:epsilon.string)
    (#:time #:epsilon.time))
@@ -177,19 +177,19 @@
                 (stream nil))
             (if ssl-p
                 (progn
-                  (let ((tls-context (tls:create-tls-context :server-p nil)))
+                  (let ((tls-context (crypto:create-tls-context :server-p nil)))
                     ;; Configure TLS context for HTTP
                     ;; TODO: Implement ALPN protocol support
                     ;; (when (pool-config-enable-http2 config)
-                    ;;   (tls:set-alpn-protocols tls-context '("h2" "http/1.1")))
+                    ;;   (crypto:set-alpn-protocols tls-context '("h2" "http/1.1")))
                     
-                    (setf tls-conn (tls:tls-connect socket tls-context))
-                    (setf stream (tls:tls-stream tls-conn))
+                    (setf tls-conn (crypto:tls-connect socket tls-context))
+                    (setf stream (crypto:tls-stream tls-conn))
                     
                     ;; Check negotiated protocol
                     ;; TODO: Implement ALPN protocol negotiation checking
                     ;; (when (pool-config-enable-http2 config)
-                    ;;   (let ((negotiated (tls:get-alpn-selected tls-conn)))
+                    ;;   (let ((negotiated (crypto:get-alpn-selected tls-conn)))
                     ;;     (when (string= negotiated "h2")
                     ;;       (setf protocol :http/2))))
                     ))
@@ -225,7 +225,7 @@
   (setf (http-connection-alive-p connection) nil)
   (ignore-errors
     (when (http-connection-tls-connection connection)
-      (tls:tls-close (http-connection-tls-connection connection)))
+      (crypto:tls-close (http-connection-tls-connection connection)))
     (when (http-connection-socket connection)
       (net:tcp-shutdown (http-connection-socket connection) :both))))
 

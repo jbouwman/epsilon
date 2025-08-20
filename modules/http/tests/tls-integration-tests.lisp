@@ -7,7 +7,7 @@
   (:local-nicknames
    (#:http #:epsilon.http)
    (#:client #:epsilon.http.client)
-   (#:tls #:epsilon.tls)
+   (#:crypto #:epsilon.crypto)
    (#:net #:epsilon.net)
    (#:fixture #:epsilon.test.fixture)))
 
@@ -17,11 +17,11 @@
 (fixture:fixture tls-test-fixture ()
   (:setup
    ;; Enable TLS mock mode for controlled testing
-   (tls:enable-mock-mode)
+   (crypto:enable-mock-mode)
    t) ; Return a dummy value as fixture
   (:teardown
    ;; Disable TLS mock mode
-   (tls:disable-mock-mode)))
+   (crypto:disable-mock-mode)))
 
 ;;;; Basic TLS Connection Tests
 

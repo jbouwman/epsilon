@@ -166,8 +166,15 @@
       (ffi:%ssl-ctx-set-verify ctx final-verify-mode (sb-sys:int-sap 0)))
     
     (when verify-depth
-      ;; TODO: Add SSL_CTX_set_verify_depth FFI binding if needed
-      )
+      (ffi:%ssl-ctx-ctrl ctx 35 verify-depth (sb-sys:int-sap 0)))  ; SSL_CTRL_SET_VERIFY_DEPTH
+    
+    ;; Set ALPN protocols if provided
+    (when alpn-protocols
+      (epsilon.crypto.alpn:set-alpn-protocols ctx alpn-protocols :context-p t))
+    
+    ;; Configure session caching
+    (when session-cache-p
+      (ffi:%ssl-ctx-set-session-cache-mode ctx 2))  ; SSL_SESS_CACHE_SERVER
     
     (make-openssl-context :handle ctx
                           :server-p server-p
@@ -231,9 +238,13 @@
 
 ;;;; TLS Connection Management
 
-(defun openssl-connect (socket context &key hostname)
-  "Establish TLS connection as client"
-  (declare (ignore hostname)) ; TODO: Add SNI support
+(defun openssl-connect (socket context &key hostname alpn-protocols)
+  "Establish TLS connection as client with SNI and ALPN support.
+   Parameters:
+   - socket: Network socket or file descriptor
+   - context: OpenSSL context
+   - hostname: Server hostname for SNI
+   - alpn-protocols: List of ALPN protocols to advertise"
   
   (unless (openssl-context-p context)
     (error "OpenSSL context required"))
@@ -242,6 +253,14 @@
     (when (sb-sys:sap= ssl (sb-sys:int-sap 0))
       (error 'crypto-error :code (ffi:%err-get-error)
              :message "Failed to create SSL connection"))
+    
+    ;; Set SNI hostname if provided
+    (when hostname
+      (ffi:%ssl-set-tlsext-host-name ssl hostname))
+    
+    ;; Set ALPN protocols if provided
+    (when alpn-protocols
+      (epsilon.crypto.alpn:set-alpn-protocols ssl alpn-protocols :context-p nil))
     
     ;; Set socket file descriptor  
     ;; TODO: Get FD from socket - needs net module integration
@@ -425,6 +444,11 @@
     (let ((cipher-ptr (ffi:%ssl-get-cipher (openssl-connection-ssl connection))))
       (unless (sb-sys:sap= cipher-ptr (sb-sys:int-sap 0))
         (sb-alien:cast cipher-ptr sb-alien:c-string)))))
+
+(defun tls-selected-alpn-protocol (connection)
+  "Get the ALPN protocol selected during handshake"
+  (when (openssl-connection-p connection)
+    (epsilon.crypto.alpn:get-selected-protocol (openssl-connection-ssl connection))))
 
 (defun get-peer-certificate (connection)
   "Get peer's X.509 certificate from TLS connection"

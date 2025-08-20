@@ -25,6 +25,7 @@
    #:%ssl-ctx-use-privatekey-file
    #:%ssl-ctx-check-private-key
    #:%ssl-ctx-set-verify
+   #:%ssl-ctx-ctrl
    #:%ssl-ctx-set-cipher-list
    #:%ssl-ctx-use-certificate
    #:%ssl-ctx-use-privatekey
@@ -208,6 +209,10 @@
 (lib:defshared %ssl-ctx-set-verify "SSL_CTX_set_verify" "libssl" :void
   (ctx :pointer) (mode :int) (callback :pointer)
   :documentation "Set verification mode")
+
+(lib:defshared %ssl-ctx-ctrl "SSL_CTX_ctrl" "libssl" :long
+  (ctx :pointer) (cmd :int) (larg :long) (parg :pointer)
+  :documentation "Generic SSL context control function")
 
 (lib:defshared %ssl-ctx-set-cipher-list "SSL_CTX_set_cipher_list" "libssl" :int
   (ctx :pointer) (str :string)
@@ -637,7 +642,7 @@
   (req :pointer)
   :documentation "Get CSR subject name")
 
-(lib:defshared %x509-req-get-pubkey "X509_REQ_get_pubkey" "libcrypto" :pointer
+(lib:defshared %x509-req-get-pubkey "X509_REQ_get0_pubkey" "libcrypto" :pointer
   (req :pointer)
   :documentation "Get public key from CSR")
 
