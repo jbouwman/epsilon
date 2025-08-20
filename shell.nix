@@ -10,6 +10,12 @@ pkgs.mkShell {
     openssl
     ripgrep
     pkg-config
+    (pkgs.emacsWithPackages (epkgs: [
+      epkgs.magit
+      epkgs.projectile
+      epkgs.company
+      # Add more packages as needed
+    ]))
   ];
 
   shellHook = ''
