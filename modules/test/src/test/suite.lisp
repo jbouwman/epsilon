@@ -14,7 +14,8 @@
    (pkg epsilon.sys.pkg)
    (re epsilon.regex)
    (xml epsilon.xml)
-   (log epsilon.log))
+   (log epsilon.log)
+   (digest epsilon.digest))
   (:export
    *test*
    test
@@ -35,9 +36,74 @@
    suite-tests
    ensure-test-root
    clear-tests
-   list-available-packages))
+   list-available-packages
+   find-test-by-hash
+   find-test-and-module-by-hash
+   list-all-tests-with-hashes))
 
 (in-package epsilon.test.suite)
+
+;;; Hash Storage for test identification
+
+(defvar *test-hash-map* map:+empty+
+  "Map from hash prefix to full test identifier")
+
+(defvar *test-id-map* map:+empty+
+  "Map from full test identifier to hash")
+
+(defvar *hash-length* 6
+  "Default length of hash prefix to use")
+
+;;; Hash Generation
+
+(defun generate-test-hash (test-id)
+  "Generate a hash for a test identifier.
+   TEST-ID should be a string like 'module:package:test-name'"
+  ;; Use MD5 from epsilon.digest, convert to lowercase hex
+  (string-downcase (digest:bytes-to-hex (digest:md5 test-id))))
+
+(defun find-unique-prefix (hash existing-hashes &optional (min-length *hash-length*))
+  "Find the shortest unique prefix for a hash that doesn't collide with existing hashes.
+   Returns the unique prefix of at least MIN-LENGTH characters."
+  (loop for length from min-length to (length hash)
+        for prefix = (subseq hash 0 (min length (length hash)))
+        when (not (map:contains-key-p existing-hashes prefix))
+        return prefix
+        finally (return hash)))
+
+(defun register-test-hash (test-symbol &optional module-name)
+  "Register a test with its hash identifier.
+   Returns the assigned hash prefix."
+  (let* ((package-name (package-name (symbol-package test-symbol)))
+         (test-name (symbol-name test-symbol))
+         (test-id (if module-name
+                      (format nil "~A:~A:~A" module-name package-name test-name)
+                    (format nil "~A:~A" package-name test-name)))
+         (full-hash (generate-test-hash test-id))
+         (hash-prefix (find-unique-prefix full-hash *test-hash-map*)))
+    
+    ;; Store bidirectional mapping
+    (setf *test-hash-map* (map:assoc *test-hash-map* hash-prefix test-id))
+    (setf *test-id-map* (map:assoc *test-id-map* test-id hash-prefix))
+    
+    hash-prefix))
+
+(defun hash-to-test-id (hash-prefix)
+  "Convert a hash prefix to a full test identifier.
+   Returns (values test-id found-p)"
+  (let ((test-id (map:get *test-hash-map* hash-prefix)))
+    (if test-id
+        (values test-id t)
+      (values nil nil))))
+
+(defun test-id-to-hash (test-id)
+  "Get the hash prefix for a test identifier."
+  (map:get *test-id-map* test-id))
+
+(defun clear-test-hashes ()
+  "Clear all registered test hashes."
+  (setf *test-hash-map* map:+empty+)
+  (setf *test-id-map* map:+empty+))
 
 ;;; Helper functions
 
@@ -61,43 +127,6 @@
 (defclass test-root (test-node)
   ())
 
-(defvar *test-root* nil
-  "Global test root. Initialized on first use.")
-
-(defun ensure-test-root ()
-  "Ensure *test-root* is initialized"
-  (unless *test-root*
-    (setf *test-root* (make-instance 'test-root)))
-  *test-root*)
-
-(defun clear-tests ()
-  "Clear all registered tests and unbind test function symbols for garbage collection."
-  ;; First collect all test symbols before clearing the tree
-  (when *test-root*
-    (labels ((collect-test-symbols (node)
-               (let ((symbols '()))
-                 ;; Collect test symbols from test-suite nodes
-                 (when (typep node 'test-suite)
-                   (map:each (lambda (sym metadata)
-                               (declare (ignore metadata))
-                               (push sym symbols))
-                             (tests-of node)))
-                 ;; Recursively collect from children
-                 (map:each (lambda (name child)
-                             (declare (ignore name))
-                             (setf symbols (append symbols (collect-test-symbols child))))
-                           (children-of node))
-                 symbols)))
-      ;; Collect all test symbols
-      (let ((test-symbols (collect-test-symbols *test-root*)))
-        ;; Unbind each test function symbol to allow GC
-        (dolist (sym test-symbols)
-          (when (fboundp sym)
-            (fmakunbound sym))))))
-  ;; Clear the test tree
-  (setf *test-root* nil)
-  (ensure-test-root))
-
 (defclass test-metadata ()
   ((symbol :initarg :symbol
            :reader test-symbol
@@ -120,6 +149,47 @@
   "Recursively collect all tests from test-suite and its children"
   (append (mapcar #'test-symbol (map:vals (tests-of suite)))
           (call-next-method)))
+
+(defvar *test-root* nil
+  "Global test root. Initialized on first use.")
+
+(defun ensure-test-root ()
+  "Ensure *test-root* is initialized"
+  (unless *test-root*
+    (setf *test-root* (make-instance 'test-root)))
+  *test-root*)
+
+(defun clear-tests ()
+  "Clear all registered tests and unbind test function symbols for garbage collection."
+  ;; First collect all test symbols before clearing the tree
+  (when *test-root*
+    (labels ((collect-test-symbols (node)
+				   (let ((symbols '()))
+				     ;; Collect test symbols from test-suite nodes
+				     (when (typep node 'test-suite)
+				       (map:each (lambda (sym metadata)
+						   (declare (ignore metadata))
+						   (push sym symbols))
+						 (tests-of node)))
+				     ;; Recursively collect from children
+				     (map:each (lambda (name child)
+						 (declare (ignore name))
+						 (setf symbols (append symbols (collect-test-symbols child))))
+					       (children-of node))
+				     symbols)))
+	    ;; Collect all test symbols
+	    (let ((test-symbols (collect-test-symbols *test-root*)))
+              ;; Unbind each test function symbol to allow GC
+              (dolist (sym test-symbols)
+		(when (fboundp sym)
+		  (fmakunbound sym))))))
+  ;; Clear the test tree
+  (setf *test-root* nil)
+  (ensure-test-root)
+  ;; Clear hash mappings
+  (clear-test-hashes))
+
+;; Test metadata and suite classes moved earlier in the file
 
 (defun register-suite (package-name)
   "Ensure package hierarchy exists, creating nodes as needed.
@@ -261,19 +331,19 @@ Returns the leaf node for package-name."
         (stderr-stream (make-string-output-stream))
         (return-value nil))
     (unwind-protect
-         (progn
-           (setf (start-time result) (get-internal-real-time))
-           (dolist (metric-type metrics)
-             (start-metric metric-type result))
-           (let ((*test* result)
-                 (*standard-output* (make-broadcast-stream *standard-output* stdout-stream))
-                 (*error-output* (make-broadcast-stream *error-output* stderr-stream)))
-             ;; Add 10 second timeout for each test
-             (handler-case
-                 (sb-ext:with-timeout 10
-                   (setf return-value (apply test args)))
-               (sb-ext:timeout ()
-                 (error "Test timed out after 10 seconds")))))
+        (progn
+          (setf (start-time result) (get-internal-real-time))
+          (dolist (metric-type metrics)
+            (start-metric metric-type result))
+          (let ((*test* result)
+                (*standard-output* (make-broadcast-stream *standard-output* stdout-stream))
+                (*error-output* (make-broadcast-stream *error-output* stderr-stream)))
+            ;; Add 10 second timeout for each test
+            (handler-case
+                (sb-ext:with-timeout 10
+				     (setf return-value (apply test args)))
+              (sb-ext:timeout ()
+			      (error "Test timed out after 10 seconds")))))
       (setf (end-time result) (get-internal-real-time)
             (stdout-output result) (get-output-stream-string stdout-stream)
             (stderr-output result) (get-output-stream-string stderr-stream)
@@ -312,25 +382,25 @@ Returns the leaf node for package-name."
   "Match pattern against string, supporting wildcards (*)"
   (if (str:contains-p pattern "*")
       (wildcard-match-p pattern string)
-      (str:starts-with-p string pattern)))
+    (str:starts-with-p string pattern)))
 
 (defun wildcard-match-p (pattern string)
   "Simple wildcard matching - supports * as any characters"
   (if (not (str:contains-p pattern "*"))
       (string= pattern string)
-      (let ((parts (seq:realize (str:split #\* pattern))))
-        (cond
-          ((= (length parts) 1)
-           (string= pattern string))
-          ((= (length parts) 2)
-           (let ((prefix (first parts))
-                 (suffix (second parts)))
-             (and (str:starts-with-p string prefix)
-                  (str:ends-with-p string suffix)
-                  (>= (length string) (+ (length prefix) (length suffix))))))
-          (t
-           ;; Multiple wildcards - more complex matching
-           (wildcard-match-complex pattern string))))))
+    (let ((parts (seq:realize (str:split #\* pattern))))
+      (cond
+       ((= (length parts) 1)
+        (string= pattern string))
+       ((= (length parts) 2)
+        (let ((prefix (first parts))
+              (suffix (second parts)))
+          (and (str:starts-with-p string prefix)
+               (str:ends-with-p string suffix)
+               (>= (length string) (+ (length prefix) (length suffix))))))
+       (t
+        ;; Multiple wildcards - more complex matching
+        (wildcard-match-complex pattern string))))))
 
 (defun wildcard-match-complex (pattern string)
   "Handle patterns with multiple wildcards"
@@ -339,21 +409,21 @@ Returns the leaf node for package-name."
     (loop for i from 0 below (length parts)
           for part = (nth i parts)
           do (cond
-               ;; First part - must match from beginning
-               ((= i 0)
-                (unless (str:starts-with-p string part)
-                  (return-from wildcard-match-complex nil))
-                (setf pos (length part)))
-               ;; Last part - must match at end
-               ((= i (1- (length parts)))
-                (unless (str:ends-with-p string part)
-                  (return-from wildcard-match-complex nil)))
-               ;; Middle part - must exist after current position
-               (t
-                (let ((found-pos (search part string :start2 pos)))
-                  (unless found-pos
-                    (return-from wildcard-match-complex nil))
-                  (setf pos (+ found-pos (length part)))))))
+              ;; First part - must match from beginning
+              ((= i 0)
+               (unless (str:starts-with-p string part)
+                 (return-from wildcard-match-complex nil))
+               (setf pos (length part)))
+              ;; Last part - must match at end
+              ((= i (1- (length parts)))
+               (unless (str:ends-with-p string part)
+                 (return-from wildcard-match-complex nil)))
+              ;; Middle part - must exist after current position
+              (t
+               (let ((found-pos (search part string :start2 pos)))
+                 (unless found-pos
+                   (return-from wildcard-match-complex nil))
+                 (setf pos (+ found-pos (length part)))))))
     t))
 
 (defun run (tests reporter)
@@ -361,7 +431,7 @@ Returns the leaf node for package-name."
         (run (make-instance 'test-run
                             :reporter reporter)))
     (log:debug "Starting test run with ~D tests in ~D packages" 
-              (length tests) (length grouped-tests))
+               (length tests) (length grouped-tests))
     (event run :start run)
     (dolist (group grouped-tests)
       (log:debug "Running tests for package: ~A (~D tests)" 
@@ -376,13 +446,13 @@ Returns the leaf node for package-name."
           (event run :end-test result))))
     (setf (end-time run) (get-internal-real-time))
     (log:debug "Test run completed - Passed: ~D, Failed: ~D, Errors: ~D, Skipped: ~D" 
-              (- (test-count run) 
-                 (length (failures run)) 
-                 (length (errors run))
-                 (length (skipped run)))
-              (length (failures run))
-              (length (errors run))
-              (length (skipped run)))
+               (- (test-count run) 
+                  (length (failures run)) 
+                  (length (errors run))
+                  (length (skipped run)))
+               (length (failures run))
+               (length (errors run))
+               (length (skipped run)))
     (event run :end run)
     run))
 
@@ -394,15 +464,15 @@ Returns the leaf node for package-name."
   "Return a sorted list of package names that have registered tests"
   (let ((packages '()))
     (labels ((collect-packages (node)
-               (when (typep node 'test-suite)
-                 (when (> (map:count (tests-of node)) 0)
-                   (push (name-of node) packages)))
-               (map:each (lambda (name child)
-                           (declare (ignore name))
-                           (collect-packages child))
-                         (children-of node))))
-      (collect-packages (ensure-test-root))
-      (sort packages #'string<))))
+			       (when (typep node 'test-suite)
+				 (when (> (map:count (tests-of node)) 0)
+				   (push (name-of node) packages)))
+			       (map:each (lambda (name child)
+					   (declare (ignore name))
+					   (collect-packages child))
+					 (children-of node))))
+	    (collect-packages (ensure-test-root))
+	    (sort packages #'string<))))
 
 (defun list-suites (test-run)
   "Return a sorted sequence of package names that have at least one test result"
@@ -449,25 +519,25 @@ Returns the test-result instance."
                                 :test test))
          (*test* result))
     (unwind-protect
-         (handler-bind
-             ((skip (lambda (c)
-                      (setf (status result) :skip
-                            (condition result) c)
-                      (return-from run-testable result)))
-              (test-failure (lambda (c)
-                              (setf (status result) :failure
-                                    (condition result) c)
-                              (return-from run-testable result)))
-              (error (lambda (c)
-                       (setf (status result) :error
-                             (condition result)
-                             (make-instance
-                              'test-error :error c)
-                             (stack-trace result)
-                             (with-output-to-string (stream)
-                               (sb-debug:print-backtrace :stream stream)))
-                       (return-from run-testable result))))
-           (run-test-body test '() result))
+        (handler-bind
+            ((skip (lambda (c)
+                     (setf (status result) :skip
+                           (condition result) c)
+                     (return-from run-testable result)))
+             (test-failure (lambda (c)
+                             (setf (status result) :failure
+                                   (condition result) c)
+                             (return-from run-testable result)))
+             (error (lambda (c)
+                      (setf (status result) :error
+                            (condition result)
+                            (make-instance
+                             'test-error :error c)
+                            (stack-trace result)
+                            (with-output-to-string (stream)
+						   (sb-debug:print-backtrace :stream stream)))
+                      (return-from run-testable result))))
+          (run-test-body test '() result))
       (set-result! run test result))
     result))
 
@@ -480,7 +550,9 @@ The test's package hierarchy position is derived from the symbol's package."
          (metadata (make-instance 'test-metadata 
                                   :symbol symbol
                                   :docstring docstring)))
-    (map:assoc! (tests-of suite) symbol metadata)))
+    (map:assoc! (tests-of suite) symbol metadata)
+    ;; Register hash for this test
+    (register-test-hash symbol)))
 
 (defun record-assertion (test-fn report-fn)
   (let ((result (funcall test-fn)))
@@ -498,3 +570,90 @@ The test's package hierarchy position is derived from the symbol's package."
   (error 'test-failure
          :message message
          :form form))
+
+;;; Hash-based test lookup
+
+(defun find-test-by-hash (hash-prefix)
+  "Find a test symbol by its hash prefix.
+   Returns the test symbol or NIL if not found."
+  (multiple-value-bind (test-id found-p) (hash-to-test-id hash-prefix)
+		       (when found-p
+			 ;; Parse the test-id to get package and name
+			 (let ((parts (seq:realize (str:split #\: test-id))))
+			   (when (>= (length parts) 2)
+			     (let* ((package-name (if (= (length parts) 3)
+						      (second parts)  ; module:package:name
+						    (first parts))) ; package:name
+				    (test-name (if (= (length parts) 3)
+						   (third parts)
+						 (second parts)))
+				    (package (find-package (string-upcase package-name))))
+			       (when package
+				 (find-symbol (string-upcase test-name) package))))))))
+
+(defun find-test-and-module-by-hash (hash-prefix)
+    "Find a test symbol and its module by hash prefix.
+   Returns (values test-symbol module-name) or (values nil nil) if not found."
+    (multiple-value-bind (test-id found-p) (hash-to-test-id hash-prefix)
+			 (when found-p
+			   ;; Parse the test-id to get module, package and name
+			   (let ((parts (seq:realize (str:split #\: test-id))))
+			     (when (>= (length parts) 2)
+			       (let* ((module-name (when (= (length parts) 3)
+						     (first parts)))
+				      (package-name (if (= (length parts) 3)
+							(second parts)
+						      (first parts)))
+				      (test-name (if (= (length parts) 3)
+						     (third parts)
+						   (second parts)))
+				      (package (find-package (string-upcase package-name))))
+				 (if package
+				     (values (find-symbol (string-upcase test-name) package) module-name)
+				   ;; Package doesn't exist yet, return module info for loading
+				   (values nil (or module-name 
+						   ;; Try to guess module from package name
+						   (guess-module-from-package package-name))))))))))
+
+(defun guess-module-from-package (package-name)
+      "Try to guess the module name from a package name.
+   E.g., 'epsilon.xml.tests' -> 'epsilon.xml'"
+      (let ((name-lower (string-downcase package-name)))
+	(cond 
+	 ;; Remove .tests suffix if present
+	 ((str:ends-with-p name-lower ".tests")
+	  (subseq name-lower 0 (- (length name-lower) 6)))
+	 ;; Remove -tests suffix if present  
+	 ((str:ends-with-p name-lower "-tests")
+	  (subseq name-lower 0 (- (length name-lower) 6)))
+	 ;; Try removing last segment
+	 ((str:contains-p name-lower ".")
+	  (let ((dot-pos (position #\. name-lower :from-end t)))
+            (when dot-pos
+              (subseq name-lower 0 dot-pos))))
+	 ;; Default - assume it's an epsilon module
+	 (t (format nil "epsilon.~A" name-lower)))))
+
+(defun list-all-tests-with-hashes ()
+      "Return a list of all tests with their hash identifiers.
+   Each element is (hash-prefix test-symbol test-id)."
+      (let ((results '()))
+	(labels ((collect-from-suite (node)
+				     ;; Only test-suite nodes have tests-of
+				     (when (typep node 'test-suite)
+				       (map:each (lambda (symbol metadata)
+						   (declare (ignore metadata))
+						   (let* ((package-name (symbol-package-name symbol))
+							  (test-name (symbol-name symbol))
+							  (test-id (format nil "~A:~A" package-name test-name))
+							  (hash-prefix (test-id-to-hash test-id)))
+						     (when hash-prefix
+						       (push (list hash-prefix symbol test-id) results))))
+						 (tests-of node)))
+				     ;; Recursively process children
+				     (map:each (lambda (name child)
+						 (declare (ignore name))
+						 (collect-from-suite child))
+					       (children-of node))))
+		(collect-from-suite (ensure-test-root))
+		(sort results #'string< :key #'third))))

@@ -194,28 +194,28 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
 (defun format-timestamp ()
   "Format current timestamp in ISO 8601 format"
   (multiple-value-bind (sec min hour day month year)
-      (get-decoded-time)
-    (format nil "~4,'0D-~2,'0D-~2,'0DT~2,'0D:~2,'0D:~2,'0D"
-	    year month day hour min sec)))
+		       (get-decoded-time)
+		       (format nil "~4,'0D-~2,'0D-~2,'0DT~2,'0D:~2,'0D:~2,'0D"
+			       year month day hour min sec)))
 
 (defun format-assertion-history (assertions)
   "Format assertion history for detailed output"
   (if (null assertions)
       "No assertions recorded"
-      (with-output-to-string (s)
-	(let ((count 0))
-	  (dolist (assertion (reverse assertions))
-	    (incf count)
-	    (destructuring-bind (result report-fn) assertion
-	      (cond
-	       ((and (listp result) (eq (first result) :label-start))
-		(format s "  ~D. Label: ~A~%" count (second result)))
-	       ((and (listp result) (eq (first result) :label-end))
-		nil) ; Skip end labels
-	       (result
-		(format s "  ~D. ✓ PASSED~%" count))
-	       (t
-		(format s "  ~D. ✗ FAILED~%" count)))))))))
+    (with-output-to-string (s)
+			   (let ((count 0))
+			     (dolist (assertion (reverse assertions))
+			       (incf count)
+			       (destructuring-bind (result report-fn) assertion
+						   (cond
+						    ((and (listp result) (eq (first result) :label-start))
+						     (format s "  ~D. Label: ~A~%" count (second result)))
+						    ((and (listp result) (eq (first result) :label-end))
+						     nil) ; Skip end labels
+						    (result
+						     (format s "  ~D. ✓ PASSED~%" count))
+						    (t
+						     (format s "  ~D. ✗ FAILED~%" count)))))))))
 
 (defun make-junit-testsuites (run)
   "Create JUnit XML testsuites element"

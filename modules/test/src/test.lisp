@@ -18,7 +18,9 @@
    (suite epsilon.test.suite)
    (fixture epsilon.test.fixture)
    (path epsilon.path)
-   (log epsilon.log))
+   (log epsilon.log)
+   (seq epsilon.sequence)
+   (str epsilon.string))
   (:export
 
    ;; defining tests
@@ -33,8 +35,10 @@
    ;; executing tests
    skip
    run
+   run-tests
+   parse-test-spec
    success-p
-;; main removed - test command handled directly by main.lisp
+   ;; main removed - test command handled directly by main.lisp
 
    ;; assertions
    is
@@ -66,12 +70,43 @@
         (real-body (if (and (stringp (first body))
                             (rest body))
                        (rest body)
-                       body)))
+                     body)))
     `(progn
        (defun ,name () 
          ,@(when docstring (list docstring))
          ,@real-body)
        (suite:register-test ',name ,docstring))))
+
+(defun parse-test-spec (spec)
+  "Parse a test specification into module, package, and name components.
+   Returns (values module package name).
+   Also supports hash format for individual test selection."
+  ;; Check if spec looks like a hash (short hex string)
+  (if (and (<= (length spec) 8)
+           (not (find #\: spec))
+           (every (lambda (c) 
+                    (or (digit-char-p c)
+                        (member c '(#\a #\b #\c #\d #\e #\f
+                                   #\A #\B #\C #\D #\E #\F))))
+                  spec))
+      ;; It's a hash - return it as the test name with no module/package
+      (values nil nil spec)
+      ;; Regular parsing
+      (let* ((parts (seq:realize (str:split #\: spec)))
+             (num-parts (length parts)))
+        (case num-parts
+          (1 ;; Just module
+           (values (first parts) nil nil))
+          (2 ;; module:package or :package
+           (if (string= "" (first parts))
+               (values nil (second parts) nil)
+               (values (first parts) (second parts) nil)))
+          (3 ;; module:package:name or :package:name
+           (if (string= "" (first parts))
+               (values nil (second parts) (third parts))
+               (values (first parts) (second parts) (third parts))))
+          (otherwise
+           (error "Invalid test specification: ~A" spec))))))
 
 (defun run (environment module &key package test-name (format :shell) file)
   "Test an epsilon module.
@@ -79,29 +114,105 @@
   ENVIRONMENT - The loader environment with repositories configured
   MODULE - Module to test (e.g., 'epsilon.core', 'epsilon.http')
   PACKAGE - Specific package pattern to filter tests (optional)
-  TEST-NAME - Specific test name pattern to run (optional)
+  TEST-NAME - Specific test name pattern to run (optional) or hash prefix
   FORMAT - Output format: :shell, :verbose, :junit, :tap, etc. (default: :shell)
   FILE - Output file for test report (optional)
   
   Returns the test run result object."
+  
+  ;; Check if test-name looks like a hash and no module specified
+  (when (and test-name 
+             (not package)
+             (not module)
+             (<= (length test-name) 8)
+             (every (lambda (c) 
+                      (or (digit-char-p c)
+                          (member c '(#\a #\b #\c #\d #\e #\f
+                                      #\A #\B #\C #\D #\E #\F))))
+                    test-name))
+    ;; Hash detected - need to load all test modules to find it
+    (log:debug "Hash identifier detected: ~A, loading all test modules" test-name)
+    (let ((modules (loader:query-modules environment)))
+      (dolist (mod modules)
+        (let ((module-name (loader:module-name mod)))
+          ;; Skip certain modules that are known to not have tests or cause issues
+          (unless (member module-name '("epsilon.release" "epsilon.tool.repl") :test #'string=)
+            (handler-case
+                (progn
+                  ;; Load module if needed
+                  (unless (loader:module-loaded-p mod)
+                    (loader:load-module environment module-name))
+                  ;; Load test resources
+                  (loader:load-module-resources environment module-name :tests))
+              (error (e)
+                ;; Silently skip modules that fail to load
+                (log:debug "Skipping module ~A: ~A" module-name e))))))))
   
   ;; Load test files for the module using generic resource loader
   (when module
     (log:debug "Loading tests for module: ~A" module)
     (loader:load-module-resources environment module :tests))
   
-  ;; Select tests based on package and test-name patterns if provided
-  (let ((selected-tests (suite:select :package package :name test-name)))
+  ;; Check if test-name looks like a hash (short hex string)
+  (let ((selected-tests 
+         (if (and test-name 
+                  (not package)
+                  (not module)
+                  (<= (length test-name) 8)
+                  (every (lambda (c) 
+                           (or (digit-char-p c)
+                               (member c '(#\a #\b #\c #\d #\e #\f
+                                           #\A #\B #\C #\D #\E #\F))))
+                         test-name))
+             ;; Try to find test by hash
+             (let ((test-symbol (suite:find-test-by-hash test-name)))
+               (if test-symbol
+                   (list test-symbol)
+                 ;; Fall back to pattern matching
+                 (suite:select :package package :name test-name)))
+           ;; Regular pattern-based selection
+           (suite:select :package package :name test-name))))
     (log:debug "Test selection complete: ~D tests selected" (length selected-tests))
     (when (or package test-name)
       (log:debug "Selected ~D tests matching package: '~A', name: '~A'" 
-                (length selected-tests) package test-name))
+                 (length selected-tests) package test-name))
     (when (zerop (length selected-tests))
       (log:warn "No tests found!")
       (format t "~&;;; Warning: No tests found!~%"))
     (suite:run selected-tests
                (report:make :format format
                             :file file))))
+
+(defun run-tests (environment specs &key verbose)
+  "Run tests for multiple test specifications.
+  
+  ENVIRONMENT - The loader environment with repositories configured
+  SPECS - List of test specification strings (e.g., \"module:package:test\")
+  VERBOSE - Use verbose output format (default: nil)
+  
+  Returns T if all tests pass, raises error if any fail."
+  (log:debug "run-tests called with environment: ~A, specs: ~A, verbose: ~A" 
+             environment specs verbose)
+  (dolist (spec specs)
+    (multiple-value-bind (module package-filter name-filter)
+        (parse-test-spec spec)
+      (log:debug "Parsed test spec ~A -> module: ~A, package: ~A, name: ~A"
+                 spec module package-filter name-filter)
+      ;; Load the module if specified
+      (when module
+        (loader:load-module environment module))
+      ;; Run tests with filters
+      (let* ((format (if verbose :verbose :shell))
+             (result (run environment module 
+                         :package package-filter
+                         :test-name name-filter
+                         :format format)))
+        (log:debug "EPSILON.TEST:RUN returned: ~A" result)
+        ;; Check if tests passed
+        (log:debug "Calling SUCCESS-P with result: ~A" result)
+        (unless (success-p result)
+          (error "Tests failed for ~A" spec)))
+      (format t "Successfully tested ~A~%" spec))))
 
 (defun success-p (run)
   "Return T if test RUN completed successfully with no failures.
@@ -122,7 +233,7 @@
        (push (list :label-start ,label label-start-time) 
              (suite:assertions suite:*test*)))
      (unwind-protect
-          (progn ,@body)
+         (progn ,@body)
        (when suite:*test*
          (push (list :label-end ,label (get-internal-real-time)) 
                (suite:assertions suite:*test*))))))
@@ -130,17 +241,17 @@
 (defmacro is-p (predicate actual expected &optional (message nil message-p) &rest message-args)
   "Test that (PREDICATE ACTUAL EXPECTED) is true."
   (with-gensyms (actual-var expected-var)
-    `(let ((,actual-var ,actual)
-           (,expected-var ,expected))
-       (if (funcall ,predicate ,actual-var ,expected-var)
-           (suite:pass)
-           (suite:fail '(,predicate ,actual ,expected)
-                       ,(if message-p
-                            `(format nil ,message ,@message-args)
-                            `(format nil "~A failed: expected ~S but got ~S~@[: ~A~]"
-                                     ,predicate ,expected-var ,actual-var
-                                     ,(when message-p
-                                        `(format nil ,message ,@message-args)))))))))
+		`(let ((,actual-var ,actual)
+		       (,expected-var ,expected))
+		   (if (funcall ,predicate ,actual-var ,expected-var)
+		       (suite:pass)
+		     (suite:fail '(,predicate ,actual ,expected)
+				 ,(if message-p
+				      `(format nil ,message ,@message-args)
+				    `(format nil "~A failed: expected ~S but got ~S~@[: ~A~]"
+					     ,predicate ,expected-var ,actual-var
+					     ,(when message-p
+						`(format nil ,message ,@message-args)))))))))
 
 (defmacro is (actual &rest optargs)
   `(is-p #'eq (not (null ,actual)) t ,@optargs))
@@ -175,38 +286,38 @@
   "Test that BODY throws a condition of type CONDITION-CLASS.
 If REGEX is provided, the condition's printed representation must match it."
   (with-gensyms (condition-var caught-var)
-    `(let ((,caught-var nil))
-       (declare (ignorable ,caught-var))
-       (handler-case
-           (progn
-             ,@body
-             (suite:fail '(is-thrown ,condition-class ,@(when regex `(,regex)) ,@body)
-                         ,(if regex
-                              `(format nil "Expected ~S matching ~S but no condition was thrown" 
-                                       ',condition-class ,regex)
-                              `(format nil "Expected ~S but no condition was thrown" 
-                                       ',condition-class))))
-         (,condition-class (,condition-var)
-           (declare (ignorable ,condition-var))
-           (setf ,caught-var t)
-           ,(if regex
-                `(let ((condition-string (format nil "~A" ,condition-var)))
-                   (if (re:match ,regex condition-string)
-                       (suite:pass)
-                       (suite:fail '(is-thrown ,condition-class ,regex ,@body)
-                                   (format nil "Expected ~S matching ~S but got: ~A" 
-                                           ',condition-class ,regex condition-string))))
-                `(suite:pass)))
-         (condition (,condition-var)
-           (when ,caught-var
-             (suite:fail '(is-thrown ,condition-class ,@(when regex `(,regex)) ,@body)
-                         ,(if regex
-                              `(format nil "Expected ~S matching ~S but got ~S: ~A" 
-                                       ',condition-class ,regex 
-                                       (type-of ,condition-var) ,condition-var)
-                              `(format nil "Expected ~S but got ~S: ~A" 
-                                       ',condition-class 
-                                       (type-of ,condition-var) ,condition-var)))))))))
+		`(let ((,caught-var nil))
+		   (declare (ignorable ,caught-var))
+		   (handler-case
+		       (progn
+			 ,@body
+			 (suite:fail '(is-thrown ,condition-class ,@(when regex `(,regex)) ,@body)
+				     ,(if regex
+					  `(format nil "Expected ~S matching ~S but no condition was thrown" 
+						   ',condition-class ,regex)
+					`(format nil "Expected ~S but no condition was thrown" 
+						 ',condition-class))))
+		     (,condition-class (,condition-var)
+				       (declare (ignorable ,condition-var))
+				       (setf ,caught-var t)
+				       ,(if regex
+					    `(let ((condition-string (format nil "~A" ,condition-var)))
+					       (if (re:match ,regex condition-string)
+						   (suite:pass)
+						 (suite:fail '(is-thrown ,condition-class ,regex ,@body)
+							     (format nil "Expected ~S matching ~S but got: ~A" 
+								     ',condition-class ,regex condition-string))))
+					  `(suite:pass)))
+		     (condition (,condition-var)
+				(when ,caught-var
+				  (suite:fail '(is-thrown ,condition-class ,@(when regex `(,regex)) ,@body)
+					      ,(if regex
+						   `(format nil "Expected ~S matching ~S but got ~S: ~A" 
+							    ',condition-class ,regex 
+							    (type-of ,condition-var) ,condition-var)
+						 `(format nil "Expected ~S but got ~S: ~A" 
+							  ',condition-class 
+							  (type-of ,condition-var) ,condition-var)))))))))
 
 ;; Re-export fixture functionality
 
