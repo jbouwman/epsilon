@@ -36,26 +36,8 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Setup environment (Container)
-      if: matrix.container
-      run: |
-        # Verify OpenSSL version (should be 3.0 on Ubuntu 22.04)
-        openssl version
-        # Configure git for the CI environment
-        apt-get update && apt-get install -y git tar gzip libffi-dev build-essential
-        git config --global --add safe.directory /__w/epsilon/epsilon
-    
-    - name: Install dependencies (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        brew install sbcl
-        brew install libffi
-        # Install OpenSSL 3.x (Homebrew typically has 3.x)
-        brew install openssl@3
-        # Link OpenSSL 3 so it's found by default
-        brew link openssl@3 --force
-        # Verify OpenSSL version
-        openssl version
+    - name: Setup CI environment
+      run: ./scripts/ci-setup.sh
         
     - name: Cache build artifacts
       uses: actions/cache@v4
@@ -68,13 +50,7 @@ jobs:
         restore-keys: |
           build-${{ env.CACHE_VERSION }}-${{ runner.os }}-
     
-    - name: Build libffi extension
-      run: |
-        echo "=== Building libffi extension ==="
-        cd modules/foreign/c
-        make clean
-        make
-        ls -la ../lib/
+    # libffi extension is now built by ci-setup.sh
         
     - name: Verify OpenSSL setup
       run: |
@@ -95,9 +71,11 @@ jobs:
           ls -la /usr/local/opt/openssl@3/lib/libssl* | head -5
         fi
     
-    - name: Run tests for all packages
+    - name: Run smoke tests
+      run: ./epsilon --exec epsilon.release:run-smoke-tests
+      
+    - name: Run all module tests
       run: |
-        echo "=== Testing all epsilon packages ==="
         # Set library paths for OpenSSL on macOS
         if [ "${{ runner.os }}" = "macOS" ]; then
           if [ -d /opt/homebrew/opt/openssl@3 ]; then
@@ -106,7 +84,7 @@ jobs:
             export DYLD_LIBRARY_PATH="/usr/local/opt/openssl@3/lib:${DYLD_LIBRARY_PATH:-}"
           fi
         fi
-        ./epsilon --exec epsilon.release:selftest --format junit --file "target/TEST-epsilon-${{ runner.os }}.xml"
+        ./epsilon --exec epsilon.release:test --format junit --output "target/TEST-epsilon-${{ runner.os }}.xml"
         
     - name: Publish Test Report
       uses: mikepenz/action-junit-report@v5
@@ -124,17 +102,4 @@ jobs:
         name: test-results-${{ runner.os }}
         path: target/TEST-*.xml
         
-    - name: Check test coverage
-      if: success()
-      run: |
-        echo "=== Test Summary ==="
-        # Show which packages were tested
-        find src -name "package.lisp" -type f | while read pkg; do
-          dir=$(dirname "$pkg")
-          module=$(basename $(dirname "$dir"))
-          if [ -d "$dir/tests" ]; then
-            echo "✓ $module - has tests"
-          else
-            echo "⚠ $module - no tests found"
-          fi
-        done
+    # Test coverage is now reported by epsilon.release:test

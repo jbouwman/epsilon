@@ -17,9 +17,107 @@
    (digest epsilon.digest))
   (:export
    selftest
-   generate))
+   generate
+   test
+   build
+   create-package
+   verify
+   version
+   run-smoke-tests))
 
 (in-package epsilon.release)
+
+;;; Command-line entry points for CI/CD operations
+
+(defun test (&key (format "shell") (output nil))
+  "Run all tests with specified output format.
+   FORMAT: shell (default), junit, quiet
+   OUTPUT: output file path (for junit format)"
+  (selftest :format (intern (string-upcase format) :keyword)
+            :file output))
+
+(defun build (&key (platform nil))
+  "Build all modules for current or specified platform."
+  (let* ((environment (loader:environment))
+         (target-platform (or platform (detect-platform))))
+    (build-modules-for-release environment target-platform)
+    (log:info "Build completed for ~A" target-platform)))
+
+(defun create-package (&key (version nil))
+  "Create release package for current platform."
+  (generate version))
+
+(defun verify (&key (release-dir nil))
+  "Verify release package functionality."
+  (let ((dir (or release-dir 
+                 (path:path-string 
+                  (path:path-join (namestring (fs:current-directory))
+                                  "releases")))))
+    (verify-release-functionality dir)))
+
+(defun version (&key bump-type)
+  "Display or bump version.
+   BUMP-TYPE: major, minor, patch, or nil (display only)"
+  (let ((current (get-version)))
+    (if bump-type
+        (let ((new-version (bump-version current bump-type)))
+          (update-version-file new-version)
+          (format t "Version bumped from ~A to ~A~%" current new-version)
+          new-version)
+        (progn
+          (format t "~A~%" current)
+          current))))
+
+;;; Version Management Functions
+
+(defun bump-version (version bump-type)
+  "Bump version number based on type."
+  (let* ((parts (mapcar #'parse-integer (str:split #\. version)))
+         (major (first parts))
+         (minor (second parts))
+         (patch (third parts)))
+    (cond
+      ((string-equal bump-type "major")
+       (format nil "~D.0.0" (1+ major)))
+      ((string-equal bump-type "minor")
+       (format nil "~D.~D.0" major (1+ minor)))
+      ((string-equal bump-type "patch")
+       (format nil "~D.~D.~D" major minor (1+ patch)))
+      (t (error "Invalid bump type: ~A" bump-type)))))
+
+(defun update-version-file (new-version)
+  "Update VERSION file with new version."
+  (let ((version-file (path:path-string 
+                       (path:path-join (namestring (fs:current-directory))
+                                       "VERSION"))))
+    (fs:write-file-string version-file (format nil "~A~%" new-version))))
+
+(defun verify-release-functionality (release-dir)
+  "Verify that a release package works correctly."
+  (let ((epsilon-binary (path:path-string 
+                         (path:path-join release-dir "bin" "epsilon"))))
+    (unless (probe-file epsilon-binary)
+      (error "Release binary not found: ~A" epsilon-binary))
+    
+    ;; Test basic functionality
+    (log:info "Testing release binary: ~A" epsilon-binary)
+    
+    ;; Test version command
+    (let ((result (process:run-sync epsilon-binary 
+                                     :args '("--version")
+                                     :check-executable nil)))
+      (unless (zerop (process:process-exit-code result))
+        (error "Version check failed")))
+    
+    ;; Test eval command
+    (let ((result (process:run-sync epsilon-binary
+                                     :args '("--eval" "(+ 1 1)")
+                                     :check-executable nil)))
+      (unless (zerop (process:process-exit-code result))
+        (error "Eval check failed")))
+    
+    (log:info "Release verification passed")
+    t))
 
 ;;; Utility Functions
 
@@ -128,25 +226,37 @@
       
       ;; Copy all tests from module-run to aggregate-run
       (when tests-accessor
-        (map:each (lambda (k v)
-                    (map:assoc! (funcall tests-accessor aggregate-run) k v))
-                  (funcall tests-accessor module-run)))
+        (let ((aggregate-tests (funcall tests-accessor aggregate-run))
+              (module-tests (funcall tests-accessor module-run)))
+          (map:each (lambda (k v)
+                      (setf aggregate-tests (map:assoc aggregate-tests k v)))
+                    module-tests)
+          ;; Update the aggregate-run's tests map
+          (let ((tests-slot (find-symbol "TESTS" "EPSILON.TEST.SUITE")))
+            (when tests-slot
+              (setf (slot-value aggregate-run tests-slot) aggregate-tests)))))
       
       ;; Append failures, errors, and skipped tests
       (when failures-accessor
-        (setf (slot-value aggregate-run (intern "FAILURES" "EPSILON.TEST.SUITE"))
-              (append (funcall failures-accessor aggregate-run)
-                      (funcall failures-accessor module-run))))
+        (let ((failures-slot (find-symbol "FAILURES" "EPSILON.TEST.SUITE")))
+          (when failures-slot
+            (setf (slot-value aggregate-run failures-slot)
+                  (append (funcall failures-accessor aggregate-run)
+                          (funcall failures-accessor module-run))))))
       
       (when errors-accessor
-        (setf (slot-value aggregate-run (intern "ERRORS" "EPSILON.TEST.SUITE"))
-              (append (funcall errors-accessor aggregate-run)
-                      (funcall errors-accessor module-run))))
+        (let ((errors-slot (find-symbol "ERRORS" "EPSILON.TEST.SUITE")))
+          (when errors-slot
+            (setf (slot-value aggregate-run errors-slot)
+                  (append (funcall errors-accessor aggregate-run)
+                          (funcall errors-accessor module-run))))))
       
       (when skipped-accessor
-        (setf (slot-value aggregate-run (intern "SKIPPED" "EPSILON.TEST.SUITE"))
-              (append (funcall skipped-accessor aggregate-run)
-                      (funcall skipped-accessor module-run)))))))
+        (let ((skipped-slot (find-symbol "SKIPPED" "EPSILON.TEST.SUITE")))
+          (when skipped-slot
+            (setf (slot-value aggregate-run skipped-slot)
+                  (append (funcall skipped-accessor aggregate-run)
+                          (funcall skipped-accessor module-run)))))))))
 
 (defun get-modules (environment)
   "Get list of all modules."
@@ -475,7 +585,7 @@ exec \"$SBCL\" --script \"$EPSILON_BOOT\" \"$@\"
               (sb-posix:chmod target-sbcl #o755)
               (format t "  ✓ SBCL binary copied from ~A~%" sbcl-runtime))))
       (error (e)
-        (log:error e "Could not copy SBCL binary")
+        (log:error "Could not copy SBCL binary: ~A" e)
         (format t "Warning: Could not copy SBCL binary: ~A~%" e)))
     
     ;; Copy SBCL libraries using SBCL_HOME
@@ -493,7 +603,7 @@ exec \"$SBCL\" --script \"$EPSILON_BOOT\" \"$@\"
                 (fs:copy-file (namestring sbcl-core) target-core)
                 (format t "  ✓ SBCL core copied from ~A~%" sbcl-core)))))
       (error (e)
-        (log:error e "Could not bundle SBCL libraries")
+        (log:error "Could not bundle SBCL libraries: ~A" e)
         (format t "Warning: Could not bundle SBCL libraries: ~A~%" e)))))
 
 (defun copy-additional-files (release-dir)
@@ -576,6 +686,83 @@ exec \"$SBCL\" --script \"$EPSILON_BOOT\" \"$@\"
                (create-zip-archive release-dir release-name)
                (create-tar-archive-with-working-directory release-dir release-name parent-dir)))
       (fs:change-directory old-cwd))))
+
+;;; CLI Smoke Tests
+
+(defun run-smoke-tests ()
+  "Run basic CLI smoke tests."
+  (let ((passed 0)
+        (failed 0)
+        (epsilon-path "./epsilon"))
+    
+    (log:info "Running CLI smoke tests...")
+    
+    ;; Test 1: Version command
+    (handler-case
+        (progn
+          (process:run-sync epsilon-path 
+                           :args '("--version")
+                           :check-executable nil)
+          (incf passed)
+          (log:info "✓ Version command"))
+      (process:process-error-condition (e)
+        (incf failed)
+        (log:error "✗ Version command failed with exit code ~A" 
+                   (process:process-error-exit-code e)))
+      (error (e)
+        (incf failed)
+        (log:error "✗ Version command: ~A" e)))
+    
+    ;; Test 2: Help command
+    (handler-case
+        (progn
+          (process:run-sync epsilon-path
+                           :args '("--help")
+                           :check-executable nil)
+          (incf passed)
+          (log:info "✓ Help command"))
+      (process:process-error-condition (e)
+        (incf failed)
+        (log:error "✗ Help command failed with exit code ~A" 
+                   (process:process-error-exit-code e)))
+      (error (e)
+        (incf failed)
+        (log:error "✗ Help command: ~A" e)))
+    
+    ;; Test 3: Simple evaluation
+    (handler-case
+        (let ((output (process:run-sync epsilon-path
+                                        :args '("--eval" "(+ 1 2)")
+                                        :check-executable nil)))
+          (if (search "3" output)
+              (progn (incf passed) (log:info "✓ Simple evaluation"))
+              (progn (incf failed) (log:error "✗ Simple evaluation: unexpected output"))))
+      (process:process-error-condition (e)
+        (incf failed)
+        (log:error "✗ Simple evaluation failed with exit code ~A" 
+                   (process:process-error-exit-code e)))
+      (error (e)
+        (incf failed)
+        (log:error "✗ Simple evaluation: ~A" e)))
+    
+    ;; Test 4: Module loading
+    (handler-case
+        (progn
+          (process:run-sync epsilon-path
+                           :args '("--module" "epsilon.test" "--eval" "(epsilon.test:deftest foo () t)")
+                           :check-executable nil)
+          (incf passed)
+          (log:info "✓ Module loading"))
+      (process:process-error-condition (e)
+        (incf failed)
+        (log:error "✗ Module loading failed with exit code ~A" 
+                   (process:process-error-exit-code e)))
+      (error (e)
+        (incf failed)
+        (log:error "✗ Module loading: ~A" e)))
+    
+    (log:info "Smoke tests complete: ~D passed, ~D failed" passed failed)
+    (zerop failed)))
 
 (defun create-tar-archive-with-working-directory (release-dir release-name working-dir)
   "Create a tar.gz archive for Unix releases with explicit working directory."
