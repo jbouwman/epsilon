@@ -36,27 +36,33 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Setup build environment
+    - name: Setup CI environment
       shell: bash
-      run: ./scripts/setup.sh "${{ matrix.container }}"
+      run: ./scripts/ci-setup.sh
         
     - name: Extract version
       id: version
       shell: bash
       run: |
-        VERSION=$(./scripts/get-version.sh)
+        VERSION=$(./epsilon --exec epsilon.release:version)
         echo "version=${VERSION}" >> $GITHUB_OUTPUT
         echo "Building version: ${VERSION}"
         
     - name: Run tests
       shell: bash
-      run: ./scripts/run-tests.sh
+      run: |
+        ./epsilon --exec epsilon.release:run-smoke-tests
+        ./epsilon --exec epsilon.release:test
         
-    - name: Build and verify release
+    - name: Build release package
       shell: bash
       run: |
         VERSION="${{ steps.version.outputs.version }}"
-        ./scripts/orchestrate-release.sh "${VERSION}"
+        ./epsilon --exec epsilon.release:create-package --version "${VERSION}"
+        
+    - name: Verify release
+      shell: bash
+      run: ./epsilon --exec epsilon.release:verify
         
     - name: Upload release artifacts
       uses: actions/upload-artifact@v4
