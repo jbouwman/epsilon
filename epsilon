@@ -12,7 +12,7 @@ set -eu
 export EPSILON_USER="$PWD"
 # The directory where epsilon is located
 export EPSILON_HOME="$(cd "$(dirname "$0")" && pwd)"
-EPSILON_BOOT="$EPSILON_HOME/modules/core/src/epsilon.lisp"
+EPSILON_BOOT="$EPSILON_HOME/modules/core/epsilon.lisp"
 
 # Detect boot script
 if ! [ -f "$EPSILON_BOOT" ]; then

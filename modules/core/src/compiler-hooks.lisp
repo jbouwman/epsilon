@@ -1,10 +1,8 @@
-;;;; Deep SBCL Integration for Real-time Source Location Tracking
-;;;;
-;;;; This module hooks directly into SBCL's compilation pipeline to provide
-;;;; real-time source location information during compilation, including
+;;;; This module hooks into SBCL's compilation pipeline to collect
+;;;; source location information during compilation, including
 ;;;; accurate line numbers and form offsets.
 
-(defpackage epsilon.compile-deep-integration
+(defpackage epsilon.compiler-hooks
   (:use cl)
   (:local-nicknames
    (api epsilon.compile-api)
@@ -16,9 +14,9 @@
    #:*current-compilation-location*
    #:*form-position-map*
    
-   #:install-deep-compiler-hooks
-   #:uninstall-deep-compiler-hooks
-   #:with-deep-source-tracking
+   #:install-compiler-hooks
+   #:uninstall-compiler-hooks
+   #:with-source-tracking
    
    #:get-real-time-source-location
    #:track-form-processing
@@ -37,13 +35,13 @@
    
    ;; Integration functions
    #:enhance-logging-with-compilation-context
-   #:initialize-deep-integration
+   #:initialize-integration
    
    ;; SBCL source path analysis
    #:extract-line-from-sbcl-source-path
    #:file-position-to-line-number))
 
-(in-package epsilon.compile-deep-integration)
+(in-package epsilon.compiler-hooks)
 
 ;;; Global state for real-time tracking
 
@@ -90,7 +88,7 @@
      (compilation-file-info-pathname file-info) 
      char-position)))
 
-;;; Deep SBCL integration functions
+;;; SBCL integration functions
 
 (defun enhanced-process-toplevel-form (form path compile-time-too)
   "Enhanced version of SBCL's process-toplevel-form with source tracking."
@@ -187,8 +185,8 @@
 
 ;;; Hook installation and management
 
-(defun install-deep-compiler-hooks ()
-  "Install deep hooks into SBCL's compilation system."
+(defun install-compiler-hooks ()
+  "Install hooks into SBCL's compilation system."
   (unless *original-process-toplevel-form*
     ;; Unlock SBCL packages to allow modification of internal functions
     (sb-ext:unlock-package :sb-c)
@@ -210,10 +208,10 @@
     ;; Enable real-time source tracking
     (setf *real-time-source-tracking* t)
     
-    (log:info "Deep SBCL compiler hooks installed")))
+    (log:debug "SBCL compiler hooks installed")))
 
-(defun uninstall-deep-compiler-hooks ()
-  "Uninstall deep compiler hooks and restore original functions."
+(defun uninstall-compiler-hooks ()
+  "Uninstall compiler hooks and restore original functions."
   (when *original-process-toplevel-form*
     ;; Unlock packages again in case they were re-locked
     (sb-ext:unlock-package :sb-c)
@@ -237,12 +235,12 @@
           (sb-ext:lock-package :sb-kernel))
       (error () nil))  ; Ignore errors if already locked
     
-    (log:info "Deep SBCL compiler hooks uninstalled")))
+    (log:debug "SBCL compiler hooks uninstalled")))
 
 ;;; High-level interface
 
-(defmacro with-deep-source-tracking ((&key (enable t) file) &body body)
-  "Execute body with deep source location tracking enabled."
+(defmacro with-source-tracking ((&key (enable t) file) &body body)
+  "Execute body with source location tracking enabled."
   `(let ((*real-time-source-tracking* ,enable)
          (*current-compilation-location* nil)
          (*current-file-info* ,(when file
@@ -250,10 +248,10 @@
      (unwind-protect
          (progn
            (when ,enable
-             (install-deep-compiler-hooks))
+             (install-compiler-hooks))
            ,@body)
        (when ,enable
-         (uninstall-deep-compiler-hooks)))))
+         (uninstall-compiler-hooks)))))
 
 (defun get-real-time-source-location ()
   "Get the current real-time source location during compilation."
@@ -334,15 +332,15 @@
 (defun enhance-logging-with-compilation-context ()
   "Enhance the logging system to use real-time compilation context."
   ;; The logging system now uses get-current-source-location which already
-  ;; integrates with our deep compilation tracking through *current-compilation-location*
-  (log:info "Logging system enhanced with deep compilation context integration"))
+  ;; integrates with compilation tracking through *current-compilation-location*
+  (log:debug "Logging system enhanced with compilation context integration"))
 
 ;;; Initialization
 
-(defun initialize-deep-integration ()
-  "Initialize deep SBCL integration."
+(defun initialize-integration ()
+  "Initialize SBCL integration."
   (enhance-logging-with-compilation-context)
-  (log:info "Deep SBCL integration initialized with unified source location tracking"))
+  (log:debug "SBCL integration initialized with unified source location tracking"))
 
 ;;; Automatic initialization
-(initialize-deep-integration)
+(initialize-integration)
