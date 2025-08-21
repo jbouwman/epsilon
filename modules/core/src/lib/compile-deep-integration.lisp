@@ -9,7 +9,8 @@
   (:local-nicknames
    (api epsilon.compile-api)
    (location epsilon.compile-location)
-   (log epsilon.log))
+   (log epsilon.log)
+   (file-utils epsilon.file-utils))
   (:export
    #:*real-time-source-tracking*
    #:*current-compilation-location*
@@ -33,7 +34,6 @@
    #:compilation-file-info-pathname
    #:compilation-file-info-line-positions
    #:compilation-file-info-form-positions
-   #:position-to-line-column
    
    ;; Integration functions
    #:enhance-logging-with-compilation-context
@@ -75,56 +75,20 @@
   "Current file compilation information.")
 
 (defun build-form-position-cache (pathname)
-  "Build a cache of form positions within a file."
-  (let ((positions (make-hash-table :test 'eq))
-        (line-starts (make-array 1000 :adjustable t :fill-pointer 0)))
-    
-    ;; Record line start positions
-    (vector-push-extend 0 line-starts)
-    
-    (with-open-file (stream pathname :direction :input)
-      (let ((char-pos 0)
-            (*read-suppress* nil))
-        
-        ;; First pass: collect line starts
-        (file-position stream 0)
-        (loop for char = (read-char stream nil nil)
-              while char
-              do (progn
-                   (when (char= char #\Newline)
-                     (vector-push-extend (1+ char-pos) line-starts))
-                   (incf char-pos)))
-        
-        ;; Second pass: map forms to positions
-        (file-position stream 0)
-        (let ((form-start-pos 0))
-          (handler-case
-              (loop
-                (setf form-start-pos (file-position stream))
-                (let ((form (read stream nil :eof)))
-                  (when (eq form :eof)
-                    (return))
-                  (setf (gethash form positions) form-start-pos)))
-            (error () nil))))) ; Ignore read errors
-    
-    (make-compilation-file-info
-     :pathname (pathname pathname)
-     :line-positions (coerce line-starts 'simple-vector)
-     :form-positions positions)))
+  "Build a cache of form positions within a file using consolidated utilities."
+  (multiple-value-bind (positions line-starts)
+		       (file-utils:build-form-position-cache pathname)
+		       (make-compilation-file-info
+			:pathname (pathname pathname)
+			:line-positions line-starts
+			:form-positions positions)))
 
 (defun position-to-line-column (file-info char-position)
-  "Convert character position to line and column."
+  "Convert character position to line and column using file info."
   (when (and file-info char-position)
-    (let ((line-positions (compilation-file-info-line-positions file-info)))
-      (when line-positions
-        (let ((line-num (position-if (lambda (pos) (> pos char-position))
-                                     line-positions)))
-          (if line-num
-              (values (1+ line-num)
-                      (1+ (- char-position (aref line-positions (1- line-num)))))
-              (values (length line-positions)
-                      (1+ (- char-position 
-                             (aref line-positions (1- (length line-positions))))))))))))
+    (file-utils:file-position-to-line-column 
+     (compilation-file-info-pathname file-info) 
+     char-position)))
 
 ;;; Deep SBCL integration functions
 
@@ -150,17 +114,17 @@
     ;; Extract position information if we have current file info
     (when (and *current-file-info* form)
       (let ((char-pos (gethash form 
-                              (compilation-file-info-form-positions *current-file-info*))))
+                               (compilation-file-info-form-positions *current-file-info*))))
         (when char-pos
           (multiple-value-bind (line column)
-              (position-to-line-column *current-file-info* char-pos)
-            (setf *current-compilation-location*
-                  (api:make-source-location
-                   :file (namestring (compilation-file-info-pathname *current-file-info*))
-                   :line line
-                   :column column
-                   :form-number (length path)
-                   :toplevel-form (when (< (length path) 2) form))))))))
+			       (position-to-line-column *current-file-info* char-pos)
+			       (setf *current-compilation-location*
+				     (api:make-source-location
+				      :file (namestring (compilation-file-info-pathname *current-file-info*))
+				      :line line
+				      :column column
+				      :form-number (length path)
+				      :toplevel-form (when (< (length path) 2) form))))))))
   
   ;; Call original function
   (funcall *original-sub-find-source-paths* form path))
@@ -186,28 +150,28 @@
     
     ;; Get file from compiler state
     (setf file (cond
-                 ((and (boundp 'sb-c::*compile-file-pathname*)
-                       sb-c::*compile-file-pathname*)
-                  (namestring sb-c::*compile-file-pathname*))
-                 ((and *current-file-info*
-                       (compilation-file-info-pathname *current-file-info*))
-                  (namestring (compilation-file-info-pathname *current-file-info*)))
-                 (t nil)))
+                ((and (boundp 'sb-c::*compile-file-pathname*)
+                      sb-c::*compile-file-pathname*)
+                 (namestring sb-c::*compile-file-pathname*))
+                ((and *current-file-info*
+                      (compilation-file-info-pathname *current-file-info*))
+                 (namestring (compilation-file-info-pathname *current-file-info*)))
+                (t nil)))
     
     ;; NEW: Extract line numbers from SBCL source path system
-    (multiple-value-bind (extracted-line extracted-column)
-        (extract-line-from-sbcl-source-path path)
-      (when extracted-line
-        (setf line extracted-line
-              column extracted-column)))
+    (multiple-value-bind (extracted-line extracted-column extracted-pos)
+			 (extract-line-from-sbcl-source-path path)
+			 (when extracted-line
+			   (setf line extracted-line
+				 column extracted-column)))
     
     ;; Fallback: Extract line/column from our enhanced tracking
     (when (and (not line) *current-file-info* form)
       (let ((char-pos (gethash form 
-                              (compilation-file-info-form-positions *current-file-info*))))
+                               (compilation-file-info-form-positions *current-file-info*))))
         (when char-pos
           (multiple-value-setq (line column)
-            (position-to-line-column *current-file-info* char-pos)))))
+			       (position-to-line-column *current-file-info* char-pos)))))
     
     ;; Determine toplevel form
     (when (< form-number 2)
@@ -284,10 +248,10 @@
          (*current-file-info* ,(when file
                                  `(build-form-position-cache ,file))))
      (unwind-protect
-          (progn
-            (when ,enable
-              (install-deep-compiler-hooks))
-            ,@body)
+         (progn
+           (when ,enable
+             (install-deep-compiler-hooks))
+           ,@body)
        (when ,enable
          (uninstall-deep-compiler-hooks)))))
 
@@ -337,11 +301,11 @@
                      sb-c::*source-info*)
             ;; Get FILE-INFO from current compilation
             (let ((file-info (when (fboundp 'sb-c::source-info-file-info)
-                              (sb-c::source-info-file-info sb-c::*source-info*))))
+                               (sb-c::source-info-file-info sb-c::*source-info*))))
               (when file-info
                 ;; Get form positions array  
                 (let ((positions (when (fboundp 'sb-c::file-info-positions)
-                                  (sb-c::file-info-positions file-info))))
+                                   (sb-c::file-info-positions file-info))))
                   (when (and positions 
                              (< form-index (length positions)))
                     ;; Get character position of this form
@@ -353,22 +317,10 @@
 (defun file-position-to-line-number (file-info char-position)
   "Convert file character position to line number using SBCL file info."
   (when (and file-info char-position)
-    ;; Read the file and count newlines up to position
     (let ((pathname (when (fboundp 'sb-c::file-info-truename)
-                     (sb-c::file-info-truename file-info))))
-      (when (and pathname (probe-file pathname))
-        (with-open-file (stream pathname :direction :input)
-          (let ((line 1)
-                (pos 0))
-            ;; Count lines up to the target position
-            (loop while (< pos char-position)
-                  do (let ((char (read-char stream nil nil)))
-                       (unless char (return))
-                       (incf pos)
-                       (when (char= char #\Newline)
-                         (incf line))))
-            ;; Return the line number where the character position falls
-            line))))))
+                      (sb-c::file-info-truename file-info))))
+      (when pathname
+        (file-utils:estimate-line-number pathname char-position)))))
 
 (defun extract-line-from-form-number (file form-number)
   "Extract line number from form number using cached file info."
@@ -381,40 +333,16 @@
 
 (defun enhance-logging-with-compilation-context ()
   "Enhance the logging system to use real-time compilation context."
-  ;; Redefine the with-source-location macro to use our tracking
-  (eval
-   `(defmacro log:with-source-location ((file-var line-var) &body body)
-      "Enhanced source location capture using compilation context"
-      `(let ((,file-var ,(or 
-                          ;; Try real-time compilation tracking first
-                          '(when (and (boundp 'epsilon.compile-deep-integration::*current-compilation-location*)
-                                     epsilon.compile-deep-integration::*current-compilation-location*)
-                            (epsilon.compile-api:source-location-file 
-                             epsilon.compile-deep-integration::*current-compilation-location*))
-                          ;; Fall back to SBCL state
-                          '(when (and (boundp 'sb-c::*compile-file-pathname*)
-                                     sb-c::*compile-file-pathname*)
-                            (namestring sb-c::*compile-file-pathname*))
-                          ;; Final fallback
-                          '(when (and (boundp 'sb-c::*load-pathname*)
-                                     sb-c::*load-pathname*)
-                            (namestring sb-c::*load-pathname*))))
-             (,line-var ,(or
-                          ;; Try real-time compilation tracking first
-                          '(when (and (boundp 'epsilon.compile-deep-integration::*current-compilation-location*)
-                                     epsilon.compile-deep-integration::*current-compilation-location*)
-                            (epsilon.compile-api:source-location-line
-                             epsilon.compile-deep-integration::*current-compilation-location*))
-                          ;; No fallback for line numbers yet
-                          nil)))
-        ,@body))))
+  ;; The logging system now uses get-current-source-location which already
+  ;; integrates with our deep compilation tracking through *current-compilation-location*
+  (log:info "Logging system enhanced with deep compilation context integration"))
 
 ;;; Initialization
 
 (defun initialize-deep-integration ()
   "Initialize deep SBCL integration."
   (enhance-logging-with-compilation-context)
-  (log:info "Deep SBCL integration initialized"))
+  (log:info "Deep SBCL integration initialized with unified source location tracking"))
 
 ;;; Automatic initialization
 (initialize-deep-integration)

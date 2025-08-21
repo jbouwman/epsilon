@@ -5,7 +5,8 @@
   (:local-nicknames
    (map epsilon.map)
    (str epsilon.string)
-   (seq epsilon.sequence))
+   (seq epsilon.sequence)
+   (file-utils epsilon.file-utils))
   (:export
    ;; Main logging macros and log levels
    log trace debug info warn error fatal
@@ -46,7 +47,10 @@
    format-timestamp current-thread-name
    
    ;; Source location
-   with-source-location))
+   with-source-location
+   get-current-source-location
+   enhance-with-compilation-context
+   source-location-from-context))
 
 (in-package epsilon.log)
 
@@ -410,23 +414,9 @@
 ;;; Public Logging Macros
 
 (defmacro with-source-location ((file-var line-var) &body body)
-  "Capture source location at macro expansion time"
-  `(let ((,file-var ,(or (when *compile-file-pathname* 
-                           (enough-namestring *compile-file-pathname*))
-                         (when *load-pathname*
-                           (enough-namestring *load-pathname*))
-                         nil))
-         ;; Try to get line number from deep integration if available
-         (,line-var (when (find-package :epsilon.compile-deep-integration)
-                      (let ((deep-pkg (find-package :epsilon.compile-deep-integration))
-                            (api-pkg (find-package :epsilon.compile-api)))
-                        (when (and deep-pkg api-pkg)
-                          (let ((location-var (find-symbol "*CURRENT-COMPILATION-LOCATION*" deep-pkg))
-                                (line-fn (find-symbol "SOURCE-LOCATION-LINE" api-pkg)))
-                            (when (and location-var line-fn 
-                                       (boundp location-var)
-                                       (symbol-value location-var))
-                              (funcall line-fn (symbol-value location-var)))))))))
+  "Capture source location at macro expansion time with enhanced context"
+  `(multiple-value-bind (,file-var ,line-var)
+       (get-current-source-location)
      ,@body))
 
 (defmacro log (level format-string &rest args)
@@ -622,6 +612,86 @@
 (defun current-thread-name ()
   "Get current thread name"
   (sb-thread:thread-name sb-thread:*current-thread*))
+
+;;; Enhanced source location utilities
+
+(defun get-current-source-location ()
+  "Get current source location with enhanced context from compilation system"
+  (let ((file nil)
+        (line nil))
+    
+    ;; First priority: Deep integration compilation context
+    (when (find-package :epsilon.compile-deep-integration)
+      (let ((deep-pkg (find-package :epsilon.compile-deep-integration))
+            (api-pkg (find-package :epsilon.compile-api)))
+        (when (and deep-pkg api-pkg)
+          (let ((location-var (find-symbol "*CURRENT-COMPILATION-LOCATION*" deep-pkg))
+                (file-fn (find-symbol "SOURCE-LOCATION-FILE" api-pkg))
+                (line-fn (find-symbol "SOURCE-LOCATION-LINE" api-pkg)))
+            (when (and location-var file-fn line-fn
+                       (boundp location-var)
+                       (symbol-value location-var))
+              (let ((location (symbol-value location-var)))
+                (setf file (funcall file-fn location))
+                (setf line (funcall line-fn location))))))))
+    
+    ;; Second priority: Standard compilation context
+    (unless file
+      (setf file (or (when *compile-file-pathname* 
+                       (enough-namestring *compile-file-pathname*))
+                     (when *load-pathname*
+                       (enough-namestring *load-pathname*))
+                     nil)))
+    
+    ;; Third priority: Try to extract line from SBCL compiler state
+    (unless line
+      (when (and (boundp 'sb-c::*compile-file-pathname*)
+                 sb-c::*compile-file-pathname*
+                 (boundp 'sb-c::*compiler-error-context*)
+                 sb-c::*compiler-error-context*)
+        (let ((context sb-c::*compiler-error-context*))
+          (when (typep context 'sb-c::compiler-error-context)
+            (let ((file-pos (sb-c::compiler-error-context-file-position context)))
+              (when file-pos
+                (setf line (file-utils:estimate-line-number 
+                           sb-c::*compile-file-pathname* 
+                           file-pos))))))))
+    
+    (values file line)))
+
+(defun source-location-from-context (context)
+  "Extract source location from compilation context"
+  (when context
+    (let ((file nil)
+          (line nil))
+      
+      ;; Extract from SBCL compiler context
+      (when (typep context 'sb-c::compiler-error-context)
+        (let ((file-name (sb-c::compiler-error-context-file-name context))
+              (file-pos (sb-c::compiler-error-context-file-position context)))
+          (when file-name
+            (setf file (if (pathnamep file-name)
+                          (namestring file-name)
+                        file-name)))
+          (when (and file file-pos)
+            (setf line (file-utils:estimate-line-number file file-pos)))))
+      
+      (values file line))))
+
+(defun enhance-with-compilation-context (file line)
+  "Enhance file/line information with compilation context if available"
+  (let ((enhanced-file file)
+        (enhanced-line line))
+    
+    ;; Try to get better context from compilation system
+    (multiple-value-bind (context-file context-line)
+        (get-current-source-location)
+      (when (and context-file (not enhanced-file))
+        (setf enhanced-file context-file))
+      (when (and context-line (not enhanced-line))
+        (setf enhanced-line context-line)))
+    
+    (values enhanced-file enhanced-line)))
 
 ;;; Initialize default configuration
 (add-appender *root-logger* (make-instance 'console-appender :formatter :compact))

@@ -6,7 +6,8 @@
    (api epsilon.compile-api)
    (hooks epsilon.compile-hooks)
    (compile epsilon.compile)
-   (location epsilon.compile-location)))
+   (location epsilon.compile-location)
+   (file-utils epsilon.file-utils)))
 
 (in-package epsilon.test.compile-api)
 
@@ -143,16 +144,16 @@
     (unwind-protect
          (progn
            ;; Cache the file
-           (location:cache-file-lines temp-file)
+           (file-utils:cache-file-lines temp-file)
            
            ;; Test position to line conversion
            (multiple-value-bind (line column)
-               (location:file-position-to-line-column temp-file 0)
+               (file-utils:file-position-to-line-column temp-file 0)
              (is-= 1 line)
              (is-= 1 column))
            
            (multiple-value-bind (line column)
-               (location:file-position-to-line-column temp-file 7)  ; Start of line 2
+               (file-utils:file-position-to-line-column temp-file 7)  ; Start of line 2
              (is-= 2 line)
              (is-= 1 column)))
       

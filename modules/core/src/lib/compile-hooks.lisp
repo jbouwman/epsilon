@@ -8,7 +8,8 @@
   (:local-nicknames
    (api epsilon.compile-api)
    (map epsilon.map)
-   (str epsilon.string))
+   (str epsilon.string)
+   (file-utils epsilon.file-utils))
   (:export
    #:*capture-compilation-output*
    #:*current-compilation-messages*
@@ -89,22 +90,8 @@
        :toplevel-form toplevel-form))))
 
 (defun estimate-line-number (file position)
-  "Estimate line number from file position."
-  ;; This is a simplified implementation
-  ;; In practice, we'd cache file line offsets for better performance
-  (when (and file position (probe-file file))
-    (handler-case
-        (with-open-file (stream file :direction :input)
-          (let ((line-count 1)
-                (char-count 0))
-            (loop for char = (read-char stream nil nil)
-                  while (and char (< char-count position))
-                  do (progn
-                       (incf char-count)
-                       (when (char= char #\Newline)
-                         (incf line-count))))
-            line-count))
-      (error () nil))))
+  "Estimate line number from file position using consolidated file utilities."
+  (file-utils:estimate-line-number file position))
 
 (defun extract-source-location ()
   "Extract current source location from compiler state."

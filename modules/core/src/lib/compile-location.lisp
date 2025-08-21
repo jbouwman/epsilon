@@ -7,101 +7,17 @@
   (:use cl)
   (:local-nicknames
    (api epsilon.compile-api)
-   (map epsilon.map))
+   (map epsilon.map)
+   (file-utils epsilon.file-utils))
   (:export
-   #:*source-location-cache*
-   #:clear-source-location-cache
-   
    #:track-source-location
    #:get-current-source-location
    #:enhance-location-with-line-info
-   
-   #:file-position-to-line-column
-   #:cache-file-lines
    #:with-source-tracking))
 
 (in-package epsilon.compile-location)
 
-;;; File line caching for efficient position-to-line conversion
-
-(defstruct file-line-cache
-  "Cache of file line positions for fast lookup."
-  (pathname nil :type (or pathname null))
-  (line-starts nil :type (or simple-vector null))
-  (modification-time nil :type (or integer null)))
-
-(defvar *source-location-cache* (make-hash-table :test 'equal)
-  "Cache mapping pathnames to file-line-cache structures.")
-
-(defun clear-source-location-cache ()
-  "Clear the source location cache."
-  (clrhash *source-location-cache*))
-
-(defun get-file-modification-time (pathname)
-  "Get the modification time of a file."
-  (handler-case
-      (file-write-date pathname)
-    (error () nil)))
-
-(defun cache-file-lines (pathname)
-  "Cache line positions for a file."
-  (let ((truename (truename pathname)))
-    (handler-case
-        (let ((mod-time (get-file-modification-time truename))
-              (line-starts (make-array 1000 :adjustable t :fill-pointer 0)))
-          
-          ;; First line starts at position 0
-          (vector-push-extend 0 line-starts)
-          
-          ;; Read file and record line starts
-          (with-open-file (stream truename :direction :input)
-            (let ((pos 0))
-              (loop for char = (read-char stream nil nil)
-                    while char
-                    do (progn
-                         (incf pos)
-                         (when (char= char #\Newline)
-                           (vector-push-extend pos line-starts))))))
-          
-          ;; Create and cache the result
-          (let ((cache (make-file-line-cache
-                        :pathname truename
-                        :line-starts (coerce line-starts 'simple-vector)
-                        :modification-time mod-time)))
-            (setf (gethash truename *source-location-cache*) cache)
-            cache))
-      (error () nil))))
-
-(defun get-cached-file-lines (pathname)
-  "Get cached file line information, updating if necessary."
-  (let* ((truename (handler-case (truename pathname)
-                     (error () (return-from get-cached-file-lines nil))))
-         (cached (gethash truename *source-location-cache*)))
-    
-    ;; Check if cache is still valid
-    (if (and cached
-             (equal (file-line-cache-modification-time cached)
-                    (get-file-modification-time truename)))
-        cached
-        ;; Cache is invalid or missing, rebuild it
-        (cache-file-lines truename))))
-
-(defun file-position-to-line-column (pathname position)
-  "Convert a file position to line and column numbers."
-  (when (and pathname position)
-    (let ((cache (get-cached-file-lines pathname)))
-      (when cache
-        (let ((line-starts (file-line-cache-line-starts cache)))
-          ;; Binary search for the line containing the position
-          (let ((line-num (position-if (lambda (start)
-                                          (> start position))
-                                        line-starts)))
-            (if line-num
-                (values line-num
-                        (1+ (- position (aref line-starts (1- line-num)))))
-                ;; Position is on the last line
-                (values (length line-starts)
-                        (1+ (- position (aref line-starts (1- (length line-starts)))))))))))))
+;;; File line caching is now handled by epsilon.file-utils
 
 ;;; Integration with SBCL compiler internals
 
@@ -142,7 +58,7 @@
     
     (multiple-value-bind (line column)
         (when (and file position)
-          (file-position-to-line-column file position))
+          (file-utils:file-position-to-line-column file position))
       
       (api:make-source-location
        :file (when file (namestring file))
