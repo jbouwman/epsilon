@@ -4,11 +4,11 @@
 
 (defpackage :epsilon.http2
   (:use :cl)
-  (:local-nicknames
-   (#:frames #:epsilon.http2.frames)
-   (#:hpack #:epsilon.http2.hpack)
-   (#:stream #:epsilon.http2.stream)
-   (#:connection #:epsilon.http2.connection))
+  (:import-from :epsilon.http2.hpack
+                #:create-encoder
+                #:create-decoder
+                #:encode-headers
+                #:decode-headers)
   (:export
    ;; Connection management
    #:make-http2-connection
@@ -66,14 +66,16 @@
   ((socket :initarg :socket :accessor connection-socket)
    (tls-connection :initarg :tls-connection :accessor connection-tls-connection)
    (client-p :initarg :client-p :accessor connection-client-p :initform nil)
-   (streams :initform (make-hash-table) :accessor connection-streams)
+   (streams :initform (make-hash-table) :accessor connection-streams :accessor http2-connection-streams)
    (next-stream-id :initform 1 :accessor connection-next-stream-id)
-   (local-settings :initform +default-settings+ :accessor connection-local-settings)
+   (local-settings :initform +default-settings+ :accessor connection-local-settings :accessor http2-connection-local-settings)
    (remote-settings :initform +default-settings+ :accessor connection-remote-settings)
    (hpack-encoder :accessor connection-hpack-encoder)
    (hpack-decoder :accessor connection-hpack-decoder)
    (send-window :initform 65535 :accessor connection-send-window)
-   (recv-window :initform 65535 :accessor connection-recv-window)))
+   (recv-window :initform 65535 :accessor connection-recv-window)
+   (flow-controller :accessor http2-connection-flow-controller :initform nil)
+   (last-stream-id :initform 0 :accessor http2-connection-last-stream-id)))
 
 (defun make-http2-connection (socket &key tls-connection client-p)
   "Create a new HTTP/2 connection"
@@ -82,8 +84,8 @@
                              :tls-connection tls-connection
                              :client-p client-p)))
     ;; Initialize HPACK encoder/decoder
-    (setf (connection-hpack-encoder conn) (hpack:make-encoder))
-    (setf (connection-hpack-decoder conn) (hpack:make-decoder))
+    (setf (connection-hpack-encoder conn) (create-encoder))
+    (setf (connection-hpack-decoder conn) (create-decoder))
     
     ;; Send connection preface if client
     (when client-p
@@ -99,48 +101,48 @@
   (let ((preface-bytes (string-to-bytes +http2-preface+)))
     (if (connection-tls-connection connection)
         (epsilon.crypto:tls-write (connection-tls-connection connection) preface-bytes)
-      (epsilon.net:tcp-send (connection-socket connection) preface-bytes))))
+      (epsilon.net:tcp-write (connection-socket connection) preface-bytes))))
 
 (defun send-settings-frame (connection settings)
   "Send SETTINGS frame"
-  (let ((frame (frames:make-settings-frame settings)))
+  (let ((frame (make-settings-frame settings)))
     (connection-send-frame connection frame)))
 
 (defun connection-send-frame (connection frame)
   "Send a frame over the connection"
-  (let ((frame-bytes (frames:serialize-frame frame)))
+  (let ((frame-bytes (serialize-frame frame)))
     (if (connection-tls-connection connection)
         (epsilon.crypto:tls-write (connection-tls-connection connection) frame-bytes)
-      (epsilon.net:tcp-send (connection-socket connection) frame-bytes))))
+      (epsilon.net:tcp-write (connection-socket connection) frame-bytes))))
 
 (defun connection-receive-frame (connection)
   "Receive and parse a frame from the connection"
   (let ((header-bytes (make-array 9 :element-type '(unsigned-byte 8))))
     ;; Read frame header (9 bytes)
     (if (connection-tls-connection connection)
-        (epsilon.crypto:tls-read (connection-tls-connection connection) header-bytes 0 9)
-      (epsilon.net:tcp-receive (connection-socket connection) header-bytes 0 9))
+        (epsilon.crypto:tls-read (connection-tls-connection connection) header-bytes :start 0 :end 9)
+      (epsilon.net:tcp-read (connection-socket connection) header-bytes :start 0 :end 9))
     
     ;; Parse header to get payload length
-    (let* ((payload-length (frames:parse-frame-header header-bytes))
+    (let* ((payload-length (parse-frame-header header-bytes))
            (payload-bytes (when (> payload-length 0)
                            (make-array payload-length :element-type '(unsigned-byte 8)))))
       
       ;; Read payload if present
       (when payload-bytes
         (if (connection-tls-connection connection)
-            (epsilon.crypto:tls-read (connection-tls-connection connection) payload-bytes 0 payload-length)
-          (epsilon.net:tcp-receive (connection-socket connection) payload-bytes 0 payload-length)))
+            (epsilon.crypto:tls-read (connection-tls-connection connection) payload-bytes :start 0 :end payload-length)
+          (epsilon.net:tcp-read (connection-socket connection) payload-bytes :start 0 :end payload-length)))
       
       ;; Parse complete frame
-      (frames:parse-frame header-bytes payload-bytes))))
+      (parse-frame header-bytes payload-bytes))))
 
 (defun connection-close (connection)
   "Close HTTP/2 connection"
   ;; Send GOAWAY frame
-  (let ((goaway-frame (frames:make-goaway-frame 
+  (let ((goaway-frame (make-goaway-frame 
                        (1- (connection-next-stream-id connection))
-                       frames:+no-error+
+                       +error-no-error+
                        "Connection closing")))
     (connection-send-frame connection goaway-frame))
   
@@ -148,14 +150,14 @@
   (when (connection-tls-connection connection)
     (epsilon.crypto:tls-close (connection-tls-connection connection)))
   (when (connection-socket connection)
-    (epsilon.net:tcp-close (connection-socket connection))))
+    (epsilon.net:tcp-shutdown (connection-socket connection) :how :both)))
 
 ;;;; Stream Management
 
 (defun create-stream (connection)
   "Create a new stream on the connection"
   (let* ((stream-id (connection-next-stream-id connection))
-         (stream (stream:make-http2-stream stream-id connection)))
+         (stream (make-http2-stream stream-id connection)))
     ;; Increment next stream ID (odd for client, even for server)
     (incf (connection-next-stream-id connection) 2)
     ;; Store stream
@@ -164,12 +166,12 @@
 
 (defun stream-send-headers (stream headers &key end-stream)
   "Send headers on a stream"
-  (let* ((connection (stream:stream-connection stream))
-         (encoded-headers (hpack:encode-headers 
+  (let* ((connection (stream-connection stream))
+         (encoded-headers (encode-headers 
                           (connection-hpack-encoder connection)
                           headers))
-         (frame (frames:make-headers-frame 
-                (stream:stream-id stream)
+         (frame (make-headers-frame 
+                (stream-id stream)
                 encoded-headers
                 :end-stream end-stream
                 :end-headers t)))
@@ -177,9 +179,9 @@
 
 (defun stream-send-data (stream data &key end-stream)
   "Send data on a stream"
-  (let* ((connection (stream:stream-connection stream))
-         (frame (frames:make-data-frame 
-                (stream:stream-id stream)
+  (let* ((connection (stream-connection stream))
+         (frame (make-data-frame 
+                (stream-id stream)
                 data
                 :end-stream end-stream)))
     (connection-send-frame connection frame)))
@@ -259,21 +261,21 @@
       (let ((frame (connection-receive-frame connection)))
         (cond
           ;; HEADERS frame
-          ((eq (frames:frame-type frame) frames:+frame-type-headers+)
-           (when (= (frames:frame-stream-id frame) (stream:stream-id stream))
+          ((eq (frame-type frame) +frame-headers+)
+           (when (= (frame-stream-id frame) (stream-id stream))
              (setf response-headers 
-                   (hpack:decode-headers 
+                   (decode-headers 
                     (connection-hpack-decoder connection)
-                    (frames:frame-payload frame)))
-             (when (frames:frame-flag-set-p frame frames:+flag-end-stream+)
+                    (frame-payload frame)))
+             (when (frame-flag-set-p frame +flag-end-stream+)
                (return))))
           
           ;; DATA frame
-          ((eq (frames:frame-type frame) frames:+frame-type-data+)
-           (when (= (frames:frame-stream-id frame) (stream:stream-id stream))
+          ((eq (frame-type frame) +frame-data+)
+           (when (= (frame-stream-id frame) (stream-id stream))
              (setf response-data 
-                   (append response-data (coerce (frames:frame-payload frame) 'list)))
-             (when (frames:frame-flag-set-p frame frames:+flag-end-stream+)
+                   (append response-data (coerce (frame-payload frame) 'list)))
+             (when (frame-flag-set-p frame +flag-end-stream+)
                (return))))
           
           ;; Other frames - handle as needed
@@ -282,3 +284,65 @@
     (list :headers response-headers
           :body (when response-data
                   (bytes-to-string (coerce response-data 'vector))))))
+
+;;;; Stream Management
+
+(defstruct http2-stream
+  "HTTP/2 stream"
+  id
+  connection
+  state  ; :idle :open :half-closed-remote :half-closed-local :closed
+  headers
+  data
+  (flow-controller nil))
+
+(defun make-http2-stream (id connection)
+  "Create a new HTTP/2 stream"
+  (make-instance 'http2-stream
+                 :id id
+                 :connection connection
+                 :state :idle))
+
+(defun stream-connection (stream)
+  "Get connection from stream"
+  (http2-stream-connection stream))
+
+(defun stream-id (stream)
+  "Get stream ID"
+  (http2-stream-id stream))
+
+
+;;;; Frame Helper Functions
+
+(defun serialize-frame (frame)
+  "Serialize frame to bytes"
+  ;; Simple serialization - just return the frame object for now
+  frame)
+
+(defun parse-frame-header (header-bytes)
+  "Parse frame header and return length"
+  (logior (ash (aref header-bytes 0) 16)
+          (ash (aref header-bytes 1) 8)
+          (aref header-bytes 2)))
+
+(defun parse-frame (header-bytes payload-bytes)
+  "Parse complete frame from header and payload"
+  (declare (ignore header-bytes payload-bytes))
+  ;; Simplified for now
+  nil)
+
+(defun frame-type (frame)
+  "Get frame type"
+  (http2-frame-type frame))
+
+(defun frame-stream-id (frame)
+  "Get frame stream ID"
+  (http2-frame-stream-id frame))
+
+(defun frame-payload (frame)
+  "Get frame payload"
+  (http2-frame-payload frame))
+
+(defun frame-flag-set-p (frame flag)
+  "Check if flag is set in frame"
+  (logtest (http2-frame-flags frame) flag))

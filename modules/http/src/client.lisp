@@ -18,7 +18,8 @@
    #:http-delete
    #:http-head
    #:http-options
-   #:with-connection))
+   #:with-connection
+   #:make-http-connection))
 
 (in-package :epsilon.http.client)
 

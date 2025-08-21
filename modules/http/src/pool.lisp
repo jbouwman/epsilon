@@ -14,11 +14,52 @@
    (#:str #:epsilon.string)
    (#:time #:epsilon.time))
   (:export
+   ;; Configuration
+   #:pool-config
+   #:pool-config-p
+   #:make-pool-config
+   #:pool-config-max-connections-per-host
+   #:pool-config-max-idle-connections
+   #:pool-config-idle-timeout
+   #:pool-config-connection-timeout
+   #:pool-config-keep-alive-timeout
+   #:pool-config-enable-http2
+   #:pool-config-enable-compression
+   #:pool-config-validate-connections
+   #:pool-config-warm-up-hosts
+   
+   ;; Connection keys
+   #:connection-key
+   #:make-connection-key
+   #:connection-key-equal
+   #:connection-key-hash
+   #:connection-key-host
+   #:connection-key-port
+   #:connection-key-ssl-p
+   #:connection-key-protocol
+   
    ;; Connection pool management
    #:http-connection-pool
+   #:http-connection-pool-p
+   #:make-http-connection-pool
    #:create-http-connection-pool
    #:destroy-http-connection-pool
    #:pool-stats
+   
+   ;; HTTP Connection structure
+   #:http-connection
+   #:http-connection-p
+   #:make-http-connection
+   #:http-connection-key
+   #:http-connection-socket
+   #:http-connection-tls-connection
+   #:http-connection-stream
+   #:http-connection-created-at
+   #:http-connection-last-used-at
+   #:http-connection-request-count
+   #:http-connection-protocol
+   #:http-connection-alive-p
+   #:http-connection-keep-alive-p
    
    ;; Connection operations
    #:get-connection
