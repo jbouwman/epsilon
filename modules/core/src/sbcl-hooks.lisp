@@ -2,7 +2,7 @@
 ;;;; source location information during compilation, including
 ;;;; accurate line numbers and form offsets.
 
-(defpackage epsilon.compiler-hooks
+(defpackage epsilon.sbcl-hooks
   (:use cl)
   (:local-nicknames
    (api epsilon.compile-api)
@@ -41,7 +41,7 @@
    #:extract-line-from-sbcl-source-path
    #:file-position-to-line-number))
 
-(in-package epsilon.compiler-hooks)
+(in-package epsilon.sbcl-hooks)
 
 ;;; Global state for real-time tracking
 

@@ -35,7 +35,7 @@
     "compile-location"
     "compile-hooks"
     "compile"
-    "compile-deep-integration"
+    "sbcl-hooks"
     "loader"
     "main"))
 

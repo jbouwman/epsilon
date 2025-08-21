@@ -15,6 +15,8 @@
    #:timed-cache-table
    #:timed-cache-ttl
    #:timed-cache-max-size
+   #:timed-cache-hits
+   #:timed-cache-misses
    
    ;; Cache operations
    #:cache-get
@@ -33,6 +35,8 @@
    #:lru-cache
    #:lru-cache-p
    #:make-lru-cache
+   #:lru-cache-size
+   #:lru-cache-capacity
    #:lru-get
    #:lru-put
    #:lru-remove
@@ -125,6 +129,14 @@
           when (> (- current-time (cache-entry-timestamp entry)) ttl)
           do (remhash key table))))
 
+(defun cache-hits (cache)
+  "Get the number of cache hits"
+  (timed-cache-hits cache))
+
+(defun cache-misses (cache)
+  "Get the number of cache misses"
+  (timed-cache-misses cache))
+
 (defun cache-hit-rate (cache)
   "Calculate cache hit rate"
   (let ((total (+ (timed-cache-hits cache) (timed-cache-misses cache))))
@@ -140,7 +152,8 @@
   prev
   next)
 
-(defstruct lru-cache
+(defstruct (lru-cache
+            (:constructor %make-lru-cache))
   "Least Recently Used cache"
   (table (make-hash-table :test 'equal) :type hash-table)
   (capacity 100 :type fixnum)
@@ -150,7 +163,10 @@
 
 (defun make-lru-cache (&key (capacity 100))
   "Create a new LRU cache with given capacity"
-  (let ((cache (make-lru-cache :capacity capacity)))
+  (let ((cache (%make-lru-cache 
+                :table (make-hash-table :test 'equal)
+                :capacity capacity
+                :size 0)))
     ;; Initialize dummy head and tail nodes
     (setf (lru-cache-head cache) (make-lru-node))
     (setf (lru-cache-tail cache) (make-lru-node))

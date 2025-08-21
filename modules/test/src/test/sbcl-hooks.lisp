@@ -1,34 +1,34 @@
-;;;; Test Suite for Deep SBCL Integration
+;;;; Test Suite for SBCL Integration
 
-(defpackage epsilon.test.compile-deep-integration
+(defpackage epsilon.test.sbcl-hooks
   (:use cl epsilon.test)
   (:local-nicknames
    (api epsilon.compile-api)
    (hooks epsilon.compile-hooks)
    (compile epsilon.compile)
-   (deep epsilon.compile-deep-integration)
+   (sbcl-hooks epsilon.sbcl-hooks)
    (log epsilon.log)))
 
-(in-package epsilon.test.compile-deep-integration)
+(in-package epsilon.test.sbcl-hooks)
 
 ;;; Basic functionality tests
 
 (deftest test-package-existence
-  "Test that the deep integration package exists and has key exports"
-  (is (find-package :epsilon.compile-deep-integration))
-  (is (find-symbol "WITH-DEEP-SOURCE-TRACKING" :epsilon.compile-deep-integration))
-  (is (find-symbol "INSTALL-DEEP-COMPILER-HOOKS" :epsilon.compile-deep-integration)))
+  "Test that the integration package exists and has key exports"
+  (is (find-package :epsilon.sbcl-hooks))
+  (is (find-symbol "WITH-SOURCE-TRACKING" :epsilon.sbcl-hooks))
+  (is (find-symbol "INSTALL-COMPILER-HOOKS" :epsilon.sbcl-hooks)))
 
 (deftest test-variables-exist
   "Test that key tracking variables exist"
-  (is (boundp 'deep:*real-time-source-tracking*))
-  (is (boundp 'deep:*current-compilation-location*)))
+  (is (boundp 'sbcl-hooks:*real-time-source-tracking*))
+  (is (boundp 'sbcl-hooks:*current-compilation-location*)))
 
 (deftest test-initialization
-  "Test deep integration initialization"
+  "Test integration initialization"
   (handler-case
       (progn
-        (deep:initialize-deep-integration)
+        (sbcl-hooks:initialize-integration)
         (is t))  ; Just test that it doesn't error
     (error (e)
       (warn "Initialization failed: ~A" e)
@@ -36,15 +36,15 @@
 
 (deftest test-hook-functions-exist
   "Test that hook installation functions exist"
-  (is (fboundp 'deep:install-deep-compiler-hooks))
-  (is (fboundp 'deep:uninstall-deep-compiler-hooks))
-  (is (fboundp 'deep:get-real-time-source-location)))
+  (is (fboundp 'sbcl-hooks:install-compiler-hooks))
+  (is (fboundp 'sbcl-hooks:uninstall-compiler-hooks))
+  (is (fboundp 'sbcl-hooks:get-real-time-source-location)))
 
 (deftest test-integration-with-compile
   "Test that integration functions exist in compile package"
-  (is (fboundp 'compile:with-deep-source-tracking))
-  (is (fboundp 'compile:compile-file-with-deep-tracking))
-  (is (fboundp 'compile:compile-form-with-deep-tracking)))
+  (is (fboundp 'compile:with-source-tracking))
+  (is (fboundp 'compile:compile-file-with-tracking))
+  (is (fboundp 'compile:compile-form-with-tracking)))
 
 (deftest test-line-number-extraction
   "Test that line number extraction works without debug output"
@@ -59,8 +59,8 @@
                  (format stream "(defun test-func (x)~%")
                  (format stream "  (+ x 1))~%"))
                
-               ;; Test compilation with deep tracking
-               (let ((result (compile:compile-file-with-deep-tracking test-file :verbose nil)))
+               ;; Test compilation with tracking
+               (let ((result (compile:compile-file-with-tracking test-file :verbose nil)))
                  (is (not (null result)) "Should return a compilation result")
                  (is (api:compilation-result-success-p result) "Compilation should succeed")
                  ;; Compilation should succeed cleanly without errors

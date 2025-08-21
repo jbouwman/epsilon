@@ -22,9 +22,9 @@
    #:format-compilation-result
    #:compilation-result-to-plist
    
-   #:with-deep-source-tracking
-   #:compile-file-with-deep-tracking
-   #:compile-form-with-deep-tracking))
+   #:with-source-tracking
+   #:compile-file-with-tracking
+   #:compile-form-with-tracking))
 
 (in-package epsilon.compile)
 
@@ -320,24 +320,24 @@
 ;;   "Convert a compilation result to YAML string."
 ;;   (yaml:emit-to-string (compilation-result-to-plist result)))
 
-;;; Deep tracking integration
+;;; tracking integration
 
-(defmacro with-deep-source-tracking ((&key (enable t) file) &body body)
-  "Execute body with deep source location tracking enabled.
+(defmacro with-source-tracking ((&key (enable t) file) &body body)
+  "Execute body with source location tracking enabled.
    
    This enables real-time source location tracking during compilation,
    providing accurate line numbers and form offsets in compilation
    messages and log entries."
-  ;; Simple pass-through for now - the actual deep tracking happens
+  ;; Simple pass-through for now - the actual tracking happens
   ;; when the functions are called
   (declare (ignore enable file))
   `(progn ,@body))
 
-(defun compile-file-with-deep-tracking (input-file &rest args)
-  "Compile a file with deep source location tracking enabled.
+(defun compile-file-with-tracking (input-file &rest args)
+  "Compile a file with source location tracking enabled.
    
    This is like COMPILE-FILE-STRUCTURED but automatically enables
-   deep SBCL integration for accurate source location tracking.
+   SBCL integration for accurate source location tracking.
    
    Arguments:
      INPUT-FILE - The source file to compile
@@ -345,12 +345,12 @@
    
    Returns:
      A COMPILATION-RESULT object with enhanced source locations"
-  (let ((deep-pkg (find-package :epsilon.compile-deep-integration)))
-    (if deep-pkg
-        (let ((install-fn (find-symbol "INSTALL-DEEP-COMPILER-HOOKS" deep-pkg))
-              (uninstall-fn (find-symbol "UNINSTALL-DEEP-COMPILER-HOOKS" deep-pkg))
-              (build-cache-fn (find-symbol "BUILD-FORM-POSITION-CACHE" deep-pkg))
-              (file-info-var (find-symbol "*CURRENT-FILE-INFO*" deep-pkg)))
+  (let ((pkg (find-package :epsilon.sbcl-hooks)))
+    (if pkg
+        (let ((install-fn (find-symbol "INSTALL-COMPILER-HOOKS" pkg))
+              (uninstall-fn (find-symbol "UNINSTALL-COMPILER-HOOKS" pkg))
+              (build-cache-fn (find-symbol "BUILD-FORM-POSITION-CACHE" pkg))
+              (file-info-var (find-symbol "*CURRENT-FILE-INFO*" pkg)))
           (unwind-protect
                (progn
                  ;; Install hooks and set up file tracking
@@ -362,11 +362,11 @@
                  (apply #'compile-file-structured input-file args))
             ;; Always clean up
             (when uninstall-fn (funcall uninstall-fn))))
-      ;; Fall back to regular compilation if deep integration unavailable
+      ;; Fall back to regular compilation if integration unavailable
       (apply #'compile-file-structured input-file args))))
 
-(defun compile-form-with-deep-tracking (form &rest args)
-  "Compile a form with deep source location tracking enabled.
+(defun compile-form-with-tracking (form &rest args)
+  "Compile a form with source location tracking enabled.
    
    Arguments:
      FORM - The Lisp form to compile
@@ -374,10 +374,10 @@
    
    Returns:
      A COMPILATION-RESULT object with enhanced source locations"
-  (let ((deep-pkg (find-package :epsilon.compile-deep-integration)))
-    (if deep-pkg
-        (let ((install-fn (find-symbol "INSTALL-DEEP-COMPILER-HOOKS" deep-pkg))
-              (uninstall-fn (find-symbol "UNINSTALL-DEEP-COMPILER-HOOKS" deep-pkg)))
+  (let ((pkg (find-package :epsilon.compile-integration)))
+    (if pkg
+        (let ((install-fn (find-symbol "INSTALL-COMPILER-HOOKS" pkg))
+              (uninstall-fn (find-symbol "UNINSTALL-COMPILER-HOOKS" pkg)))
           (unwind-protect
                (progn
                  ;; Install hooks for form compilation
@@ -386,5 +386,5 @@
                  (apply #'compile-form-structured form args))
             ;; Always clean up
             (when uninstall-fn (funcall uninstall-fn))))
-      ;; Fall back to regular compilation if deep integration unavailable
+      ;; Fall back to regular compilation if integration unavailable
       (apply #'compile-form-structured form args))))

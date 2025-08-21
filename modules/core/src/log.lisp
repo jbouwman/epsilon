@@ -620,9 +620,9 @@
   (let ((file nil)
         (line nil))
     
-    ;; First priority: Deep integration compilation context
-    (when (find-package :epsilon.compile-deep-integration)
-      (let ((deep-pkg (find-package :epsilon.compile-deep-integration))
+    ;; First priority: Custom compilation context
+    (when (find-package :epsilon.sbcl-hooks)
+      (let ((deep-pkg (find-package :epsilon.sbcl-hooks))
             (api-pkg (find-package :epsilon.compile-api)))
         (when (and deep-pkg api-pkg)
           (let ((location-var (find-symbol "*CURRENT-COMPILATION-LOCATION*" deep-pkg))
