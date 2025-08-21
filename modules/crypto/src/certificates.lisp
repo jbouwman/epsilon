@@ -25,7 +25,9 @@
 (in-package :epsilon.crypto.certificates)
 
 ;;;; FFI Bindings for Certificate Operations
+;;;; NOTE: These are now defined in ffi.lisp
 
+#| Moved to ffi.lisp
 (lib:defshared %x509-set-version "X509_set_version" "libcrypto" :int
   (x509 :pointer) (version :long))
 
@@ -121,6 +123,7 @@
 
 (lib:defshared %x509-extension-free "X509_EXTENSION_free" "libcrypto" :void
   (ex :pointer))
+|#
 
 ;;;; Helper Constants
 

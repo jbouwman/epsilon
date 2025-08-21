@@ -23,6 +23,7 @@
    ;; Connection operations
    #:get-connection
    #:return-connection
+   #:destroy-http-connection
    #:with-http-connection
    
    ;; High-level HTTP operations

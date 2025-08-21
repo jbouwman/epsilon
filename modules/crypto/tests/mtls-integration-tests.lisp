@@ -33,8 +33,8 @@
 
 (deftest test-http-mtls-support
   "Test that HTTP client/server have mTLS parameters"
-  (is (fboundp 'epsilon.http.client:make-http-connection))
-  (is (fboundp 'epsilon.http.server:start-server))
+  (is (fboundp 'epsilon.http:request))
+  (is (fboundp 'epsilon.http:http-get))
   ;; Verify the functions accept the new keyword arguments
   ;; This tests the interface exists
   (is-true t))
