@@ -59,6 +59,15 @@
    :try
    :eof
    :label
+   
+   ;; Position management
+   :save-position
+   :restore-position
+   :with-saved-position
+   
+   ;; Peek combinators
+   :peek
+   :peek-n
 
    ;; Execution
    :parse))
@@ -306,6 +315,61 @@
                         :state (failure-state result)
                         :expected name)
           result))))
+
+;;; Position Management
+;;;
+;;; Support for efficient save and restore of parser position
+
+(defun save-position (state)
+  "Save current parser position and return a checkpoint."
+  (make-parse-state :position (parse-state-position state)
+                    :remaining (parse-state-remaining state)
+                    :context (parse-state-context state)
+                    :consumed-p (parse-state-consumed-p state)))
+
+(defun restore-position (checkpoint)
+  "Return a parser that restores to the given checkpoint."
+  (lambda (state)
+    (declare (ignore state))
+    (make-success :value nil :state checkpoint)))
+
+(defmacro with-saved-position ((var) &body body)
+  "Execute body with saved position available for restoration."
+  `(lambda (state)
+     (let ((,var (save-position state)))
+       (funcall (progn ,@body) state))))
+
+;;; Peek Combinators
+;;;
+;;; Look ahead without consuming input
+
+(defun peek ()
+  "Peek at the next token without consuming it."
+  (lambda (state)
+    (if (seq:empty-p (parse-state-remaining state))
+        (make-failure :message "Unexpected end of input"
+                      :state state
+                      :expected "token")
+        (make-success :value (seq:first (parse-state-remaining state))
+                      :state state))))
+
+(defun peek-n (n)
+  "Peek at the next N tokens without consuming them."
+  (lambda (state)
+    (let ((remaining (parse-state-remaining state))
+          (tokens '()))
+      (labels ((collect-tokens (seq count)
+                 (if (or (zerop count) (seq:empty-p seq))
+                     (nreverse tokens)
+                     (progn
+                       (push (seq:first seq) tokens)
+                       (collect-tokens (seq:rest seq) (1- count))))))
+        (let ((result (collect-tokens remaining n)))
+          (if (< (length result) n)
+              (make-failure :message (format nil "Expected ~D tokens, only ~D available" n (length result))
+                            :state state
+                            :expected (format nil "~D tokens" n))
+              (make-success :value result :state state)))))))
 
 ;;; Parser Execution
 

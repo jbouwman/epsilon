@@ -21,13 +21,13 @@
    
    ;; Character access
    #:peek
+   #:peek-n
+   #:peek-ahead
    #:next
    #:at-end-p
    
    ;; Position management
    #:lexer-position
-   #:save-position
-   #:restore-position
    
    ;; Token structure
    #:token
@@ -36,11 +36,15 @@
    #:token-type
    #:token-value
    #:token-position
+   #:token-line
+   #:token-column
    
    ;; Error handling
    #:lexer-error
    #:lexer-error-message
    #:lexer-error-position
+   #:lexer-error-line
+   #:lexer-error-column
    
    ;; Utility functions
    #:skip-while
@@ -57,9 +61,10 @@
   "Core lexer structure that abstracts character stream access"
   (source nil :type stream)
   (position 0 :type fixnum)
-  (saved-positions nil :type list)
   (line 1 :type fixnum)
-  (column 1 :type fixnum))
+  (column 1 :type fixnum)
+  (buffer nil :type list)  ; Buffer for peeked characters
+  (buffer-size 0 :type fixnum))
 
 (defstruct (token (:constructor %make-token))
   "Token structure for structured lexer output"
@@ -93,11 +98,17 @@
 
 (defun peek (lexer)
   "Peek at the next character without consuming it. Returns nil at end of input."
-  (peek-char nil (%lexer-source lexer) nil nil))
+  (if (%lexer-buffer lexer)
+      (first (%lexer-buffer lexer))
+      (peek-char nil (%lexer-source lexer) nil nil)))
 
 (defun next (lexer)
   "Consume and return the next character. Returns nil at end of input."
-  (let ((ch (peek lexer)))
+  (let ((ch (if (%lexer-buffer lexer)
+                (prog1 (first (%lexer-buffer lexer))
+                  (setf (%lexer-buffer lexer) (rest (%lexer-buffer lexer)))
+                  (decf (%lexer-buffer-size lexer)))
+                (read-char (%lexer-source lexer) nil nil))))
     (when ch
       (incf (%lexer-position lexer))
       ;; Update line and column tracking
@@ -105,10 +116,34 @@
           (progn
             (incf (%lexer-line lexer))
             (setf (%lexer-column lexer) 1))
-          (incf (%lexer-column lexer)))
-      ;; Actually consume the character for streams
-      (read-char (%lexer-source lexer)))
+          (incf (%lexer-column lexer))))
     ch))
+
+(defun peek-n (lexer n)
+  "Peek at the next N characters without consuming them. Returns a list of characters."
+  (let ((buffer-size (%lexer-buffer-size lexer)))
+    ;; Fill buffer if needed
+    (when (< buffer-size n)
+      (let ((needed (- n buffer-size)))
+        (loop repeat needed
+              for ch = (peek-char nil (%lexer-source lexer) nil nil)
+              while ch
+              do (progn
+                   (setf (%lexer-buffer lexer) 
+                         (append (%lexer-buffer lexer) (list ch)))
+                   (incf (%lexer-buffer-size lexer))
+                   (read-char (%lexer-source lexer))))))
+    ;; Return first n characters from buffer (or less if at EOF)
+    (loop for i from 0 below n
+          for chars on (%lexer-buffer lexer)
+          while chars
+          collect (first chars))))
+
+(defun peek-ahead (lexer n)
+  "Peek at the character N positions ahead without consuming. Returns nil at end."
+  (let ((chars (peek-n lexer (1+ n))))
+    (when (= (length chars) (1+ n))
+      (nth n chars))))
 
 (defun at-end-p (lexer)
   "Test whether we're at the end of the input"
@@ -116,31 +151,11 @@
 
 ;;;;  Position Management
 
-;;;; FIXME after save position, we need to record peeked and read
-;;;; characters, because repositioning the stream is too
-;;;; expensive. Or better yet, use a buffered stream class.
-
 (defun lexer-position (lexer)
   "Get current position information as values: position, line, column"
   (values (%lexer-position lexer)
           (%lexer-line lexer)
           (%lexer-column lexer)))
-
-(defun save-position (lexer)
-  "Save the current position for later restoration"
-  (push (list (%lexer-position lexer)
-              (%lexer-line lexer)
-              (%lexer-column lexer))
-        (%lexer-saved-positions lexer)))
-
-(defun restore-position (lexer)
-  "Restore the most recently saved position"
-  (unless (%lexer-saved-positions lexer)
-    (error "No saved positions to restore"))
-  (destructuring-bind (pos line col) (pop (%lexer-saved-positions lexer))
-    (setf (%lexer-position lexer) pos
-          (%lexer-line lexer) line
-          (%lexer-column lexer) col)))
 
 ;;;; Token Creation
 
