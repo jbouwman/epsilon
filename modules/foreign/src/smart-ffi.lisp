@@ -245,49 +245,6 @@
   (when (> (hash-table-count *call-statistics*) 0)
     (format t "Call statistics: ~A~%" (get-call-statistics))))
 
-;;;; Migration helpers
-
-(defmacro migrate-defshared (lisp-name c-name library return-type arg-types)
-  "Migrate old defshared to new version"
-  `(progn
-     ;; Emit deprecation warning
-     (warn "migrate-defshared is deprecated. Use defshared-auto or define functions directly.")
-     
-     ;; Create new definition
-     (if (and ,return-type ,arg-types)
-         (defun ,lisp-name (&rest args)
-           ,(format nil "FFI binding for ~A" c-name)
-           (apply #'shared-call-unified (list ',c-name ',library)
-                  ',return-type ',arg-types args))
-         (defshared-auto ,lisp-name ,c-name ,library))))
-
-(defun audit-ffi-usage ()
-  "Audit current FFI usage and suggest improvements"
-  (format t "FFI Usage Audit:~%")
-  
-  ;; Check libffi availability
-  (format t "  libffi available: ~A~%" (and (boundp '*libffi-library*) *libffi-library* t))
-  (format t "  libffi for calls: ~A~%" (libffi-available-for-calls-p))
-  
-  ;; Check signature database
-  (when (find-package :epsilon.clang.signatures)
-    (let ((db-symbol (find-symbol "*SIGNATURE-DATABASE*" :epsilon.clang.signatures)))
-      (when db-symbol
-        (format t "  Cached signatures: ~D~%" 
-                (hash-table-count (symbol-value db-symbol))))))
-  
-  ;; Check call statistics
-  (format t "  Tracked calls: ~D~%" (hash-table-count *call-statistics*))
-  
-  ;; Suggestions
-  (format t "  Suggestions:~%")
-  (unless (and (boundp '*libffi-library*) *libffi-library*)
-    (format t "    - Install libffi for better performance~%"))
-  (unless *track-call-performance*
-    (format t "    - Enable call tracking for optimization~%"))
-  (when (< (hash-table-count *call-statistics*) 10)
-    (format t "    - Consider preloading common signatures~%")))
-
 ;;;; Initialize smart FFI system
 
 (defun initialize-smart-ffi ()

@@ -320,24 +320,24 @@
 ;;   "Convert a compilation result to YAML string."
 ;;   (yaml:emit-to-string (compilation-result-to-plist result)))
 
-;;; Deep tracking integration
+;;; tracking integration
 
 (defmacro with-source-tracking ((&key (enable t) file) &body body)
-  "Execute body with deep source location tracking enabled.
+  "Execute body with source location tracking enabled.
    
    This enables real-time source location tracking during compilation,
    providing accurate line numbers and form offsets in compilation
    messages and log entries."
-  ;; Simple pass-through for now - the actual deep tracking happens
+  ;; Simple pass-through for now - the actual tracking happens
   ;; when the functions are called
   (declare (ignore enable file))
   `(progn ,@body))
 
 (defun compile-file-with-tracking (input-file &rest args)
-  "Compile a file with deep source location tracking enabled.
+  "Compile a file with source location tracking enabled.
    
    This is like COMPILE-FILE-STRUCTURED but automatically enables
-   deep SBCL integration for accurate source location tracking.
+   SBCL integration for accurate source location tracking.
    
    Arguments:
      INPUT-FILE - The source file to compile
@@ -362,11 +362,11 @@
                  (apply #'compile-file-structured input-file args))
             ;; Always clean up
             (when uninstall-fn (funcall uninstall-fn))))
-      ;; Fall back to regular compilation if deep integration unavailable
+      ;; Fall back to regular compilation if integration unavailable
       (apply #'compile-file-structured input-file args))))
 
 (defun compile-form-with-tracking (form &rest args)
-  "Compile a form with deep source location tracking enabled.
+  "Compile a form with source location tracking enabled.
    
    Arguments:
      FORM - The Lisp form to compile
@@ -386,5 +386,5 @@
                  (apply #'compile-form-structured form args))
             ;; Always clean up
             (when uninstall-fn (funcall uninstall-fn))))
-      ;; Fall back to regular compilation if deep integration unavailable
+      ;; Fall back to regular compilation if integration unavailable
       (apply #'compile-form-structured form args))))
