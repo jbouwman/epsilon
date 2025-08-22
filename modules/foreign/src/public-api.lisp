@@ -11,7 +11,6 @@
           ffi-call
           ffi-call-cached
           defshared-auto
-          defshared-smart
           defcfuns
           
           ;; Auto-discovery
@@ -36,58 +35,6 @@
           *libffi-function-whitelist*
           *libffi-function-blacklist*
           *track-call-performance*))
-
-;;;; Public API documentation
-
-(defun ffi-help ()
-  "Display help for the epsilon.foreign FFI system"
-  (format t "~%Epsilon Foreign Function Interface Help~%")
-  (format t "=====================================~%~%")
-  
-  (format t "QUICK START:~%")
-  (format t "  (ffi-call \"strlen\" \"hello\")           ; Auto-discover signature~%")
-  (format t "  (defshared-auto my-strlen \"strlen\")    ; Define with auto-discovery~%")
-  (format t "  (defshared-smart add \"add\" \"libmath\" :int '(:int :int))  ; With signature~%~%")
-  
-  (format t "MODERN INTERFACE:~%")
-  (format t "  ffi-call FUNCTION &rest ARGS            ; Smart call with auto-discovery~%")
-  (format t "  ffi-call-cached FUNCTION &rest ARGS     ; Faster repeated calls~%")
-  (format t "  defshared-auto LISP-NAME C-NAME [LIB]   ; Auto-discovering function def~%")
-  (format t "  defshared-smart LISP-NAME C-NAME [LIB] [TYPE] [ARGS]  ; Smart function def~%~%")
-  
-  (format t "BATCH DEFINITIONS:~%")
-  (format t "  (defcfuns \"libc\"~%")
-  (format t "    (my-strlen \"strlen\")~%")
-  (format t "    (my-malloc \"malloc\" :pointer '(:size-t)))~%~%")
-  
-  (format t "DEBUGGING AND PERFORMANCE:~%")
-  (format t "  (with-ffi-debugging (ffi-call \"getpid\"))~%")
-  (format t "  (benchmark-ffi-approach \"strlen\" '(\"test\"))~%")
-  (format t "  (audit-ffi-usage)~%")
-  (format t "  (diagnose-ffi-call \"strlen\" :size-t '(:string) \"test\")~%~%")
-  
-  (format t "MIGRATION:~%")
-  (format t "  Use shared-call-unified instead of shared-call~%")
-  (format t "  Replace old defshared with defshared-smart~%~%")
-  
-  (format t "CONFIGURATION:~%")
-  (format t "  *use-libffi-calls*         ; Enable/disable libffi (default: t)~%")
-  (format t "  *track-call-performance*   ; Track performance stats (default: nil)~%")
-  (format t "  *libffi-function-whitelist* ; Functions to use with libffi~%")
-  (format t "  *libffi-function-blacklist* ; Functions to avoid with libffi~%~%")
-  
-  (format t "SYSTEM STATUS:~%")
-  (format t "  libffi available: ~A~%" (and (boundp '*libffi-library*) *libffi-library* t))
-  (format t "  libffi for calls: ~A~%" (if (fboundp 'libffi-available-for-calls-p)
-                                          (libffi-available-for-calls-p)
-                                          "Unknown"))
-  (when (find-package :epsilon.clang.signatures)
-    (let ((db-symbol (find-symbol "*SIGNATURE-DATABASE*" :epsilon.clang.signatures)))
-      (when db-symbol
-        (format t "  Cached signatures: ~D~%" 
-                (hash-table-count (symbol-value db-symbol))))))
-  
-  (format t "~%For more help: (describe 'function-name)~%"))
 
 ;;;; Compatibility layer for existing code
 
@@ -172,7 +119,12 @@
      ;; Function definitions
      ,@(mapcar (lambda (def)
                  (destructuring-bind (lisp-name c-name &optional return-type arg-types) def
-                   `(defshared-smart ,lisp-name ,c-name ,library-name ,return-type ,arg-types)))
+                   (if (and return-type arg-types)
+                       `(defun ,lisp-name (&rest args)
+                          ,(format nil "FFI binding for ~A" c-name)
+                          (apply #'shared-call-unified (list ',c-name ',library-name)
+                                 ',return-type ',arg-types args))
+                       `(defshared-auto ,lisp-name ,c-name ,library-name))))
                definitions)
      
      ;; Initialization function

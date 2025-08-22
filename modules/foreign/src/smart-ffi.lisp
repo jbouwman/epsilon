@@ -42,19 +42,6 @@
                       args)
                (error "Could not determine signature for ~A" ',c-name)))))))
 
-(defmacro defshared-smart (lisp-name c-name &optional library return-type arg-types)
-  "Define foreign function with smart signature handling"
-  (let ((function-designator (if library
-                                 (list c-name library)
-                                 c-name)))
-    (if (and return-type arg-types)
-        ;; Use provided signature
-        `(defun ,lisp-name (&rest args)
-           ,(format nil "FFI binding for ~A (~A ~A)" c-name return-type arg-types)
-           (apply #'shared-call-unified ',function-designator
-                  ',return-type ',arg-types args))
-        ;; Auto-discover signature
-        `(defshared-auto ,lisp-name ,c-name ,library))))
 
 ;;;; Enhanced function call interface
 
@@ -226,7 +213,12 @@
   `(progn
      ,@(mapcar (lambda (spec)
                  (destructuring-bind (lisp-name c-name &optional return-type arg-types) spec
-                   `(defshared-smart ,lisp-name ,c-name ,library-name ,return-type ,arg-types)))
+                   (if (and return-type arg-types)
+                       `(defun ,lisp-name (&rest args)
+                          ,(format nil "FFI binding for ~A (~A ~A)" c-name return-type arg-types)
+                          (apply #'shared-call-unified (list ',c-name ',library-name)
+                                 ',return-type ',arg-types args))
+                       `(defshared-auto ,lisp-name ,c-name ,library-name))))
                function-specs)))
 
 ;;;; Example usage and testing
@@ -256,13 +248,18 @@
 ;;;; Migration helpers
 
 (defmacro migrate-defshared (lisp-name c-name library return-type arg-types)
-  "Migrate old defshared to new smart version"
+  "Migrate old defshared to new version"
   `(progn
      ;; Emit deprecation warning
-     (warn "migrate-defshared is deprecated. Use defshared-smart instead.")
+     (warn "migrate-defshared is deprecated. Use defshared-auto or define functions directly.")
      
-     ;; Create new smart definition
-     (defshared-smart ,lisp-name ,c-name ,library ,return-type ,arg-types)))
+     ;; Create new definition
+     (if (and ,return-type ,arg-types)
+         (defun ,lisp-name (&rest args)
+           ,(format nil "FFI binding for ~A" c-name)
+           (apply #'shared-call-unified (list ',c-name ',library)
+                  ',return-type ',arg-types args))
+         (defshared-auto ,lisp-name ,c-name ,library))))
 
 (defun audit-ffi-usage ()
   "Audit current FFI usage and suggest improvements"

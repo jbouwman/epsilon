@@ -1,4 +1,4 @@
-;;;; libffi-integration-tests.lisp - Comprehensive integration tests
+;;;; libffi-integration-tests.lisp
 ;;;;
 ;;;; This test suite validates the complete libffi-first architecture
 ;;;; including signature extraction, auto-discovery, and performance.
@@ -93,11 +93,11 @@
             (let ((pid (test-getpid)))
               (is (and (integerp pid) (> pid 0)) "defshared should work"))))
         
-        ;; Test new defshared-smart
-        (eval '(foreign:defshared-smart test-getpid-smart "getpid" "libc" :int ()))
-        (when (fboundp 'test-getpid-smart)
-          (let ((pid (test-getpid-smart)))
-            (is (and (integerp pid) (> pid 0)) "defshared-smart should work"))))
+        ;; Test defshared-auto
+        (eval '(foreign:defshared-auto test-getpid-auto "getpid" "libc"))
+        (when (fboundp 'test-getpid-auto)
+          (let ((pid (test-getpid-auto)))
+            (is (and (integerp pid) (> pid 0)) "defshared-auto should work"))))
     (error (e)
 	   (format t "defshared compatibility test failed: ~A~%" e))))
 
@@ -258,17 +258,10 @@
   "Test help and documentation functions"
   (handler-case
       (with-output-to-string (*standard-output*)
-			     (foreign:ffi-help))
+	(foreign:ffi-system-status))
     (error (e)
-	   (format t "Help system test failed: ~A~%" e)
-	   (is nil "Help system should work")))
-  
-  (handler-case
-      (with-output-to-string (*standard-output*)
-			     (foreign:ffi-system-status))
-    (error (e)
-	   (format t "System status test failed: ~A~%" e)
-	   (is nil "System status should work"))))
+      (format t "System status test failed: ~A~%" e)
+      (is nil "System status should work"))))
 
 ;;;; Integration Test Suite Runner
 

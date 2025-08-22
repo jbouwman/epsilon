@@ -22,7 +22,6 @@
    
    ;; Smart marshalling
    #:defshared-auto
-   #:defshared-smart
    
    ;; Type definitions
    #:define-c-type
@@ -653,6 +652,3 @@
                         ,c-name (length arg-types) (length args)))))
          (error "Could not determine signature for function ~A" ,c-name)))))
 
-(defmacro defshared-smart (name c-name &optional (library "libc"))
-  "Define a foreign function with fully automatic signature inference"
-  `(defshared-auto ,name ,c-name ,library))

@@ -93,7 +93,6 @@
    enum-value
    enum-keyword
    defshared-auto
-   defshared-smart
    define-c-type
    foreign-error
    foreign-error-p
@@ -144,16 +143,10 @@
    callback-info-signature
    callback-info-pointer
    
-   ;; New libffi-first architecture
-   shared-call-unified
-   ffi-call
    ffi-call-cached
-   defshared-auto
-   defshared-smart
    auto-discover-signature
    
    ;; Public API and configuration
-   ffi-help
    ffi-system-status
    *use-libffi-calls*
    *track-call-performance*
