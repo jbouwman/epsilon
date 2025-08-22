@@ -1,0 +1,41 @@
+Generic tests for HTTP/2 server
+  1. Starting HTTP/2
+      1: Sends a client connection preface    ✔ 1: Sends a client connection preface
+
+  2. Streams and Multiplexing
+      1: Sends a PRIORITY frame on idle stream    ✔ 1: Sends a PRIORITY frame on idle stream
+      2: Sends a WINDOW_UPDATE frame on half-closed (remote) stream    ✔ 2: Sends a WINDOW_UPDATE frame on half-closed (remote) stream
+      3: Sends a PRIORITY frame on half-closed (remote) stream    ✔ 3: Sends a PRIORITY frame on half-closed (remote) stream
+      4: Sends a RST_STREAM frame on half-closed (remote) stream    ✔ 4: Sends a RST_STREAM frame on half-closed (remote) stream
+      5: Sends a PRIORITY frame on closed stream    ✔ 5: Sends a PRIORITY frame on closed stream
+
+  3. Frame Definitions
+    3.1. DATA
+        1: Sends a DATA frame      ✔ 1: Sends a DATA frame
+        2: Sends multiple DATA frames      ✔ 2: Sends multiple DATA frames
+        3: Sends a DATA frame with padding      ✔ 3: Sends a DATA frame with padding
+
+    3.2. HEADERS
+        1: Sends a HEADERS frame      ✔ 1: Sends a HEADERS frame
+        2: Sends a HEADERS frame with padding      ✔ 2: Sends a HEADERS frame with padding
+        3: Sends a HEADERS frame with priority      ✔ 3: Sends a HEADERS frame with priority
+
+    3.3. PRIORITY
+        1: Sends a PRIORITY frame with priority 1      ✔ 1: Sends a PRIORITY frame with priority 1
+        2: Sends a PRIORITY frame with priority 256      ✔ 2: Sends a PRIORITY frame with priority 256
+        3: Sends a PRIORITY frame with stream dependency      ✔ 3: Sends a PRIORITY frame with stream dependency
+        4: Sends a PRIORITY frame with exclusive      ✔ 4: Sends a PRIORITY frame with exclusive
+        5: Sends a PRIORITY frame for an idle stream, then send a HEADER frame for a lower stream ID      ✔ 5: Sends a PRIORITY frame for an idle stream, then send a HEADER frame for a lower stream ID
+
+    3.4. RST_STREAM
+        1: Sends a RST_STREAM frame      ✔ 1: Sends a RST_STREAM frame
+
+    3.5. SETTINGS
+        1: Sends a SETTINGS frame      using source address 127.0.0.1:47684
+      × 1: Sends a SETTINGS frame
+      Error: read tcp 127.0.0.1:47684->127.0.0.1:8080: read: connection reset by peer
+
+    3.7. PING
+        1: Sends a PING frame      × 1: Sends a PING frame
+
+Error: dial tcp 127.0.0.1:8080: connect: connection refused

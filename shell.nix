@@ -7,9 +7,16 @@ pkgs.mkShell {
     nodePackages.npm
     clang
     libffi
+    h2spec
     openssl
     ripgrep
     pkg-config
+    (pkgs.emacsWithPackages (epkgs: [
+      epkgs.magit
+      epkgs.projectile
+      epkgs.company
+      # Add more packages as needed
+    ]))
   ];
 
   shellHook = ''

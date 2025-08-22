@@ -1,6 +1,4 @@
 (require :sb-posix)
-#-win32
-(require :sb-bsd-sockets)
 (require :sb-rotate-byte)
 
 (defparameter *core-module* "modules/core/src/")

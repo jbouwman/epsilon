@@ -13,6 +13,7 @@
    #:request-params
    #:request-path-params
    #:request-session
+   #:add-header
    #:parse-query-string
    #:parse-form-data
    #:parse-http-request))
@@ -36,6 +37,12 @@
                  :headers (or headers map:+empty+)
                  :body body
                  :params (or params map:+empty+)))
+
+(defun add-header (request header-name header-value)
+  "Add or update a header in the request object"
+  (setf (request-headers request)
+        (map:assoc (request-headers request) header-name header-value))
+  request)
 
 (defun parse-query-string (query-string)
   "Parse URL query string into parameters map"

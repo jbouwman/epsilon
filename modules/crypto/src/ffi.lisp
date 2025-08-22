@@ -25,12 +25,19 @@
    #:%ssl-ctx-use-privatekey-file
    #:%ssl-ctx-check-private-key
    #:%ssl-ctx-set-verify
+   #:%ssl-ctx-ctrl
    #:%ssl-ctx-set-cipher-list
    #:%ssl-ctx-use-certificate
    #:%ssl-ctx-use-privatekey
    #:%ssl-ctx-load-verify-locations
    #:%ssl-ctx-set-client-ca-list
    #:%ssl-ctx-use-certificate-chain-file
+   #:%ssl-ctx-set-alpn-protos
+   #:%ssl-ctx-set-alpn-select-cb
+   #:%ssl-set-alpn-protos
+   #:%ssl-get0-alpn-selected
+   #:%ssl-set-tlsext-host-name
+   #:%ssl-ctx-set-session-cache-mode
    #:%ssl-get-verify-result
    #:%x509-name-stack-new
    #:%x509-name-stack-push
@@ -107,18 +114,27 @@
    #:%x509-get-pubkey
    #:%x509-sign
    #:%x509-verify
+   #:%x509-check-private-key
+   #:%x509-extension-create-by-nid
+   #:%x509-add-ext
+   #:%x509v3-ext-conf-nid
+   #:%x509-extension-free
    #:%pem-read-bio-x509
    #:%pem-write-bio-x509
    #:%x509-get-subject-name
    #:%x509-get-issuer-name
    #:%x509-name-oneline
    #:%x509-name-add-entry-by-txt
+   #:%x509-name-new
+   #:%x509-name-free
    #:%x509-set-subject-name
    #:%x509-set-issuer-name
    #:%asn1-integer-new
    #:%asn1-integer-set
    #:%asn1-integer-get
    #:%asn1-integer-free
+   #:%asn1-time-new
+   #:%asn1-time-free
    #:%x509-time-adj-ex
    #:%x509-req-new
    #:%x509-req-free
@@ -127,6 +143,8 @@
    #:%x509-req-verify
    #:%x509-req-get-subject-name
    #:%x509-req-get-pubkey
+   #:%x509-req-set-subject-name
+   #:%x509-req-set-version
    #:%pem-read-bio-x509-req
    #:%pem-write-bio-x509-req
    #:%rand-bytes
@@ -163,7 +181,45 @@
    ;; Error condition and accessors
    #:crypto-error
    #:crypto-error-code
-   #:crypto-error-string))
+   #:crypto-error-string
+   ;; X509 Certificate functions
+   #:%x509-new
+   #:%x509-free
+   #:%x509-set-version
+   #:%x509-set-serialnumber
+   #:%x509-set1-notbefore
+   #:%x509-set1-notafter
+   #:%x509-set-pubkey
+   #:%x509-set-issuer-name
+   #:%x509-set-subject-name
+   #:%x509-get-subject-name
+   #:%x509-get-issuer-name
+   #:%x509-get-pubkey
+   #:%x509-sign
+   #:%x509-verify
+   #:%x509-check-private-key
+   #:%x509-name-oneline
+   #:%x509-name-entry-create-by-txt
+   #:%x509-name-add-entry
+   #:%x509-name-entry-free
+   #:%x509-req-new
+   #:%x509-req-free
+   #:%x509-req-set-version
+   #:%x509-req-set-subject-name
+   #:%x509-req-set-pubkey
+   #:%x509-req-sign
+   #:%x509-req-get-subject-name
+   #:%x509-req-get-pubkey
+   #:%pem-write-bio-x509
+   #:%pem-read-bio-x509
+   #:%pem-write-bio-x509-req
+   #:%pem-read-bio-x509-req
+   #:%asn1-integer-new
+   #:%asn1-integer-free
+   #:%asn1-integer-set
+   #:%asn1-time-new
+   #:%asn1-time-free
+   #:%asn1-time-set-string))
 
 (in-package :epsilon.crypto.ffi)
 
@@ -209,6 +265,10 @@
   (ctx :pointer) (mode :int) (callback :pointer)
   :documentation "Set verification mode")
 
+(lib:defshared %ssl-ctx-ctrl "SSL_CTX_ctrl" "libssl" :long
+  (ctx :pointer) (cmd :int) (larg :long) (parg :pointer)
+  :documentation "Generic SSL context control function")
+
 (lib:defshared %ssl-ctx-set-cipher-list "SSL_CTX_set_cipher_list" "libssl" :int
   (ctx :pointer) (str :string)
   :documentation "Set cipher list")
@@ -232,6 +292,30 @@
 (lib:defshared %ssl-ctx-use-certificate-chain-file "SSL_CTX_use_certificate_chain_file" "libssl" :int
   (ctx :pointer) (file :string)
   :documentation "Load certificate chain from file")
+
+(lib:defshared %ssl-ctx-set-alpn-protos "SSL_CTX_set_alpn_protos" "libssl" :int
+  (ctx :pointer) (protos :pointer) (protos-len :unsigned-int)
+  :documentation "Set ALPN protocols for context")
+
+(lib:defshared %ssl-ctx-set-alpn-select-cb "SSL_CTX_set_alpn_select_cb" "libssl" :void
+  (ctx :pointer) (cb :pointer) (arg :pointer)
+  :documentation "Set ALPN selection callback")
+
+(lib:defshared %ssl-set-alpn-protos "SSL_set_alpn_protos" "libssl" :int
+  (ssl :pointer) (protos :pointer) (protos-len :unsigned-int)
+  :documentation "Set ALPN protocols for SSL connection")
+
+(lib:defshared %ssl-get0-alpn-selected "SSL_get0_alpn_selected" "libssl" :void
+  (ssl :pointer) (data :pointer) (len :pointer)
+  :documentation "Get selected ALPN protocol")
+
+(lib:defshared %ssl-set-tlsext-host-name "SSL_set_tlsext_host_name" "libssl" :int
+  (ssl :pointer) (name :string)
+  :documentation "Set SNI hostname")
+
+(lib:defshared %ssl-ctx-set-session-cache-mode "SSL_CTX_set_session_cache_mode" "libssl" :long
+  (ctx :pointer) (mode :long)
+  :documentation "Set session cache mode")
 
 (lib:defshared %ssl-get-peer-certificate "SSL_get_peer_certificate" "libssl" :pointer
   (ssl :pointer)
@@ -562,6 +646,26 @@
   (x509 :pointer) (pkey :pointer)
   :documentation "Verify certificate signature")
 
+(lib:defshared %x509-check-private-key "X509_check_private_key" "libcrypto" :int
+  (x509 :pointer) (pkey :pointer)
+  :documentation "Check if private key matches certificate")
+
+(lib:defshared %x509-extension-create-by-nid "X509_EXTENSION_create_by_NID" "libcrypto" :pointer
+  (ex :pointer) (nid :int) (crit :int) (data :pointer)
+  :documentation "Create X509 extension by NID")
+
+(lib:defshared %x509-add-ext "X509_add_ext" "libcrypto" :int
+  (x509 :pointer) (ex :pointer) (loc :int)
+  :documentation "Add extension to certificate")
+
+(lib:defshared %x509v3-ext-conf-nid "X509V3_EXT_conf_nid" "libcrypto" :pointer
+  (conf :pointer) (ctx :pointer) (ext-nid :int) (value :string)
+  :documentation "Configure X509v3 extension")
+
+(lib:defshared %x509-extension-free "X509_EXTENSION_free" "libcrypto" :void
+  (ex :pointer)
+  :documentation "Free X509 extension")
+
 (lib:defshared %pem-read-bio-x509 "PEM_read_bio_X509" "libcrypto" :pointer
   (bio :pointer) (x :pointer) (cb :pointer) (u :pointer)
   :documentation "Read X509 certificate from BIO in PEM format")
@@ -581,6 +685,66 @@
 (lib:defshared %x509-name-oneline "X509_NAME_oneline" "libcrypto" :pointer
   (name :pointer) (buf :pointer) (size :int)
   :documentation "Convert X509 name to string")
+
+(lib:defshared %x509-name-new "X509_NAME_new" "libcrypto" :pointer
+  :documentation "Create new X509_NAME")
+
+(lib:defshared %x509-name-free "X509_NAME_free" "libcrypto" :void
+  (name :pointer)
+  :documentation "Free X509_NAME")
+
+(lib:defshared %x509-name-entry-create-by-txt "X509_NAME_ENTRY_create_by_txt" "libcrypto" :pointer
+  (ne :pointer) (field :string) (type :int) (bytes :string) (len :int)
+  :documentation "Create X509_NAME_ENTRY from text")
+
+(lib:defshared %x509-name-add-entry "X509_NAME_add_entry" "libcrypto" :int
+  (name :pointer) (ne :pointer) (loc :int) (set :int)
+  :documentation "Add entry to X509_NAME")
+
+(lib:defshared %x509-name-entry-free "X509_NAME_ENTRY_free" "libcrypto" :void
+  (ne :pointer)
+  :documentation "Free X509_NAME_ENTRY")
+
+;;;; X509_REQ (Certificate Request) Functions
+
+(lib:defshared %x509-req-new "X509_REQ_new" "libcrypto" :pointer
+  :documentation "Create new X509_REQ")
+
+(lib:defshared %x509-req-free "X509_REQ_free" "libcrypto" :void
+  (req :pointer)
+  :documentation "Free X509_REQ")
+
+(lib:defshared %x509-req-set-version "X509_REQ_set_version" "libcrypto" :int
+  (req :pointer) (version :long)
+  :documentation "Set certificate request version")
+
+(lib:defshared %x509-req-set-subject-name "X509_REQ_set_subject_name" "libcrypto" :int
+  (req :pointer) (name :pointer)
+  :documentation "Set certificate request subject name")
+
+(lib:defshared %x509-req-set-pubkey "X509_REQ_set_pubkey" "libcrypto" :int
+  (req :pointer) (pkey :pointer)
+  :documentation "Set certificate request public key")
+
+(lib:defshared %x509-req-sign "X509_REQ_sign" "libcrypto" :int
+  (req :pointer) (pkey :pointer) (md :pointer)
+  :documentation "Sign certificate request")
+
+(lib:defshared %x509-req-get-subject-name "X509_REQ_get_subject_name" "libcrypto" :pointer
+  (req :pointer)
+  :documentation "Get certificate request subject name")
+
+(lib:defshared %x509-req-get-pubkey "X509_REQ_get_pubkey" "libcrypto" :pointer
+  (req :pointer)
+  :documentation "Get certificate request public key")
+
+(lib:defshared %pem-write-bio-x509-req "PEM_write_bio_X509_REQ" "libcrypto" :int
+  (bio :pointer) (req :pointer)
+  :documentation "Write X509_REQ to BIO in PEM format")
+
+(lib:defshared %pem-read-bio-x509-req "PEM_read_bio_X509_REQ" "libcrypto" :pointer
+  (bio :pointer) (x :pointer) (cb :pointer) (u :pointer)
+  :documentation "Read X509_REQ from BIO in PEM format")
 
 (lib:defshared %x509-name-add-entry-by-txt "X509_NAME_add_entry_by_txt" "libcrypto" :int
   (name :pointer) (field :string) (type :int) (bytes :string) (len :int) (loc :int) (set :int)
@@ -610,6 +774,13 @@
   (a :pointer)
   :documentation "Free ASN1 integer")
 
+(lib:defshared %asn1-time-new "ASN1_TIME_new" "libcrypto" :pointer ()
+  :documentation "Create new ASN1 time")
+
+(lib:defshared %asn1-time-free "ASN1_TIME_free" "libcrypto" :void
+  (time :pointer)
+  :documentation "Free ASN1 time")
+
 (lib:defshared %x509-time-adj-ex "X509_time_adj_ex" "libcrypto" :pointer
   (s :pointer) (offset-day :int) (offset-sec :long) (tm :pointer)
   :documentation "Adjust X509 time")
@@ -637,17 +808,22 @@
   (req :pointer)
   :documentation "Get CSR subject name")
 
-(lib:defshared %x509-req-get-pubkey "X509_REQ_get_pubkey" "libcrypto" :pointer
+(lib:defshared %x509-req-get-pubkey "X509_REQ_get0_pubkey" "libcrypto" :pointer
   (req :pointer)
   :documentation "Get public key from CSR")
+
+(lib:defshared %x509-req-set-subject-name "X509_REQ_set_subject_name" "libcrypto" :int
+  (req :pointer) (name :pointer)
+  :documentation "Set CSR subject name")
+
+(lib:defshared %x509-req-set-version "X509_REQ_set_version" "libcrypto" :int
+  (req :pointer) (version :long)
+  :documentation "Set CSR version")
 
 (lib:defshared %pem-read-bio-x509-req "PEM_read_bio_X509_REQ" "libcrypto" :pointer
   (bio :pointer) (x :pointer) (cb :pointer) (u :pointer)
   :documentation "Read CSR from BIO in PEM format")
 
-(lib:defshared %pem-write-bio-x509-req "PEM_write_bio_X509_REQ" "libcrypto" :int
-  (bio :pointer) (x :pointer)
-  :documentation "Write CSR to BIO in PEM format")
 
 ;; Random number generation
 (lib:defshared %rand-bytes "RAND_bytes" "libcrypto" :int

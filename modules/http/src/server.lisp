@@ -29,6 +29,8 @@
    (running-p :initform t :accessor server-running-p)
    (tls-context :initarg :tls-context :accessor server-tls-context :initform nil)
    (ssl-p :initarg :ssl-p :accessor server-ssl-p :initform nil)
+   (require-client-cert :initarg :require-client-cert :accessor server-require-client-cert :initform nil)
+   (alpn-protocols :initarg :alpn-protocols :accessor server-alpn-protocols :initform nil)
    (application :initarg :application :accessor server-application
                 :documentation "Middleware pipeline function to handle requests")))
 
@@ -115,14 +117,20 @@
         (force-output stream)))))
 
 (defun handle-client (connection ssl-p application &key require-client-cert)
-  "Handle a client connection using application pipeline with optional client cert verification"
-  (declare (ignore require-client-cert)) ;; TODO: Implement client certificate verification
+  "Handle a client connection using application pipeline with mTLS support"
   (log:info "Handle-client called with connection: ~A, ssl-p: ~A" connection ssl-p)
   (handler-case
       (progn
-        ;; Verify client certificate if required
-        ;; Note: Certificate verification would be handled at TLS handshake level
-        ;; This is a placeholder for when full mutual TLS is implemented
+        ;; For mTLS, verify client certificate was provided if required
+        (when (and ssl-p require-client-cert)
+          (let ((peer-cert (tls:get-peer-certificate connection)))
+            (unless peer-cert
+              (error "Client certificate required but not provided"))
+            ;; Verify the certificate
+            (multiple-value-bind (valid-p error-msg)
+                (tls:verify-peer-certificate connection)
+              (unless valid-p
+                (error "Client certificate verification failed: ~A" error-msg)))))
         
         (log:debug "Reading HTTP request...")
         (let ((req (read-http-request connection ssl-p)))
@@ -130,7 +138,20 @@
           (if req
               (progn
                 ;; Add client certificate info to request if available
-                ;; This would be populated from the TLS handshake in a full implementation
+                (when ssl-p
+                  (let ((peer-cert (tls:get-peer-certificate connection)))
+                    (when peer-cert
+                      ;; Add certificate info to request headers for application use
+                      (let ((cert-subject (tls:get-certificate-subject peer-cert))
+                            (cert-issuer (tls:get-certificate-issuer peer-cert)))
+                        (setf req (request:add-header req "X-Client-Cert-Subject" cert-subject))
+                        (setf req (request:add-header req "X-Client-Cert-Issuer" cert-issuer))))))
+                
+                ;; Add negotiated protocol to request
+                (when ssl-p
+                  (let ((protocol (tls:tls-selected-alpn-protocol connection)))
+                    (when protocol
+                      (setf req (request:add-header req "X-Negotiated-Protocol" protocol)))))
                 
                 (log:debug "Calling application with request...")
                 (let ((response (funcall application req)))
@@ -188,8 +209,23 @@
 		      (return)))))
 
 (defun start-server (application &key (port *default-port*) (address "0.0.0.0") 
-                                 tls-context ssl-p cert-file key-file)
-  "Start HTTP server with middleware application"
+                                 tls-context ssl-p cert-file key-file ca-file
+                                 require-client-cert alpn-protocols verify-depth
+                                 session-cache-p)
+  "Start HTTP/HTTPS server with full mTLS and HTTP/2 support.
+   Parameters:
+   - application: Request handler function
+   - port: Server port
+   - address: Bind address
+   - tls-context: Pre-configured TLS context
+   - ssl-p: Enable SSL/TLS
+   - cert-file: Server certificate file
+   - key-file: Server private key file
+   - ca-file: CA certificates for client verification (mTLS)
+   - require-client-cert: Require client certificates (mTLS)
+   - alpn-protocols: ALPN protocols to support (default: '(\"h2\" \"http/1.1\"))
+   - verify-depth: Certificate chain verification depth
+   - session-cache-p: Enable session resumption"
   (log:info "Starting server on ~A:~A" address port)
   (when (map:get *servers* port)
     (error "Server already running on port ~D" port))
@@ -197,12 +233,20 @@
   ;; Create TLS context if SSL is requested
   (when (or ssl-p cert-file key-file)
     (unless tls-context
-      (setf tls-context (tls:create-tls-context :server-p t))
-      (when cert-file
-        (tls:load-cert-file tls-context cert-file))
-      (when key-file  
-        (tls:load-key-file tls-context key-file))
-      (tls:set-verify-mode tls-context tls:+tls-verify-none+)))
+      (let ((effective-alpn-protocols (or alpn-protocols '("h2" "http/1.1"))))
+        (setf tls-context (tls:create-openssl-context 
+                          :server-p t
+                          :cert-file cert-file
+                          :key-file key-file
+                          :ca-file ca-file
+                          :verify-mode (if require-client-cert
+                                          (logior tls:+ssl-verify-peer+
+                                                 tls:+ssl-verify-fail-if-no-peer-cert+)
+                                        tls:+ssl-verify-none+)
+                          :require-client-cert require-client-cert
+                          :verify-depth verify-depth
+                          :alpn-protocols effective-alpn-protocols
+                          :session-cache-p session-cache-p)))))
   
   (let* ((addr (net:make-socket-address address port))
          (listener (net:tcp-bind addr :reuse-addr t)))
@@ -211,6 +255,8 @@
                                  :socket listener
                                  :tls-context tls-context
                                  :ssl-p (or ssl-p (not (null tls-context)))
+                                 :require-client-cert require-client-cert
+                                 :alpn-protocols alpn-protocols
                                 :application application)))
       (setf (server-thread server)
             (sb-thread:make-thread 

@@ -5,6 +5,7 @@
 (defpackage :epsilon.crypto.tls
   (:use :cl :epsilon.crypto)
   (:local-nicknames
+   (alpn epsilon.crypto.alpn)
    (#:ffi #:epsilon.crypto.ffi))
   (:import-from :epsilon.crypto
 		;; Import all needed symbols
@@ -74,7 +75,8 @@
 
 (defun create-openssl-context (&key server-p cert-file key-file 
                                     ca-file (verify-mode +ssl-verify-peer+)
-                                    require-client-cert verify-depth)
+                                    require-client-cert verify-depth
+                                    alpn-protocols session-cache-p)
   "Create an OpenSSL-backed TLS context with comprehensive security configuration.
    
    Creates a low-level OpenSSL SSL_CTX for advanced TLS operations including
@@ -144,7 +146,12 @@
     
     ;; Load CA certificates if provided
     (when ca-file
-      (when (zerop (ffi:%ssl-ctx-load-verify-locations ctx ca-file (sb-sys:int-sap 0)))
+      ;; Use nil for ca-path parameter
+      (when (zerop (handler-case
+                       (ffi:%ssl-ctx-load-verify-locations ctx ca-file (sb-sys:int-sap 0))
+                     (error ()
+                       ;; Some OpenSSL versions may have issues with NULL path
+                       0)))
         (ffi:%ssl-ctx-free ctx)
         (error 'crypto-error :code (ffi:%err-get-error)
                :message (format nil "Failed to load CA certificates: ~A" ca-file)))
@@ -166,8 +173,18 @@
       (ffi:%ssl-ctx-set-verify ctx final-verify-mode (sb-sys:int-sap 0)))
     
     (when verify-depth
-      ;; TODO: Add SSL_CTX_set_verify_depth FFI binding if needed
-      )
+      (ffi:%ssl-ctx-ctrl ctx 35 verify-depth (sb-sys:int-sap 0)))  ; SSL_CTRL_SET_VERIFY_DEPTH
+    
+    ;; Set ALPN protocols if provided
+    (when alpn-protocols
+      (alpn:set-alpn-protocols ctx alpn-protocols :context-p t))
+    
+    ;; Configure session caching  
+    (when session-cache-p
+      ;; Session caching is enabled by default in OpenSSL
+      ;; Just skip explicit configuration if function not available
+      (ignore-errors
+        (ffi:%ssl-ctx-set-session-cache-mode ctx 2)))  ; SSL_SESS_CACHE_SERVER
     
     (make-openssl-context :handle ctx
                           :server-p server-p
@@ -231,9 +248,13 @@
 
 ;;;; TLS Connection Management
 
-(defun openssl-connect (socket context &key hostname)
-  "Establish TLS connection as client"
-  (declare (ignore hostname)) ; TODO: Add SNI support
+(defun openssl-connect (socket context &key hostname alpn-protocols)
+  "Establish TLS connection as client with SNI and ALPN support.
+   Parameters:
+   - socket: Network socket or file descriptor
+   - context: OpenSSL context
+   - hostname: Server hostname for SNI
+   - alpn-protocols: List of ALPN protocols to advertise"
   
   (unless (openssl-context-p context)
     (error "OpenSSL context required"))
@@ -242,6 +263,14 @@
     (when (sb-sys:sap= ssl (sb-sys:int-sap 0))
       (error 'crypto-error :code (ffi:%err-get-error)
              :message "Failed to create SSL connection"))
+    
+    ;; Set SNI hostname if provided
+    (when hostname
+      (ffi:%ssl-set-tlsext-host-name ssl hostname))
+    
+    ;; Set ALPN protocols if provided
+    (when alpn-protocols
+      (epsilon.crypto.alpn:set-alpn-protocols ssl alpn-protocols :context-p nil))
     
     ;; Set socket file descriptor  
     ;; TODO: Get FD from socket - needs net module integration
@@ -425,6 +454,11 @@
     (let ((cipher-ptr (ffi:%ssl-get-cipher (openssl-connection-ssl connection))))
       (unless (sb-sys:sap= cipher-ptr (sb-sys:int-sap 0))
         (sb-alien:cast cipher-ptr sb-alien:c-string)))))
+
+(defun tls-selected-alpn-protocol (connection)
+  "Get the ALPN protocol selected during handshake"
+  (when (openssl-connection-p connection)
+    (epsilon.crypto.alpn:get-selected-protocol (openssl-connection-ssl connection))))
 
 (defun get-peer-certificate (connection)
   "Get peer's X.509 certificate from TLS connection"

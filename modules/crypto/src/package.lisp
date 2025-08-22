@@ -49,6 +49,10 @@
    #:tls-version
    #:tls-cipher
    #:get-peer-certificate
+   #:tls-selected-alpn-protocol
+   #:verify-peer-certificate
+   #:get-certificate-subject
+   #:get-certificate-issuer
    
    ;;;; Public Key Cryptography
    ;; Key types and structures
@@ -123,6 +127,15 @@
    #:sign-csr
    #:load-csr
    #:save-csr
+   
+   ;; Certificate generation utilities
+   #:generate-self-signed-certificate
+   #:generate-certificate-request
+   #:sign-certificate-request
+   #:generate-ca-certificate
+   #:make-certificate-pair
+   #:verify-certificate-chain
+   #:certificate-info
    
    ;; Random number generation
    #:crypto-random-bytes

@@ -128,17 +128,17 @@
                       ;; Close expired/dead connection
                       (ignore-errors
                        (when (pooled-connection-tls-connection conn)
-                         (tls:tls-close (pooled-connection-tls-connection conn)))
+                         (epsilon.crypto:tls-close (pooled-connection-tls-connection conn)))
                        (when (pooled-connection-socket conn)
-                         (net:tcp-shutdown (pooled-connection-socket conn) :both))))
-                    (incf (pool-stats-connections-closed (connection-pool-stats pool)))
-                    t))
-                connections))
-             (setf (connection-pool-pools pool)
-                   (if active-connections
-                       (map:assoc (connection-pool-pools pool) key active-connections)
-                       (map:dissoc (connection-pool-pools pool) key)))))
-       (connection-pool-pools pool)))))
+                         (net:tcp-shutdown (pooled-connection-socket conn) :both)))
+                      (incf (pool-stats-connections-closed (connection-pool-stats pool)))
+                      t)))
+                connections)))
+         (setf (connection-pool-pools pool)
+               (if active-connections
+                   (map:assoc (connection-pool-pools pool) key active-connections)
+                   (map:dissoc (connection-pool-pools pool) key)))))
+     (connection-pool-pools pool))))
 
 (defun create-new-connection (host port ssl-p timeout)
   "Create a new HTTP connection"
@@ -160,8 +160,8 @@
       (let ((tls-conn nil))
         (when ssl-p
           (handler-case
-              (let ((tls-context (tls:create-tls-context :server-p nil)))
-                (setf tls-conn (tls:tls-connect socket tls-context)))
+              (let ((tls-context (epsilon.crypto:create-tls-context :server-p nil)))
+                (setf tls-conn (epsilon.crypto:tls-connect socket tls-context)))
             (error (e)
               (net:tcp-shutdown socket :both)
               (error "TLS handshake failed for ~A:~D: ~A" host port e))))
@@ -233,7 +233,7 @@
       (progn
         (ignore-errors
          (when (pooled-connection-tls-connection conn)
-           (tls:tls-close (pooled-connection-tls-connection conn)))
+           (epsilon.crypto:tls-close (pooled-connection-tls-connection conn)))
          (when (pooled-connection-socket conn)
            (net:tcp-shutdown (pooled-connection-socket conn) :both)))
         (sb-thread:with-mutex ((connection-pool-lock pool))
@@ -256,7 +256,7 @@
               (progn
                 (ignore-errors
                  (when (pooled-connection-tls-connection conn)
-                   (tls:tls-close (pooled-connection-tls-connection conn)))
+                   (epsilon.crypto:tls-close (pooled-connection-tls-connection conn)))
                  (when (pooled-connection-socket conn)
                    (net:tcp-shutdown (pooled-connection-socket conn) :both)))
                 (incf (pool-stats-connections-closed (connection-pool-stats pool)))))))))
@@ -303,7 +303,7 @@
        (dolist (conn connections)
          (ignore-errors
           (when (pooled-connection-tls-connection conn)
-            (tls:tls-close (pooled-connection-tls-connection conn)))
+            (epsilon.crypto:tls-close (pooled-connection-tls-connection conn)))
           (when (pooled-connection-socket conn)
             (net:tcp-shutdown (pooled-connection-socket conn) :both)))
          (incf (pool-stats-connections-closed (connection-pool-stats pool)))))
@@ -322,7 +322,7 @@
 (defun pooled-socket-stream (conn)
   "Get stream for pooled connection"
   (if (pooled-connection-ssl-p conn)
-      (tls:tls-stream (pooled-connection-tls-connection conn))
+      (epsilon.crypto:tls-stream (pooled-connection-tls-connection conn))
       ;; Return a bidirectional stream
       (let ((socket (pooled-connection-socket conn)))
         (make-two-way-stream (net:tcp-stream-reader socket)

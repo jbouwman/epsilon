@@ -481,10 +481,9 @@
   
   ;; Handle --test
   (let ((modules-to-test (map:get (argparse:parsed-options parsed-args) "test"))
-        (verbose (map:get (argparse:parsed-options parsed-args) "verbose"))
-        (quiet (map:get (argparse:parsed-options parsed-args) "quiet")))
+        (verbose (map:get (argparse:parsed-options parsed-args) "verbose")))
     (when modules-to-test
-      (test-modules environment modules-to-test :verbose verbose :quiet quiet)
+      (test-modules environment modules-to-test :verbose verbose)
       ;; Check if we should exit
       (let ((has-other-actions 
              (or (and (map:get (argparse:parsed-options parsed-args) "eval")
