@@ -45,10 +45,10 @@
       (is-not-null key-pem)
       
       ;; Check PEM format markers
-      (is (search "-----BEGIN CERTIFICATE-----" cert-pem))
-      (is (search "-----END CERTIFICATE-----" cert-pem))
-      (is (search "-----BEGIN PRIVATE KEY-----" key-pem))
-      (is (search "-----END PRIVATE KEY-----" key-pem))
+      (is-not-null (search "-----BEGIN CERTIFICATE-----" cert-pem))
+      (is-not-null (search "-----END CERTIFICATE-----" cert-pem))
+      (is-not-null (search "-----BEGIN PRIVATE KEY-----" key-pem))
+      (is-not-null (search "-----END PRIVATE KEY-----" key-pem))
       
       ;; Save and verify we can reload them
       (let ((cert-file (merge-pathnames "test-cert.pem" *test-cert-dir*))
@@ -78,7 +78,7 @@
       ;; Extract certificate info and verify it contains expected data
       (let ((cert-info (certs:certificate-info cert-pem)))
         (is-not-null cert-info)
-        (is (search "CN=example.com" (getf cert-info :subject)))))))
+        (is-not-null (search "CN=example.com" (getf cert-info :subject)))))))
 
 (deftest test-generate-ca-certificate
   "Test generating a CA certificate"
@@ -91,13 +91,13 @@
       (is-not-null ca-key)
       
       ;; CA certificates should have longer validity and stronger keys
-      (is (search "-----BEGIN CERTIFICATE-----" ca-cert))
-      (is (search "-----BEGIN PRIVATE KEY-----" ca-key))
+      (is-not-null (search "-----BEGIN CERTIFICATE-----" ca-cert))
+      (is-not-null (search "-----BEGIN PRIVATE KEY-----" ca-key))
       
       ;; Check certificate info
       (let ((cert-info (certs:certificate-info ca-cert)))
-        (is (search "CN=Test CA" (getf cert-info :subject)))
-        (is (search "OU=Certificate Authority" (getf cert-info :subject)))))))
+        (is-not-null (search "CN=Test CA" (getf cert-info :subject)))
+        (is-not-null (search "OU=Certificate Authority" (getf cert-info :subject)))))))
 
 ;;;; Certificate Signing Request Tests
 
@@ -119,14 +119,14 @@
                        :organization "Client Org"
                        :email "client@example.com")))
           (is-not-null csr-pem)
-          (is (search "-----BEGIN CERTIFICATE REQUEST-----" csr-pem))
+          (is-not-null (search "-----BEGIN CERTIFICATE REQUEST-----" csr-pem))
           
           ;; Sign the CSR with CA
           (let ((signed-cert (certs:sign-certificate-request 
                              csr-pem ca-cert ca-key
                              :days 90)))
             (is-not-null signed-cert)
-            (is (search "-----BEGIN CERTIFICATE-----" signed-cert))
+            (is-not-null (search "-----BEGIN CERTIFICATE-----" signed-cert))
             
             ;; Verify the signed certificate against CA
             (is-true (certs:verify-certificate-chain signed-cert ca-cert))))))))
@@ -147,8 +147,8 @@
         (certs:save-private-key key-pem key-file)
         
         ;; Check files exist
-        (is-true (probe-file cert-file))
-        (is-true (probe-file key-file))
+        (is-not-null (probe-file cert-file))
+        (is-not-null (probe-file key-file))
         
         ;; Check key file permissions (should be restrictive)
         #+unix
@@ -167,18 +167,18 @@
     (multiple-value-bind (cert-file key-file)
         (certs:make-certificate-pair "test-pair" :output-dir *test-cert-dir*)
       
-      (is-true (probe-file cert-file))
-      (is-true (probe-file key-file))
+      (is-not-null (probe-file cert-file))
+      (is-not-null (probe-file key-file))
       
       ;; Verify filenames
-      (is (search "test-pair-cert.pem" (namestring cert-file)))
-      (is (search "test-pair-key.pem" (namestring key-file)))
+      (is-not-null (search "test-pair-cert.pem" (namestring cert-file)))
+      (is-not-null (search "test-pair-key.pem" (namestring key-file)))
       
       ;; Load and verify they're valid PEM
       (let ((cert (certs:load-certificate cert-file))
             (key (certs:load-private-key key-file)))
-        (is (search "-----BEGIN CERTIFICATE-----" cert))
-        (is (search "-----BEGIN PRIVATE KEY-----" key))))))
+        (is-not-null (search "-----BEGIN CERTIFICATE-----" cert))
+        (is-not-null (search "-----BEGIN PRIVATE KEY-----" key))))))
 
 ;;;; Certificate Verification Tests
 
@@ -190,7 +190,7 @@
         (certs:generate-ca-certificate "Verification Test CA")
       
       ;; Create a certificate signed by the CA
-      (let* ((server-key (crypto:generate-rsa-key 2048))
+      (let* ((server-key (openssl3:generate-rsa-key 2048))
              (csr (certs:generate-certificate-request "server.test" server-key))
              (server-cert (certs:sign-certificate-request csr ca-cert ca-key)))
         
@@ -220,10 +220,10 @@
         
         ;; Check subject contains expected fields
         (let ((subject (getf info :subject)))
-          (is (search "CN=info-test.example.com" subject))
-          (is (search "O=Info Test Org" subject))
-          (is (search "C=US" subject))
-          (is (search "ST=NY" subject)))
+          (is-not-null (search "CN=info-test.example.com" subject))
+          (is-not-null (search "O=Info Test Org" subject))
+          (is-not-null (search "C=US" subject))
+          (is-not-null (search "ST=NY" subject)))
         
         ;; For self-signed, issuer should equal subject
         (is-equal (getf info :subject) (getf info :issuer))))))
@@ -233,9 +233,9 @@
 (deftest test-invalid-key-size
   "Test that invalid key sizes are rejected"
   (with-fixture (fixture certificate-test-setup)
-    (is-thrown 'error
+    (is-thrown (error)
       (certs:generate-self-signed-certificate "test.com" :key-bits 512))
-    (is-thrown 'error
+    (is-thrown (error)
       (certs:generate-self-signed-certificate "test.com" :key-bits 1024))))
 
 (deftest test-certificate-with-email
@@ -247,4 +247,4 @@
       (declare (ignore key-pem))
       
       (let ((info (certs:certificate-info cert-pem)))
-        (is (search "emailAddress=admin@email.test" (getf info :subject)))))))
+        (is-not-null (search "emailAddress=admin@email.test" (getf info :subject)))))))

@@ -45,6 +45,7 @@
    
    ;; Pool statistics
    #:pool-stats
+   #:pool-stats-p
    #:make-pool-stats
    #:pool-stats-created
    #:pool-stats-destroyed

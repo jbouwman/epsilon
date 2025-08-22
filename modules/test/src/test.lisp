@@ -280,7 +280,7 @@
 
 (defmacro is-not-null (form &rest optargs)
   "Test that form does not evaluate to NIL"
-  `(is-p (lambda (x) (not (null x))) ,form t ,@optargs))
+  `(is-p (lambda (x y) (declare (ignore y)) (not (null x))) ,form t ,@optargs))
 
 (defmacro is-thrown ((condition-class &optional regex) &body body)
   "Test that BODY throws a condition of type CONDITION-CLASS.

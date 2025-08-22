@@ -16,11 +16,31 @@
   (:export
    ;; Streaming requests
    #:streaming-request
+   #:streaming-request-p
+   #:make-streaming-request
+   #:streaming-request-method
+   #:streaming-request-path
+   #:streaming-request-headers
+   #:streaming-request-body-stream
+   #:streaming-request-finished-p
+   #:streaming-request-config
+   #:create-streaming-request
    #:stream-request-body
    #:finish-request-stream
    
    ;; Streaming responses
    #:streaming-response
+   #:streaming-response-p
+   #:make-streaming-response
+   #:streaming-response-status
+   #:streaming-response-headers
+   #:streaming-response-body-stream
+   #:streaming-response-connection
+   #:streaming-response-chunked-p
+   #:streaming-response-content-length
+   #:streaming-response-bytes-read
+   #:streaming-response-finished-p
+   #:streaming-response-config
    #:response-stream
    #:read-response-chunk
    #:response-stream-p
@@ -35,7 +55,13 @@
    ;; Server-sent events
    #:sse-stream
    #:sse-event
+   #:sse-event-p
    #:make-sse-event
+   #:sse-event-data
+   #:sse-event-type
+   #:sse-event-event-type
+   #:sse-event-id
+   #:sse-event-retry
    #:read-sse-event
    #:write-sse-event
    
@@ -43,6 +69,11 @@
    #:stream-file-upload
    #:stream-file-download
    #:download-progress
+   #:download-progress-p
+   #:make-download-progress
+   #:download-progress-bytes-downloaded
+   #:download-progress-total-bytes
+   #:download-progress-rate
    
    ;; Stream utilities
    #:copy-stream
@@ -52,7 +83,14 @@
    
    ;; Configuration
    #:streaming-config
+   #:streaming-config-p
    #:make-streaming-config
+   #:streaming-config-chunk-size
+   #:streaming-config-buffer-size
+   #:streaming-config-timeout
+   #:streaming-config-max-chunk-size
+   #:streaming-config-max-buffer-size
+   #:streaming-config-enable-compression
    #:*default-streaming-config*))
 
 (in-package :epsilon.http.streaming)
@@ -90,7 +128,7 @@
     
     (let* ((ssl-p (string= scheme "https"))
            (connection (pool:get-connection http-pool host port :ssl-p ssl-p))
-           (body-channel (channel:create-channel :capacity 10))
+           (body-channel (channel:make-channel :capacity 10))
            (final-headers (map:merge (map:make-map 
                                      "Host" host
                                      "Transfer-Encoding" "chunked"

@@ -14,33 +14,33 @@
 
 (deftest test-http2-module-loaded
   "Test that HTTP/2 module loads correctly"
-  (is (find-package :epsilon.http2)))
+  (is-not-null (find-package :epsilon.http2)))
 
 (deftest test-http2-exports
   "Test that key HTTP/2 functions are exported"
   ;; Connection management
-  (is (fboundp 'http2:make-http2-connection))
-  (is (fboundp 'http2:http2-connection-p))
-  (is (fboundp 'http2:connection-send-frame))
-  (is (fboundp 'http2:connection-receive-frame))
-  (is (fboundp 'http2:connection-close))
+  (is-not-null (fboundp 'http2:make-http2-connection))
+  (is-not-null (fboundp 'http2:http2-connection-p))
+  (is-not-null (fboundp 'http2:connection-send-frame))
+  (is-not-null (fboundp 'http2:connection-receive-frame))
+  (is-not-null (fboundp 'http2:connection-close))
   
   ;; Stream management
-  (is (fboundp 'http2:create-stream))
-  (is (fboundp 'http2:stream-send-headers))
-  (is (fboundp 'http2:stream-send-data))
-  (is (fboundp 'http2:stream-receive-headers))
-  (is (fboundp 'http2:stream-receive-data))
-  (is (fboundp 'http2:stream-close))
+  (is-not-null (fboundp 'http2:create-stream))
+  (is-not-null (fboundp 'http2:stream-send-headers))
+  (is-not-null (fboundp 'http2:stream-send-data))
+  (is-not-null (fboundp 'http2:stream-receive-headers))
+  (is-not-null (fboundp 'http2:stream-receive-data))
+  (is-not-null (fboundp 'http2:stream-close))
   
   ;; Client functions
-  (is (fboundp 'http2:http2-request))
-  (is (fboundp 'http2:http2-get))
-  (is (fboundp 'http2:http2-post))
+  (is-not-null (fboundp 'http2:http2-request))
+  (is-not-null (fboundp 'http2:http2-get))
+  (is-not-null (fboundp 'http2:http2-post))
   
   ;; Protocol negotiation
-  (is (fboundp 'http2:upgrade-to-http2))
-  (is (fboundp 'http2:is-http2-connection)))
+  (is-not-null (fboundp 'http2:upgrade-to-http2))
+  (is-not-null (fboundp 'http2:is-http2-connection)))
 
 (deftest test-http2-constants
   "Test HTTP/2 protocol constants"
@@ -49,12 +49,12 @@
   
   ;; Check default settings structure
   (let ((settings http2:+default-settings+))
-    (is (assoc :header-table-size settings))
-    (is (assoc :enable-push settings))
-    (is (assoc :max-concurrent-streams settings))
-    (is (assoc :initial-window-size settings))
-    (is (assoc :max-frame-size settings))
-    (is (assoc :max-header-list-size settings))))
+    (is-not-null (assoc :header-table-size settings))
+    (is-not-null (assoc :enable-push settings))
+    (is-not-null (assoc :max-concurrent-streams settings))
+    (is-not-null (assoc :initial-window-size settings))
+    (is-not-null (assoc :max-frame-size settings))
+    (is-not-null (assoc :max-header-list-size settings))))
 
 (deftest test-default-settings-values
   "Test that default settings have correct values"
@@ -149,7 +149,7 @@
                     "https://localhost/test?param=value")))
     (dolist (url test-urls)
       ;; Just verify the URL format is valid
-      (is-true (search "https://" url)))))
+      (is-not-null (search "https://" url)))))
 
 ;;;; Protocol Selection Tests
 
@@ -164,7 +164,7 @@
   "Test handling when HTTP/2 is not negotiated"
   ;; This would test the error path when ALPN doesn't negotiate h2
   ;; For now, just verify the error condition exists
-  (is-true (find-class 'error)))
+  (is-not-null (find-class 'error)))
 
 ;;;; Frame Tests Placeholder
 

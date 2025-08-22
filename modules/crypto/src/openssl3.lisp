@@ -98,13 +98,15 @@
              (error "Failed to set RSA key size: ~A" (get-error-string)))
            
            ;; Generate the key
-           (sb-alien:with-alien ((pkey-holder sb-alien:system-area-pointer))
+           (let ((pkey-holder (sb-alien:make-alien sb-alien:system-area-pointer)))
              (setf (sb-alien:deref pkey-holder) (sb-sys:int-sap 0))
-             (when (zerop (%evp-pkey-generate ctx 
-                                              (sb-alien:alien-sap 
-                                               (sb-alien:addr pkey-holder))))
-               (error "Failed to generate RSA key: ~A" (get-error-string)))
-             (setf pkey-ptr (sb-alien:deref pkey-holder)))
+             (unwind-protect
+                  (progn
+                    (when (zerop (%evp-pkey-generate ctx 
+                                                     (sb-alien:alien-sap pkey-holder)))
+                      (error "Failed to generate RSA key: ~A" (get-error-string)))
+                    (setf pkey-ptr (sb-alien:deref pkey-holder)))
+               (sb-alien:free-alien pkey-holder)))
            
            ;; Return the key pointer
            pkey-ptr)

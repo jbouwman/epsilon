@@ -332,13 +332,9 @@
 
 (defun add-name-entry (name field value)
   "Add an entry to an X509_NAME structure"
-  (sb-alien:with-alien ((value-buf (sb-alien:array sb-alien:char 256)))
-    (loop for i from 0 below (min (length value) 255)
-          do (setf (sb-alien:deref value-buf i) (char-code (char value i))))
-    (setf (sb-alien:deref value-buf (min (length value) 255)) 0)
-    (ffi:%x509-name-add-entry-by-txt name field +mbstring-asc+ 
-                                     (sb-alien:alien-sap value-buf)
-                                     -1 -1 0)))
+  (ffi:%x509-name-add-entry-by-txt name field +mbstring-asc+ 
+                                   value
+                                   -1 -1 0))
 
 (defun add-basic-constraints-extension (x509 is-ca)
   "Add basicConstraints extension to certificate"
@@ -527,17 +523,15 @@
     (unwind-protect
          (let ((subject-name (ffi:%x509-get-subject-name x509))
                (issuer-name (ffi:%x509-get-issuer-name x509)))
-           (sb-alien:with-alien ((buf (sb-alien:array sb-alien:char 256)))
-             (let ((subject-str (ffi:%x509-name-oneline subject-name 
-                                                        (sb-alien:alien-sap buf) 256))
-                   (issuer-str nil))
-               (setf subject-str (sb-alien:cast subject-str sb-alien:c-string))
-               (setf issuer-str (ffi:%x509-name-oneline issuer-name
-                                                        (sb-alien:alien-sap buf) 256))
-               (setf issuer-str (sb-alien:cast issuer-str sb-alien:c-string))
-               
-               (list :subject subject-str
-                     :issuer issuer-str))))
+           ;; X509_NAME_oneline allocates its own buffer when passed NULL
+           (let* ((subject-ptr (ffi:%x509-name-oneline subject-name 
+                                                       (sb-sys:int-sap 0) 0))
+                  (subject-str (sb-alien:cast subject-ptr sb-alien:c-string))
+                  (issuer-ptr (ffi:%x509-name-oneline issuer-name 
+                                                      (sb-sys:int-sap 0) 0))
+                  (issuer-str (sb-alien:cast issuer-ptr sb-alien:c-string)))
+             (list :subject subject-str
+                   :issuer issuer-str)))
       (when x509 (ffi:%x509-free x509)))))
 
 (defun verify-certificate-chain (cert-pem ca-cert-pem)

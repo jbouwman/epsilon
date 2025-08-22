@@ -12,8 +12,8 @@
 
 (deftest test-channel-creation ()
   "Test basic channel creation"
-  (let ((unbounded (channel:create-channel))
-        (bounded (channel:create-channel :capacity 5)))
+  (let ((unbounded (channel:make-channel))
+        (bounded (channel:make-channel :capacity 5)))
     
     (is (channel:channel-p unbounded))
     (is (channel:channel-p bounded))
@@ -22,7 +22,7 @@
 
 (deftest test-channel-send-receive ()
   "Test basic send and receive operations"
-  (let ((ch (channel:create-channel :capacity 3)))
+  (let ((ch (channel:make-channel :capacity 3)))
     
     ;; Send values
     (is (channel:send ch "hello"))
@@ -44,7 +44,7 @@
 
 (deftest test-channel-try-operations ()
   "Test non-blocking try-send and try-receive"
-  (let ((ch (channel:create-channel :capacity 1)))
+  (let ((ch (channel:make-channel :capacity 1)))
     
     ;; Should succeed when empty
     (is (channel:try-send ch "test"))
@@ -64,7 +64,7 @@
 
 (deftest test-channel-close ()
   "Test channel closing behavior"
-  (let ((ch (channel:create-channel)))
+  (let ((ch (channel:make-channel)))
     
     ;; Send some values
     (channel:send ch "before-close")
@@ -260,7 +260,7 @@
 
 (deftest test-channel-stream-integration ()
   "Test integration between channels and streams"
-  (let ((ch (channel:create-channel :capacity 5)))
+  (let ((ch (channel:make-channel :capacity 5)))
     
     ;; Send values to channel
     (channel:send ch 1)
@@ -278,7 +278,7 @@
 
 (deftest test-channel-concurrent-simulation ()
   "Test channel behavior in simulated concurrent scenario"
-  (let ((ch (channel:create-channel :capacity 2)))
+  (let ((ch (channel:make-channel :capacity 2)))
     
     ;; Simulate producer
     (channel:send ch "item1")

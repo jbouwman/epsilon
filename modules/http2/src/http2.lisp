@@ -9,6 +9,9 @@
                 #:create-decoder
                 #:encode-headers
                 #:decode-headers)
+  (:import-from :epsilon.string
+                #:string-to-octets
+                #:octets-to-string)
   (:export
    ;; Connection management
    #:make-http2-connection
@@ -105,7 +108,7 @@
 
 (defun send-settings-frame (connection settings)
   "Send SETTINGS frame"
-  (let ((frame (make-settings-frame settings)))
+  (let ((frame (epsilon.http2::make-settings-frame :initial-settings settings)))
     (connection-send-frame connection frame)))
 
 (defun connection-send-frame (connection frame)
@@ -140,7 +143,7 @@
 (defun connection-close (connection)
   "Close HTTP/2 connection"
   ;; Send GOAWAY frame
-  (let ((goaway-frame (make-goaway-frame 
+  (let ((goaway-frame (epsilon.http2::make-goaway-frame 
                        (1- (connection-next-stream-id connection))
                        +error-no-error+
                        "Connection closing")))
@@ -170,7 +173,7 @@
          (encoded-headers (encode-headers 
                           (connection-hpack-encoder connection)
                           headers))
-         (frame (make-headers-frame 
+         (frame (epsilon.http2::make-headers-frame 
                 (stream-id stream)
                 encoded-headers
                 :end-stream end-stream
@@ -180,7 +183,7 @@
 (defun stream-send-data (stream data &key end-stream)
   "Send data on a stream"
   (let* ((connection (stream-connection stream))
-         (frame (make-data-frame 
+         (frame (epsilon.http2::make-data-frame 
                 (stream-id stream)
                 data
                 :end-stream end-stream)))
@@ -287,21 +290,23 @@
 
 ;;;; Stream Management
 
-(defstruct http2-stream
+(defstruct (http2-stream
+            (:constructor %make-http2-stream))
   "HTTP/2 stream"
   id
   connection
   state  ; :idle :open :half-closed-remote :half-closed-local :closed
   headers
-  data
+  (data (make-array 0 :element-type '(unsigned-byte 8)
+                   :adjustable t :fill-pointer 0))
   (flow-controller nil))
 
 (defun make-http2-stream (id connection)
   "Create a new HTTP/2 stream"
-  (make-instance 'http2-stream
-                 :id id
-                 :connection connection
-                 :state :idle))
+  (%make-http2-stream
+   :id id
+   :connection connection
+   :state :idle))
 
 (defun stream-connection (stream)
   "Get connection from stream"
@@ -311,13 +316,92 @@
   "Get stream ID"
   (http2-stream-id stream))
 
+(defun stream-receive-headers (stream)
+  "Receive headers for a stream"
+  (http2-stream-headers stream))
+
+(defun stream-receive-data (stream)
+  "Receive data for a stream"
+  (let ((data (http2-stream-data stream)))
+    (when (> (length data) 0)
+      (bytes-to-string data))))
+
+(defun stream-close (stream)
+  "Close a stream"
+  (setf (http2-stream-state stream) :closed)
+  ;; Remove from connection's stream table
+  (let ((connection (http2-stream-connection stream)))
+    (remhash (http2-stream-id stream) (connection-streams connection))))
+
+(defun http2-connection-p (obj)
+  "Check if object is an HTTP/2 connection"
+  (typep obj 'http2-connection))
+
+(defun is-http2-connection (connection)
+  "Check if connection is using HTTP/2"
+  (http2-connection-p connection))
+
+(defun upgrade-to-http2 (connection)
+  "Upgrade an HTTP/1.1 connection to HTTP/2"
+  ;; This would be used for HTTP/2 upgrade from HTTP/1.1
+  ;; Not commonly used with TLS (ALPN is preferred)
+  (error "HTTP/2 upgrade not yet implemented"))
+
+(defun http2-server (&rest args)
+  "Start an HTTP/2 server"
+  (apply #'start-http2-server args))
+
+(defun handle-http2-connection (connection handler)
+  "Handle an HTTP/2 connection"
+  ;; Main connection loop
+  (loop
+    (handler-case
+        (let ((frame (connection-receive-frame connection)))
+          (handle-frame connection frame handler))
+      (end-of-file ()
+        (return))
+      (error (e)
+        (format t "Error handling frame: ~A~%" e)
+        (return)))))
+
+(defun make-settings (alist)
+  "Create settings from an alist"
+  alist)
+
+(defun apply-settings (context settings)
+  "Apply settings to a context"
+  (declare (ignore context settings))
+  ;; TODO: Implement settings application
+  )
+
 
 ;;;; Frame Helper Functions
 
 (defun serialize-frame (frame)
   "Serialize frame to bytes"
-  ;; Simple serialization - just return the frame object for now
-  frame)
+  ;; Create a byte array with frame header and payload
+  (let* ((payload (http2-frame-payload frame))
+         (payload-len (if payload (length payload) 0))
+         (total-size (+ 9 payload-len))
+         (output (make-array total-size :element-type '(unsigned-byte 8))))
+    ;; Write header (9 bytes)
+    ;; Length (24 bits)
+    (setf (aref output 0) (logand #xff (ash payload-len -16)))
+    (setf (aref output 1) (logand #xff (ash payload-len -8)))
+    (setf (aref output 2) (logand #xff payload-len))
+    ;; Type (8 bits)
+    (setf (aref output 3) (http2-frame-type frame))
+    ;; Flags (8 bits)
+    (setf (aref output 4) (http2-frame-flags frame))
+    ;; Stream ID (31 bits with reserved bit)
+    (setf (aref output 5) (logand #x7f (ash (http2-frame-stream-id frame) -24)))
+    (setf (aref output 6) (logand #xff (ash (http2-frame-stream-id frame) -16)))
+    (setf (aref output 7) (logand #xff (ash (http2-frame-stream-id frame) -8)))
+    (setf (aref output 8) (logand #xff (http2-frame-stream-id frame)))
+    ;; Copy payload if present
+    (when payload
+      (replace output payload :start1 9))
+    output))
 
 (defun parse-frame-header (header-bytes)
   "Parse frame header and return length"

@@ -287,11 +287,11 @@
   ;; For now, we just verify the components exist
   (with-fixture (fixture http-mtls-setup)
     ;; Verify all certificates were created
-    (is-true (probe-file *ca-cert-file*))
-    (is-true (probe-file *server-cert-file*))
-    (is-true (probe-file *server-key-file*))
-    (is-true (probe-file *client-cert-file*))
-    (is-true (probe-file *client-key-file*))
+    (is-not-null (probe-file *ca-cert-file*))
+    (is-not-null (probe-file *server-cert-file*))
+    (is-not-null (probe-file *server-key-file*))
+    (is-not-null (probe-file *client-cert-file*))
+    (is-not-null (probe-file *client-key-file*))
     
     ;; Verify certificate chain
     (let ((server-cert (certs:load-certificate *server-cert-file*))

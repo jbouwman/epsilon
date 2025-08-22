@@ -13,7 +13,7 @@
   (:export
    ;; Channel creation and management
    #:channel
-   #:create-channel
+   #:make-channel
    #:channel-p
    #:close-channel
    #:channel-closed-p
@@ -95,7 +95,8 @@
   (timeouts 0 :type integer)
   (closed-sends 0 :type integer))
 
-(defstruct channel
+(defstruct (channel
+            (:constructor %make-channel))
   "Bounded FIFO channel with backpressure"
   (buffer '() :type list)
   (capacity 0 :type integer) ; 0 = unbounded
@@ -106,11 +107,13 @@
   (lock (sb-thread:make-mutex) :type sb-thread:mutex)
   (stats (make-channel-stats) :type channel-stats))
 
-(defun create-channel (&key (capacity 0))
-  "Create a new channel
+(defun make-channel (&key (capacity 0))
+  "Create a new channel with optional capacity validation
   
   - CAPACITY: Maximum buffer size (0 = unbounded, 1 = synchronous)"
-  (make-channel :capacity capacity))
+  (when (< capacity 0)
+    (error "Channel capacity must be non-negative, got ~A" capacity))
+  (%make-channel :capacity capacity))
 
 (defun close-channel (channel)
   "Close a channel, waking all waiting operations"
@@ -448,7 +451,7 @@
 
 (defun buffer-stream (stream buffer-size)
   "Add buffering to stream with specified buffer size"
-  (let ((channel (create-channel :capacity buffer-size))
+  (let ((channel (make-channel :capacity buffer-size))
         (producer-thread nil))
     
     ;; Start producer thread
