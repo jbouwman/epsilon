@@ -417,8 +417,8 @@
                            (enough-namestring *load-pathname*))
                          nil))
          ;; Try to get line number from deep integration if available
-         (,line-var (when (find-package :epsilon.compile-deep-integration)
-                      (let ((deep-pkg (find-package :epsilon.compile-deep-integration))
+         (,line-var (when (find-package :epsilon.compile-integration)
+                      (let ((deep-pkg (find-package :epsilon.compile-integration))
                             (api-pkg (find-package :epsilon.compile-api)))
                         (when (and deep-pkg api-pkg)
                           (let ((location-var (find-symbol "*CURRENT-COMPILATION-LOCATION*" deep-pkg))

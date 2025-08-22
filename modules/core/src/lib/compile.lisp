@@ -345,7 +345,7 @@
    
    Returns:
      A COMPILATION-RESULT object with enhanced source locations"
-  (let ((deep-pkg (find-package :epsilon.compile-deep-integration)))
+  (let ((deep-pkg (find-package :epsilon.compile-integration)))
     (if deep-pkg
         (let ((install-fn (find-symbol "INSTALL-DEEP-COMPILER-HOOKS" deep-pkg))
               (uninstall-fn (find-symbol "UNINSTALL-DEEP-COMPILER-HOOKS" deep-pkg))
@@ -374,7 +374,7 @@
    
    Returns:
      A COMPILATION-RESULT object with enhanced source locations"
-  (let ((deep-pkg (find-package :epsilon.compile-deep-integration)))
+  (let ((deep-pkg (find-package :epsilon.compile-integration)))
     (if deep-pkg
         (let ((install-fn (find-symbol "INSTALL-DEEP-COMPILER-HOOKS" deep-pkg))
               (uninstall-fn (find-symbol "UNINSTALL-DEEP-COMPILER-HOOKS" deep-pkg)))
