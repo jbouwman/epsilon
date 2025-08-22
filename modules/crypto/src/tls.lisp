@@ -5,6 +5,7 @@
 (defpackage :epsilon.crypto.tls
   (:use :cl :epsilon.crypto)
   (:local-nicknames
+   (alpn epsilon.crypto.alpn)
    (#:ffi #:epsilon.crypto.ffi))
   (:import-from :epsilon.crypto
 		;; Import all needed symbols
@@ -176,7 +177,7 @@
     
     ;; Set ALPN protocols if provided
     (when alpn-protocols
-      (epsilon.crypto.alpn:set-alpn-protocols ctx alpn-protocols :context-p t))
+      (alpn:set-alpn-protocols ctx alpn-protocols :context-p t))
     
     ;; Configure session caching  
     (when session-cache-p
