@@ -377,6 +377,7 @@
      :next-fn (lambda ()
                 (loop while (< dropped n)
                       do (multiple-value-bind (item more-p) (stream-next stream)
+                           (declare (ignore item))
                            (incf dropped)
                            (unless more-p
                              (return (values nil nil)))))

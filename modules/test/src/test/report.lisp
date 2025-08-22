@@ -424,7 +424,6 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
 (defmethod event ((formatter verbose-report) (event-type (eql :end-test)) result)
   (let* ((test (suite:test result))
          (status (suite:status result))
-    (declare (ignore test))
          (elapsed (suite::elapsed-time result))
          (assertions (suite:assertions result))
          (status-symbol (case status
@@ -437,6 +436,7 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
                             (:error "ERROR")
                             (:skip "SKIPPED")
                             (otherwise "PASSED"))))
+    (declare (ignore test))
     
     ;; Show test completion with timing
     (format t "│  ~A Test ~A in ~,3fs (~D assertion~:P)~%" 
