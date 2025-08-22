@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y \
     libssl-dev \
     libffi-dev \
     build-essential \
+    sqlite3 \
+    libsqlite3-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -24,6 +26,10 @@ RUN sbcl --version && \
     openssl version && \
     echo "OpenSSL libraries:" && \
     ldconfig -p | grep -E "(libssl|libcrypto)" | head -5 && \
+    echo "SQLite version:" && \
+    sqlite3 --version && \
+    echo "SQLite libraries:" && \
+    ldconfig -p | grep sqlite | head -5 && \
     echo "CI container ready"
 
 # Set working directory

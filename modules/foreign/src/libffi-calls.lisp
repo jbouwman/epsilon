@@ -17,7 +17,7 @@
     (unless function-address
       (error "Could not find function ~A" function-designator))
     
-    ;; Use libffi for the call
+    ;; Use libffi for the call - note: args is already a list from &rest
     (libffi-call function-address return-type arg-types args)))
 
 (defun resolve-function-address (function-designator)

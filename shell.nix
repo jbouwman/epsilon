@@ -8,6 +8,7 @@ pkgs.mkShell {
     clang
     libffi
     openssl
+    sqlite
     ripgrep
     pkg-config
     (pkgs.emacsWithPackages (epkgs: [

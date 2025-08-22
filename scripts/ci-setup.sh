@@ -20,7 +20,7 @@ case "$OS" in
         if command -v apt-get >/dev/null 2>&1; then
             echo "Installing Linux dependencies..."
             apt-get update
-            apt-get install -y sbcl libffi-dev libssl-dev build-essential git tar gzip
+            apt-get install -y sbcl libffi-dev libssl-dev build-essential git tar gzip sqlite3 libsqlite3-dev
         fi
         
         # Configure git for CI environment if needed
@@ -39,6 +39,10 @@ case "$OS" in
         # Install other dependencies
         brew list libffi >/dev/null 2>&1 || brew install libffi
         brew list openssl@3 >/dev/null 2>&1 || brew install openssl@3
+        
+        # SQLite is bundled with macOS, no need to install
+        echo "SQLite is bundled with macOS, checking version..."
+        sqlite3 --version
         
         # Link OpenSSL
         brew link openssl@3 --force 2>/dev/null || true

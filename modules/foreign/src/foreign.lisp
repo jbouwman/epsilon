@@ -4,6 +4,7 @@
    (map epsilon.map)
    (seq epsilon.sequence)
    (path epsilon.path)
+   (lib epsilon.library)
    (trampoline epsilon.foreign.trampoline)
    (marshalling epsilon.foreign.marshalling)
    (struct epsilon.foreign.struct)
@@ -530,6 +531,9 @@
     (:unsigned-long (let ((holder (sb-alien:make-alien sb-alien:unsigned-long)))
                      (setf (sb-alien:deref holder) arg)
                      (values (sb-alien:alien-sap holder) holder)))
+    (:float (let ((holder (sb-alien:make-alien sb-alien:single-float)))
+              (setf (sb-alien:deref holder) (coerce arg 'single-float))
+              (values (sb-alien:alien-sap holder) holder)))
     (:pointer (let* ((ptr (if (sb-sys:system-area-pointer-p arg)
                               arg
                               (sb-sys:int-sap (if (integerp arg) arg 0))))
@@ -555,6 +559,7 @@
     (:long (sb-alien:alien-sap (sb-alien:make-alien sb-alien:long)))
     (:unsigned-int (sb-alien:alien-sap (sb-alien:make-alien sb-alien:unsigned-int)))
     (:unsigned-long (sb-alien:alien-sap (sb-alien:make-alien sb-alien:unsigned-long)))
+    (:float (sb-alien:alien-sap (sb-alien:make-alien sb-alien:single-float)))
     (:pointer (sb-alien:alien-sap (sb-alien:make-alien sb-alien:system-area-pointer)))
     (otherwise (error "Unsupported return type: ~A" return-type))))
 
@@ -566,6 +571,7 @@
     (:long (sb-alien:deref (sb-alien:sap-alien result-holder (* sb-alien:long))))
     (:unsigned-int (sb-alien:deref (sb-alien:sap-alien result-holder (* sb-alien:unsigned-int))))
     (:unsigned-long (sb-alien:deref (sb-alien:sap-alien result-holder (* sb-alien:unsigned-long))))
+    (:float (sb-alien:deref (sb-alien:sap-alien result-holder (* sb-alien:single-float))))
     (:pointer (sb-alien:deref (sb-alien:sap-alien result-holder (* sb-alien:system-area-pointer))))
     (otherwise (error "Unsupported return type: ~A" return-type))))
 
@@ -605,12 +611,78 @@
 
 ;; Global state for library management
 
+;; Library management delegated to epsilon.library
+;; Library management functions
 (defvar *open-libraries* (map:make-map)
-  "Map of library names to library handles")
+  "Map of opened library handles")
 
-(defvar *function-cache* (map:make-map)
-  "Cache of function pointers keyed by (library-name function-name)")
+(defun lib-open (library-name &key local paths)
+  "Opens a shared library and returns a handle"
+  (let ((existing (map:get *open-libraries* library-name)))
+    (if existing
+        existing
+        (let* ((lib-path 
+                (cond
+                  ;; If it's an absolute path, use it directly
+                  ((and (stringp library-name) (pathname-absolute-p library-name))
+                   (when (probe-file library-name) library-name))
+                  ;; If it's a registered library symbol, find it via epsilon.library
+                  ((keywordp library-name)
+                   (handler-case
+                       (lib:find-library library-name)
+                     (error ()
+                       (error "Library ~A not available" library-name))))
+                  ;; Local libraries: search in provided paths
+                  (local
+                   (find-library-in-paths 
+                    (list (platform-library-name library-name))
+                    (or paths '("."))))
+                  ;; System library: try to find via epsilon.library first
+                  (t
+                   (handler-case
+                       (lib:find-library (intern (string-downcase library-name) :keyword))
+                     (error ()
+                       ;; Fallback: try as a direct library name
+                       library-name)))))
+               (handle (when lib-path 
+                         (sb-alien:load-shared-object lib-path))))
+          (when handle
+            (setf *open-libraries* 
+                  (map:assoc *open-libraries* library-name handle))
+            handle)))))
 
+(defun lib-close (library-handle)
+  "Closes a previously opened library"
+  ;; SBCL doesn't provide a way to unload shared objects
+  ;; Just remove from our tracking
+  (setf *open-libraries*
+        (map:filter (lambda (k v) (declare (ignore k)) (not (eq v library-handle)))
+                   *open-libraries*))
+  t)
+
+(defun lib-function (library-handle function-name)
+  "Get function pointer from library"
+  ;; Use SBCL's foreign symbol lookup
+  (or (sb-sys:find-dynamic-foreign-symbol-address function-name)
+      (error "Could not find function ~A in library ~A" function-name library-handle)))
+
+(defun find-library-in-paths (lib-names search-paths)
+  "Find a library file in the given search paths"
+  (dolist (path search-paths)
+    (dolist (name lib-names)
+      (let ((full-path (path:string-path-join path name)))
+        (when (probe-file full-path)
+          (return-from find-library-in-paths full-path))))))
+
+(defun platform-library-name (base-name)
+  "Convert base library name to platform-specific format"
+  (lib:platform-library-name base-name))
+
+(defun pathname-absolute-p (path)
+  "Check if a pathname string is absolute"
+  (and (stringp path) (> (length path) 0) (char= (char path 0) #\/)))
+
+#| REMOVED - moved to epsilon.library
 (defvar *library-search-paths* 
   (append
    ;; Check for Nix store paths
@@ -631,99 +703,112 @@
    '("/usr/lib" "/usr/local/lib" "/lib" "/lib64" 
      "/usr/lib/x86_64-linux-gnu" "/lib/x86_64-linux-gnu" "/opt/lib"))
   "Default paths to search for shared libraries")
+|#
 
 ;; Platform-specific library handling
-
-(defun platform-library-name (name)
-  "Convert library name to platform-specific format"
-  ;; macOS
-  #+darwin
-  (cond
-    ((string-suffix-p ".dylib" name) name)
-    ((string-suffix-p ".so" name) (concatenate 'string name ".dylib"))
-    ((string= name "libc") "/usr/lib/libSystem.B.dylib")
-    ((string= name "libm") "/usr/lib/libSystem.B.dylib")
-    ((string= name "libpthread") "/usr/lib/libSystem.B.dylib")
-    ;; Handle special case for system SSL/crypto libraries
-    ((string= name "libssl") "libssl.dylib")
-    ((string= name "libcrypto") "libcrypto.dylib")
-    ;; Don't double-prefix names that already start with "lib"
-    ((and (>= (length name) 3) (string= (subseq name 0 3) "lib"))
-     (concatenate 'string name ".dylib"))
-    (t (concatenate 'string "lib" name ".dylib")))
-  ;; Linux
-  #+linux
-  (cond
-    ((string-suffix-p ".so" name) name)
-    ((find #\. name) name) ; Has version number
-    ((string= name "libc") "libc.so.6")
-    ((string= name "libm") "libm.so.6")
-    ((string= name "libpthread") "libpthread.so.0")
-    ;; Handle special case for system SSL/crypto libraries - try versioned first
-    ((string= name "libssl") "libssl.so.3")
-    ((string= name "libcrypto") "libcrypto.so.3")
-    ;; Don't double-prefix names that already start with "lib"
-    ((and (>= (length name) 3) (string= (subseq name 0 3) "lib"))
-     (concatenate 'string name ".so"))
-    (t (concatenate 'string "lib" name ".so")))
-  ;; Default fallback for other platforms
-  #-(or darwin linux)
-  name)
-
-(defun string-suffix-p (suffix string)
-  "Check if string ends with suffix"
-  (let ((pos (search suffix string :from-end t)))
-    (and pos (= pos (- (length string) (length suffix))))))
-
-(defun find-library-path (name &key local paths)
-  "Find full path to library file"
-  (let ((lib-name (platform-library-name name))
-        (search-paths (if local 
-                          (or paths '("."))
-                          (append (or paths '()) *library-search-paths*))))
-    (loop for path in search-paths
-          for full-path = (path:string-path-join path lib-name)
-          when (probe-file full-path)
-            return full-path
-          finally (return lib-name)))) ; Return name if not found
-
-(defun lib-open (library-name &key local paths)
-  "Opens a shared library and returns a handle"
-  (let ((existing (map:get *open-libraries* library-name)))
-    (if existing
-        existing
-        (let* ((lib-path (find-library-path library-name :local local :paths paths))
-               (handle (sb-alien:load-shared-object lib-path)))
-          (setf *open-libraries* 
-                (map:assoc *open-libraries* library-name handle))
-          handle))))
-
-(defun lib-close (library-handle)
-  "Closes a previously opened library"
-  (loop for (name . handle) in (map:seq *open-libraries*)
-        when (eq handle library-handle)
-          do (progn
-               (setf *open-libraries* 
-                     (map:dissoc *open-libraries* name))
-               (sb-alien:unload-shared-object library-handle)
-               (return t))
-        finally (return nil)))
-
-(defun lib-function (library-handle function-name)
-  "Gets a pointer to a function in a library"
-  (let* ((lib-name (loop for (name . handle) in (map:seq *open-libraries*)
-                         when (eq handle library-handle)
-                           return name))
-         (cache-key (list lib-name function-name))
-         (cached (map:get *function-cache* cache-key)))
-    (if cached
-        cached
-        (let ((fn-ptr (sb-sys:find-dynamic-foreign-symbol-address 
-                       (string function-name))))
-          (when fn-ptr
-            (setf *function-cache* 
-                  (map:assoc *function-cache* cache-key fn-ptr)))
-          fn-ptr))))
+;; REMOVED - moved to epsilon.library:
+;; (defun platform-library-name (name)
+;;   "Convert library name to platform-specific format"
+;;   ;; macOS
+;;   #+darwin
+;;   (cond
+;; REMOVED - moved to epsilon.library:     ((string-suffix-p ".dylib" name) name)
+;; REMOVED - moved to epsilon.library:     ((string-suffix-p ".so" name) (concatenate 'string name ".dylib"))
+;; REMOVED - moved to epsilon.library:     ((string= name "libc") "/usr/lib/libSystem.B.dylib")
+;; REMOVED - moved to epsilon.library:     ((string= name "libm") "/usr/lib/libSystem.B.dylib")
+;; REMOVED - moved to epsilon.library:     ((string= name "libpthread") "/usr/lib/libSystem.B.dylib")
+;; REMOVED - moved to epsilon.library:     ;; Handle special case for system SSL/crypto libraries
+;; REMOVED - moved to epsilon.library:     ((string= name "libssl") "libssl.dylib")
+;; REMOVED - moved to epsilon.library:     ((string= name "libcrypto") "libcrypto.dylib")
+;; REMOVED - moved to epsilon.library:     ;; Don't double-prefix names that already start with "lib"
+;; REMOVED - moved to epsilon.library:     ((and (>= (length name) 3) (string= (subseq name 0 3) "lib"))
+;; REMOVED - moved to epsilon.library:      (concatenate 'string name ".dylib"))
+;; REMOVED - moved to epsilon.library:     (t (concatenate 'string "lib" name ".dylib")))
+;; REMOVED - moved to epsilon.library:   ;; Linux
+;; REMOVED - moved to epsilon.library:   #+linux
+;; REMOVED - moved to epsilon.library:   (cond
+;; REMOVED - moved to epsilon.library:     ((string-suffix-p ".so" name) name)
+;; REMOVED - moved to epsilon.library:     ((find #\. name) name) ; Has version number
+;; REMOVED - moved to epsilon.library:     ((string= name "libc") "libc.so.6")
+;; REMOVED - moved to epsilon.library:     ((string= name "libm") "libm.so.6")
+;; REMOVED - moved to epsilon.library:     ((string= name "libpthread") "libpthread.so.0")
+;; REMOVED - moved to epsilon.library:     ;; Handle special case for system SSL/crypto libraries - try versioned first
+;; REMOVED - moved to epsilon.library:     ((string= name "libssl") "libssl.so.3")
+;; REMOVED - moved to epsilon.library:     ((string= name "libcrypto") "libcrypto.so.3")
+;; REMOVED - moved to epsilon.library:     ;; Don't double-prefix names that already start with "lib"
+;; REMOVED - moved to epsilon.library:     ((and (>= (length name) 3) (string= (subseq name 0 3) "lib"))
+;; REMOVED - moved to epsilon.library:      (concatenate 'string name ".so"))
+;; REMOVED - moved to epsilon.library:     (t (concatenate 'string "lib" name ".so")))
+;; REMOVED - moved to epsilon.library:   ;; Default fallback for other platforms
+;; REMOVED - moved to epsilon.library:   #-(or darwin linux)
+;; REMOVED - moved to epsilon.library:   name)
+;; REMOVED - moved to epsilon.library: 
+;; REMOVED - moved to epsilon.library: (defun string-suffix-p (suffix string)
+;; REMOVED - moved to epsilon.library:   "Check if string ends with suffix"
+;; REMOVED - moved to epsilon.library:   (let ((pos (search suffix string :from-end t)))
+;; REMOVED - moved to epsilon.library:     (and pos (= pos (- (length string) (length suffix))))))
+;; REMOVED - moved to epsilon.library: 
+;; REMOVED - moved to epsilon.library: (defun find-library-path (name &key local paths)
+;; REMOVED - moved to epsilon.library:   "Find full path to library file using epsilon.library"
+;; REMOVED - moved to epsilon.library:   (if local
+;; REMOVED - moved to epsilon.library:       ;; For local libraries, use old behavior
+;; REMOVED - moved to epsilon.library:       (let ((lib-name (platform-library-name name))
+;; REMOVED - moved to epsilon.library:             (search-paths (or paths '("."))))
+;; REMOVED - moved to epsilon.library:         (loop for path in search-paths
+;; REMOVED - moved to epsilon.library:               for full-path = (path:string-path-join path lib-name)
+;; REMOVED - moved to epsilon.library:               when (probe-file full-path)
+;; REMOVED - moved to epsilon.library:                 return full-path
+;; REMOVED - moved to epsilon.library:               finally (return lib-name)))
+;; REMOVED - moved to epsilon.library:       ;; For system libraries, use epsilon.library
+;; REMOVED - moved to epsilon.library:       (handler-case
+;; REMOVED - moved to epsilon.library:           (lib:find-library (intern (string-upcase name) :keyword))
+;; REMOVED - moved to epsilon.library:         (error ()
+;; REMOVED - moved to epsilon.library:           ;; Fall back to old behavior if library not registered
+;; REMOVED - moved to epsilon.library:           (let ((lib-name (platform-library-name name))
+;; REMOVED - moved to epsilon.library:                 (search-paths (append (or paths '()) *library-search-paths*)))
+;; REMOVED - moved to epsilon.library:             (loop for path in search-paths
+;; REMOVED - moved to epsilon.library:                   for full-path = (path:string-path-join path lib-name)
+;; REMOVED - moved to epsilon.library:                   when (probe-file full-path)
+;; REMOVED - moved to epsilon.library:                     return full-path
+;; REMOVED - moved to epsilon.library:                   finally (return lib-name)))))))
+;; REMOVED - moved to epsilon.library: 
+;; REMOVED - moved to epsilon.library: (defun lib-open (library-name &key local paths)
+;; REMOVED - moved to epsilon.library:   "Opens a shared library and returns a handle"
+;; REMOVED - moved to epsilon.library:   (let ((existing (map:get *open-libraries* library-name)))
+;; REMOVED - moved to epsilon.library:     (if existing
+;; REMOVED - moved to epsilon.library:         existing
+;; REMOVED - moved to epsilon.library:         (let* ((lib-path (find-library-path library-name :local local :paths paths))
+;; REMOVED - moved to epsilon.library:                (handle (sb-alien:load-shared-object lib-path)))
+;; REMOVED - moved to epsilon.library:           (setf *open-libraries* 
+;; REMOVED - moved to epsilon.library:                 (map:assoc *open-libraries* library-name handle))
+;; REMOVED - moved to epsilon.library:           handle))))
+;; REMOVED - moved to epsilon.library: 
+;; REMOVED - moved to epsilon.library: (defun lib-close (library-handle)
+;; REMOVED - moved to epsilon.library:   "Closes a previously opened library"
+;; REMOVED - moved to epsilon.library:   (loop for (name . handle) in (map:seq *open-libraries*)
+;; REMOVED - moved to epsilon.library:         when (eq handle library-handle)
+;; REMOVED - moved to epsilon.library:           do (progn
+;; REMOVED - moved to epsilon.library:                (setf *open-libraries* 
+;; REMOVED - moved to epsilon.library:                      (map:dissoc *open-libraries* name))
+;; REMOVED - moved to epsilon.library:                (sb-alien:unload-shared-object library-handle)
+;; REMOVED - moved to epsilon.library:                (return t))
+;; REMOVED - moved to epsilon.library:         finally (return nil)))
+;; REMOVED - moved to epsilon.library: 
+;; REMOVED - moved to epsilon.library: (defun lib-function (library-handle function-name)
+;; REMOVED - moved to epsilon.library:   "Gets a pointer to a function in a library"
+;; REMOVED - moved to epsilon.library:   (let* ((lib-name (loop for (name . handle) in (map:seq *open-libraries*)
+;; REMOVED - moved to epsilon.library:                          when (eq handle library-handle)
+;; REMOVED - moved to epsilon.library:                            return name))
+;; REMOVED - moved to epsilon.library:          (cache-key (list lib-name function-name))
+;; REMOVED - moved to epsilon.library:          (cached (map:get *function-cache* cache-key)))
+;; REMOVED - moved to epsilon.library:     (if cached
+;; REMOVED - moved to epsilon.library:         cached
+;; REMOVED - moved to epsilon.library:         (let ((fn-ptr (sb-sys:find-dynamic-foreign-symbol-address 
+;; REMOVED - moved to epsilon.library:                        (string function-name))))
+;; REMOVED - moved to epsilon.library:           (when fn-ptr
+;; REMOVED - moved to epsilon.library:             (setf *function-cache* 
+;; REMOVED - moved to epsilon.library:                   (map:assoc *function-cache* cache-key fn-ptr)))
+;; REMOVED - moved to epsilon.library:           fn-ptr))))
 
 (defun shared-call (function-designator return-type arg-types &rest args)
   "Main entry point for FFI calls using libffi"
@@ -734,12 +819,12 @@
   "Old SBCL-based implementation - DEPRECATED, will be removed"
   (let ((function-address
           (etypecase function-designator
-            (symbol (lib-function 
-                     (lib-open "libc") 
+            (symbol (lib:lib-function 
+                     (lib:lib-open "libc") 
                      (string function-designator)))
             (list (destructuring-bind (fn-name lib-name) function-designator
-                    (lib-function 
-                     (lib-open lib-name) 
+                    (lib:lib-function 
+                     (lib:lib-open lib-name) 
                      (string fn-name)))))))
     (unless function-address
       (error "Could not find function ~A" function-designator))
@@ -1472,6 +1557,127 @@
 ;;; Maps Lisp primitive types to their C equivalents
 ;;; Used by shared-call for efficient type conversion
 
+;;; Control variables
+(defvar *use-libffi-calls* nil
+  "When true, use libffi for function calls instead of direct alien calls")
+
+(defvar *track-call-performance* nil
+  "When true, track performance statistics for FFI calls")
+
+;;; Core FFI Functions
+
+(defun call-with-signature (function-address return-type arg-types args)
+  "Call function using signature-specific optimized paths"
+  (cond
+    ;; No arguments - simple function calls
+    ((null arg-types)
+     (cond
+       ((eq return-type :int)
+        (eval `(sb-alien:alien-funcall 
+                (sb-alien:sap-alien 
+                 (sb-sys:int-sap ,function-address)
+                 (sb-alien:function sb-alien:int)))))
+       ((eq return-type :void)
+        (eval `(sb-alien:alien-funcall 
+                (sb-alien:sap-alien 
+                 (sb-sys:int-sap ,function-address)
+                 (sb-alien:function sb-alien:void)))))
+       ((eq return-type :pointer)
+        (eval `(sb-alien:alien-funcall 
+                (sb-alien:sap-alien 
+                 (sb-sys:int-sap ,function-address)
+                 (sb-alien:function sb-alien:system-area-pointer)))))
+       (t (error "Return type ~A not yet implemented for zero-argument functions" return-type))))
+    
+    ;; String functions - strlen style: unsigned-long fn(string)
+    ((and (eq return-type :unsigned-long) (equal arg-types '(:string)))
+     (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                   args arg-types)))
+       (eval `(sb-alien:alien-funcall 
+               (sb-alien:sap-alien 
+                (sb-sys:int-sap ,function-address)
+                (sb-alien:function sb-alien:unsigned-long sb-alien:c-string))
+               ,@converted-args))))
+    
+    ;; Memory allocation - malloc style: pointer fn(unsigned-long)
+    ((and (eq return-type :pointer) (equal arg-types '(:unsigned-long)))
+     (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                   args arg-types)))
+       (eval `(sb-alien:alien-funcall 
+               (sb-alien:sap-alien 
+                (sb-sys:int-sap ,function-address)
+                (sb-alien:function sb-alien:system-area-pointer sb-alien:unsigned-long))
+               ,@converted-args))))
+    
+    ;; Simple system calls - getpid style: int fn()
+    ((and (eq return-type :int) (null arg-types))
+     (eval `(sb-alien:alien-funcall 
+             (sb-alien:sap-alien 
+              (sb-sys:int-sap ,function-address)
+              (sb-alien:function sb-alien:int)))))
+    
+    ;; Pointer-returning functions with no args - like sqlite3_libversion: pointer fn()
+    ((and (eq return-type :pointer) (null arg-types))
+     (eval `(sb-alien:alien-funcall 
+             (sb-alien:sap-alien 
+              (sb-sys:int-sap ,function-address)
+              (sb-alien:function sb-alien:system-area-pointer)))))
+
+    (t
+     (error "Function signature ~A ~A not yet implemented in call-with-signature" 
+            return-type arg-types))))
+
+(defun shared-call-unified (function-designator return-type arg-types &rest args)
+  "Unified FFI call implementation using optimized paths based on signature"
+  (let ((function-address
+          (etypecase function-designator
+            (symbol (lib:lib-function 
+                     (lib:lib-open "libc") 
+                     (string function-designator)))
+            (list (destructuring-bind (fn-name lib-name) function-designator
+                    (lib:lib-function 
+                     (lib:lib-open lib-name) 
+                     (string fn-name)))))))
+    (unless function-address
+      (error "Could not find function ~A" function-designator))
+    ;; Call the optimized signature implementation
+    (call-with-signature function-address return-type arg-types args)))
+
+;; Removed duplicate libffi-call definition to avoid conflicts
+
+(defun shared-call (function-designator return-type arg-types &rest args)
+  "Main entry point for FFI calls"
+  (apply #'shared-call-unified function-designator return-type arg-types args))
+
+;; Missing stub functions
+(defvar *libffi-library* nil
+  "Handle to the libffi extension library")
+
+(defun resolve-function-address (function-designator)
+  "Resolve function address from designator"
+  (etypecase function-designator
+    (symbol (lib:lib-function 
+             (lib:lib-open "libc") 
+             (string function-designator)))
+    (list (destructuring-bind (fn-name lib-name) function-designator
+            (lib:lib-function 
+             (lib:lib-open lib-name) 
+             (string fn-name))))))
+
+(defun ffi-call (function-address return-type arg-types &rest args)
+  "Direct FFI call with function address"
+  (call-with-signature function-address return-type arg-types args))
+
+(defun ffi-call-auto (function-designator &rest args)
+  "Auto-discovering FFI call"
+  ;; Try to auto-discover signature, for now just fail gracefully
+  (error "Auto-discovery not yet implemented for ~A" function-designator))
+
+(defun auto-discover-signature (function-name library-name)
+  "Attempt to auto-discover function signature"
+  (warn "Could not auto-discover signature for ~A" function-name)
+  nil)
+
 ;; Helper functions for epoll data handling (reused from epsilon.linux)
 
 (defun make-epoll-data (&key fd ptr u32 u64)
@@ -1495,12 +1701,12 @@
   "Fast FFI call using compiled trampolines instead of eval"
   (let ((function-address
           (etypecase function-designator
-            (symbol (lib-function 
-                     (lib-open "libc") 
+            (symbol (lib:lib-function 
+                     (lib:lib-open "libc") 
                      (string function-designator)))
             (list (destructuring-bind (fn-name lib-name) function-designator
-                    (lib-function 
-                     (lib-open lib-name) 
+                    (lib:lib-function 
+                     (lib:lib-open lib-name) 
                      (string fn-name)))))))
     (unless function-address
       (error "Could not find function ~A" function-designator))
