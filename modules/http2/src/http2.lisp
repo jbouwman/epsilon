@@ -4,14 +4,13 @@
 
 (defpackage :epsilon.http2
   (:use :cl)
-  (:import-from :epsilon.http2.hpack
-                #:create-encoder
-                #:create-decoder
-                #:encode-headers
-                #:decode-headers)
-  (:import-from :epsilon.string
-                #:string-to-octets
-                #:octets-to-string)
+  (:local-nicknames
+   (#:hpack #:epsilon.http2.hpack)
+   (#:frames #:epsilon.http2.frames)
+   (#:flow #:epsilon.http2.flow-control)
+   (#:str #:epsilon.string)
+   (#:net #:epsilon.net)
+   (#:crypto #:epsilon.crypto))
   (:export
    ;; Connection management
    #:make-http2-connection
@@ -48,10 +47,12 @@
 
 (in-package :epsilon.http2)
 
-;;;; Constants
+;;;; Constants  
 
 (defparameter +http2-preface+ 
-  "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n"
+  (format nil "PRI * HTTP/2.0~C~C~C~CSM~C~C~C~C" 
+          #\Return #\Newline #\Return #\Newline
+          #\Return #\Newline #\Return #\Newline)
   "HTTP/2 connection preface")
 
 (defparameter +default-settings+
@@ -145,7 +146,7 @@
   ;; Send GOAWAY frame
   (let ((goaway-frame (epsilon.http2::make-goaway-frame 
                        (1- (connection-next-stream-id connection))
-                       +error-no-error+
+                       frames:+error-no-error+
                        "Connection closing")))
     (connection-send-frame connection goaway-frame))
   
@@ -191,11 +192,32 @@
 
 ;;;; Client Functions
 
+(defun parse-url (url)
+  "Simple URL parser"
+  (let* ((scheme-end (search "://" url))
+         (scheme (if scheme-end (subseq url 0 scheme-end) "https"))
+         (url-after-scheme (if scheme-end (subseq url (+ scheme-end 3)) url))
+         (port-pos (position #\: url-after-scheme))
+         (path-pos (position #\/ url-after-scheme))
+         (host (if port-pos
+                   (subseq url-after-scheme 0 port-pos)
+                   (if path-pos
+                       (subseq url-after-scheme 0 path-pos)
+                       url-after-scheme)))
+         (port (if port-pos
+                   (parse-integer (subseq url-after-scheme (1+ port-pos)
+                                         (or path-pos (length url-after-scheme))))
+                   (if (string= scheme "https") 443 80)))
+         (path (if path-pos
+                   (subseq url-after-scheme path-pos)
+                   "/")))
+    (values scheme host port path nil)))
+
 (defun http2-request (url &key method headers body)
   "Make an HTTP/2 request"
   ;; Parse URL
   (multiple-value-bind (scheme host port path query)
-      (epsilon.http.client::parse-url url)
+      (parse-url url)
     (declare (ignore scheme query))
     
     ;; Create TLS connection with ALPN
@@ -264,21 +286,21 @@
       (let ((frame (connection-receive-frame connection)))
         (cond
           ;; HEADERS frame
-          ((eq (frame-type frame) +frame-headers+)
+          ((eq (frame-type frame) frames:+frame-headers+)
            (when (= (frame-stream-id frame) (stream-id stream))
              (setf response-headers 
                    (decode-headers 
                     (connection-hpack-decoder connection)
                     (frame-payload frame)))
-             (when (frame-flag-set-p frame +flag-end-stream+)
+             (when (frame-flag-set-p frame frames:+flag-end-stream+)
                (return))))
           
           ;; DATA frame
-          ((eq (frame-type frame) +frame-data+)
+          ((eq (frame-type frame) frames:+frame-data+)
            (when (= (frame-stream-id frame) (stream-id stream))
              (setf response-data 
                    (append response-data (coerce (frame-payload frame) 'list)))
-             (when (frame-flag-set-p frame +flag-end-stream+)
+             (when (frame-flag-set-p frame frames:+flag-end-stream+)
                (return))))
           
           ;; Other frames - handle as needed

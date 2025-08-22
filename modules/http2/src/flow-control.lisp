@@ -2,7 +2,45 @@
 ;;;;
 ;;;; Implements connection and stream-level flow control per RFC 7540
 
-(in-package :epsilon.http2)
+(defpackage :epsilon.http2.flow-control
+  (:use :cl)
+  (:local-nicknames
+   (#:str #:epsilon.string))
+  (:export
+   ;; Constants
+   #:+default-initial-window-size+
+   #:+max-window-size+
+   
+   ;; Flow controller
+   #:flow-controller
+   #:make-flow-controller
+   #:flow-controller-p
+   #:flow-controller-send-window
+   #:flow-controller-recv-window
+   #:flow-controller-initial-send-window
+   #:flow-controller-initial-recv-window
+   #:make-connection-flow-controller
+   #:make-stream-flow-controller
+   
+   ;; Window management
+   #:can-send-p
+   #:consume-send-window
+   #:update-send-window
+   #:consume-recv-window
+   #:should-send-window-update-p
+   #:calculate-window-update
+   #:update-recv-window
+   
+   ;; Settings
+   #:apply-settings-to-flow-control
+   
+   ;; Frame handling
+   #:handle-data-frame-flow-control
+   #:handle-window-update-frame
+   #:can-send-data-p
+   #:send-data-with-flow-control))
+
+(in-package :epsilon.http2.flow-control)
 
 ;;;; Constants
 
@@ -25,11 +63,9 @@
   "Create flow controller for connection-level flow control"
   (make-flow-controller))
 
-(defun make-stream-flow-controller (connection-settings)
+(defun make-stream-flow-controller (&optional initial-window-size)
   "Create flow controller for stream-level flow control"
-  (let ((initial-window (or (cdr (assoc +settings-initial-window-size+ 
-                                        connection-settings))
-                            +default-initial-window-size+)))
+  (let ((initial-window (or initial-window-size +default-initial-window-size+)))
     (make-flow-controller :send-window initial-window
                          :recv-window initial-window
                          :initial-send-window initial-window
@@ -82,9 +118,10 @@
 
 ;;;; Settings Updates
 
-(defun apply-settings-to-flow-control (controller settings)
+(defun apply-settings-to-flow-control (controller settings-alist)
   "Apply SETTINGS frame changes to flow control"
-  (let ((new-initial-window (cdr (assoc +settings-initial-window-size+ settings))))
+  ;; The settings ID for initial window size is 4 (0x4)
+  (let ((new-initial-window (cdr (assoc 4 settings-alist))))
     (when new-initial-window
       ;; Update initial window size
       (let ((delta (- new-initial-window 
@@ -93,132 +130,57 @@
         (incf (flow-controller-send-window controller) delta)
         (setf (flow-controller-initial-send-window controller) new-initial-window)))))
 
-;;;; Frame Handling with Flow Control
+;;;; Simplified Frame Handling
+;; These functions provide flow control logic but don't directly
+;; manipulate connection/stream objects to avoid circular dependencies
 
-(defun handle-data-frame-flow-control (connection stream-id data-length)
+(defun handle-data-frame-flow-control (conn-controller stream-controller data-length)
   "Handle flow control for incoming DATA frame"
-  (let ((conn-controller (connection-flow-controller connection))
-        (stream (get-stream connection stream-id)))
-    
-    ;; Check connection-level window
-    (consume-recv-window conn-controller data-length)
-    
-    ;; Check stream-level window if stream exists
-    (when stream
-      (consume-recv-window (stream-flow-controller stream) data-length))
-    
-    ;; Send WINDOW_UPDATE if needed
-    (when (should-send-window-update-p conn-controller)
-      (let ((increment (calculate-window-update conn-controller)))
-        (send-window-update connection 0 increment)
-        (update-recv-window conn-controller increment)))
-    
-    (when (and stream (should-send-window-update-p (stream-flow-controller stream)))
-      (let ((increment (calculate-window-update (stream-flow-controller stream))))
-        (send-window-update connection stream-id increment)
-        (update-recv-window (stream-flow-controller stream) increment)))))
+  ;; Check connection-level window
+  (consume-recv-window conn-controller data-length)
+  
+  ;; Check stream-level window if provided
+  (when stream-controller
+    (consume-recv-window stream-controller data-length))
+  
+  ;; Return window update recommendations
+  (values (when (should-send-window-update-p conn-controller)
+            (calculate-window-update conn-controller))
+          (when (and stream-controller 
+                     (should-send-window-update-p stream-controller))
+            (calculate-window-update stream-controller))))
 
-(defun handle-window-update-frame (connection stream-id increment)
+(defun handle-window-update-frame (controller increment)
   "Handle incoming WINDOW_UPDATE frame"
   (when (zerop increment)
-    (signal-protocol-error connection +error-protocol-error+ 
-                          "WINDOW_UPDATE with zero increment"))
+    (error "WINDOW_UPDATE with zero increment"))
   
-  (if (zerop stream-id)
-      ;; Connection-level update
-      (update-send-window (connection-flow-controller connection) increment)
-      ;; Stream-level update
-      (let ((stream (get-stream connection stream-id)))
-        (when stream
-          (update-send-window (stream-flow-controller stream) increment)))))
+  (update-send-window controller increment))
 
-(defun can-send-data-p (connection stream-id bytes)
+(defun can-send-data-p (conn-controller stream-controller bytes)
   "Check if we can send data on a stream"
-  (and (can-send-p (connection-flow-controller connection) bytes)
-       (let ((stream (get-stream connection stream-id)))
-         (and stream 
-              (can-send-p (stream-flow-controller stream) bytes)))))
+  (and (can-send-p conn-controller bytes)
+       (or (null stream-controller)
+           (can-send-p stream-controller bytes))))
 
-(defun send-data-with-flow-control (connection stream-id data)
-  "Send DATA frame with flow control"
+(defun send-data-with-flow-control (conn-controller stream-controller data)
+  "Check flow control before sending DATA frame"
   (let* ((data-bytes (if (stringp data)
-                         (epsilon.string:string-to-octets data)
+                         (str:string-to-octets data)
                          data))
-         (data-length (length data-bytes))
-         (conn-controller (connection-flow-controller connection))
-         (stream (get-stream connection stream-id)))
+         (data-length (length data-bytes)))
     
-    (unless stream
-      (error "Stream ~D does not exist" stream-id))
-    
-    (let ((stream-controller (stream-flow-controller stream)))
-      ;; Check available window
-      (unless (can-send-p conn-controller data-length)
-        (error "Insufficient connection window for ~D bytes" data-length))
+    ;; Check available window
+    (unless (can-send-p conn-controller data-length)
+      (error "Insufficient connection window for ~D bytes" data-length))
+    (when stream-controller
       (unless (can-send-p stream-controller data-length)
-        (error "Insufficient stream window for ~D bytes" data-length))
-      
-      ;; Consume window
-      (consume-send-window conn-controller data-length)
-      (consume-send-window stream-controller data-length)
-      
-      ;; Send frame
-      (let ((frame (make-data-frame stream-id data-bytes)))
-        (connection-send-frame connection frame)))))
-
-;;;; Window Update Helpers
-
-(defun send-window-update (connection stream-id increment)
-  "Send a WINDOW_UPDATE frame"
-  (let ((frame (make-window-update-frame stream-id increment)))
-    (connection-send-frame connection frame)))
-
-(defun signal-protocol-error (connection error-code message)
-  "Signal a protocol error"
-  (format t "Protocol error: ~A~%" message)
-  ;; Send GOAWAY frame
-  (let ((frame (make-goaway-frame 
-                (connection-last-stream-id connection)
-                error-code
-                message)))
-    (connection-send-frame connection frame))
-  ;; Close connection
-  (connection-close connection))
-
-;;;; Integration with Connection
-
-(defun connection-flow-controller (connection)
-  "Get or create connection flow controller"
-  (or (http2-connection-flow-controller connection)
-      (setf (http2-connection-flow-controller connection)
-            (make-connection-flow-controller))))
-
-(defun stream-flow-controller (stream)
-  "Get or create stream flow controller"
-  (or (http2-stream-flow-controller stream)
-      (setf (http2-stream-flow-controller stream)
-            (make-stream-flow-controller 
-             (http2-connection-local-settings 
-              (http2-stream-connection stream))))))
-
-(defun get-stream (connection stream-id)
-  "Get stream by ID"
-  (gethash stream-id (http2-connection-streams connection)))
-
-(defun connection-last-stream-id (connection)
-  "Get last stream ID"
-  (http2-connection-last-stream-id connection))
-
-;;;; Export symbols
-
-(export '(make-connection-flow-controller
-          make-stream-flow-controller
-          flow-controller
-          flow-controller-p
-          can-send-p
-          handle-data-frame-flow-control
-          handle-window-update-frame
-          can-send-data-p
-          send-data-with-flow-control
-          +default-initial-window-size+
-          +max-window-size+))
+        (error "Insufficient stream window for ~D bytes" data-length)))
+    
+    ;; Consume window
+    (consume-send-window conn-controller data-length)
+    (when stream-controller
+      (consume-send-window stream-controller data-length))
+    
+    ;; Return the data to send
+    data-bytes))

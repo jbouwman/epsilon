@@ -44,7 +44,10 @@
 
 (deftest test-http2-constants
   "Test HTTP/2 protocol constants"
-  (is-equal "PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n" http2::+http2-preface+)
+  (is-equal (format nil "PRI * HTTP/2.0~C~C~C~CSM~C~C~C~C" 
+                     #\Return #\Newline #\Return #\Newline
+                     #\Return #\Newline #\Return #\Newline)
+            http2::+http2-preface+)
   (is-not-null http2:+default-settings+)
   
   ;; Check default settings structure

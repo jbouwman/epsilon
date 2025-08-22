@@ -2,7 +2,87 @@
 ;;;;
 ;;;; Implements HTTP/2 frame parsing and serialization according to RFC 7540
 
-(in-package :epsilon.http2)
+(defpackage :epsilon.http2.frames
+  (:use :cl)
+  (:local-nicknames
+   (#:str #:epsilon.string)
+   (#:hpack #:epsilon.http2.hpack))
+  (:export
+   ;; Frame types
+   #:+frame-data+
+   #:+frame-headers+
+   #:+frame-priority+
+   #:+frame-rst-stream+
+   #:+frame-settings+
+   #:+frame-push-promise+
+   #:+frame-ping+
+   #:+frame-goaway+
+   #:+frame-window-update+
+   #:+frame-continuation+
+   
+   ;; Frame flags
+   #:+flag-end-stream+
+   #:+flag-end-headers+
+   #:+flag-padded+
+   #:+flag-priority+
+   #:+flag-ack+
+   
+   ;; Settings
+   #:+settings-header-table-size+
+   #:+settings-enable-push+
+   #:+settings-max-concurrent-streams+
+   #:+settings-initial-window-size+
+   #:+settings-max-frame-size+
+   #:+settings-max-header-list-size+
+   
+   ;; Error codes
+   #:+error-no-error+
+   #:+error-protocol-error+
+   #:+error-internal-error+
+   #:+error-flow-control-error+
+   #:+error-settings-timeout+
+   #:+error-stream-closed+
+   #:+error-frame-size-error+
+   #:+error-refused-stream+
+   #:+error-cancel+
+   #:+error-compression-error+
+   #:+error-connect-error+
+   #:+error-enhance-your-calm+
+   #:+error-inadequate-security+
+   #:+error-http-1-1-required+
+   
+   ;; Frame structure
+   #:http2-frame
+   #:make-http2-frame
+   #:http2-frame-p
+   #:http2-frame-length
+   #:http2-frame-type
+   #:http2-frame-flags
+   #:http2-frame-stream-id
+   #:http2-frame-payload
+   
+   ;; Frame I/O
+   #:read-frame
+   #:write-frame
+   #:read-frame-header
+   #:write-frame-header
+   
+   ;; Frame creation
+   #:make-settings-frame
+   #:make-ping-frame
+   #:make-goaway-frame
+   #:make-window-update-frame
+   #:make-rst-stream-frame
+   #:make-data-frame
+   #:make-headers-frame
+   
+   ;; Header processing
+   #:decode-headers-from-payload
+   
+   ;; Validation
+   #:valid-frame-p))
+
+(in-package :epsilon.http2.frames)
 
 ;;;; Frame Types (RFC 7540 Section 6)
 
@@ -162,7 +242,7 @@
 (defun make-goaway-frame (last-stream-id error-code &optional debug-data)
   "Create a GOAWAY frame"
   (let* ((debug-bytes (when debug-data
-                        (epsilon.string:string-to-octets debug-data)))
+                        (str:string-to-octets debug-data)))
          (payload-size (+ 8 (if debug-bytes (length debug-bytes) 0)))
          (payload (make-array payload-size :element-type '(unsigned-byte 8))))
     ;; Last Stream ID (31 bits with reserved bit)
@@ -215,7 +295,7 @@
 (defun make-data-frame (stream-id data &key end-stream padded)
   "Create a DATA frame"
   (let* ((data-bytes (if (stringp data)
-                        (epsilon.string:string-to-octets data)
+                        (str:string-to-octets data)
                         data))
          (flags (logior (if end-stream +flag-end-stream+ 0)
                        (if padded +flag-padded+ 0)))
@@ -240,8 +320,8 @@
 (defun make-headers-frame (stream-id headers &key end-stream end-headers priority)
   "Create a HEADERS frame with HPACK encoded headers"
   ;; Use HPACK encoder
-  (let* ((encoder (create-encoder))
-         (header-block (encode-headers encoder headers))
+  (let* ((encoder (hpack:create-encoder))
+         (header-block (hpack:encode-headers encoder headers))
          (flags (logior (if end-stream +flag-end-stream+ 0)
                        (if end-headers +flag-end-headers+ 0)
                        (if priority +flag-priority+ 0)))
@@ -254,8 +334,8 @@
 
 (defun decode-headers-from-payload (payload)
   "Decode headers from frame payload using HPACK"
-  (let ((decoder (create-decoder)))
-    (decode-headers decoder payload)))
+  (let ((decoder (hpack:create-decoder)))
+    (hpack:decode-headers decoder payload)))
 
 ;;;; Frame Validation
 
@@ -266,78 +346,3 @@
        (or (zerop (http2-frame-stream-id frame))  ; Connection frames
            (plusp (http2-frame-stream-id frame))))) ; Stream frames
 
-;;;; Export symbols
-
-(export '(;; Frame types
-          +frame-data+
-          +frame-headers+
-          +frame-priority+
-          +frame-rst-stream+
-          +frame-settings+
-          +frame-push-promise+
-          +frame-ping+
-          +frame-goaway+
-          +frame-window-update+
-          +frame-continuation+
-          
-          ;; Frame flags
-          +flag-end-stream+
-          +flag-end-headers+
-          +flag-padded+
-          +flag-priority+
-          +flag-ack+
-          
-          ;; Settings
-          +settings-header-table-size+
-          +settings-enable-push+
-          +settings-max-concurrent-streams+
-          +settings-initial-window-size+
-          +settings-max-frame-size+
-          +settings-max-header-list-size+
-          
-          ;; Error codes
-          +error-no-error+
-          +error-protocol-error+
-          +error-internal-error+
-          +error-flow-control-error+
-          +error-settings-timeout+
-          +error-stream-closed+
-          +error-frame-size-error+
-          +error-refused-stream+
-          +error-cancel+
-          +error-compression-error+
-          +error-connect-error+
-          +error-enhance-your-calm+
-          +error-inadequate-security+
-          +error-http-1-1-required+
-          
-          ;; Frame structure
-          http2-frame
-          make-http2-frame
-          http2-frame-p
-          http2-frame-length
-          http2-frame-type
-          http2-frame-flags
-          http2-frame-stream-id
-          http2-frame-payload
-          
-          ;; Frame I/O
-          read-frame
-          write-frame
-          read-frame-header
-          write-frame-header
-          
-          ;; Frame creation
-          make-settings-frame
-          make-ping-frame
-          make-goaway-frame
-          make-window-update-frame
-          make-rst-stream-frame
-          make-data-frame
-          make-headers-frame
-          
-          ;; Header processing
-          decode-headers-from-payload
-          
-          ;; Validation
-          valid-frame-p))
