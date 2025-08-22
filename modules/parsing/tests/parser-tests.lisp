@@ -569,6 +569,132 @@
   (let ((result (parser:parse (parser:eof) (make-test-input '()))))
     (is (parse-success-p result))))
 
+;;; Position Management and Peek Tests
+
+(deftest peek-combinator-test
+    "Test peek combinator for looking ahead without consuming"
+  (let ((input (make-test-input '(#\a #\b #\c #\d))))
+    ;; Test single peek
+    (let ((result (parser:parse (parser:peek) input)))
+      (is (parse-success-p result))
+      (is-equal (success-value result) #\a)
+      ;; Verify position not changed
+      (is-= (parser:parse-state-position (parser:success-state result)) 0)
+      (is-not (parser:parse-state-consumed-p (parser:success-state result))))
+    
+    ;; Test peek on empty input
+    (let ((result (parser:parse (parser:peek) (make-test-input '()))))
+      (is (parse-failure-p result))
+      (is (search "end of input" (failure-message result))))))
+
+(deftest peek-n-combinator-test
+    "Test peek-n combinator for looking ahead at multiple tokens"
+  (let ((input (make-test-input '(#\h #\e #\l #\l #\o))))
+    ;; Test peeking at 3 characters
+    (let ((result (parser:parse (parser:peek-n 3) input)))
+      (is (parse-success-p result))
+      (is-equal (success-value result) '(#\h #\e #\l))
+      ;; Verify position not changed
+      (is-= (parser:parse-state-position (parser:success-state result)) 0)
+      (is-not (parser:parse-state-consumed-p (parser:success-state result))))
+    
+    ;; Test peeking more than available
+    (let ((result (parser:parse (parser:peek-n 10) input)))
+      (is (parse-failure-p result))
+      (is (search "Expected 10 tokens" (failure-message result))))))
+
+(deftest save-restore-position-test
+    "Test save and restore position functionality"
+  (let ((input (make-test-input '(1 2 3 4 5))))
+    ;; Create initial state
+    (let* ((state (parser:make-parse-state 
+                   :position 0 
+                   :remaining input
+                   :context '()
+                   :consumed-p nil))
+           ;; Save initial position
+           (saved-state (parser:save-position state)))
+      
+      ;; Verify saved state matches original
+      (is-= (parser:parse-state-position saved-state) 0)
+      (is-equal (seq:first (parser:parse-state-remaining saved-state)) 1)
+      
+      ;; Advance the state manually
+      (let* ((advanced-state (parser:make-parse-state 
+                              :position 2
+                              :remaining (seq:drop 2 input)
+                              :context '()
+                              :consumed-p t))
+             ;; Now restore from saved
+             (restore-parser (parser:restore-position saved-state))
+             (result (funcall restore-parser advanced-state)))
+        
+        ;; Should return to saved position
+        (is (parse-success-p result))
+        (is-= (parser:parse-state-position (parser:success-state result)) 0)))))
+
+(deftest with-saved-position-test
+    "Test with-saved-position macro for backtracking"
+  (let ((input (make-test-input '(:try :this :first :or :that))))
+    ;; Parser that tries two alternatives with backtracking
+    (let ((backtrack-parser
+           (parser:with-saved-position (checkpoint)
+             (parser:choice
+              ;; First try this sequence
+              (parser:sequence (parser:token :try) 
+                               (parser:token :this) 
+                               (parser:token :wrong))
+              ;; On failure, restore and try different approach
+              (parser:bind ((_ (funcall (parser:restore-position checkpoint))))
+                (parser:sequence (parser:token :try) 
+                                 (parser:token :this) 
+                                 (parser:token :first)))))))
+      
+      (let ((result (parser:parse backtrack-parser input)))
+        (is (parse-success-p result))
+        (is-equal (success-value result) '(:try :this :first))))))
+
+(deftest peek-with-combinators-test
+    "Test peek integration with other parser combinators"
+  (let ((input (make-test-input '(#\+ 1 2 3))))
+    ;; Peek at operator then parse expression
+    (let ((peek-expr
+           (parser:bind ((op (parser:peek))  ; Peek at operator
+                         (_ (parser:token #\+))  ; Consume it
+                         (nums (parser:many1 (parser:satisfy #'numberp))))
+             (parser:return (list :op op :values nums)))))
+      
+      (let ((result (parser:parse peek-expr input)))
+        (is (parse-success-p result))
+        (is-equal (parser:assoc :op (success-value result)) #\+)
+        (is-equal (parser:assoc :values (success-value result)) '(1 2 3))))))
+
+(deftest multiple-peek-test
+    "Test multiple consecutive peeks return same value"
+  (let ((input (make-test-input '(:a :b :c))))
+    (let ((multi-peek
+           (parser:bind ((p1 (parser:peek))
+                         (p2 (parser:peek))  ; Should be same as p1
+                         (p3 (parser:peek))  ; Should be same as p1
+                         (actual (parser:token :a)))
+             (parser:return (list p1 p2 p3 actual)))))
+      
+      (let ((result (parser:parse multi-peek input)))
+        (is (parse-success-p result))
+        (let ((values (success-value result)))
+          (is-eq (first values) :a)
+          (is-eq (second values) :a)
+          (is-eq (third values) :a)
+          (is-eq (fourth values) :a))))))
+
+(deftest peek-n-partial-test
+    "Test peek-n behavior with partial availability"
+  (let ((input (make-test-input '(1 2))))
+    ;; Request 5 but only 2 available
+    (let ((result (parser:parse (parser:peek-n 5) input)))
+      (is (parse-failure-p result))
+      (is (search "only 2 available" (failure-message result))))))
+
 ;;; Integration Tests
 
 (deftest parser-state-preservation-test
