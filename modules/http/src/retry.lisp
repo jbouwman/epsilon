@@ -5,6 +5,7 @@
 (defpackage :epsilon.http.retry
   (:use :cl)
   (:local-nicknames
+   (#:http #:epsilon.http)
    (#:errors #:epsilon.http.errors)
    (#:thread #:epsilon.sys.thread)
    (#:time #:epsilon.time))
@@ -294,14 +295,14 @@
   (let ((request-fn (lambda ()
                       (if circuit-breaker
                           (with-circuit-breaker (circuit-breaker)
-                            (epsilon.http:request url 
-                                                :method method
-                                                :headers headers
-                                                :body body))
-                          (epsilon.http:request url 
-                                              :method method
-                                              :headers headers
-                                              :body body)))))
+                            (http:request url 
+                                          :method method
+                                          :headers headers
+                                          :body body))
+                          (http:request url 
+                                        :method method
+                                        :headers headers
+                                        :body body)))))
     (with-retry (:policy retry-policy
                  :on-retry (lambda (attempt error delay)
                             (format *error-output* 
