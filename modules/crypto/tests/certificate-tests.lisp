@@ -13,11 +13,12 @@
 
 ;;;; Test Fixtures
 
-(defparameter *test-cert-dir* "/tmp/epsilon-cert-tests/")
+(defparameter *test-cert-dir* nil)
 
 (fixture certificate-test-setup ()
   (:setup
-   ;; Create test directory
+   ;; Create unique test directory  
+   (setf *test-cert-dir* (format nil "/tmp/epsilon-cert-~A/" (get-universal-time)))
    (ensure-directories-exist *test-cert-dir*))
   (:teardown
    ;; Clean up test certificates

@@ -145,10 +145,12 @@
     
     ;; Load CA certificates if provided
     (when ca-file
-      ;; Pass nil for ca-path parameter (directories are not supported)
-      (when (zerop (epsilon.foreign:shared-call-unified ("SSL_CTX_load_verify_locations" "libssl")
-                                                        :int (:pointer :string :pointer)
-                                                        ctx ca-file (sb-sys:int-sap 0)))
+      ;; Use nil for ca-path parameter
+      (when (zerop (handler-case
+                       (ffi:%ssl-ctx-load-verify-locations ctx ca-file (sb-sys:int-sap 0))
+                     (error ()
+                       ;; Some OpenSSL versions may have issues with NULL path
+                       0)))
         (ffi:%ssl-ctx-free ctx)
         (error 'crypto-error :code (ffi:%err-get-error)
                :message (format nil "Failed to load CA certificates: ~A" ca-file)))
@@ -176,14 +178,12 @@
     (when alpn-protocols
       (epsilon.crypto.alpn:set-alpn-protocols ctx alpn-protocols :context-p t))
     
-    ;; Configure session caching
+    ;; Configure session caching  
     (when session-cache-p
-      ;; Try to set session cache mode, but don't fail if function isn't available
-      (handler-case
-          (ffi:%ssl-ctx-set-session-cache-mode ctx 2)  ; SSL_SESS_CACHE_SERVER
-        (error ()
-          ;; Function may not be available in all OpenSSL versions
-          nil)))
+      ;; Session caching is enabled by default in OpenSSL
+      ;; Just skip explicit configuration if function not available
+      (ignore-errors
+        (ffi:%ssl-ctx-set-session-cache-mode ctx 2)))  ; SSL_SESS_CACHE_SERVER
     
     (make-openssl-context :handle ctx
                           :server-p server-p

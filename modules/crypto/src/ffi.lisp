@@ -181,7 +181,45 @@
    ;; Error condition and accessors
    #:crypto-error
    #:crypto-error-code
-   #:crypto-error-string))
+   #:crypto-error-string
+   ;; X509 Certificate functions
+   #:%x509-new
+   #:%x509-free
+   #:%x509-set-version
+   #:%x509-set-serialnumber
+   #:%x509-set1-notbefore
+   #:%x509-set1-notafter
+   #:%x509-set-pubkey
+   #:%x509-set-issuer-name
+   #:%x509-set-subject-name
+   #:%x509-get-subject-name
+   #:%x509-get-issuer-name
+   #:%x509-get-pubkey
+   #:%x509-sign
+   #:%x509-verify
+   #:%x509-check-private-key
+   #:%x509-name-oneline
+   #:%x509-name-entry-create-by-txt
+   #:%x509-name-add-entry
+   #:%x509-name-entry-free
+   #:%x509-req-new
+   #:%x509-req-free
+   #:%x509-req-set-version
+   #:%x509-req-set-subject-name
+   #:%x509-req-set-pubkey
+   #:%x509-req-sign
+   #:%x509-req-get-subject-name
+   #:%x509-req-get-pubkey
+   #:%pem-write-bio-x509
+   #:%pem-read-bio-x509
+   #:%pem-write-bio-x509-req
+   #:%pem-read-bio-x509-req
+   #:%asn1-integer-new
+   #:%asn1-integer-free
+   #:%asn1-integer-set
+   #:%asn1-time-new
+   #:%asn1-time-free
+   #:%asn1-time-set-string))
 
 (in-package :epsilon.crypto.ffi)
 
@@ -648,16 +686,69 @@
   (name :pointer) (buf :pointer) (size :int)
   :documentation "Convert X509 name to string")
 
-(lib:defshared %x509-name-add-entry-by-txt "X509_NAME_add_entry_by_txt" "libcrypto" :int
-  (name :pointer) (field :string) (type :int) (bytes :string) (len :int) (loc :int) (set :int)
-  :documentation "Add entry to X509 name")
-
-(lib:defshared %x509-name-new "X509_NAME_new" "libcrypto" :pointer ()
-  :documentation "Create new X509 name")
+(lib:defshared %x509-name-new "X509_NAME_new" "libcrypto" :pointer
+  :documentation "Create new X509_NAME")
 
 (lib:defshared %x509-name-free "X509_NAME_free" "libcrypto" :void
   (name :pointer)
-  :documentation "Free X509 name")
+  :documentation "Free X509_NAME")
+
+(lib:defshared %x509-name-entry-create-by-txt "X509_NAME_ENTRY_create_by_txt" "libcrypto" :pointer
+  (ne :pointer) (field :string) (type :int) (bytes :string) (len :int)
+  :documentation "Create X509_NAME_ENTRY from text")
+
+(lib:defshared %x509-name-add-entry "X509_NAME_add_entry" "libcrypto" :int
+  (name :pointer) (ne :pointer) (loc :int) (set :int)
+  :documentation "Add entry to X509_NAME")
+
+(lib:defshared %x509-name-entry-free "X509_NAME_ENTRY_free" "libcrypto" :void
+  (ne :pointer)
+  :documentation "Free X509_NAME_ENTRY")
+
+;;;; X509_REQ (Certificate Request) Functions
+
+(lib:defshared %x509-req-new "X509_REQ_new" "libcrypto" :pointer
+  :documentation "Create new X509_REQ")
+
+(lib:defshared %x509-req-free "X509_REQ_free" "libcrypto" :void
+  (req :pointer)
+  :documentation "Free X509_REQ")
+
+(lib:defshared %x509-req-set-version "X509_REQ_set_version" "libcrypto" :int
+  (req :pointer) (version :long)
+  :documentation "Set certificate request version")
+
+(lib:defshared %x509-req-set-subject-name "X509_REQ_set_subject_name" "libcrypto" :int
+  (req :pointer) (name :pointer)
+  :documentation "Set certificate request subject name")
+
+(lib:defshared %x509-req-set-pubkey "X509_REQ_set_pubkey" "libcrypto" :int
+  (req :pointer) (pkey :pointer)
+  :documentation "Set certificate request public key")
+
+(lib:defshared %x509-req-sign "X509_REQ_sign" "libcrypto" :int
+  (req :pointer) (pkey :pointer) (md :pointer)
+  :documentation "Sign certificate request")
+
+(lib:defshared %x509-req-get-subject-name "X509_REQ_get_subject_name" "libcrypto" :pointer
+  (req :pointer)
+  :documentation "Get certificate request subject name")
+
+(lib:defshared %x509-req-get-pubkey "X509_REQ_get_pubkey" "libcrypto" :pointer
+  (req :pointer)
+  :documentation "Get certificate request public key")
+
+(lib:defshared %pem-write-bio-x509-req "PEM_write_bio_X509_REQ" "libcrypto" :int
+  (bio :pointer) (req :pointer)
+  :documentation "Write X509_REQ to BIO in PEM format")
+
+(lib:defshared %pem-read-bio-x509-req "PEM_read_bio_X509_REQ" "libcrypto" :pointer
+  (bio :pointer) (x :pointer) (cb :pointer) (u :pointer)
+  :documentation "Read X509_REQ from BIO in PEM format")
+
+(lib:defshared %x509-name-add-entry-by-txt "X509_NAME_add_entry_by_txt" "libcrypto" :int
+  (name :pointer) (field :string) (type :int) (bytes :string) (len :int) (loc :int) (set :int)
+  :documentation "Add entry to X509 name")
 
 (lib:defshared %x509-set-subject-name "X509_set_subject_name" "libcrypto" :int
   (x509 :pointer) (name :pointer)
@@ -733,9 +824,6 @@
   (bio :pointer) (x :pointer) (cb :pointer) (u :pointer)
   :documentation "Read CSR from BIO in PEM format")
 
-(lib:defshared %pem-write-bio-x509-req "PEM_write_bio_X509_REQ" "libcrypto" :int
-  (bio :pointer) (x :pointer)
-  :documentation "Write CSR to BIO in PEM format")
 
 ;; Random number generation
 (lib:defshared %rand-bytes "RAND_bytes" "libcrypto" :int

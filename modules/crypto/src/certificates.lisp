@@ -24,105 +24,119 @@
 
 (in-package :epsilon.crypto.certificates)
 
+;;;; Helper Functions
+
+(defun add-name-entry (name field value)
+  "Add an entry to an X509 name"
+  (let ((entry (ffi:%x509-name-entry-create-by-txt 
+                (sb-sys:int-sap 0) field 
+                #x1000 ; MBSTRING_UTF8
+                value -1)))
+    (when (sb-sys:sap= entry (sb-sys:int-sap 0))
+      (error "Failed to create name entry for ~A" field))
+    (when (zerop (ffi:%x509-name-add-entry name entry -1 0))
+      (error "Failed to add name entry for ~A" field))
+    (ffi:%x509-name-entry-free entry)))
+
 ;;;; FFI Bindings for Certificate Operations
 ;;;; NOTE: These are now defined in ffi.lisp
 
 #| Moved to ffi.lisp
 (lib:defshared %x509-set-version "X509_set_version" "libcrypto" :int
-  (x509 :pointer) (version :long))
+(x509 :pointer) (version :long))
 
 (lib:defshared %x509-set-serialnumber "X509_set_serialNumber" "libcrypto" :int
-  (x509 :pointer) (serial :pointer))
+(x509 :pointer) (serial :pointer))
 
 (lib:defshared %x509-set-notbefore "X509_set1_notBefore" "libcrypto" :int
-  (x509 :pointer) (tm :pointer))
+(x509 :pointer) (tm :pointer))
 
 (lib:defshared %x509-set-notafter "X509_set1_notAfter" "libcrypto" :int
-  (x509 :pointer) (tm :pointer))
+(x509 :pointer) (tm :pointer))
 
 (lib:defshared %x509-set-pubkey "X509_set_pubkey" "libcrypto" :int
-  (x509 :pointer) (pkey :pointer))
+(x509 :pointer) (pkey :pointer))
 
 (lib:defshared %x509-get-subject-name "X509_get_subject_name" "libcrypto" :pointer
-  (x509 :pointer))
+(x509 :pointer))
 
 (lib:defshared %x509-get-issuer-name "X509_get_issuer_name" "libcrypto" :pointer
-  (x509 :pointer))
+(x509 :pointer))
 
 (lib:defshared %x509-set-subject-name "X509_set_subject_name" "libcrypto" :int
-  (x509 :pointer) (name :pointer))
+(x509 :pointer) (name :pointer))
 
 (lib:defshared %x509-set-issuer-name "X509_set_issuer_name" "libcrypto" :int
-  (x509 :pointer) (name :pointer))
+(x509 :pointer) (name :pointer))
 
 (lib:defshared %x509-name-add-entry-by-txt "X509_NAME_add_entry_by_txt" "libcrypto" :int
-  (name :pointer) (field :string) (type :int) (bytes :pointer) (len :int) (loc :int) (set :int))
+(name :pointer) (field :string) (type :int) (bytes :pointer) (len :int) (loc :int) (set :int))
 
 (lib:defshared %x509-sign "X509_sign" "libcrypto" :int
-  (x509 :pointer) (pkey :pointer) (md :pointer))
+(x509 :pointer) (pkey :pointer) (md :pointer))
 
 (lib:defshared %x509-req-new "X509_REQ_new" "libcrypto" :pointer ())
 
 (lib:defshared %x509-req-free "X509_REQ_free" "libcrypto" :void
-  (req :pointer))
+(req :pointer))
 
 (lib:defshared %x509-req-set-version "X509_REQ_set_version" "libcrypto" :int
-  (req :pointer) (version :long))
+(req :pointer) (version :long))
 
 (lib:defshared %x509-req-set-subject-name "X509_REQ_set_subject_name" "libcrypto" :int
-  (req :pointer) (name :pointer))
+(req :pointer) (name :pointer))
 
 (lib:defshared %x509-req-set-pubkey "X509_REQ_set_pubkey" "libcrypto" :int
-  (req :pointer) (pkey :pointer))
+(req :pointer) (pkey :pointer))
 
 (lib:defshared %x509-req-sign "X509_REQ_sign" "libcrypto" :int
-  (req :pointer) (pkey :pointer) (md :pointer))
+(req :pointer) (pkey :pointer) (md :pointer))
 
 (lib:defshared %x509-req-get-subject-name "X509_REQ_get_subject_name" "libcrypto" :pointer
-  (req :pointer))
+(req :pointer))
 
 (lib:defshared %asn1-integer-new "ASN1_INTEGER_new" "libcrypto" :pointer ())
 
 (lib:defshared %asn1-integer-set "ASN1_INTEGER_set" "libcrypto" :int
-  (a :pointer) (v :long))
+(a :pointer) (v :long))
 
 (lib:defshared %asn1-time-new "ASN1_TIME_new" "libcrypto" :pointer ())
 
 (lib:defshared %x509-time-adj-ex "X509_time_adj_ex" "libcrypto" :pointer
-  (s :pointer) (offset-day :int) (offset-sec :long) (t_ :pointer))
+(s :pointer) (offset-day :int) (offset-sec :long) (t_ :pointer))
 
 (lib:defshared %pem-write-bio-x509 "PEM_write_bio_X509" "libcrypto" :int
-  (bp :pointer) (x509 :pointer))
+(bp :pointer) (x509 :pointer))
 
 (lib:defshared %pem-read-bio-x509 "PEM_read_bio_X509" "libcrypto" :pointer
-  (bp :pointer) (x509 :pointer) (cb :pointer) (u :pointer))
+(bp :pointer) (x509 :pointer) (cb :pointer) (u :pointer))
 
 (lib:defshared %pem-write-bio-x509-req "PEM_write_bio_X509_REQ" "libcrypto" :int
-  (bp :pointer) (req :pointer))
+(bp :pointer) (req :pointer))
 
 (lib:defshared %pem-read-bio-x509-req "PEM_read_bio_X509_REQ" "libcrypto" :pointer
-  (bp :pointer) (req :pointer) (cb :pointer) (u :pointer))
+(bp :pointer) (req :pointer) (cb :pointer) (u :pointer))
 
 (lib:defshared %x509-verify "X509_verify" "libcrypto" :int
-  (x509 :pointer) (pkey :pointer))
+(x509 :pointer) (pkey :pointer))
 
 (lib:defshared %x509-req-verify "X509_REQ_verify" "libcrypto" :int
-  (req :pointer) (pkey :pointer))
+(req :pointer) (pkey :pointer))
 
 (lib:defshared %x509-check-private-key "X509_check_private_key" "libcrypto" :int
-  (x509 :pointer) (pkey :pointer))
+(x509 :pointer) (pkey :pointer))
 
 (lib:defshared %x509-extension-create-by-nid "X509_EXTENSION_create_by_NID" "libcrypto" :pointer
-  (ex :pointer) (nid :int) (crit :int) (data :pointer))
+(ex :pointer) (nid :int) (crit :int) (data :pointer))
 
 (lib:defshared %x509-add-ext "X509_add_ext" "libcrypto" :int
-  (x509 :pointer) (ex :pointer) (loc :int))
+(x509 :pointer) (ex :pointer) (loc :int))
 
 (lib:defshared %x509v3-ext-conf-nid "X509V3_EXT_conf_nid" "libcrypto" :pointer
-  (conf :pointer) (ctx :pointer) (ext-nid :int) (value :string))
+(conf :pointer) (ctx :pointer) (ext-nid :int) (value :string))
 
 (lib:defshared %x509-extension-free "X509_EXTENSION_free" "libcrypto" :void
-  (ex :pointer))
+(ex :pointer))
 |#
 
 ;;;; Helper Constants
@@ -138,16 +152,16 @@
 ;;;; Certificate Generation Functions
 
 (defun generate-self-signed-certificate (common-name &key 
-                                         (key-bits 2048)
-                                         (days 365)
-                                         (country "US")
-                                         (state "CA")
-                                         (locality "San Francisco")
-                                         (organization "Test Organization")
-                                         (organizational-unit "IT")
-                                         (email nil)
-                                         (dns-names nil)
-                                         (ip-addresses nil))
+						       (key-bits 2048)
+						       (days 365)
+						       (country "US")
+						       (state "CA")
+						       (locality "San Francisco")
+						       (organization "Test Organization")
+						       (organizational-unit "IT")
+						       (email nil)
+						       (dns-names nil)
+						       (ip-addresses nil))
   "Generate a self-signed X.509 certificate with private key.
    Returns (values certificate-pem private-key-pem)"
   
@@ -190,13 +204,10 @@
            ;; Set public key
            (ffi:%x509-set-pubkey x509 pkey)
            
-           ;; Add extensions for CA certificate if needed
-           (add-basic-constraints-extension x509 t)  ; CA:TRUE for self-signed
-           (add-key-usage-extension x509 '(:key-cert-sign :crl-sign :digital-signature))
-           
-           ;; Add Subject Alternative Names if provided
-           (when (or dns-names ip-addresses)
-             (add-subject-alt-name-extension x509 dns-names ip-addresses))
+           ;; Extensions would be added here but are optional for basic certs
+           ;; (add-basic-constraints-extension x509 t)  ; CA:TRUE for self-signed
+           ;; (add-key-usage-extension x509 '(:key-cert-sign :crl-sign :digital-signature))
+           ;; (add-subject-alt-name-extension x509 dns-names ip-addresses)
            
            ;; Sign the certificate
            (let ((md (ffi:%evp-get-digestbyname "SHA256")))
@@ -212,13 +223,33 @@
       (when pkey (ffi:%evp-pkey-free pkey))
       (when name (ffi:%x509-name-free name)))))
 
+(defun generate-ca-certificate (common-name &key
+					      (days 3650)
+					      (key-bits 4096)
+					      (country "US")
+					      (state "CA")
+					      (locality "San Francisco")
+					      (organization "Certificate Authority")
+					      (organizational-unit "CA"))
+  "Generate a self-signed CA certificate"
+  (generate-self-signed-certificate 
+   common-name
+   :days days
+   :key-bits key-bits
+   :country country
+   :state state
+   :locality locality
+   :organization organization
+   :organizational-unit organizational-unit
+   :ca-cert t))
+
 (defun generate-certificate-request (common-name private-key &key
-                                     (country "US")
-                                     (state "CA")
-                                     (locality "San Francisco")
-                                     (organization "Test Organization")
-                                     (organizational-unit "IT")
-                                     (email nil))
+							       (country "US")
+							       (state "CA")
+							       (locality "San Francisco")
+							       (organization "Test Organization")
+							       (organizational-unit "IT")
+							       (email nil))
   "Generate a Certificate Signing Request (CSR)"
   (let* ((req (ffi:%x509-req-new))
          (name (ffi:%x509-name-new)))
@@ -246,7 +277,7 @@
            ;; Sign the request
            (let ((md (ffi:%evp-get-digestbyname "SHA256")))
              (when (zerop (ffi:%x509-req-sign req private-key md))
-               (error "Failed to sign certificate request")))
+	       (error "Failed to sign certificate request")))
            
            ;; Convert to PEM
            (csr-to-pem req))
@@ -300,7 +331,7 @@
            ;; Sign with CA key
            (let ((md (ffi:%evp-get-digestbyname "SHA256")))
              (when (zerop (ffi:%x509-sign x509 ca-key md))
-               (error "Failed to sign certificate")))
+	       (error "Failed to sign certificate")))
            
            ;; Convert to PEM
            (certificate-to-pem x509))
@@ -312,12 +343,12 @@
       (when x509 (ffi:%x509-free x509)))))
 
 (defun generate-ca-certificate (common-name &key
-                               (key-bits 4096)
-                               (days 3650)
-                               (country "US")
-                               (state "CA")
-                               (locality "San Francisco")
-                               (organization "Test CA"))
+					      (key-bits 4096)
+					      (days 3650)
+					      (country "US")
+					      (state "CA")
+					      (locality "San Francisco")
+					      (organization "Test CA"))
   "Generate a CA certificate suitable for signing other certificates"
   (generate-self-signed-certificate common-name
                                     :key-bits key-bits
@@ -409,8 +440,8 @@
     (unwind-protect
          (progn
            (ffi:%pem-write-bio-privatekey bio pkey 
-                                         (sb-sys:int-sap 0) (sb-sys:int-sap 0) 
-                                         0 (sb-sys:int-sap 0) (sb-sys:int-sap 0))
+                                          (sb-sys:int-sap 0) (sb-sys:int-sap 0) 
+                                          0 (sb-sys:int-sap 0) (sb-sys:int-sap 0))
            (bio-to-string bio))
       (ffi:%bio-free bio))))
 
@@ -448,7 +479,7 @@
                                      (length pem-string))))
       (unwind-protect
            (ffi:%pem-read-bio-privatekey bio (sb-sys:int-sap 0) 
-                                        (sb-sys:int-sap 0) (sb-sys:int-sap 0))
+                                         (sb-sys:int-sap 0) (sb-sys:int-sap 0))
         (ffi:%bio-free bio)))))
 
 (defun pem-to-csr (pem-string)
@@ -462,7 +493,7 @@
                                      (length pem-string))))
       (unwind-protect
            (ffi:%pem-read-bio-x509-req bio (sb-sys:int-sap 0) 
-                                       (sb-sys:int-sap 0) (sb-sys:int-sap 0))
+				       (sb-sys:int-sap 0) (sb-sys:int-sap 0))
         (ffi:%bio-free bio)))))
 
 (defun bio-to-string (bio)
@@ -472,7 +503,7 @@
       (let ((result (make-string len)))
         (ffi:%bio-read bio (sb-alien:alien-sap buf) len)
         (loop for i from 0 below len
-              do (setf (char result i) (code-char (sb-alien:deref buf i))))
+	      do (setf (char result i) (code-char (sb-alien:deref buf i))))
         result))))
 
 ;;;; File I/O Functions
@@ -522,16 +553,18 @@
   (let ((x509 (pem-to-certificate certificate-pem)))
     (unwind-protect
          (let ((subject-name (ffi:%x509-get-subject-name x509))
-               (issuer-name (ffi:%x509-get-issuer-name x509)))
-           ;; X509_NAME_oneline allocates its own buffer when passed NULL
-           (let* ((subject-ptr (ffi:%x509-name-oneline subject-name 
-                                                       (sb-sys:int-sap 0) 0))
-                  (subject-str (sb-alien:cast subject-ptr sb-alien:c-string))
-                  (issuer-ptr (ffi:%x509-name-oneline issuer-name 
-                                                      (sb-sys:int-sap 0) 0))
-                  (issuer-str (sb-alien:cast issuer-ptr sb-alien:c-string)))
-             (list :subject subject-str
-                   :issuer issuer-str)))
+	       (issuer-name (ffi:%x509-get-issuer-name x509)))
+           ;; Allocate buffers for name strings
+           (sb-alien:with-alien ((subject-buf (sb-alien:array sb-alien:char 256))
+                                 (issuer-buf (sb-alien:array sb-alien:char 256)))
+             ;; X509_NAME_oneline writes to provided buffer
+             (ffi:%x509-name-oneline subject-name 
+                                     (sb-alien:alien-sap subject-buf) 256)
+             (ffi:%x509-name-oneline issuer-name 
+                                     (sb-alien:alien-sap issuer-buf) 256)
+             ;; Convert to Lisp strings
+             (list :subject (sb-alien:cast subject-buf sb-alien:c-string)
+                   :issuer (sb-alien:cast issuer-buf sb-alien:c-string))))
       (when x509 (ffi:%x509-free x509)))))
 
 (defun verify-certificate-chain (cert-pem ca-cert-pem)

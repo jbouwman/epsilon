@@ -43,11 +43,11 @@
 
 (deftest test-http-connection-creation ()
   "Test HTTP connection structure"
-  (let ((key (pool:make-connection-key :host "test.com" :port 80))
-        (conn (pool:make-http-connection 
-               :key key
-               :created-at (get-universal-time)
-               :protocol :http/1.1)))
+  (let* ((key (pool:make-connection-key :host "test.com" :port 80))
+         (conn (pool:make-http-connection 
+                :key key
+                :created-at (get-universal-time)
+                :protocol :http/1.1)))
     
     (is (pool:http-connection-p conn))
     (is (pool:connection-key-equal (pool:http-connection-key conn) key))

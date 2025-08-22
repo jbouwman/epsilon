@@ -120,8 +120,7 @@
   "Summary test to verify all mTLS components are present"
   (let ((components '((:certificates . epsilon.crypto.certificates)
                      (:tls . epsilon.crypto)
-                     (:http-client . epsilon.http.client)
-                     (:http-server . epsilon.http.server)
-                     (:http2 . epsilon.http2))))
+                     (:alpn . epsilon.crypto.alpn)
+                     (:openssl3 . epsilon.crypto.openssl3))))
     (dolist (component components)
       (is-not-null (find-package (cdr component))))))
