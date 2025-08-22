@@ -22,9 +22,9 @@
    #:format-compilation-result
    #:compilation-result-to-plist
    
-   #:with-deep-source-tracking
-   #:compile-file-with-deep-tracking
-   #:compile-form-with-deep-tracking))
+   #:with-source-tracking
+   #:compile-file-with-tracking
+   #:compile-form-with-tracking))
 
 (in-package epsilon.compile)
 
@@ -322,7 +322,7 @@
 
 ;;; Deep tracking integration
 
-(defmacro with-deep-source-tracking ((&key (enable t) file) &body body)
+(defmacro with-source-tracking ((&key (enable t) file) &body body)
   "Execute body with deep source location tracking enabled.
    
    This enables real-time source location tracking during compilation,
@@ -333,7 +333,7 @@
   (declare (ignore enable file))
   `(progn ,@body))
 
-(defun compile-file-with-deep-tracking (input-file &rest args)
+(defun compile-file-with-tracking (input-file &rest args)
   "Compile a file with deep source location tracking enabled.
    
    This is like COMPILE-FILE-STRUCTURED but automatically enables
@@ -347,8 +347,8 @@
      A COMPILATION-RESULT object with enhanced source locations"
   (let ((deep-pkg (find-package :epsilon.compile-integration)))
     (if deep-pkg
-        (let ((install-fn (find-symbol "INSTALL-DEEP-COMPILER-HOOKS" deep-pkg))
-              (uninstall-fn (find-symbol "UNINSTALL-DEEP-COMPILER-HOOKS" deep-pkg))
+        (let ((install-fn (find-symbol "INSTALL-COMPILER-HOOKS" deep-pkg))
+              (uninstall-fn (find-symbol "UNINSTALL-COMPILER-HOOKS" deep-pkg))
               (build-cache-fn (find-symbol "BUILD-FORM-POSITION-CACHE" deep-pkg))
               (file-info-var (find-symbol "*CURRENT-FILE-INFO*" deep-pkg)))
           (unwind-protect
@@ -365,7 +365,7 @@
       ;; Fall back to regular compilation if deep integration unavailable
       (apply #'compile-file-structured input-file args))))
 
-(defun compile-form-with-deep-tracking (form &rest args)
+(defun compile-form-with-tracking (form &rest args)
   "Compile a form with deep source location tracking enabled.
    
    Arguments:
@@ -376,8 +376,8 @@
      A COMPILATION-RESULT object with enhanced source locations"
   (let ((deep-pkg (find-package :epsilon.compile-integration)))
     (if deep-pkg
-        (let ((install-fn (find-symbol "INSTALL-DEEP-COMPILER-HOOKS" deep-pkg))
-              (uninstall-fn (find-symbol "UNINSTALL-DEEP-COMPILER-HOOKS" deep-pkg)))
+        (let ((install-fn (find-symbol "INSTALL-COMPILER-HOOKS" deep-pkg))
+              (uninstall-fn (find-symbol "UNINSTALL-COMPILER-HOOKS" deep-pkg)))
           (unwind-protect
                (progn
                  ;; Install hooks for form compilation

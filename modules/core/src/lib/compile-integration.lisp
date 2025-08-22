@@ -15,9 +15,9 @@
    #:*current-compilation-location*
    #:*form-position-map*
    
-   #:install-deep-compiler-hooks
-   #:uninstall-deep-compiler-hooks
-   #:with-deep-source-tracking
+   #:install-compiler-hooks
+   #:uninstall-compiler-hooks
+   #:with-source-tracking
    
    #:get-real-time-source-location
    #:track-form-processing
@@ -223,7 +223,7 @@
 
 ;;; Hook installation and management
 
-(defun install-deep-compiler-hooks ()
+(defun install-compiler-hooks ()
   "Install deep hooks into SBCL's compilation system."
   (unless *original-process-toplevel-form*
     ;; Unlock SBCL packages to allow modification of internal functions
@@ -248,7 +248,7 @@
     
     (log:info "Deep SBCL compiler hooks installed")))
 
-(defun uninstall-deep-compiler-hooks ()
+(defun uninstall-compiler-hooks ()
   "Uninstall deep compiler hooks and restore original functions."
   (when *original-process-toplevel-form*
     ;; Unlock packages again in case they were re-locked
@@ -277,7 +277,7 @@
 
 ;;; High-level interface
 
-(defmacro with-deep-source-tracking ((&key (enable t) file) &body body)
+(defmacro with-source-tracking ((&key (enable t) file) &body body)
   "Execute body with deep source location tracking enabled."
   `(let ((*real-time-source-tracking* ,enable)
          (*current-compilation-location* nil)
@@ -286,10 +286,10 @@
      (unwind-protect
           (progn
             (when ,enable
-              (install-deep-compiler-hooks))
+              (install-compiler-hooks))
             ,@body)
        (when ,enable
-         (uninstall-deep-compiler-hooks)))))
+         (uninstall-compiler-hooks)))))
 
 (defun get-real-time-source-location ()
   "Get the current real-time source location during compilation."
