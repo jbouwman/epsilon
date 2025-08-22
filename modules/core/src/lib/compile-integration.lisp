@@ -4,7 +4,7 @@
 ;;;; real-time source location information during compilation, including
 ;;;; accurate line numbers and form offsets.
 
-(defpackage epsilon.compile-deep-integration
+(defpackage epsilon.compile-integration
   (:use cl)
   (:local-nicknames
    (api epsilon.compile-api)
@@ -15,9 +15,9 @@
    #:*current-compilation-location*
    #:*form-position-map*
    
-   #:install-deep-compiler-hooks
-   #:uninstall-deep-compiler-hooks
-   #:with-deep-source-tracking
+   #:install-compiler-hooks
+   #:uninstall-compiler-hooks
+   #:with-source-tracking
    
    #:get-real-time-source-location
    #:track-form-processing
@@ -37,13 +37,13 @@
    
    ;; Integration functions
    #:enhance-logging-with-compilation-context
-   #:initialize-deep-integration
+   #:initialize-integration
    
    ;; SBCL source path analysis
    #:extract-line-from-sbcl-source-path
    #:file-position-to-line-number))
 
-(in-package epsilon.compile-deep-integration)
+(in-package epsilon.compile-integration)
 
 ;;; Global state for real-time tracking
 
@@ -223,7 +223,7 @@
 
 ;;; Hook installation and management
 
-(defun install-deep-compiler-hooks ()
+(defun install-compiler-hooks ()
   "Install deep hooks into SBCL's compilation system."
   (unless *original-process-toplevel-form*
     ;; Unlock SBCL packages to allow modification of internal functions
@@ -248,7 +248,7 @@
     
     (log:info "Deep SBCL compiler hooks installed")))
 
-(defun uninstall-deep-compiler-hooks ()
+(defun uninstall-compiler-hooks ()
   "Uninstall deep compiler hooks and restore original functions."
   (when *original-process-toplevel-form*
     ;; Unlock packages again in case they were re-locked
@@ -277,7 +277,7 @@
 
 ;;; High-level interface
 
-(defmacro with-deep-source-tracking ((&key (enable t) file) &body body)
+(defmacro with-source-tracking ((&key (enable t) file) &body body)
   "Execute body with deep source location tracking enabled."
   `(let ((*real-time-source-tracking* ,enable)
          (*current-compilation-location* nil)
@@ -286,10 +286,10 @@
      (unwind-protect
           (progn
             (when ,enable
-              (install-deep-compiler-hooks))
+              (install-compiler-hooks))
             ,@body)
        (when ,enable
-         (uninstall-deep-compiler-hooks)))))
+         (uninstall-compiler-hooks)))))
 
 (defun get-real-time-source-location ()
   "Get the current real-time source location during compilation."
@@ -387,10 +387,10 @@
       "Enhanced source location capture using compilation context"
       `(let ((,file-var ,(or 
                           ;; Try real-time compilation tracking first
-                          '(when (and (boundp 'epsilon.compile-deep-integration::*current-compilation-location*)
-                                     epsilon.compile-deep-integration::*current-compilation-location*)
+                          '(when (and (boundp 'epsilon.compile-integration::*current-compilation-location*)
+                                     epsilon.compile-integration::*current-compilation-location*)
                             (epsilon.compile-api:source-location-file 
-                             epsilon.compile-deep-integration::*current-compilation-location*))
+                             epsilon.compile-integration::*current-compilation-location*))
                           ;; Fall back to SBCL state
                           '(when (and (boundp 'sb-c::*compile-file-pathname*)
                                      sb-c::*compile-file-pathname*)
@@ -401,20 +401,20 @@
                             (namestring sb-c::*load-pathname*))))
              (,line-var ,(or
                           ;; Try real-time compilation tracking first
-                          '(when (and (boundp 'epsilon.compile-deep-integration::*current-compilation-location*)
-                                     epsilon.compile-deep-integration::*current-compilation-location*)
+                          '(when (and (boundp 'epsilon.compile-integration::*current-compilation-location*)
+                                     epsilon.compile-integration::*current-compilation-location*)
                             (epsilon.compile-api:source-location-line
-                             epsilon.compile-deep-integration::*current-compilation-location*))
+                             epsilon.compile-integration::*current-compilation-location*))
                           ;; No fallback for line numbers yet
                           nil)))
         ,@body))))
 
 ;;; Initialization
 
-(defun initialize-deep-integration ()
+(defun initialize-integration ()
   "Initialize deep SBCL integration."
   (enhance-logging-with-compilation-context)
   (log:info "Deep SBCL integration initialized"))
 
 ;;; Automatic initialization
-(initialize-deep-integration)
+(initialize-integration)

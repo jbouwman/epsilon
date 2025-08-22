@@ -42,19 +42,6 @@
                       args)
                (error "Could not determine signature for ~A" ',c-name)))))))
 
-(defmacro defshared-smart (lisp-name c-name &optional library return-type arg-types)
-  "Define foreign function with smart signature handling"
-  (let ((function-designator (if library
-                                 (list c-name library)
-                                 c-name)))
-    (if (and return-type arg-types)
-        ;; Use provided signature
-        `(defun ,lisp-name (&rest args)
-           ,(format nil "FFI binding for ~A (~A ~A)" c-name return-type arg-types)
-           (apply #'shared-call-unified ',function-designator
-                  ',return-type ',arg-types args))
-        ;; Auto-discover signature
-        `(defshared-auto ,lisp-name ,c-name ,library))))
 
 ;;;; Enhanced function call interface
 
@@ -226,7 +213,12 @@
   `(progn
      ,@(mapcar (lambda (spec)
                  (destructuring-bind (lisp-name c-name &optional return-type arg-types) spec
-                   `(defshared-smart ,lisp-name ,c-name ,library-name ,return-type ,arg-types)))
+                   (if (and return-type arg-types)
+                       `(defun ,lisp-name (&rest args)
+                          ,(format nil "FFI binding for ~A (~A ~A)" c-name return-type arg-types)
+                          (apply #'shared-call-unified (list ',c-name ',library-name)
+                                 ',return-type ',arg-types args))
+                       `(defshared-auto ,lisp-name ,c-name ,library-name))))
                function-specs)))
 
 ;;;; Example usage and testing
@@ -252,44 +244,6 @@
   ;; Test performance
   (when (> (hash-table-count *call-statistics*) 0)
     (format t "Call statistics: ~A~%" (get-call-statistics))))
-
-;;;; Migration helpers
-
-(defmacro migrate-defshared (lisp-name c-name library return-type arg-types)
-  "Migrate old defshared to new smart version"
-  `(progn
-     ;; Emit deprecation warning
-     (warn "migrate-defshared is deprecated. Use defshared-smart instead.")
-     
-     ;; Create new smart definition
-     (defshared-smart ,lisp-name ,c-name ,library ,return-type ,arg-types)))
-
-(defun audit-ffi-usage ()
-  "Audit current FFI usage and suggest improvements"
-  (format t "FFI Usage Audit:~%")
-  
-  ;; Check libffi availability
-  (format t "  libffi available: ~A~%" (and (boundp '*libffi-library*) *libffi-library* t))
-  (format t "  libffi for calls: ~A~%" (libffi-available-for-calls-p))
-  
-  ;; Check signature database
-  (when (find-package :epsilon.clang.signatures)
-    (let ((db-symbol (find-symbol "*SIGNATURE-DATABASE*" :epsilon.clang.signatures)))
-      (when db-symbol
-        (format t "  Cached signatures: ~D~%" 
-                (hash-table-count (symbol-value db-symbol))))))
-  
-  ;; Check call statistics
-  (format t "  Tracked calls: ~D~%" (hash-table-count *call-statistics*))
-  
-  ;; Suggestions
-  (format t "  Suggestions:~%")
-  (unless (and (boundp '*libffi-library*) *libffi-library*)
-    (format t "    - Install libffi for better performance~%"))
-  (unless *track-call-performance*
-    (format t "    - Enable call tracking for optimization~%"))
-  (when (< (hash-table-count *call-statistics*) 10)
-    (format t "    - Consider preloading common signatures~%")))
 
 ;;;; Initialize smart FFI system
 

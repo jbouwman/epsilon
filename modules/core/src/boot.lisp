@@ -29,7 +29,7 @@
     "lib/compile-location"
     "lib/compile-hooks"
     "lib/compile"
-    "lib/compile-deep-integration"
+    "lib/compile-integration"
     "loader"
     "main"))
 
