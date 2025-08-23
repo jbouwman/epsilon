@@ -1,12 +1,7 @@
-;;;; Unit Tests for Cache System
-;;;;
-;;;; Comprehensive test suite for the caching utilities including
-;;;; timed cache, LRU cache, and memoization features.
-
 (defpackage epsilon.cache.tests
   (:use cl epsilon.test)
   (:local-nicknames
-   (cache epsilon.cache-utils)))
+   (cache epsilon.cache)))
 
 (in-package epsilon.cache.tests)
 
@@ -250,91 +245,6 @@
     (is-eq nil (cache:lru-get c "key1"))
     (is-eq nil (cache:lru-get c "key2"))
     (is-eq nil (cache:lru-get c "key3"))))
-
-;;; Memoization Tests
-
-(deftest test-memoization-basic
-  "Test basic function memoization"
-  (let ((call-count 0))
-    (defun test-expensive-function (x)
-      (incf call-count)
-      (* x x))
-    
-    ;; Memoize the function
-    (cache:memoize test-expensive-function)
-    
-    ;; First call should execute
-    (setf call-count 0)
-    (is-= 4 (test-expensive-function 2))
-    (is-= 1 call-count)
-    
-    ;; Second call with same arg should use cache
-    (is-= 4 (test-expensive-function 2))
-    (is-= 1 call-count)
-    
-    ;; Different arg should execute
-    (is-= 9 (test-expensive-function 3))
-    (is-= 2 call-count)
-    
-    ;; Unmemoize
-    (cache:unmemoize 'test-expensive-function)
-    
-    ;; Now calls should always execute
-    (is-= 4 (test-expensive-function 2))
-    (is-= 3 call-count)))
-
-(deftest test-memoization-clear
-  "Test clearing memoized values"
-  (let ((call-count 0))
-    (defun test-clearable-function (x)
-      (incf call-count)
-      (+ x 10))
-    
-    (cache:memoize test-clearable-function)
-    
-    ;; Cache some values
-    (setf call-count 0)
-    (is-= 15 (test-clearable-function 5))
-    (is-= 20 (test-clearable-function 10))
-    (is-= 2 call-count)
-    
-    ;; Use cached values
-    (is-= 15 (test-clearable-function 5))
-    (is-= 20 (test-clearable-function 10))
-    (is-= 2 call-count)
-    
-    ;; Clear memoization
-    (cache:clear-memoization 'test-clearable-function)
-    
-    ;; Should execute again
-    (is-= 15 (test-clearable-function 5))
-    (is-= 3 call-count)
-    
-    (cache:unmemoize 'test-clearable-function)))
-
-(deftest test-with-memoization-macro
-  "Test temporary memoization with macro"
-  (let ((call-count 0))
-    (defun test-temp-memoized (x)
-      (incf call-count)
-      (* x 2))
-    
-    ;; Use temporary memoization
-    (cache:with-memoization (test-temp-memoized)
-      (setf call-count 0)
-      (is-= 10 (test-temp-memoized 5))
-      (is-= 1 call-count)
-      
-      ;; Should use cache within the scope
-      (is-= 10 (test-temp-memoized 5))
-      (is-= 1 call-count)
-      
-      (is-= 20 (test-temp-memoized 10))
-      (is-= 2 call-count))
-    
-    ;; Outside scope, should not be memoized
-    (is-= 10 (test-temp-memoized 5))
-    (is-= 3 call-count)))
 
 ;;; Cache Statistics Tests
 

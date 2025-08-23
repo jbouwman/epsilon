@@ -1,9 +1,6 @@
-;;;; Caching Utilities
-;;;;
-;;;; This module provides common caching patterns and utilities for
-;;;; efficient data storage and retrieval across modules.
+;;;; This module provides common caching patterns and utilities.
 
-(defpackage epsilon.cache-utils
+(defpackage epsilon.cache
   (:use cl)
   (:local-nicknames
    (map epsilon.map))
@@ -42,19 +39,13 @@
    #:lru-remove
    #:lru-clear
    
-   ;; Memoization utilities
-   #:memoize
-   #:unmemoize
-   #:clear-memoization
-   #:with-memoization
-   
    ;; Cache statistics
    #:cache-stats
    #:cache-hits
    #:cache-misses
    #:cache-hit-rate))
 
-(in-package epsilon.cache-utils)
+(in-package epsilon.cache)
 
 ;;; Timed cache with TTL support
 
@@ -249,86 +240,6 @@
   (setf (lru-cache-size cache) 0)
   (setf (lru-node-next (lru-cache-head cache)) (lru-cache-tail cache))
   (setf (lru-node-prev (lru-cache-tail cache)) (lru-cache-head cache)))
-
-;;; Memoization utilities
-
-(defvar *memoization-tables* (make-hash-table :test 'eq)
-  "Global registry of memoization tables for functions")
-
-(defmacro memoize (function-name &key (test 'equal) (cache-type :hash))
-  "Memoize a function"
-  `(progn
-     (unless (gethash ',function-name *memoization-tables*)
-       (let ((original-fn (symbol-function ',function-name))
-             (cache ,(case cache-type
-                       (:hash `(make-hash-table :test ',test))
-                       (:timed `(make-timed-cache))
-                       (:lru `(make-lru-cache))
-                       (t `(make-hash-table :test ',test)))))
-         (setf (gethash ',function-name *memoization-tables*) 
-               (list original-fn cache))
-         (setf (symbol-function ',function-name)
-               (lambda (&rest args)
-                 ,(case cache-type
-                    (:timed
-                     `(let ((cached (cache-get cache args :not-found)))
-                        (if (eq cached :not-found)
-                            (let ((result (apply original-fn args)))
-                              (cache-put cache args result)
-                              result)
-                            cached)))
-                    (:lru
-                     `(let ((cached (lru-get cache args :not-found)))
-                        (if (eq cached :not-found)
-                            (let ((result (apply original-fn args)))
-                              (lru-put cache args result)
-                              result)
-                            cached)))
-                    (t
-                     `(let ((cached (gethash args cache :not-found)))
-                        (if (eq cached :not-found)
-                            (let ((result (apply original-fn args)))
-                              (setf (gethash args cache) result)
-                              result)
-                            cached))))))))
-     ',function-name))
-
-(defun unmemoize (function-name)
-  "Remove memoization from a function"
-  (let ((entry (gethash function-name *memoization-tables*)))
-    (when entry
-      (setf (symbol-function function-name) (first entry))
-      (remhash function-name *memoization-tables*)
-      function-name)))
-
-(defun clear-memoization (function-name)
-  "Clear memoized values for a function"
-  (let ((entry (gethash function-name *memoization-tables*)))
-    (when entry
-      (let ((cache (second entry)))
-        (typecase cache
-          (hash-table (clrhash cache))
-          (timed-cache (cache-clear cache))
-          (lru-cache (lru-clear cache)))))))
-
-(defmacro with-memoization (function-names &body body)
-  "Execute body with temporary memoization of specified functions"
-  (let ((original-functions (gensym "ORIG")))
-    `(let ((,original-functions 
-            (loop for fn in ',function-names
-                  collect (cons fn (when (fboundp fn)
-                                     (symbol-function fn))))))
-       (unwind-protect
-            (progn
-              ,@(loop for fn in function-names
-                      collect `(memoize ,fn))
-              ,@body)
-         ;; Restore original functions
-         (loop for (fn . orig-fn) in ,original-functions
-               do (if orig-fn
-                      (setf (symbol-function fn) orig-fn)
-                      (fmakunbound fn))
-                  (remhash fn *memoization-tables*))))))
 
 ;;; Convenience macro for temporary cache usage
 
