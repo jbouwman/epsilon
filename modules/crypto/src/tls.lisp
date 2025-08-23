@@ -77,7 +77,7 @@
                                     ca-file (verify-mode +ssl-verify-peer+)
                                     require-client-cert verify-depth
                                     alpn-protocols session-cache-p)
-  "Create an OpenSSL-backed TLS context with comprehensive security configuration.
+  "Create an OpenSSL-backed TLS context with  security configuration.
    
    Creates a low-level OpenSSL SSL_CTX for advanced TLS operations including
    mutual authentication, certificate validation, and cipher suite control.

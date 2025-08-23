@@ -1674,7 +1674,7 @@
      (,(intern (format nil "INITIALIZE-~A" (string-upcase library-name))))))
 
 (defmacro with-error-handling (&body body)
-  "Execute FFI calls with comprehensive error handling"
+  "Execute FFI calls with  error handling"
   `(handler-case
        (progn ,@body)
      (error (e)
@@ -1711,7 +1711,7 @@
 ;;;; System status and diagnostics
 
 (defun ffi-system-status ()
-  "Display comprehensive FFI system status"
+  "Display  FFI system status"
   (format t "~%Epsilon FFI System Status~%")
   (format t "=========================~%~%")
   

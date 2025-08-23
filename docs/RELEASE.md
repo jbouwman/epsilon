@@ -208,7 +208,7 @@ Version management helper:
 
 ### `scripts/test.sh`
 
-Comprehensive test runner:
+ test runner:
 
 ```bash
 # Run all tests (required before release)

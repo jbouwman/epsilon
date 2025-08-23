@@ -1,4 +1,4 @@
-;;;; Comprehensive tests for epsilon.parser
+;;;;  tests for epsilon.parser
 
 (defpackage epsilon.parser.tests
   (:use cl epsilon.test)

@@ -8,7 +8,7 @@ The Epsilon parser combinator library offers:
 
 - **Monadic parser combinators** with clean compositional semantics
 - **Lazy sequence integration** for efficient input handling
-- **Comprehensive error reporting** with context tracking
+- ** error reporting** with context tracking
 - **Backtracking support** with `try` combinator
 - **Rich combinator library** for common parsing patterns
 - **Left-recursive parser support** via `chainl1`

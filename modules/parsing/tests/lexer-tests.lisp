@@ -1,4 +1,4 @@
-;;;; Comprehensive tests for epsilon.lexer
+;;;;  tests for epsilon.lexer
 
 (defpackage epsilon.lexer.tests
   (:use cl epsilon.test)

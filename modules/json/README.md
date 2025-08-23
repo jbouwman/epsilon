@@ -1,6 +1,6 @@
 # Epsilon JSON Package
 
-A comprehensive JSON parsing and encoding library built on parser combinators, providing high-performance JSON processing with detailed error reporting and full Unicode support.
+A  JSON parsing and encoding library built on parser combinators, providing high-performance JSON processing with detailed error reporting and full Unicode support.
 
 ## Overview
 
@@ -423,7 +423,7 @@ For large JSON documents:
 
 ### Test Data
 
-The package includes comprehensive test data:
+The package includes  test data:
 - `simple-object.json` - Basic object structure
 - `simple-array.json` - Array with mixed types  
 - `nested-object.json` - Complex nested structures

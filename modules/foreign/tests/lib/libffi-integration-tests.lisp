@@ -1,4 +1,4 @@
-;;;; libffi-integration-tests.lisp - Comprehensive tests for libffi callback integration
+;;;; libffi-integration-tests.lisp -  tests for libffi callback integration
 ;;;;
 ;;;; These tests verify the libffi C extension works correctly and integrates
 ;;;; properly with the existing Epsilon FFI callback infrastructure.

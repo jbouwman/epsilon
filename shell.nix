@@ -7,7 +7,6 @@ pkgs.mkShell {
     nodePackages.npm
     clang
     libffi
-    h2spec
     openssl
     ripgrep
     pkg-config

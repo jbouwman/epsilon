@@ -153,7 +153,7 @@ Available RPC functions (called automatically by the Emacs mode):
 
 ## Testing the Mode
 
-The mode includes comprehensive automated tests using ERT (Emacs Lisp Regression Testing):
+The mode includes  automated tests using ERT (Emacs Lisp Regression Testing):
 
 ```bash
 # Run tests from command line

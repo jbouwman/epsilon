@@ -1,6 +1,6 @@
 ;;;; Key Generation Test Suite for epsilon.crypto
 ;;;;
-;;;; Comprehensive tests for RSA, EC, and Ed25519 key generation
+;;;;  tests for RSA, EC, and Ed25519 key generation
 
 (defpackage :epsilon.crypto.key-tests
   (:use :cl :epsilon.test)

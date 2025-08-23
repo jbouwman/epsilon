@@ -83,7 +83,7 @@ Epsilon has a functional testing framework with test definition, execution, and 
 
 ### Overview
 
-The epsilon test framework provides a comprehensive fixture system for managing test setup and teardown, similar to frameworks like JUnit or pytest.
+The epsilon test framework provides a  fixture system for managing test setup and teardown, similar to frameworks like JUnit or pytest.
 
 ### Defining Fixtures
 

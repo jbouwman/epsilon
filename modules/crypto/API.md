@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `epsilon.crypto` module provides comprehensive cryptographic functionality including:
+The `epsilon.crypto` module provides  cryptographic functionality including:
 - Public key cryptography (RSA, EC, Ed25519)
 - TLS/SSL client and server operations
 - X.509 certificate management
