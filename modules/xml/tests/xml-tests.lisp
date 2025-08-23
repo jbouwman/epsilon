@@ -1,4 +1,4 @@
-;;;; Comprehensive tests for epsilon.xml
+;;;;  tests for epsilon.xml
 
 (defpackage epsilon.xml.tests
   (:use cl epsilon.test)

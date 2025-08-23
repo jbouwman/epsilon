@@ -23,7 +23,7 @@ Epsilon Core contains 57+ source files organized into three main categories:
 
 ### String Processing
 
-- **`string`** - Comprehensive string operations including splitting, joining, case conversion
+- **`string`** -  string operations including splitting, joining, case conversion
 - **`char`** - Character classification and operations
 - **`binary`** - Binary data handling and conversion
 

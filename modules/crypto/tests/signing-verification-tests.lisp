@@ -1,6 +1,6 @@
 ;;;; Digital Signature and Verification Test Suite
 ;;;;
-;;;; Comprehensive tests for signing and verification operations
+;;;;  tests for signing and verification operations
 
 (defpackage :epsilon.crypto.signing-tests
   (:use :cl :epsilon.test)

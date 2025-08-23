@@ -1,6 +1,6 @@
 ;;;; Message Digest Test Suite
 ;;;;
-;;;; Comprehensive tests for cryptographic hash functions
+;;;;  tests for cryptographic hash functions
 
 (defpackage :epsilon.crypto.digest-tests
   (:use :cl :epsilon.test)

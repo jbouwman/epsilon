@@ -1,6 +1,6 @@
 # epsilon.http - HTTP Client and Server Library
 
-The `epsilon.http` package provides comprehensive HTTP client and server functionality for epsilon applications. It offers modern features including request/response objects, JSON support, URL parsing, and query string handling.
+The `epsilon.http` package provides  HTTP client and server functionality for epsilon applications. It offers modern features including request/response objects, JSON support, URL parsing, and query string handling.
 
 ## Architecture
 
@@ -265,7 +265,7 @@ The epsilon.http package integrates seamlessly with epsilon.json for JSON proces
 
 ## Testing
 
-The package includes a comprehensive test suite covering:
+The package includes a  test suite covering:
 - URL parsing with various formats
 - Request and response object creation
 - Query string parsing and URL decoding
@@ -290,4 +290,4 @@ The HTTP server is thread-safe and handles multiple concurrent requests using SB
 
 ## Examples
 
-See the `test-http.lisp` file in the epsilon root directory for comprehensive usage examples and working demonstrations of all major features.
+See the `test-http.lisp` file in the epsilon root directory for  usage examples and working demonstrations of all major features.

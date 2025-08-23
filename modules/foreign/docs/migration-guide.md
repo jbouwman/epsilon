@@ -146,7 +146,7 @@ epsilon.foreign handles common type conversions automatically:
 ## Testing the Migration
 
 1. Create parallel implementations (e.g., `epoll-v2.lisp`)
-2. Write comprehensive tests comparing old and new implementations
+2. Write  tests comparing old and new implementations
 3. Benchmark performance to ensure no regression
 4. Gradually replace usages of the old module
 

@@ -1,6 +1,6 @@
 # epsilon.foreign - Foreign Function Interface
 
-The `epsilon.foreign` module provides a comprehensive Foreign Function Interface (FFI) for Common Lisp, allowing seamless integration with C libraries and system calls.
+The `epsilon.foreign` module provides a  Foreign Function Interface (FFI) for Common Lisp, allowing seamless integration with C libraries and system calls.
 
 ## Overview
 
@@ -198,7 +198,7 @@ Benchmark results show competitive performance with SBCL's native alien interfac
 
 ## Error Handling
 
-The FFI provides comprehensive error handling:
+The FFI provides  error handling:
 
 ```lisp
 ;; Missing library

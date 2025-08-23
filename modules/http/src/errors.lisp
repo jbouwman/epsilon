@@ -1,6 +1,6 @@
 ;;;; HTTP Error Conditions
 ;;;;
-;;;; Comprehensive error handling hierarchy for HTTP operations
+;;;;  error handling hierarchy for HTTP operations
 
 (defpackage :epsilon.http.errors
   (:use :cl)

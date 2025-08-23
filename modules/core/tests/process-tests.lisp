@@ -1,6 +1,6 @@
 ;;;; Tests for epsilon.process enhancements
 ;;;;
-;;;; Comprehensive tests for the enhanced process execution functionality
+;;;;  tests for the enhanced process execution functionality
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (unless (find-package "EPSILON.TEST")

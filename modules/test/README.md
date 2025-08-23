@@ -1,6 +1,6 @@
 # Epsilon Test Framework
 
-A comprehensive testing framework for Epsilon with hierarchical test organization, fixtures, multiple output formats, and integration with the build system.
+A  testing framework for Epsilon with hierarchical test organization, fixtures, multiple output formats, and integration with the build system.
 
 ## Overview
 
@@ -74,7 +74,7 @@ Set up and tear down test environments:
 Group related assertions within a test:
 
 ```lisp
-(deftest comprehensive-test
+(deftest -test
   "Test multiple aspects of a function"
   (with-label "Input validation"
     (is-thrown (error) (my-function nil))

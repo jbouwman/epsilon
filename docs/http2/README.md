@@ -18,7 +18,7 @@ This directory contains documentation for the Epsilon HTTP/2 implementation, inc
 - [mTLS Status Report](MTLS_STATUS_REPORT.md) - Initial mTLS implementation status
 - [mTLS Coverage](MTLS_HTTP2_COVERAGE.md) - Test coverage for mTLS features
 - [mTLS Final Status](MTLS_HTTP2_FINAL_STATUS.md) - Final mTLS implementation status
-- [mTLS Complete Summary](MTLS_HTTP2_COMPLETE_SUMMARY.md) - Comprehensive mTLS summary
+- [mTLS Complete Summary](MTLS_HTTP2_COMPLETE_SUMMARY.md) - Complete mTLS summary
 
 ## Quick Start
 

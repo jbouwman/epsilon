@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-A comprehensive survey of 24 Epsilon packages reveals several glaring omissions and areas needing attention:
+A  survey of 24 Epsilon packages reveals several glaring omissions and areas needing attention:
 
 - **96% lack documentation** (only 1/24 has docs)
 - **67% lack README files** (only 8/24 have READMEs)
@@ -82,7 +82,7 @@ A comprehensive survey of 24 Epsilon packages reveals several glaring omissions 
 
 1. **Documentation Emergency**
    - Create README.md for all packages explaining purpose and basic usage
-   - Document epsilon.core comprehensively (it's the foundation!)
+   - Document epsilon.core ly (it's the foundation!)
    - Add API documentation generation
 
 2. **Test Coverage Improvement**

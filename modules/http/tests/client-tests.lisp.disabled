@@ -1,6 +1,6 @@
 ;;;; HTTP Client Test Suite
 ;;;;
-;;;; Comprehensive tests for HTTP client functionality
+;;;;  tests for HTTP client functionality
 
 (defpackage :epsilon.http.client.tests
   (:use :cl :epsilon.test)

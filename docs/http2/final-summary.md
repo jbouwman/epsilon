@@ -87,7 +87,7 @@ modules/crypto/test/
 - Protocol tests: connection, streams, flags
 
 ### 5. Documentation
-- Comprehensive README in `docs/http2/`
+-  README in `docs/http2/`
 - Progress reports and status updates
 - HPACK library analysis
 - mTLS implementation documentation
@@ -145,7 +145,7 @@ modules/crypto/test/
 
 ## Conclusion
 
-The HTTP/2 implementation in Epsilon has progressed from non-existent to a functional implementation passing 18% of h2spec tests. The codebase is well-organized, documented, and provides a solid foundation for achieving full RFC 7540 compliance. The modular architecture and comprehensive test suite ensure maintainability and extensibility for future improvements.
+The HTTP/2 implementation in Epsilon has progressed from non-existent to a functional implementation passing 18% of h2spec tests. The codebase is well-organized, documented, and provides a solid foundation for achieving full RFC 7540 compliance. The modular architecture and  test suite ensure maintainability and extensibility for future improvements.
 
 ### Commands to Test
 

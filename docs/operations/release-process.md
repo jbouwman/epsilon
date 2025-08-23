@@ -175,7 +175,7 @@ Options:
 - `--push`: Push to origin (implies --commit)
 
 ### `scripts/test.sh`
-Comprehensive test runner:
+ test runner:
 - Runs CLI smoke tests
 - Executes module self-tests
 - Validates epsilon executable
@@ -191,7 +191,7 @@ Platform-specific packaging:
 These scripts handle the release build process and can be run both locally and in CI:
 
 #### `scripts/run-tests.sh`
-Comprehensive test runner:
+ test runner:
 ```bash
 # Run all tests
 ./scripts/run-tests.sh

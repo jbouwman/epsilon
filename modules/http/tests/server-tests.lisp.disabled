@@ -1,6 +1,6 @@
 ;;;; HTTP Server Test Suite
 ;;;;
-;;;; Comprehensive tests for HTTP server functionality
+;;;;  tests for HTTP server functionality
 
 (defpackage :epsilon.http.server.tests
   (:use :cl :epsilon.test)

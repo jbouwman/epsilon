@@ -23,7 +23,7 @@ shared-call-unified() → cached signatures → optimized trampolines → libffi
 ### 1. libffi Integration (`libffi-bridge.lisp`, `libffi-calls.lisp`)
 - **C Extension**: `epsilon-libffi.c` provides both callbacks and function calls
 - **CIF Management**: Cached Call Interface preparation for performance
-- **Type System**: Comprehensive C-to-Lisp type mapping
+- **Type System**:  C-to-Lisp type mapping
 - **Memory Management**: Proper argument marshalling and result extraction
 
 ### 2. Clang Signature Extraction (`clang-signatures.lisp`)
@@ -40,7 +40,7 @@ shared-call-unified() → cached signatures → optimized trampolines → libffi
 ### 4. Public API (`public-api.lisp`)
 - **Clean Interface**: Modern, user-friendly API
 - **Backward Compatibility**: Preserves existing epsilon.foreign usage
-- **Documentation**: Comprehensive help and diagnostic functions
+- **Documentation**:  help and diagnostic functions
 
 ## Key Features
 
@@ -60,7 +60,7 @@ shared-call-unified() → cached signatures → optimized trampolines → libffi
 - **Smart Fallback**: Graceful degradation when libffi unavailable
 - **Hot Path JIT**: Frequently called functions get optimized trampolines
 
-### Comprehensive Type System
+###  Type System
 ```lisp
 ;; Automatic type detection and conversion
 :void :char :short :int :long :float :double
@@ -72,7 +72,7 @@ shared-call-unified() → cached signatures → optimized trampolines → libffi
 - Graceful fallback when libffi unavailable
 - Clear error messages for signature discovery failures
 - Validation of argument types and counts
-- Comprehensive diagnostics for debugging
+-  diagnostics for debugging
 
 ## Usage Examples
 
@@ -220,7 +220,7 @@ cd modules/foreign/c && make
 ### System Status
 ```lisp
 (ffi-system-status)
-;; → Comprehensive system information
+;; →  system information
 
 (ffi-help)
 ;; → Usage guide and examples
@@ -267,7 +267,7 @@ The system gracefully degrades:
 
 ## Testing
 
-### Comprehensive Test Suite
+###  Test Suite
 ```lisp
 ;; Run all integration tests
 (run-integration-tests)
@@ -309,7 +309,7 @@ The new libffi-first architecture represents a fundamental improvement to epsilo
 - **Simplicity**: Automatic signature discovery eliminates manual coding
 - **Performance**: libffi optimization with smart caching
 - **Compatibility**: Full backward compatibility with existing code
-- **Robustness**: Comprehensive error handling and fallback mechanisms
+- **Robustness**:  error handling and fallback mechanisms
 - **Extensibility**: Clean architecture for future enhancements
 
 The system is designed to be both immediately useful for new development and seamlessly compatible with existing epsilon.foreign code, providing a smooth migration path while delivering significant improvements in usability and performance.
