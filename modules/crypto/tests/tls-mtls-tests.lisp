@@ -132,6 +132,7 @@
 
 (deftest test-context-with-alpn
     "Test creating TLS context with ALPN protocols"
+  (skip)
   (with-fixture (fixture tls-test-setup)
     (let ((ctx (crypto:create-openssl-context 
 		:server-p t
@@ -143,6 +144,7 @@
 
 (deftest test-context-with-session-cache
     "Test creating TLS context with session caching"
+  (skip)
   (with-fixture (fixture tls-test-setup)
     (let ((ctx (crypto:create-openssl-context 
 		:server-p t

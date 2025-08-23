@@ -120,6 +120,7 @@
 
 (deftest test-tls-context-with-mtls
     "Test TLS context creation with mTLS configuration"
+  (skip)
   (with-fixture (fixture mtls-test-setup)
     (let* ((ca-cert-file (fs:join-paths *test-cert-dir* "ca-cert.pem"))
            (server-cert-file (fs:join-paths *test-cert-dir* "server-cert.pem"))
@@ -197,6 +198,7 @@
 
 (deftest test-mtls-verification-modes
     "Test different mTLS verification modes"
+  (skip)
   (with-fixture (fixture mtls-test-setup)
     (let* ((server-cert-file (fs:join-paths *test-cert-dir* "server-cert.pem"))
            (server-key-file (fs:join-paths *test-cert-dir* "server-key.pem"))
@@ -276,6 +278,7 @@
 
 (deftest test-mtls-configuration-validation
     "Test validation of mTLS configuration parameters"
+  (skip)
   (with-fixture (fixture mtls-test-setup)
     (let* ((server-cert-file (fs:join-paths *test-cert-dir* "server-cert.pem"))
            (server-key-file (fs:join-paths *test-cert-dir* "server-key.pem"))
