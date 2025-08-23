@@ -13,6 +13,8 @@
    make-socket-address resolve-address parse-address)
   (:import-from epsilon.net.socket-options
    set-socket-option get-socket-option)
+  (:import-from epsilon.net.types
+   tcp-stream-handle)
   (:import-from epsilon.net.tcp
    tcp-bind tcp-accept tcp-incoming tcp-try-accept tcp-poll-accept tcp-local-addr
    tcp-connect tcp-read tcp-write tcp-write-all tcp-flush
@@ -55,6 +57,7 @@
    tcp-shutdown
    tcp-stream-reader
    tcp-stream-writer
+   tcp-stream-handle
    
    ;; UDP operations
    udp-bind
