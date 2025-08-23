@@ -34,23 +34,4 @@
                  :message "Failed to generate random bytes"))))
     buffer))
 
-(defun crypto-random-integer (max)
-  "Generate random integer from 0 to max-1.
-   
-   Internal utility function for generating random integers.
-   
-   Parameters:
-     max (integer): Upper bound (exclusive)
-   
-   Returns:
-     Random integer in range [0, max)"
-  (declare (type (integer 1 *) max))
-  ;; Special case for max=1
-  (when (= max 1)
-    (return-from crypto-random-integer 0))
-  (let* ((bytes-needed (max 1 (ceiling (log max 256))))
-         (bytes (crypto-random-bytes bytes-needed))
-         (value 0))
-    (loop for i from 0 below bytes-needed
-          do (setf value (+ (* value 256) (aref bytes i))))
-    (mod value max)))
+;; crypto-random-integer defined in package.lisp

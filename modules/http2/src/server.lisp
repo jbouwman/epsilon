@@ -24,6 +24,9 @@
    #:http2-server-config-max-frame-size
    #:http2-server-config-max-header-list-size
    #:http2-server-config-enable-push
+   #:http2-server-config-ca-file
+   #:http2-server-config-require-client-cert
+   #:http2-server-config-verify-depth
    
    ;; Server functions
    #:start-http2-server

@@ -595,17 +595,7 @@
 
 ;;;; Random Number Generation
 
-(defun crypto-random-integer (max)
-  "Generate random integer from 0 to max-1"
-  ;; Special case for max=1
-  (when (= max 1)
-    (return-from crypto-random-integer 0))
-  (let* ((bytes-needed (max 1 (ceiling (log max 256))))
-         (bytes (utils:crypto-random-bytes bytes-needed))
-         (value 0))
-    (loop for i from 0 below bytes-needed
-          do (setf value (+ (* value 256) (aref bytes i))))
-    (mod value max)))
+;; crypto-random-integer defined in package.lisp
 
 ;;;; Digest Functions
 
@@ -658,15 +648,7 @@
   name)
 
 ;;;; Error Handling
-
-(defun get-crypto-errors ()
-  "Get all pending OpenSSL errors as a list"
-  (loop for err = (ffi:%err-get-error)
-        while (plusp err)
-        collect (sb-alien:with-alien ((buf (sb-alien:array sb-alien:char 256)))
-                                     (ffi:%err-error-string err (sb-alien:alien-sap buf))
-                                     ;; Convert buffer to string
-                                     (sb-alien:cast buf sb-alien:c-string))))
+;; get-crypto-errors defined in package.lisp
 
 ;;;; Cleanup
 

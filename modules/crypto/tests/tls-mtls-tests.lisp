@@ -8,7 +8,8 @@
    (#:crypto #:epsilon.crypto)
    (#:certs #:epsilon.crypto.certificates)
    (#:alpn #:epsilon.crypto.alpn)
-   (#:openssl3 #:epsilon.crypto.openssl3)))
+   (#:openssl3 #:epsilon.crypto.openssl3)
+   (#:fs #:epsilon.sys.fs)))
 
 (in-package :epsilon.crypto.tls-tests)
 
@@ -24,9 +25,12 @@
 
 (fixture tls-test-setup ()
 	 (:setup
-	  ;; Create unique test directory
-	  (setf *test-cert-dir* (format nil "/tmp/epsilon-tls-~A/" (get-universal-time)))
-	  (ensure-directories-exist *test-cert-dir*)
+	  ;; Create unique test directory in project space
+	  (setf *test-cert-dir* (fs:join-paths 
+	                         (namestring (fs:current-directory))
+	                         "test-certs"
+	                         (format nil "tls-test-~A" (get-universal-time))))
+	  (fs:make-dirs *test-cert-dir*)
 	  
 	  ;; Generate test certificates
 	  (multiple-value-bind (ca-cert ca-key)
@@ -36,7 +40,7 @@
 	    
 	    ;; Generate server certificate signed by CA
 	    (let* ((server-key-handle (openssl3:generate-rsa-key 2048))
-		   (server-key-pem (certs::private-key-to-pem server-key-handle))
+		   (server-key-pem (certs::evp-pkey-to-pem server-key-handle))
 		   (server-csr (certs:generate-certificate-request 
 				"localhost" server-key-handle
 				:organization "Test Server")))
@@ -46,7 +50,7 @@
 	    
 	    ;; Generate client certificate signed by CA
 	    (let* ((client-key-handle (openssl3:generate-rsa-key 2048))
-		   (client-key-pem (certs::private-key-to-pem client-key-handle))
+		   (client-key-pem (certs::evp-pkey-to-pem client-key-handle))
 		   (client-csr (certs:generate-certificate-request 
 				"client.test" client-key-handle
 				:organization "Test Client")))
@@ -54,25 +58,22 @@
 					client-csr ca-cert ca-key)
 		    *test-client-key* client-key-pem))
 	    
-	    ;; Save certificates to files
+	    ;; Save certificates to files using modern path operations
 	    (certs:save-certificate *test-ca-cert* 
-				    (merge-pathnames "ca-cert.pem" *test-cert-dir*))
+				    (fs:join-paths *test-cert-dir* "ca-cert.pem"))
 	    (certs:save-certificate *test-server-cert* 
-				    (merge-pathnames "server-cert.pem" *test-cert-dir*))
+				    (fs:join-paths *test-cert-dir* "server-cert.pem"))
 	    (certs:save-private-key *test-server-key* 
-				    (merge-pathnames "server-key.pem" *test-cert-dir*))
+				    (fs:join-paths *test-cert-dir* "server-key.pem"))
 	    (certs:save-certificate *test-client-cert* 
-				    (merge-pathnames "client-cert.pem" *test-cert-dir*))
+				    (fs:join-paths *test-cert-dir* "client-cert.pem"))
 	    (certs:save-private-key *test-client-key* 
-				    (merge-pathnames "client-key.pem" *test-cert-dir*))))
+				    (fs:join-paths *test-cert-dir* "client-key.pem"))))
 
 	 (:teardown
 	  ;; Clean up test certificates
-	  (when (probe-file *test-cert-dir*)
-	    (dolist (file (directory (merge-pathnames "*" *test-cert-dir*)))
-	      (when (probe-file file)
-		(delete-file file)))
-	    (epsilon.sys.fs:delete-directory *test-cert-dir*))
+	  (when (fs:directory-exists-p *test-cert-dir*)
+	    (fs:delete-directory *test-cert-dir*))
 	  (setf *test-ca-cert* nil
 		*test-ca-key* nil
 		*test-server-cert* nil
@@ -88,8 +89,8 @@
     ;; Create server context
     (let ((server-ctx (crypto:create-tls-context 
                        :server-p t
-                       :cert-file (namestring (merge-pathnames "server-cert.pem" *test-cert-dir*))
-                       :key-file (namestring (merge-pathnames "server-key.pem" *test-cert-dir*)))))
+                       :cert-file (fs:join-paths *test-cert-dir* "server-cert.pem")
+                       :key-file (fs:join-paths *test-cert-dir* "server-key.pem"))))
       (is-not-null server-ctx)
       (is-true (crypto:tls-context-p server-ctx))
       (is-true (crypto:tls-context-server-p server-ctx)))
@@ -107,23 +108,23 @@
     ;; Create server context with mTLS
     (let ((server-ctx (crypto:create-openssl-context 
                        :server-p t
-                       :cert-file (namestring (merge-pathnames "server-cert.pem" *test-cert-dir*))
-                       :key-file (namestring (merge-pathnames "server-key.pem" *test-cert-dir*))
-                       :ca-file (namestring (merge-pathnames "ca-cert.pem" *test-cert-dir*))
+                       :cert-file (fs:join-paths *test-cert-dir* "server-cert.pem")
+                       :key-file (fs:join-paths *test-cert-dir* "server-key.pem")
+                       :ca-file (fs:join-paths *test-cert-dir* "ca-cert.pem")
                        :require-client-cert t
                        :verify-depth 2)))
       (is-not-null server-ctx)
       (is-true (crypto:openssl-context-p server-ctx))
       (is-true (crypto:openssl-context-server-p server-ctx))
-      (is-equal (namestring (merge-pathnames "server-cert.pem" *test-cert-dir*))
+      (is-equal (fs:join-paths *test-cert-dir* "server-cert.pem")
                 (crypto:openssl-context-cert-file server-ctx)))
     
     ;; Create client context with client certificate
     (let ((client-ctx (crypto:create-openssl-context 
                        :server-p nil
-                       :cert-file (namestring (merge-pathnames "client-cert.pem" *test-cert-dir*))
-                       :key-file (namestring (merge-pathnames "client-key.pem" *test-cert-dir*))
-                       :ca-file (namestring (merge-pathnames "ca-cert.pem" *test-cert-dir*))
+                       :cert-file (fs:join-paths *test-cert-dir* "client-cert.pem")
+                       :key-file (fs:join-paths *test-cert-dir* "client-key.pem")
+                       :ca-file (fs:join-paths *test-cert-dir* "ca-cert.pem")
                        :verify-mode crypto:+ssl-verify-peer+)))
       (is-not-null client-ctx)
       (is-true (crypto:openssl-context-p client-ctx))
@@ -134,8 +135,8 @@
   (with-fixture (fixture tls-test-setup)
     (let ((ctx (crypto:create-openssl-context 
 		:server-p t
-		:cert-file (namestring (merge-pathnames "server-cert.pem" *test-cert-dir*))
-		:key-file (namestring (merge-pathnames "server-key.pem" *test-cert-dir*))
+		:cert-file (fs:join-paths *test-cert-dir* "server-cert.pem")
+		:key-file (fs:join-paths *test-cert-dir* "server-key.pem")
 		:alpn-protocols '("h2" "http/1.1"))))
       (is-not-null ctx)
       (is-true (crypto:openssl-context-p ctx)))))
@@ -145,8 +146,8 @@
   (with-fixture (fixture tls-test-setup)
     (let ((ctx (crypto:create-openssl-context 
 		:server-p t
-		:cert-file (namestring (merge-pathnames "server-cert.pem" *test-cert-dir*))
-		:key-file (namestring (merge-pathnames "server-key.pem" *test-cert-dir*))
+		:cert-file (fs:join-paths *test-cert-dir* "server-cert.pem")
+		:key-file (fs:join-paths *test-cert-dir* "server-key.pem")
 		:session-cache-p t)))
       (is-not-null ctx)
       (is-true (crypto:openssl-context-p ctx)))))
@@ -158,13 +159,13 @@
   (with-fixture (fixture tls-test-setup)
     (let ((ctx (crypto:create-tls-context :server-p t)))
       ;; Load certificate
-      (crypto:load-cert-file ctx (namestring (merge-pathnames "server-cert.pem" *test-cert-dir*)))
-      (is-equal (namestring (merge-pathnames "server-cert.pem" *test-cert-dir*))
+      (crypto:load-cert-file ctx (fs:join-paths *test-cert-dir* "server-cert.pem"))
+      (is-equal (fs:join-paths *test-cert-dir* "server-cert.pem")
                 (crypto:tls-context-cert-file ctx))
       
       ;; Load key
-      (crypto:load-key-file ctx (namestring (merge-pathnames "server-key.pem" *test-cert-dir*)))
-      (is-equal (namestring (merge-pathnames "server-key.pem" *test-cert-dir*))
+      (crypto:load-key-file ctx (fs:join-paths *test-cert-dir* "server-key.pem"))
+      (is-equal (fs:join-paths *test-cert-dir* "server-key.pem")
                 (crypto:tls-context-key-file ctx)))))
 
 (deftest test-set-verify-mode
@@ -224,15 +225,15 @@
       (declare (ignore other-cert))
       
       ;; Save the mismatched key
-      (let ((wrong-key-file (merge-pathnames "wrong-key.pem" *test-cert-dir*)))
+      (let ((wrong-key-file (fs:join-paths *test-cert-dir* "wrong-key.pem")))
         (certs:save-private-key other-key wrong-key-file)
         
         ;; Try to create context with mismatched cert/key
         (is-thrown (error)
 		   (crypto:create-openssl-context 
 		    :server-p t
-		    :cert-file (namestring (merge-pathnames "server-cert.pem" *test-cert-dir*))
-		    :key-file (namestring wrong-key-file)))))))
+		    :cert-file (fs:join-paths *test-cert-dir* "server-cert.pem")
+		    :key-file wrong-key-file))))))
 
 (deftest test-context-with-nonexistent-files
     "Test handling of nonexistent certificate files"
