@@ -256,10 +256,10 @@
 (defun find-library-in-paths (names paths)
   "Search for library names in given paths"
   (loop for path in paths
-        do (loop for name in names
-                 for full-path = (path:string-path-join path name)
-                 when (probe-file full-path)
-                   return full-path)))
+        thereis (loop for name in names
+                      for full-path = (path:string-path-join path name)
+                      when (probe-file full-path)
+                        return full-path)))
 
 (defun find-library-tier-1 (info)
   "Tier 1: Check for bundled library"
@@ -294,8 +294,9 @@
 (defun find-library (name)
   "Find a library using tiered resolution"
   ;; Normalize name - convert keywords to regular symbols in this package
+  ;; Use string-downcase to handle case sensitivity issues
   (let* ((normalized-name (if (keywordp name)
-                              (intern (symbol-name name) :epsilon.library)
+                              (intern (string-downcase (symbol-name name)) :epsilon.library)
                               name))
          (info (or (map:get *library-registry* normalized-name)
                    ;; Also try the original name in case it's already registered
@@ -443,31 +444,33 @@
   (let ((existing (map:get *open-libraries* library-name)))
     (if existing
         existing
-        (let* ((lib-path (if local
-                            ;; For local libraries, search in specified paths
-                            (find-library-in-paths 
-                             (list (platform-library-name library-name))
-                             (or paths '(".")))
-                            ;; For system libraries, use standard resolution
-                            ;; Handle both "libcrypto" and "crypto" style names
-                            (let ((lookup-name (if (and (>= (length library-name) 3)
-                                                       (string= (subseq library-name 0 3) "lib"))
-                                                  (subseq library-name 3)
-                                                  library-name)))
-                              (find-library (intern (string-upcase lookup-name) :keyword)))))
+        (let* ((is-absolute-path (and (stringp library-name)
+                                      (> (length library-name) 0)
+                                      (or (char= (char library-name 0) #\/)
+                                          #+windows (and (>= (length library-name) 3)
+                                                        (char= (char library-name 1) #\:)))))
+               (lib-path (cond
+                          ;; If it's an absolute path, use it directly
+                          (is-absolute-path library-name)
+                          ;; For local libraries, search in specified paths
+                          (local
+                           (find-library-in-paths 
+                            (list (platform-library-name library-name))
+                            (or paths '("."))))
+                          ;; For system libraries, use standard resolution
+                          (t
+                           ;; Handle both "libcrypto" and "crypto" style names
+                           (let ((lookup-name (if (and (>= (length library-name) 3)
+                                                      (string= (subseq library-name 0 3) "lib"))
+                                                 (subseq library-name 3)
+                                                 library-name)))
+                             (find-library (intern (string-upcase lookup-name) :keyword))))))
                (final-path (or lib-path library-name)))
           ;; Try to load the library
-          (handler-case
-              (let ((handle (sb-alien:load-shared-object final-path)))
-                (setf *open-libraries* 
-                      (map:assoc *open-libraries* library-name handle))
-                handle)
-            (error (e)
-              ;; If it fails and we have a lib-path from find-library, it should have worked
-              ;; Try fallback to plain library name without path
-              (if (and lib-path (not (equal lib-path library-name)))
-                  (sb-alien:load-shared-object library-name)
-                  (error e))))))))
+          (let ((handle (sb-alien:load-shared-object final-path)))
+            (setf *open-libraries* 
+                  (map:assoc *open-libraries* library-name handle))
+            handle)))))
 
 (defun lib-close (library-handle)
   "Closes a previously opened library"
@@ -543,7 +546,9 @@
     :version "3"
     :bundled-p nil
     :critical-p nil
-    :search-names (list #+darwin "libcrypto.dylib" #+darwin "libcrypto.3.dylib"
+    :search-names (list #+darwin "/opt/homebrew/lib/libcrypto.3.dylib"
+                        #+darwin "/opt/homebrew/lib/libcrypto.dylib"
+                        #+darwin "libcrypto.dylib" #+darwin "libcrypto.3.dylib"
                         #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libcrypto.so.3"
                         #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libcrypto.so"
                         #+linux "libcrypto.so.3" #+linux "libcrypto.so.1.1" #+linux "libcrypto.so"
@@ -615,7 +620,40 @@
     :version "3"
     :bundled-p nil
     :critical-p nil
-    :search-names (list #+darwin "libsqlite3.dylib"
+    :search-names (list #+darwin "/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib"
+                        #+darwin "/opt/homebrew/Cellar/sqlite/3.50.4/lib/libsqlite3.dylib"
+                        #+darwin "/usr/local/opt/sqlite/lib/libsqlite3.dylib"
+                        #+darwin "libsqlite3.dylib"
+                        #+linux "/nix/store/adg9f2bkvq6pja884rdpzlm6dv9xkhsk-sqlite-3.43.2/lib/libsqlite3.so.0.8.6"
+                        #+linux "/nix/store/adg9f2bkvq6pja884rdpzlm6dv9xkhsk-sqlite-3.43.2/lib/libsqlite3.so"
+                        #+linux "libsqlite3.so" #+linux "libsqlite3.so.0"
+                        #+windows "sqlite3.dll")
+    :description "SQLite database library")
+    
+  (define-library sqlite3
+    :base-name "sqlite3"
+    :version "3"
+    :bundled-p nil
+    :critical-p nil
+    :search-names (list #+darwin "/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib"
+                        #+darwin "/opt/homebrew/Cellar/sqlite/3.50.4/lib/libsqlite3.dylib"
+                        #+darwin "/usr/local/opt/sqlite/lib/libsqlite3.dylib"
+                        #+darwin "libsqlite3.dylib"
+                        #+linux "/nix/store/adg9f2bkvq6pja884rdpzlm6dv9xkhsk-sqlite-3.43.2/lib/libsqlite3.so.0.8.6"
+                        #+linux "/nix/store/adg9f2bkvq6pja884rdpzlm6dv9xkhsk-sqlite-3.43.2/lib/libsqlite3.so"
+                        #+linux "libsqlite3.so" #+linux "libsqlite3.so.0"
+                        #+windows "sqlite3.dll")
+    :description "SQLite database library")
+    
+  (define-library libsqlite3
+    :base-name "sqlite3"
+    :version "3"
+    :bundled-p nil
+    :critical-p nil
+    :search-names (list #+darwin "/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib"
+                        #+darwin "/opt/homebrew/Cellar/sqlite/3.50.4/lib/libsqlite3.dylib"
+                        #+darwin "/usr/local/opt/sqlite/lib/libsqlite3.dylib"
+                        #+darwin "libsqlite3.dylib"
                         #+linux "/nix/store/adg9f2bkvq6pja884rdpzlm6dv9xkhsk-sqlite-3.43.2/lib/libsqlite3.so.0.8.6"
                         #+linux "/nix/store/adg9f2bkvq6pja884rdpzlm6dv9xkhsk-sqlite-3.43.2/lib/libsqlite3.so"
                         #+linux "libsqlite3.so" #+linux "libsqlite3.so.0"
@@ -627,7 +665,9 @@
     :version "3"
     :bundled-p nil
     :critical-p nil
-    :search-names (list #+darwin "libcrypto.dylib" #+darwin "libcrypto.3.dylib"
+    :search-names (list #+darwin "/opt/homebrew/lib/libcrypto.3.dylib"
+                        #+darwin "/opt/homebrew/lib/libcrypto.dylib"
+                        #+darwin "libcrypto.dylib" #+darwin "libcrypto.3.dylib"
                         #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libcrypto.so.3"
                         #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libcrypto.so"
                         #+linux "libcrypto.so.3" #+linux "libcrypto.so.1.1" #+linux "libcrypto.so"
@@ -640,7 +680,9 @@
     :version "3"
     :bundled-p nil
     :critical-p nil
-    :search-names (list #+darwin "libssl.dylib" #+darwin "libssl.3.dylib"
+    :search-names (list #+darwin "/opt/homebrew/lib/libssl.3.dylib"
+                        #+darwin "/opt/homebrew/lib/libssl.dylib"
+                        #+darwin "libssl.dylib" #+darwin "libssl.3.dylib"
                         #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libssl.so.3"
                         #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libssl.so"
                         #+linux "libssl.so.3" #+linux "libssl.so.1.1" #+linux "libssl.so"
@@ -652,7 +694,9 @@
     :version "3"
     :bundled-p nil
     :critical-p nil
-    :search-names (list #+darwin "libssl.dylib" #+darwin "libssl.3.dylib"
+    :search-names (list #+darwin "/opt/homebrew/lib/libssl.3.dylib"
+                        #+darwin "/opt/homebrew/lib/libssl.dylib"
+                        #+darwin "libssl.dylib" #+darwin "libssl.3.dylib"
                         #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libssl.so.3"
                         #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libssl.so"
                         #+linux "libssl.so.3" #+linux "libssl.so.1.1" #+linux "libssl.so"

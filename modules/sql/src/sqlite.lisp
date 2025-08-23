@@ -109,7 +109,7 @@
 ;;; FFI Definitions
 
 ;; Use direct SQLite library path
-(defparameter *sqlite-library* "sqlite"
+(defparameter *sqlite-library* "sqlite3"
   "SQLite library name for FFI calls")
 
 (ffi:defshared sqlite3-libversion-raw "sqlite3_libversion" *sqlite-library* :pointer)
