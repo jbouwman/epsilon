@@ -42,6 +42,7 @@
    #:tcp-shutdown
    #:tcp-stream-reader
    #:tcp-stream-writer
+   #:tcp-stream-handle
    
    ;; UDP operations
    #:udp-bind
