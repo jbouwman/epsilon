@@ -74,8 +74,8 @@
   "Test evaluating expressions with a context"
   (let* ((context (make-hash-table :test 'equal)))
     ;; Set up context with columns
-    (setf (gethash "A" context) (col:column :int32 1 2 3 4 5))
-    (setf (gethash "B" context) (col:column :int32 10 20 30 40 50))
+    (setf (gethash "a" context) (col:column :int32 1 2 3 4 5))
+    (setf (gethash "b" context) (col:column :int32 10 20 30 40 50))
     
     ;; Test column reference
     (let ((result (ops:evaluate-expression (ops:col-ref :a) context)))
@@ -101,7 +101,7 @@
 (deftest test-aggregation-evaluation ()
   "Test evaluating aggregation expressions"
   (let* ((context (make-hash-table :test 'equal)))
-    (setf (gethash "VALUES" context) (col:column :int32 1 2 3 4 5))
+    (setf (gethash "values" context) (col:column :int32 1 2 3 4 5))
     
     (is-= (ops:evaluate-expression (ops:sum-expr (ops:col-ref :values)) context) 15)
     (is-= (ops:evaluate-expression (ops:mean-expr (ops:col-ref :values)) context) 3)
@@ -120,7 +120,7 @@
                                   (ops:+expr (ops:col-ref :a) 
                                              (ops:col-ref :b)))))
     (is-= (frame:ncols result) 3)
-    (is-equal (frame:column-names result) '("A" "B" "SUM"))
+    (is-equal (frame:column-names result) '("a" "b" "sum"))
     (is-equal (col:column-to-list (frame:get-column result :sum))
                   '(11 22 33 44 55))))
 
@@ -142,7 +142,7 @@
                                    :total (ops:*expr (ops:col-ref :price)
                                                      (ops:col-ref :quantity))
                                    :tax (ops:*expr (ops:col-ref :price)
-                                                   (ops:lit 0.1)))))
+                                                   (ops:lit 0.1d0)))))
     (is-= (frame:ncols result) 4)
     (is-equal (col:column-to-list (frame:get-column result :total))
                   '(200 200 450))

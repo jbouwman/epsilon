@@ -55,7 +55,10 @@
     (loop for (name data) on column-specs by #'cddr
           do (let ((column (if (col:column-p data)
                               data
-                              (col:make-column (dtype:infer-dtype (first data)) data))))
+                              (col:make-column (dtype:infer-dtype (cond
+                                                      ((and (listp data) (not (null data))) (first data))
+                                                      ((and (vectorp data) (> (length data) 0)) (aref data 0))
+                                                      (t :any))) data))))
                ;; Ensure all columns have same length
                (if first-length
                    (unless (= (col:column-length column) first-length)
@@ -85,7 +88,7 @@
     (dolist (col-name (reverse (frame-column-order frame)))
       (let ((column (gethash col-name (frame-columns frame))))
         (push (col:column-get column index) result)
-        (push (intern col-name :keyword) result)))
+        (push (intern (string-upcase col-name) :keyword) result)))
     result))
 
 (defun ncols (frame)
@@ -262,7 +265,7 @@
          (columns (make-hash-table :test 'equal)))
     ;; Collect data for each column
     (loop for col-name in col-names
-          do (let* ((key (intern col-name :keyword))
+          do (let* ((key (intern (string-upcase col-name) :keyword))
                     (col-data (loop for plist in plists
                                    collect (getf plist key))))
                (setf (gethash col-name columns)

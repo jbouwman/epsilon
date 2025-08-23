@@ -158,13 +158,13 @@
       (:lit 
        (make-literal-column context (first args)))
       (:+
-       (apply-arithmetic #'+ (mapcar (lambda (arg) (evaluate-expression arg context)) args)))
+       (apply-arithmetic #'+ (mapcar (lambda (arg) (evaluate-expression arg context)) (first args))))
       (:-
-       (apply-arithmetic #'- (mapcar (lambda (arg) (evaluate-expression arg context)) args)))
+       (apply-arithmetic #'- (mapcar (lambda (arg) (evaluate-expression arg context)) (first args))))
       (:*
-       (apply-arithmetic #'* (mapcar (lambda (arg) (evaluate-expression arg context)) args)))
+       (apply-arithmetic #'* (mapcar (lambda (arg) (evaluate-expression arg context)) (first args))))
       (:/
-       (apply-arithmetic #'/ (mapcar (lambda (arg) (evaluate-expression arg context)) args)))
+       (apply-arithmetic (lambda (&rest args) (coerce (apply #'/ args) 'double-float)) (mapcar (lambda (arg) (evaluate-expression arg context)) (first args))))
       (:>
        (apply-comparison #'> 
                         (evaluate-expression (first args) context)
@@ -187,10 +187,10 @@
                         (evaluate-expression (second args) context)))
       (:and
        (apply-logical #'(lambda (&rest args) (every #'identity args))
-                     (mapcar (lambda (arg) (evaluate-expression arg context)) args)))
+                     (mapcar (lambda (arg) (evaluate-expression arg context)) (first args))))
       (:or
        (apply-logical #'(lambda (&rest args) (some #'identity args))
-                     (mapcar (lambda (arg) (evaluate-expression arg context)) args)))
+                     (mapcar (lambda (arg) (evaluate-expression arg context)) (first args))))
       (:not
        (apply-logical #'not (list (evaluate-expression (first args) context))))
       (:sum

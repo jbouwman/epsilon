@@ -61,12 +61,8 @@
   "Infer the dtype from a value"
   (typecase value
     (boolean :bool)
-    ((integer 0 255) :uint8)
-    ((integer -128 127) :int8)
-    ((integer 0 65535) :uint16)
-    ((integer -32768 32767) :int16)
-    ((integer 0 4294967295) :uint32)
     ((integer -2147483648 2147483647) :int32)
+    ((integer 0 4294967295) :uint32)
     ((integer * *) :int64)
     (single-float :float32)
     (double-float :float64)

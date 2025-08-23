@@ -45,20 +45,14 @@
 (defun agg (frame-obj &rest name-expr-pairs)
   "Aggregate a frame, returning a new single-row frame"
   (with-frame-context (context frame-obj)
-    (let ((results nil))
+    (let ((col-specs nil))
       (loop for (name expr) on name-expr-pairs by #'cddr
             do (let ((result (ops:evaluate-expression expr context)))
-                 (push (if (col:column-p result)
-                          (col:column-get result 0)
-                          result)
-                       results)
-                 (push name results)))
-      ;; Create a single-row frame with the results
-      (let ((col-specs nil))
-        (loop for (name value) on (nreverse results) by #'cddr
-              do (push name col-specs)
-                 (push (list value) col-specs))
-        (apply #'frame:frame col-specs)))))
+                 (let ((value (if (col:column-p result)
+                                 (col:column-get result 0)
+                                 result)))
+                   (setf col-specs (append col-specs (list name (list value)))))))
+      (apply #'frame:frame col-specs))))
 
 (defun aggregate (frame expressions)
   "Aggregate a frame using a list of (name . expression) pairs"

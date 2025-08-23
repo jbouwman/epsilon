@@ -13,13 +13,14 @@
   (is-not-null (dtype:find-dtype :int32))
   (is-not-null (dtype:find-dtype :float64))
   (is-not-null (dtype:find-dtype :string))
-  (assert-error (dtype:find-dtype :invalid)))
+  (is-thrown (error) (dtype:find-dtype :invalid)))
 
 (deftest test-dtype-inference ()
   "Test dtype inference from values"
   (is-eq (dtype:infer-dtype 42) :int32)
   (is-eq (dtype:infer-dtype 1000000000000) :int64)
-  (is-eq (dtype:infer-dtype 3.14) :float64)
+  (is-eq (dtype:infer-dtype 3.14) :float32)
+  (is-eq (dtype:infer-dtype 3.14d0) :float64)
   (is-eq (dtype:infer-dtype "hello") :string)
   (is-eq (dtype:infer-dtype t) :bool))
 
@@ -51,8 +52,8 @@
     (is-= (col:column-get col 0) 10)
     (is-= (col:column-get col 2) 30)
     (is-= (col:column-get col 4) 50)
-    (assert-error (col:column-get col -1))
-    (assert-error (col:column-get col 5))))
+    (is-thrown (error) (col:column-get col -1))
+    (is-thrown (error) (col:column-get col 5))))
 
 (deftest test-column-slice ()
   "Test column slicing"
@@ -114,7 +115,7 @@
       (is-= (col:column-length col-b) 3)
       (is-eq (col:column-dtype col-a) :int32)
       (is-eq (col:column-dtype col-b) :string))
-    (assert-error (epsilon.frame:get-column frame :nonexistent))))
+    (is-thrown (error) (epsilon.frame:get-column frame :nonexistent))))
 
 (deftest test-frame-row-access ()
   "Test accessing rows from frame"
@@ -126,8 +127,8 @@
                   '(:a 1 :b 10.0d0 :c "x"))
     (is-equal (epsilon.frame:get-row frame 2)
                   '(:a 3 :b 30.0d0 :c "z"))
-    (assert-error (epsilon.frame:get-row frame -1))
-    (assert-error (epsilon.frame:get-row frame 3))))
+    (is-thrown (error) (epsilon.frame:get-row frame -1))
+    (is-thrown (error) (epsilon.frame:get-row frame 3))))
 
 (deftest test-frame-select ()
   "Test column selection"
@@ -140,7 +141,7 @@
     (is-= (epsilon.frame:ncols selected) 2)
     (is-= (epsilon.frame:nrows selected) 3)
     (is-equal (epsilon.frame:column-names selected) '("a" "c"))
-    (assert-error (epsilon.frame:select frame :a :nonexistent))))
+    (is-thrown (error) (epsilon.frame:select frame :a :nonexistent))))
 
 (deftest test-frame-slice ()
   "Test row slicing"
@@ -202,7 +203,7 @@
          (without-b (epsilon.frame:drop-column frame :b)))
     (is-= (epsilon.frame:ncols without-b) 2)
     (is-equal (epsilon.frame:column-names without-b) '("a" "c"))
-    (assert-error (epsilon.frame:get-column without-b :b))
+    (is-thrown (error) (epsilon.frame:get-column without-b :b))
     ;; Original frame unchanged
     (is-= (epsilon.frame:ncols frame) 3)))
 
@@ -214,7 +215,7 @@
          (renamed (epsilon.frame:rename-column frame :old-name :new-name)))
     (is-equal (epsilon.frame:column-names renamed) '("new-name" "other"))
     (is-not-null (epsilon.frame:get-column renamed :new-name))
-    (assert-error (epsilon.frame:get-column renamed :old-name))
+    (is-thrown (error) (epsilon.frame:get-column renamed :old-name))
     ;; Original frame unchanged
     (is-not-null (epsilon.frame:get-column frame :old-name))))
 

@@ -37,10 +37,10 @@
   (source nil)           ; Original column
   (indices nil))         ; Which elements to include (nil = all)
 
-(defun frame-view (frame &key rows columns)
+(defun frame-view (frame &key (rows :all) columns)
   "Create a zero-copy view of a frame"
   (make-view :source frame
-             :row-indices rows
+             :row-indices (if (eq rows :all) :all rows)
              :column-names (when columns
                             (mapcar (lambda (name) (string-downcase (string name))) columns))))
 
@@ -52,9 +52,11 @@
 (defun materialize-view (view)
   "Materialize a view into a new frame"
   (let* ((source (view-source view))
-         (row-indices (or (view-row-indices view)
-                         (loop for i from 0 below (frame:nrows source)
-                               collect i)))
+         (row-indices (let ((indices (view-row-indices view)))
+                       (if (eq indices :all)
+                           (loop for i from 0 below (frame:nrows source)
+                                 collect i)
+                           indices)))
          (col-names (or (view-column-names view)
                        (frame:column-names source)))
          (new-columns (make-hash-table :test 'equal)))

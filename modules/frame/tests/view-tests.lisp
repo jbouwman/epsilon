@@ -22,7 +22,7 @@
     (is-not-null view3)
     (is-eq (view:view-source view1) frame)
     (is-equal (view:view-row-indices view1) '(0 2 4))
-    (is-equal (view:view-column-names view2) '("A" "C"))))
+    (is-equal (view:view-column-names view2) '("a" "c"))))
 
 (deftest test-column-view-creation ()
   "Test creating column views"
@@ -59,7 +59,7 @@
     ;; Test column-selected view
     (is-= (frame:nrows mat2) 5)
     (is-= (frame:ncols mat2) 2)
-    (is-equal (frame:column-names mat2) '("A" "C"))
+    (is-equal (frame:column-names mat2) '("a" "c"))
     
     ;; Test both row and column selected view
     (is-= (frame:nrows mat3) 2)
@@ -86,7 +86,7 @@
     ;; Modifying views should not affect each other after materialization
     (let ((mat1 (view:materialize-view view1))
           (mat2 (view:materialize-view view2)))
-      (is-not mat1 mat2)
+      (is-true (not (eq mat1 mat2)))
       (is-= (frame:nrows mat1) 3)
       (is-= (frame:nrows mat2) 3))))
 
