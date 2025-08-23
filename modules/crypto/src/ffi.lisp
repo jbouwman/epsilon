@@ -13,6 +13,7 @@
    #:%evp-pkey-ctx-new-from-name
    #:%evp-pkey-ctx-free
    #:%evp-pkey-keygen-init
+   #:%evp-pkey-keygen
    #:%evp-pkey-generate
    #:%evp-pkey-ctx-set-rsa-keygen-bits
    #:%evp-pkey-ctx-set-ec-paramgen-curve-nid
@@ -90,6 +91,7 @@
    #:%evp-md-ctx-new
    #:%evp-md-ctx-free
    #:%evp-get-digestbyname
+   #:%evp-sha256
    #:%evp-digestinit-ex
    #:%evp-digestupdate
    #:%evp-digestfinal-ex
@@ -395,6 +397,10 @@
   (ctx :pointer)
   :documentation "Initialize key generation")
 
+(lib:defshared %evp-pkey-keygen "EVP_PKEY_keygen" "libcrypto" :int
+  (ctx :pointer) (ppkey :pointer)
+  :documentation "Generate key pair")
+
 (lib:defshared %evp-pkey-generate "EVP_PKEY_generate" "libcrypto" :int
   (ctx :pointer) (ppkey :pointer)
   :documentation "Generate key pair")
@@ -426,6 +432,10 @@
 
 (lib:defshared %evp-pkey-id "EVP_PKEY_get_id" "libcrypto" :int (pkey :pointer)
   :documentation "Get key type identifier")
+
+;; Hash/Digest Functions
+(lib:defshared %evp-sha256 "EVP_sha256" "libcrypto" :pointer ()
+  :documentation "Get EVP_MD for SHA-256")
 
 ;; RSA key generation - DEPRECATED in OpenSSL 3.0
 ;; (lib:defshared %rsa-new "RSA_new" "libcrypto" :pointer ()
@@ -785,44 +795,7 @@
   (s :pointer) (offset-day :int) (offset-sec :long) (tm :pointer)
   :documentation "Adjust X509 time")
 
-;; Certificate Signing Request (CSR) operations
-(lib:defshared %x509-req-new "X509_REQ_new" "libcrypto" :pointer ()
-  :documentation "Create new CSR")
-
-(lib:defshared %x509-req-free "X509_REQ_free" "libcrypto" :void (req :pointer)
-  :documentation "Free CSR")
-
-(lib:defshared %x509-req-set-pubkey "X509_REQ_set_pubkey" "libcrypto" :int
-  (req :pointer) (pkey :pointer)
-  :documentation "Set CSR public key")
-
-(lib:defshared %x509-req-sign "X509_REQ_sign" "libcrypto" :int
-  (req :pointer) (pkey :pointer) (md :pointer)
-  :documentation "Sign CSR")
-
-(lib:defshared %x509-req-verify "X509_REQ_verify" "libcrypto" :int
-  (req :pointer) (pkey :pointer)
-  :documentation "Verify CSR signature")
-
-(lib:defshared %x509-req-get-subject-name "X509_REQ_get_subject_name" "libcrypto" :pointer
-  (req :pointer)
-  :documentation "Get CSR subject name")
-
-(lib:defshared %x509-req-get-pubkey "X509_REQ_get0_pubkey" "libcrypto" :pointer
-  (req :pointer)
-  :documentation "Get public key from CSR")
-
-(lib:defshared %x509-req-set-subject-name "X509_REQ_set_subject_name" "libcrypto" :int
-  (req :pointer) (name :pointer)
-  :documentation "Set CSR subject name")
-
-(lib:defshared %x509-req-set-version "X509_REQ_set_version" "libcrypto" :int
-  (req :pointer) (version :long)
-  :documentation "Set CSR version")
-
-(lib:defshared %pem-read-bio-x509-req "PEM_read_bio_X509_REQ" "libcrypto" :pointer
-  (bio :pointer) (x :pointer) (cb :pointer) (u :pointer)
-  :documentation "Read CSR from BIO in PEM format")
+;; Certificate Signing Request (CSR) operations - duplicates removed (defined earlier)
 
 
 ;; Random number generation
@@ -957,3 +930,9 @@
 (lib:defshared %evp-cipher-ctx-ctrl "EVP_CIPHER_CTX_ctrl" "libcrypto" :int
   (ctx :pointer) (type :int) (arg :int) (ptr :pointer)
   :documentation "Cipher context control operations")
+
+;;;; X.509 Certificate Functions - duplicates removed
+
+(defconstant +evp-pkey-rsa+ 6)
+(defconstant +mbstring-utf8+ #x1000)
+(defconstant +bio-ctrl-info+ 3)

@@ -14,28 +14,50 @@
   (:shadow
    :byte)
   (:export
+   ;; Path operations (modern, no logical pathnames)
+   :join-paths
+   :split-path
+   :basename
+   :dirname
+   :extension
+   :strip-extension
+   :with-extension
+   :absolute-path
+   :relative-path
+   :normalize-path
+   :clean-path
+   
+   ;; File/directory tests
    :dir-p
    :file-p
+   :exists-p
+   :file-exists-p
+   :directory-exists-p
+   :is-absolute
+   :is-relative
+   
+   ;; Directory operations
    :home-dir
    :list-dir
    :list-dirs
    :make-dirs
-   :exists-p
    :runtime-dir
    :temp-dir
    :with-temp-file
-   :replace-extension
-   :copy-file
+   :with-temp-dir
    :copy-directory
    :change-directory
    :current-directory
-
+   
+   ;; File operations
+   :replace-extension
+   :copy-file
    :read-file
    :read-file-string
    :read-file-bytes
    :write-file-string
    :write-file-bytes
- 
+   
    :create-symbolic-link
    :delete-directory
    :delete-file*
@@ -63,16 +85,176 @@
 
 (in-package :epsilon.sys.fs)
 
-(defun normalize-path-separators (path)
-  "Normalize path separators to forward slashes on all platforms"
-  (substitute #\/ #\\ path))
+;;;; Modern Path Operations (Rust/Go style, no logical pathnames)
+
+(defparameter *path-separator*
+  #+(or linux darwin) #\/
+  #+(or windows win32) #\\
+  "Platform-specific path separator")
+
+(defun normalize-separators (path)
+  "Convert all path separators to forward slashes"
+  (let ((path-str (if (typep path 'path:path)
+                      (path:path-string path)
+                      path)))
+    (substitute #\/ #\\ path-str)))
+
+(defun platform-separator (path)
+  "Convert path to use platform-specific separator"
+  #+(or linux darwin) (substitute #\/ #\\ path)
+  #+(or windows win32) (substitute #\\ #\/ path))
+
+(defun clean-path (path)
+  "Clean a path by removing redundant elements and resolving . and ..
+   Similar to Go's filepath.Clean or Rust's Path::canonicalize"
+  (let* ((path-str (if (typep path 'path:path)
+                       (path:path-string path)
+                       path))
+         (normalized (normalize-separators path-str))
+         (absolute-p (and (> (length normalized) 0)
+                          (char= (char normalized 0) #\/)))
+         (components (remove-if #'str:empty-p 
+				(seq:realize (str:split #\/ normalized))))
+         (cleaned '()))
+    ;; Process components
+    (dolist (comp components)
+      (cond
+        ((string= comp ".")  ; Skip current directory
+         nil)
+        ((string= comp "..") ; Go up one level if possible
+         (when (and cleaned 
+                    (not (string= (car cleaned) "..")))
+           (pop cleaned)))
+        (t
+         (push comp cleaned))))
+    ;; Reconstruct path
+    (let ((result (str:join #\/ (seq:seq (reverse cleaned)))))
+      (cond
+        (absolute-p (str:concat "/" result))
+        ((string= result "") ".")
+        (t result)))))
+
+(defun join-paths (&rest paths)
+  "Join path components intelligently, like Go's filepath.Join or Rust's Path::join"
+  (when paths
+    (let ((result (first paths)))
+      (dolist (path (rest paths))
+        (when (and path (> (length path) 0))
+          (cond
+            ;; If path is absolute, replace result
+            ((and (> (length path) 0)
+                  (char= (char path 0) #\/))
+             (setf result path))
+            ;; Otherwise append
+            (t
+             (setf result 
+                   (if (and (> (length result) 0)
+                            (not (char= (char result (1- (length result))) #\/))
+                            (not (char= (char result (1- (length result))) #\\)))
+                       (str:concat result "/" path)
+                       (str:concat result path)))))))
+      (clean-path result))))
+
+(defun split-path (path)
+  "Split a path into directory and file components
+   Returns (values directory filename)"
+  (let* ((normalized (normalize-separators path))
+         (pos (position #\/ normalized :from-end t)))
+    (if pos
+        (values (subseq normalized 0 (1+ pos))
+                (subseq normalized (1+ pos)))
+        (values "" normalized))))
+
+(defun dirname (path)
+  "Return the directory part of a path, like Go's filepath.Dir"
+  (multiple-value-bind (dir file) (split-path path)
+    (declare (ignore file))
+    (if (string= dir "")
+        "."
+        (clean-path dir))))
+
+(defun basename (path)
+  "Return the last element of a path, like Go's filepath.Base"
+  (multiple-value-bind (dir file) (split-path path)
+    (declare (ignore dir))
+    file))
+
+(defun extension (path)
+  "Return the file extension including the dot, like Go's filepath.Ext"
+  (let* ((base (basename path))
+         (pos (position #\. base :from-end t)))
+    (if pos
+        (subseq base pos)
+        "")))
+
+(defun strip-extension (path)
+  "Remove the file extension from a path"
+  (let ((ext (extension path)))
+    (if (string= ext "")
+        path
+        (subseq path 0 (- (length path) (length ext))))))
+
+(defun with-extension (path ext)
+  "Replace or add extension to a path"
+  (let ((stripped (strip-extension path)))
+    (if (and ext (> (length ext) 0)
+             (not (char= (char ext 0) #\.)))
+        (str:concat stripped "." ext)
+        (str:concat stripped ext))))
+
+(defun is-absolute (path)
+  "Test if a path is absolute"
+  (let ((path-str (if (typep path 'path:path)
+                      (path:path-string path)
+                      path)))
+    #+(or linux darwin)
+    (and (> (length path-str) 0) (char= (char path-str 0) #\/))
+    #+(or windows win32)
+    (or (and (> (length path-str) 0) (char= (char path-str 0) #\/))
+        (and (> (length path-str) 0) (char= (char path-str 0) #\\))
+        (and (>= (length path-str) 3)
+             (alpha-char-p (char path-str 0))
+             (char= (char path-str 1) #\:)
+             (or (char= (char path-str 2) #\/)
+                 (char= (char path-str 2) #\\))))))
+
+(defun is-relative (path)
+  "Test if a path is relative"
+  (not (is-absolute path)))
+
+(defun absolute-path (path)
+  "Convert a path to absolute, resolving from current directory if needed"
+  (let ((path-str (if (typep path 'path:path)
+                      (path:path-string path)
+                      path)))
+    (if (is-absolute path-str)
+        (clean-path path-str)
+        (join-paths (namestring (current-directory)) path-str))))
+
+(defun relative-path (path base)
+  "Make path relative to base directory"
+  (let ((abs-path (absolute-path path))
+        (abs-base (absolute-path base)))
+    ;; Simple implementation - just remove base prefix if present
+    (if (str:starts-with-p abs-path abs-base)
+        (let ((rel (subseq abs-path (length abs-base))))
+          (if (and (> (length rel) 0)
+                   (or (char= (char rel 0) #\/)
+                       (char= (char rel 0) #\\)))
+              (subseq rel 1)
+              rel))
+        abs-path)))
+
+(defun normalize-path (path)
+  "Normalize a path to use forward slashes and resolve . and .."
+  (clean-path path))
 
 (defun parent (file)
-  (let ((normalized (normalize-path-separators file)))
-    (str:join #\/ (butlast (str:split #\/ normalized)))))
+  "Get parent directory (deprecated, use dirname)"
+  (dirname file))
 
 (defun runtime-dir ()
-  (parent (normalize-path-separators (first sb-ext:*posix-argv*))))
+  (parent (normalize-separators (first sb-ext:*posix-argv*))))
 
 (defun temp-dir ()
   "Return a default directory to use for temporary files"
@@ -86,14 +268,26 @@
       (str:concat (env:getenv "HOMEDRIVE") (env:getenv "HOMEPATH"))))
 
 (defmacro with-temp-file ((name) &body body)
-  `(let ((,name (path:string-path-join
+  `(let ((,name (join-paths
                  (temp-dir)
-                 (str:concat (str:random-string 16) ".tmp"))))
+                 (str:concat "epsilon-" (str:random-string 16) ".tmp"))))
      (unwind-protect
           (progn
             ,@body)
        (when (file-p ,name)
          (delete-file* ,name)))))
+
+(defmacro with-temp-dir ((name) &body body)
+  "Create a temporary directory and clean it up after use"
+  `(let ((,name (join-paths
+                 (temp-dir)
+                 (str:concat "epsilon-dir-" (str:random-string 16)))))
+     (unwind-protect
+          (progn
+            (make-dirs ,name)
+            ,@body)
+       (when (dir-p ,name)
+         (delete-directory ,name)))))
 
 #+win32
 (defun directory-pathname-p (pathname)
@@ -112,20 +306,26 @@
                     :type (if (directory-pathname-p truepath) :directory :file)))))
 
 (defun dir-p (path)
-  (handler-case
-      #-win32 (sb-posix:s-isdir (sb-posix:stat-mode (sb-posix:stat path)))
-      #+win32 (let ((truepath (probe-file path)))
-                (and truepath (directory-pathname-p truepath)))
-    #-win32 (sb-posix:syscall-error () nil)
-    #+win32 (error () nil)))
+  (let ((path-str (if (typep path 'path:path)
+                      (path:path-string path)
+                      path)))
+    (handler-case
+        #-win32 (sb-posix:s-isdir (sb-posix:stat-mode (sb-posix:stat path-str)))
+        #+win32 (let ((truepath (probe-file path-str)))
+                  (and truepath (directory-pathname-p truepath)))
+        #-win32 (sb-posix:syscall-error () nil)
+        #+win32 (error () nil))))
 
 (defun file-p (path)
-  (handler-case
-      #-win32 (sb-posix:s-isreg (sb-posix:stat-mode (sb-posix:stat path)))
-      #+win32 (let ((truepath (probe-file path)))
-                (and truepath (not (directory-pathname-p truepath))))
-    #-win32 (sb-posix:syscall-error () nil)
-    #+win32 (error () nil)))
+  (let ((path-str (if (typep path 'path:path)
+                      (path:path-string path)
+                      path)))
+    (handler-case
+        #-win32 (sb-posix:s-isreg (sb-posix:stat-mode (sb-posix:stat path-str)))
+        #+win32 (let ((truepath (probe-file path-str)))
+                  (and truepath (not (directory-pathname-p truepath))))
+        #-win32 (sb-posix:syscall-error () nil)
+        #+win32 (error () nil))))
 
 (defun file-info-type (stat)
   #-win32 (cond ((sb-posix:s-isreg (sb-posix:stat-mode stat)) :file)
@@ -175,8 +375,8 @@
                    :for name := (sb-unix:unix-dirent-name ent)
                    :when (and (not (string= name "."))
                               (not (string= name "..")))
-                     :do (funcall f
-                                  (path:string-path-join dirpath name)))))
+                   :do (funcall f
+                                (path:string-path-join dirpath name)))))
       (when dir
         (sb-unix:unix-closedir dir nil))))
   #+(or windows win32)
@@ -203,19 +403,24 @@
                (when (and recursive (dir-p entry-path))
                  (walk-path entry-path f :recursive t :test test)))))
 
-(defun delete-extension (path-string)
-  (subseq path-string 0 (position #\. path-string :from-end t)))
-
-(defun add-extension (path-string extension)
-  (str:join #\. (seq:seq (list path-string extension))))
-
 (defun replace-extension (path-string extension)
-  (add-extension (delete-extension path-string) extension))
+  "Replace file extension (deprecated, use with-extension)"
+  (with-extension path-string extension))
 
 (defun exists-p (path-string)
-  (not (null (probe-file (if (stringp path-string)
-                             path-string
-                             (path:path-from-uri path-string))))))
+  "Check if file or directory exists"
+  (let ((path (if (typep path-string 'path:path)
+                  (path:path-string path-string)
+                  path-string)))
+    (not (null (probe-file path)))))
+
+(defun file-exists-p (path)
+  "Check if path exists and is a regular file"
+  (and (exists-p path) (file-p path)))
+
+(defun directory-exists-p (path)
+  "Check if path exists and is a directory"
+  (and (exists-p path) (dir-p path)))
 
 (defun read-file (filename)
   (with-open-file (stream filename :direction :input)
@@ -248,30 +453,37 @@
     (write-sequence content stream)))
 
 (defun make-dirs (path-string)
-  (let ((full-path (normalize-path-separators (if (stringp path-string)
-                                                  path-string
-                                                  (path:path-from-uri path-string)))))
+  "Create directory and all parent directories if needed"
+  (let* ((path-str (if (typep path-string 'path:path)
+                       (path:path-string path-string)
+                       path-string))
+         (full-path (absolute-path path-str)))
     (when (and full-path (> (length full-path) 0))
-      (let ((is-absolute (char= (char full-path 0) #\/))
-            (components (seq:realize
-                         (seq:filter (complement #'str:empty-p)
-                                     (str:split #\/ full-path)))))
-        (loop :with path := (if is-absolute "/" "")
+      (let* ((normalized (normalize-separators full-path))
+             (is-absolute (char= (char normalized 0) #\/))
+             (components (remove-if #'str:empty-p
+                                    (seq:realize (str:split #\/ normalized)))))
+        (loop :with current := (if is-absolute "/" "")
               :for component :in components
-              :do (setf path (path:string-path-join path component))
-                  (unless (probe-file path)
-                    #+(or linux darwin)
-                    (sb-unix:unix-mkdir path #o775)
-                    #+(or windows win32)
-                    (ensure-directories-exist (pathname path))))))))
+              :do (setf current (if (string= current "")
+                                    component
+                                    (if (or (char= (char current (1- (length current))) #\/)
+                                            (string= current "/"))
+					(str:concat current component)
+					(str:concat current "/" component))))
+              (unless (probe-file current)
+                #+(or linux darwin)
+                (sb-posix:mkdir current #o775)
+                #+(or windows win32)
+                (ensure-directories-exist (pathname current))))))))
   
 (defun list-files (path-string extension)
   (let (files)
     (walk-path path-string
-               (lambda (entry-path)
+	       (lambda (entry-path)
                  (push entry-path files))
-               :test (lambda (entry-path)
-                       (and (file-p entry-path)
+	       :test (lambda (entry-path)
+		       (and (file-p entry-path)
                             (str:ends-with-p entry-path extension))))
     (sort files #'string<=)))
 
@@ -293,22 +505,22 @@
                    :while ent
                    :for name := (sb-unix:unix-dirent-name ent)
                    :when (and (not (string= name "."))
-                              (not (string= name "..")))
-                     :collect name)))
+			      (not (string= name "..")))
+                   :collect name)))
       (when dir
         (sb-unix:unix-closedir dir nil))))
   #+(or windows win32)
   ;; Windows implementation using directory()
-  (let* ((normalized-dir (normalize-path-separators directory))
+  (let* ((normalized-dir (normalize-separators directory))
          (pattern (if (and (> (length normalized-dir) 0)
                            (char= (char normalized-dir (1- (length normalized-dir))) #\/))
-                      (concatenate 'string normalized-dir "*.*")
-                      (concatenate 'string normalized-dir "/*.*"))))
+		      (concatenate 'string normalized-dir "*.*")
+		      (concatenate 'string normalized-dir "/*.*"))))
     (handler-case
         (mapcar #'file-namestring
                 (remove-if (lambda (path)
                              (let ((name (file-namestring path)))
-                               (or (string= name ".") (string= name ".."))))
+			       (or (string= name ".") (string= name ".."))))
                            (directory pattern)))
       (error () nil))))
 
@@ -335,8 +547,8 @@
 
 (defmacro with-u8-out ((f in) &body body)
   `(with-open-file (,f ,in :element-type 'u8
-                           :direction :output
-                           :if-exists :supersede)
+                       :direction :output
+                       :if-exists :supersede)
      ,@body))
 
 (defun stream-files (f in out)
@@ -348,9 +560,9 @@
   (loop :for ab := (read-byte a nil nil)
         :for bb := (read-byte b nil nil)
         :unless (eql ab bb)
-          :return nil
+        :return nil
         :unless (and ab bb)
-          :return t))
+        :return t))
 
 (defun file= (a b)
   (with-u8-in (a a)
@@ -364,8 +576,8 @@
       #+win32 (let ((truepath (probe-file path)))
                 (when truepath
                   (file-write-date truepath)))
-    #-win32 (sb-posix:syscall-error () nil)
-    #+win32 (error () nil)))
+      #-win32 (sb-posix:syscall-error () nil)
+      #+win32 (error () nil)))
 
 (defun copy-file (source dest)
   "Copy file from source to dest"
@@ -389,18 +601,85 @@
 
 (defun copy-directory (source dest)
   "Recursively copy directory contents from source to dest"
-  (let ((source-str (if (typep source 'path:path)
-                        (path:path-string source)
-                        source))
-        (dest-str (if (typep dest 'path:path)
-                      (path:path-string dest)
-                      dest)))
+  (let ((source-str (if (stringp source) source (namestring source)))
+        (dest-str (if (stringp dest) dest (namestring dest))))
     (make-dirs dest-str)
     (dolist (entry (list-dir source-str))
-      (let ((source-path (path:path-string (path:path-join source-str entry)))
-            (dest-path (path:path-string (path:path-join dest-str entry))))
+      (let ((source-path (join-paths source-str entry))
+            (dest-path (join-paths dest-str entry)))
         (cond
           ((dir-p source-path)
            (copy-directory source-path dest-path))
           ((file-p source-path)
            (copy-file source-path dest-path)))))))
+
+;;;; Additional filesystem operations
+
+(defun list-dirs (path)
+  "List only directories in path"
+  (remove-if-not #'dir-p 
+                 (mapcar (lambda (name) (join-paths path name))
+                         (list-dir path))))
+
+(defun list-contents (path)
+  "List all contents of a directory (alias for list-dir)"
+  (list-dir path))
+
+(defun list-directories (path)
+  "List only directories in path (alias for list-dirs)"
+  (list-dirs path))
+
+(defun access-time (path)
+  "Return the access time of the file at PATH"
+  (handler-case
+      #-win32 (file-info-atime (sb-posix:stat path))
+      #+win32 (modification-time path)  ; Windows fallback to modification time
+      #-win32 (sb-posix:syscall-error () nil)
+      #+win32 (error () nil)))
+
+(defun creation-time (path)
+  "Return the creation time of the file at PATH"
+  (handler-case
+      #-win32 (file-info-ctime (sb-posix:stat path))
+      #+win32 (modification-time path)  ; Windows fallback to modification time
+      #-win32 (sb-posix:syscall-error () nil)
+      #+win32 (error () nil)))
+
+(defun group (path)
+  "Return the group ID of the file at PATH"
+  (handler-case
+      #-win32 (file-info-gid (sb-posix:stat path))
+      #+win32 0  ; Windows doesn't have group IDs
+      #-win32 (sb-posix:syscall-error () nil)))
+
+(defun owner (path)
+  "Return the owner ID of the file at PATH"
+  (handler-case
+      #-win32 (file-info-uid (sb-posix:stat path))
+      #+win32 0  ; Windows doesn't have owner IDs
+      #-win32 (sb-posix:syscall-error () nil)))
+
+(defun attributes (path)
+  "Return file attributes as a property list"
+  (when (exists-p path)
+    (list :exists t
+          :directory (dir-p path)
+          :file (file-p path)
+          :modification-time (modification-time path)
+          :access-time (access-time path)
+          :creation-time (creation-time path)
+          :owner (owner path)
+          :group (group path))))
+
+(defparameter *system*
+  #+(or linux darwin) :unix
+  #+(or windows win32) :windows
+  "The current operating system type")
+
+(defun encode-attributes (attrs)
+  "Encode file attributes to a portable format"
+  attrs)  ; For now, just return as-is
+
+(defun decode-attributes (attrs)
+  "Decode file attributes from a portable format"
+  attrs)  ; For now, just return as-is

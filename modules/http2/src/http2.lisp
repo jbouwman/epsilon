@@ -109,7 +109,7 @@
 
 (defun send-settings-frame (connection settings)
   "Send SETTINGS frame"
-  (let ((frame (epsilon.http2::make-settings-frame :initial-settings settings)))
+  (let ((frame (make-settings-frame settings)))
     (connection-send-frame connection frame)))
 
 (defun connection-send-frame (connection frame)
@@ -265,6 +265,230 @@
 (defun http2-post (url &key headers body)
   "Make an HTTP/2 POST request"
   (http2-request url :method "POST" :headers headers :body body))
+
+;;;; Server Functions
+
+(defun handle-http2-connection (connection handler)
+  "Handle an HTTP/2 server connection"
+  ;; First receive and validate client preface
+  (unless (connection-client-p connection)
+    (let ((preface (make-array 24 :element-type '(unsigned-byte 8))))
+      (if (connection-tls-connection connection)
+          (crypto:openssl-read (connection-tls-connection connection) preface :start 0 :end 24)
+          (net:tcp-read (connection-socket connection) preface :start 0 :end 24))
+      
+      ;; Validate preface
+      (unless (equalp preface (string-to-bytes (subseq +http2-preface+ 0 24)))
+        (error "Invalid HTTP/2 client preface"))))
+  
+  ;; Main frame processing loop
+  (handler-case
+      (loop
+        (let ((frame (connection-receive-frame connection)))
+          (handle-server-frame connection frame handler)))
+    (end-of-file ()
+      ;; Connection closed by client
+      nil)
+    (error (e)
+      (format t "Error handling connection: ~A~%" e)
+      (connection-close connection))))
+
+(defun handle-server-frame (connection frame handler)
+  "Handle a single frame in server mode"
+  (let ((frame-type (frame-type frame))
+        (stream-id (frame-stream-id frame)))
+    
+    (case frame-type
+      ;; SETTINGS frame
+      (#.frames:+frame-settings+
+       (if (frame-flag-set-p frame frames:+flag-ack+)
+           ;; Settings ACK received
+           nil
+           ;; Apply settings and send ACK
+           (progn
+             (apply-remote-settings connection (frame-payload frame))
+             (send-settings-ack connection))))
+      
+      ;; HEADERS frame
+      (#.frames:+frame-headers+
+       (let ((stream (or (gethash stream-id (connection-streams connection))
+                        (let ((new-stream (make-http2-stream stream-id connection)))
+                          (setf (gethash stream-id (connection-streams connection)) new-stream)
+                          new-stream))))
+         ;; Decode headers
+         (let ((headers (decode-headers 
+                        (connection-hpack-decoder connection)
+                        (frame-payload frame))))
+           (setf (http2-stream-headers stream) headers)
+           
+           ;; If END_STREAM is set or we get END_HEADERS, process request
+           (when (or (frame-flag-set-p frame frames:+flag-end-stream+)
+                    (frame-flag-set-p frame frames:+flag-end-headers+))
+             (process-server-request connection stream handler)))))
+      
+      ;; PING frame
+      (#.frames:+frame-ping+
+       (unless (frame-flag-set-p frame frames:+flag-ack+)
+         ;; Echo back PING with ACK flag
+         (send-ping-ack connection (frame-payload frame))))
+      
+      ;; Other frames
+      (t nil))))
+
+(defun process-server-request (connection stream handler)
+  "Process a complete HTTP/2 request and send response"
+  (let* ((headers (http2-stream-headers stream))
+         (body (when (> (length (http2-stream-data stream)) 0)
+                 (bytes-to-string (http2-stream-data stream))))
+         ;; Call handler to get response
+         (response (funcall handler headers body)))
+    
+    ;; Send response
+    (when response
+      (let* ((status (or (getf response :status) 200))
+             (response-headers (append 
+                               (list (cons ":status" (format nil "~D" status)))
+                               (getf response :headers)))
+             (response-body (getf response :body)))
+        
+        ;; Send HEADERS frame
+        (stream-send-headers stream response-headers 
+                            :end-stream (null response-body))
+        
+        ;; Send DATA frame if body present
+        (when response-body
+          (stream-send-data stream 
+                           (if (stringp response-body)
+                               (string-to-bytes response-body)
+                               response-body)
+                           :end-stream t))))))
+
+(defun send-settings-ack (connection)
+  "Send SETTINGS ACK frame"
+  ;; SETTINGS ACK is an empty SETTINGS frame with ACK flag set
+  (let ((frame-bytes (make-array 9 :element-type '(unsigned-byte 8))))
+    ;; Frame header: length=0, type=SETTINGS(4), flags=ACK(1), stream=0
+    (setf (aref frame-bytes 0) 0)   ; Length high
+    (setf (aref frame-bytes 1) 0)   ; Length mid
+    (setf (aref frame-bytes 2) 0)   ; Length low
+    (setf (aref frame-bytes 3) frames:+frame-settings+)   ; Type
+    (setf (aref frame-bytes 4) frames:+flag-ack+)   ; Flags
+    (setf (aref frame-bytes 5) 0)   ; Stream ID
+    (setf (aref frame-bytes 6) 0)
+    (setf (aref frame-bytes 7) 0)
+    (setf (aref frame-bytes 8) 0)
+    
+    ;; Send directly
+    (if (connection-tls-connection connection)
+        (crypto:openssl-write (connection-tls-connection connection) frame-bytes)
+        (net:tcp-write (connection-socket connection) frame-bytes))))
+
+(defun send-ping-ack (connection payload)
+  "Send PING ACK frame"
+  ;; PING frame with ACK flag and echoed payload
+  (let ((frame-bytes (make-array (+ 9 8) :element-type '(unsigned-byte 8))))
+    ;; Frame header: length=8, type=PING(6), flags=ACK(1), stream=0
+    (setf (aref frame-bytes 0) 0)   ; Length high
+    (setf (aref frame-bytes 1) 0)   ; Length mid
+    (setf (aref frame-bytes 2) 8)   ; Length low (8 bytes payload)
+    (setf (aref frame-bytes 3) frames:+frame-ping+)   ; Type
+    (setf (aref frame-bytes 4) frames:+flag-ack+)   ; Flags
+    (setf (aref frame-bytes 5) 0)   ; Stream ID
+    (setf (aref frame-bytes 6) 0)
+    (setf (aref frame-bytes 7) 0)
+    (setf (aref frame-bytes 8) 0)
+    
+    ;; Copy payload (8 bytes)
+    (when payload
+      (loop for i from 0 below (min 8 (length payload))
+            do (setf (aref frame-bytes (+ 9 i)) (aref payload i))))
+    
+    ;; Send directly
+    (if (connection-tls-connection connection)
+        (crypto:openssl-write (connection-tls-connection connection) frame-bytes)
+        (net:tcp-write (connection-socket connection) frame-bytes))))
+
+(defun apply-remote-settings (connection settings-payload)
+  "Apply settings from remote peer"
+  ;; For now, just accept all settings
+  (declare (ignore connection settings-payload)))
+
+;; Frame creation functions
+(defun make-settings-frame (settings)
+  "Create a SETTINGS frame"
+  (let* ((payload-size (* (length settings) 6))
+         (payload (make-array payload-size :element-type '(unsigned-byte 8)))
+         (pos 0))
+    ;; Encode each setting (2 bytes ID + 4 bytes value)
+    (dolist (setting settings)
+      (let ((id (case (car setting)
+                  (:header-table-size frames:+settings-header-table-size+)
+                  (:enable-push frames:+settings-enable-push+)
+                  (:max-concurrent-streams frames:+settings-max-concurrent-streams+)
+                  (:initial-window-size frames:+settings-initial-window-size+)
+                  (:max-frame-size frames:+settings-max-frame-size+)
+                  (:max-header-list-size frames:+settings-max-header-list-size+)
+                  (t 0)))
+            (value (cdr setting)))
+        ;; Setting ID (2 bytes)
+        (setf (aref payload pos) (logand #xff (ash id -8)))
+        (setf (aref payload (+ pos 1)) (logand #xff id))
+        ;; Setting value (4 bytes)
+        (setf (aref payload (+ pos 2)) (logand #xff (ash value -24)))
+        (setf (aref payload (+ pos 3)) (logand #xff (ash value -16)))
+        (setf (aref payload (+ pos 4)) (logand #xff (ash value -8)))
+        (setf (aref payload (+ pos 5)) (logand #xff value))
+        (incf pos 6)))
+    
+    (frames:make-http2-frame :type frames:+frame-settings+
+                            :flags 0
+                            :stream-id 0
+                            :payload payload)))
+
+;; Frame helper functions
+(defun serialize-frame (frame)
+  "Serialize HTTP/2 frame to bytes"
+  (let* ((payload (frames:http2-frame-payload frame))
+         (length (if payload (length payload) 0))
+         (header-bytes (make-array 9 :element-type '(unsigned-byte 8)))
+         (total-bytes (make-array (+ 9 length) :element-type '(unsigned-byte 8))))
+    
+    ;; Frame header (9 bytes)
+    (setf (aref header-bytes 0) (logand #xff (ash length -16)))
+    (setf (aref header-bytes 1) (logand #xff (ash length -8)))
+    (setf (aref header-bytes 2) (logand #xff length))
+    (setf (aref header-bytes 3) (frames:http2-frame-type frame))
+    (setf (aref header-bytes 4) (frames:http2-frame-flags frame))
+    (setf (aref header-bytes 5) (logand #x7f (ash (frames:http2-frame-stream-id frame) -24)))
+    (setf (aref header-bytes 6) (logand #xff (ash (frames:http2-frame-stream-id frame) -16)))
+    (setf (aref header-bytes 7) (logand #xff (ash (frames:http2-frame-stream-id frame) -8)))
+    (setf (aref header-bytes 8) (logand #xff (frames:http2-frame-stream-id frame)))
+    
+    ;; Copy header
+    (replace total-bytes header-bytes :end1 9)
+    
+    ;; Copy payload if present
+    (when payload
+      (replace total-bytes payload :start1 9))
+    
+    total-bytes))
+
+;; Frame accessors for compatibility
+(defun frame-type (frame) (frames:http2-frame-type frame))
+(defun frame-stream-id (frame) (frames:http2-frame-stream-id frame))
+(defun frame-payload (frame) (frames:http2-frame-payload frame))
+(defun frame-flag-set-p (frame flag) (logtest (frames:http2-frame-flags frame) flag))
+
+;; HPACK helper stubs (need actual implementation)
+(defun create-encoder () nil)
+(defun create-decoder () nil)
+(defun encode-headers (encoder headers) 
+  (declare (ignore encoder)) 
+  (string-to-bytes (format nil "~{~A~}" headers)))
+(defun decode-headers (decoder payload)
+  (declare (ignore decoder))
+  ;; Simplified header decoding - needs proper HPACK implementation
+  (list (cons ":method" "GET") (cons ":path" "/")))
 
 ;;;; Helper Functions
 
