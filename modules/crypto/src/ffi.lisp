@@ -448,7 +448,7 @@
   :documentation "Get key type identifier")
 
 ;; Hash/Digest Functions
-(lib:defshared %evp-sha256 "EVP_sha256" "libcrypto" :pointer ()
+(ffi:defshared %evp-sha256 "EVP_sha256" "libcrypto" :pointer ()
   :documentation "Get EVP_MD for SHA-256")
 
 ;; RSA key generation - DEPRECATED in OpenSSL 3.0

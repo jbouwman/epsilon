@@ -80,23 +80,26 @@
 
 (defun platform-library-name (base-name &optional version)
   "Convert base library name to platform-specific format"
-  #+darwin
-  (if version
-      (format nil "lib~A.~A.dylib" base-name version)
-      (format nil "lib~A.dylib" base-name))
-  
-  #+linux
-  (if version
-      (format nil "lib~A.so.~A" base-name version)
-      (format nil "lib~A.so" base-name))
-  
-  #+windows
-  (if version
-      (format nil "~A-~A.dll" base-name version)
-      (format nil "~A.dll" base-name))
-  
-  #-(or darwin linux windows)
-  (format nil "lib~A.so" base-name))
+  ;; Don't add lib prefix if already present
+  (let ((needs-lib-prefix (not (and (>= (length base-name) 3)
+                                     (string= (subseq base-name 0 3) "lib")))))
+    #+darwin
+    (if version
+        (format nil "~:[~;lib~]~A.~A.dylib" needs-lib-prefix base-name version)
+        (format nil "~:[~;lib~]~A.dylib" needs-lib-prefix base-name))
+    
+    #+linux
+    (if version
+        (format nil "~:[~;lib~]~A.so.~A" needs-lib-prefix base-name version)
+        (format nil "~:[~;lib~]~A.so" needs-lib-prefix base-name))
+    
+    #+windows
+    (if version
+        (format nil "~A-~A.dll" base-name version)
+        (format nil "~A.dll" base-name))
+    
+    #-(or darwin linux windows)
+    (format nil "~:[~;lib~]~A.so" needs-lib-prefix base-name)))
 
 ;;; Library Registry
 
@@ -266,9 +269,10 @@
 
 (defun find-library-tier-2 (info)
   "Tier 2: Check environment-specified paths"
-  (when-let ((env-paths (sb-ext:posix-getenv "EPSILON_LIBRARY_PATH")))
-    (find-library-in-paths (library-info-search-names info)
-                          (str:split ":" env-paths))))
+  (let ((env-paths (sb-ext:posix-getenv "EPSILON_LIBRARY_PATH")))
+    (when env-paths
+      (find-library-in-paths (library-info-search-names info)
+                            (str:split ":" env-paths)))))
 
 (defun find-library-tier-3 (info)
   "Tier 3: Check package manager paths"
@@ -277,14 +281,21 @@
 
 (defun find-library-tier-4 (info)
   "Tier 4: System default resolution"
-  ;; Let the system loader handle it
-  (first (library-info-search-names info)))
+  ;; First try to find an existing file
+  (or (loop for name in (library-info-search-names info)
+            when (probe-file name)
+              return name)
+      ;; If no file exists, return first non-absolute path for system loader
+      (loop for name in (library-info-search-names info)
+            when (not (and (> (length name) 0) 
+                          (eql (char name 0) #\/)))
+              return name)))
 
 (defun find-library (name)
   "Find a library using tiered resolution"
-  ;; Normalize name - convert keywords to regular symbols
+  ;; Normalize name - convert keywords to regular symbols in this package
   (let* ((normalized-name (if (keywordp name)
-                              (intern (symbol-name name))
+                              (intern (symbol-name name) :epsilon.library)
                               name))
          (info (or (map:get *library-registry* normalized-name)
                    ;; Also try the original name in case it's already registered
@@ -438,11 +449,25 @@
                              (list (platform-library-name library-name))
                              (or paths '(".")))
                             ;; For system libraries, use standard resolution
-                            (find-library (intern (string-downcase library-name) :keyword))))
-               (handle (sb-alien:load-shared-object (or lib-path library-name))))
-          (setf *open-libraries* 
-                (map:assoc *open-libraries* library-name handle))
-          handle))))
+                            ;; Handle both "libcrypto" and "crypto" style names
+                            (let ((lookup-name (if (and (>= (length library-name) 3)
+                                                       (string= (subseq library-name 0 3) "lib"))
+                                                  (subseq library-name 3)
+                                                  library-name)))
+                              (find-library (intern (string-upcase lookup-name) :keyword)))))
+               (final-path (or lib-path library-name)))
+          ;; Try to load the library
+          (handler-case
+              (let ((handle (sb-alien:load-shared-object final-path)))
+                (setf *open-libraries* 
+                      (map:assoc *open-libraries* library-name handle))
+                handle)
+            (error (e)
+              ;; If it fails and we have a lib-path from find-library, it should have worked
+              ;; Try fallback to plain library name without path
+              (if (and lib-path (not (equal lib-path library-name)))
+                  (sb-alien:load-shared-object library-name)
+                  (error e))))))))
 
 (defun lib-close (library-handle)
   "Closes a previously opened library"
@@ -519,21 +544,50 @@
     :bundled-p nil
     :critical-p nil
     :search-names (list #+darwin "libcrypto.dylib" #+darwin "libcrypto.3.dylib"
-                        #+linux "libcrypto.so" #+linux "libcrypto.so.3" #+linux "libcrypto.so.1.1"
+                        #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libcrypto.so.3"
+                        #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libcrypto.so"
+                        #+linux "libcrypto.so.3" #+linux "libcrypto.so.1.1" #+linux "libcrypto.so"
                         #+windows "libcrypto-3.dll" #+windows "libeay32.dll")
     :description "OpenSSL cryptographic library")
   
+  ;; Register both ffi and libffi names
+  (define-library ffi
+    :base-name "ffi"
+    :version nil
+    :bundled-p t
+    :critical-p t
+    :search-names (list #+darwin "libffi.dylib" #+darwin "libffi.8.dylib" #+darwin "libffi.7.dylib"
+                        #+linux "/nix/store/mnq0hqsqivdbaqzmzc287l0z9zw8dp15-libffi-3.4.4/lib/libffi.so.8"
+                        #+linux "/nix/store/mnq0hqsqivdbaqzmzc287l0z9zw8dp15-libffi-3.4.4/lib/libffi.so"
+                        #+linux "libffi.so" #+linux "libffi.so.8" #+linux "libffi.so.7" #+linux "libffi.so.6"
+                        #+windows "libffi.dll" #+windows "libffi-8.dll" #+windows "libffi-7.dll")
+    :description "Foreign Function Interface library")
+    
   (define-library libffi
     :base-name "ffi"
     :version nil
     :bundled-p t
     :critical-p t
     :search-names (list #+darwin "libffi.dylib" #+darwin "libffi.8.dylib" #+darwin "libffi.7.dylib"
+                        #+linux "/nix/store/mnq0hqsqivdbaqzmzc287l0z9zw8dp15-libffi-3.4.4/lib/libffi.so.8"
+                        #+linux "/nix/store/mnq0hqsqivdbaqzmzc287l0z9zw8dp15-libffi-3.4.4/lib/libffi.so"
                         #+linux "libffi.so" #+linux "libffi.so.8" #+linux "libffi.so.7" #+linux "libffi.so.6"
                         #+windows "libffi.dll" #+windows "libffi-8.dll" #+windows "libffi-7.dll")
     :description "Foreign Function Interface library")
   
-  ;; System libraries
+  ;; System libraries - register both c and libc names  
+  (define-library c
+    :base-name "c"
+    :version nil
+    :bundled-p nil
+    :critical-p t
+    :search-names (list #+darwin "/usr/lib/libSystem.B.dylib"
+                        #+linux "/nix/store/yaz7pyf0ah88g2v505l38n0f3wg2vzdj-glibc-2.37-8/lib/libc.so.6"
+                        #+linux "/nix/store/yaz7pyf0ah88g2v505l38n0f3wg2vzdj-glibc-2.37-8/lib/libc.so"
+                        #+linux "libc.so.6" #+linux "libc.so"
+                        #+windows "msvcrt.dll")
+    :description "C standard library")
+    
   (define-library libc
     :base-name "c"
     :version nil
@@ -579,6 +633,19 @@
                         #+linux "libcrypto.so.3" #+linux "libcrypto.so.1.1" #+linux "libcrypto.so"
                         #+windows "libcrypto-3.dll" #+windows "libcrypto-1_1.dll")
     :description "OpenSSL cryptography library")
+    
+  ;; Register both ssl and libssl names
+  (define-library ssl
+    :base-name "ssl"
+    :version "3"
+    :bundled-p nil
+    :critical-p nil
+    :search-names (list #+darwin "libssl.dylib" #+darwin "libssl.3.dylib"
+                        #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libssl.so.3"
+                        #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libssl.so"
+                        #+linux "libssl.so.3" #+linux "libssl.so.1.1" #+linux "libssl.so"
+                        #+windows "libssl-3.dll" #+windows "libssl-1_1.dll")
+    :description "OpenSSL SSL/TLS library")
     
   (define-library libssl
     :base-name "ssl"

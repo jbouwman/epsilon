@@ -488,8 +488,11 @@
            ;; Keep holders alive during the entire call by binding them
            (unwind-protect
                 (let* ((result-holder (allocate-result-holder return-type))
+                       (fn-sap (if (sb-sys:system-area-pointer-p function-address)
+                                  function-address
+                                  (sb-sys:int-sap function-address)))
                        (call-result (epsilon-call-function (cif-info-pointer cif-info)
-                                                           (sb-sys:int-sap function-address)
+                                                           fn-sap
                                                            converted-args
                                                            result-holder)))
                   (if (< call-result 0)
@@ -616,63 +619,20 @@
 (defvar *open-libraries* (map:make-map)
   "Map of opened library handles")
 
+;; Library management functions are now delegated to epsilon.library
 (defun lib-open (library-name &key local paths)
-  "Opens a shared library and returns a handle"
-  (let ((existing (map:get *open-libraries* library-name)))
-    (if existing
-        existing
-        (let* ((lib-path 
-                (cond
-                  ;; If it's an absolute path, use it directly
-                  ((and (stringp library-name) (pathname-absolute-p library-name))
-                   (when (probe-file library-name) library-name))
-                  ;; If it's a registered library symbol, find it via epsilon.library
-                  ((keywordp library-name)
-                   (handler-case
-                       (lib:find-library library-name)
-                     (error ()
-                       (error "Library ~A not available" library-name))))
-                  ;; Local libraries: search in provided paths
-                  (local
-                   (find-library-in-paths 
-                    (list (platform-library-name library-name))
-                    (or paths '("."))))
-                  ;; System library: try to find via epsilon.library first
-                  (t
-                   (handler-case
-                       (lib:find-library (intern (string-downcase library-name) :keyword))
-                     (error ()
-                       ;; Fallback: try as a direct library name
-                       library-name)))))
-               (handle (when lib-path 
-                         (sb-alien:load-shared-object lib-path))))
-          (when handle
-            (setf *open-libraries* 
-                  (map:assoc *open-libraries* library-name handle))
-            handle)))))
+  "Opens a shared library and returns a handle - delegates to epsilon.library"
+  (lib:lib-open library-name :local local :paths paths))
 
 (defun lib-close (library-handle)
-  "Closes a previously opened library"
-  ;; SBCL doesn't provide a way to unload shared objects
-  ;; Just remove from our tracking
-  (setf *open-libraries*
-        (map:filter (lambda (k v) (declare (ignore k)) (not (eq v library-handle)))
-                   *open-libraries*))
-  t)
+  "Closes a previously opened library - delegates to epsilon.library"
+  (lib:lib-close library-handle))
 
 (defun lib-function (library-handle function-name)
-  "Get function pointer from library"
-  ;; Use SBCL's foreign symbol lookup
-  (or (sb-sys:find-dynamic-foreign-symbol-address function-name)
-      (error "Could not find function ~A in library ~A" function-name library-handle)))
+  "Get function pointer from library - delegates to epsilon.library"
+  (lib:lib-function library-handle function-name))
 
-(defun find-library-in-paths (lib-names search-paths)
-  "Find a library file in the given search paths"
-  (dolist (path search-paths)
-    (dolist (name lib-names)
-      (let ((full-path (path:string-path-join path name)))
-        (when (probe-file full-path)
-          (return-from find-library-in-paths full-path))))))
+;; Removed find-library-in-paths - now using epsilon.library version
 
 (defun platform-library-name (base-name)
   "Convert base library name to platform-specific format"

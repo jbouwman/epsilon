@@ -67,7 +67,7 @@
   ;; Full callback implementation will come later
   (let ((fn-ptr (lib:lib-function (lib:lib-open "libc") "strcmp")))
     (is (not (null fn-ptr)))
-    (is (numberp fn-ptr))))
+    (is (sb-sys:system-area-pointer-p fn-ptr))))
 
 ;; String array tests
 (lib:defshared getenv "getenv" "libc" :pointer
