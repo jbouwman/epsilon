@@ -1051,7 +1051,9 @@
                      (string function-designator)))
             (list (destructuring-bind (fn-name lib-name) function-designator
                     (lib:lib-function 
-                     (lib:lib-open lib-name) 
+                     (lib:lib-open (if (symbolp lib-name)
+                                       (string-downcase (symbol-name lib-name))
+                                       lib-name)) 
                      (string fn-name)))))))
     (unless function-address
       (error "Could not find function ~A" function-designator))

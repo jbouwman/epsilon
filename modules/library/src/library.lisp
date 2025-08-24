@@ -450,47 +450,53 @@
 
 (defun lib-open (library-name &key local paths)
   "Opens a shared library and returns a handle"
-  ;; Handle nil as a special case for default library (already loaded symbols)  
-  ;; Also handle "libc" as a special case - map to nil for already loaded symbols
-  (if (or (null library-name) (string= library-name "libc"))
+  ;; Normalize library-name: convert symbols to lowercase strings
+  (let ((normalized-name (cond
+                          ((null library-name) nil)
+                          ((symbolp library-name) (string-downcase (symbol-name library-name)))
+                          ((stringp library-name) library-name)
+                          (t (error "Invalid library name type: ~A" (type-of library-name))))))
+    ;; Handle nil as a special case for default library (already loaded symbols)  
+    ;; Also handle "libc" as a special case - map to nil for already loaded symbols
+    (if (or (null normalized-name) (string= normalized-name "libc"))
       nil ; Return nil to indicate default library
-      (let ((existing (map:get *open-libraries* library-name)))
+      (let ((existing (map:get *open-libraries* normalized-name)))
         (if existing
             existing
-            (let* ((is-absolute-path (and (stringp library-name)
-                                          (> (length library-name) 0)
-                                          (or (char= (char library-name 0) #\/)
-                                              #+windows (and (>= (length library-name) 3)
-                                                            (char= (char library-name 1) #\:)))))
+            (let* ((is-absolute-path (and (stringp normalized-name)
+                                          (> (length normalized-name) 0)
+                                          (or (char= (char normalized-name 0) #\/)
+                                              #+windows (and (>= (length normalized-name) 3)
+                                                            (char= (char normalized-name 1) #\:)))))
                    (lib-path (cond
                               ;; If it's an absolute path, use it directly
-                              (is-absolute-path library-name)
+                              (is-absolute-path normalized-name)
                               ;; For local libraries, search in specified paths
                               (local
                                (find-library-in-paths 
-                                (list (platform-library-name library-name))
+                                (list (platform-library-name normalized-name))
                                 (or paths '("."))))
                               ;; For system libraries, use standard resolution
                               (t
                                ;; Handle both "libcrypto" and "crypto" style names
                                ;; First strip platform extension if present
                                (let* ((extension (platform-library-extension))
-                                      (base-without-ext (if (and (>= (length library-name) (length extension))
-                                                               (string= (subseq library-name (- (length library-name) (length extension))) 
+                                      (base-without-ext (if (and (>= (length normalized-name) (length extension))
+                                                               (string= (subseq normalized-name (- (length normalized-name) (length extension))) 
                                                                       extension))
-                                                          (subseq library-name 0 (- (length library-name) (length extension)))
-                                                          library-name))
+                                                          (subseq normalized-name 0 (- (length normalized-name) (length extension)))
+                                                          normalized-name))
                                       (lookup-name (if (and (>= (length base-without-ext) 3)
                                                           (string= (subseq base-without-ext 0 3) "lib"))
                                                      (subseq base-without-ext 3)
                                                      base-without-ext)))
                                  (find-library (intern (string-upcase lookup-name) :keyword))))))
-                   (final-path (or lib-path library-name)))
+                   (final-path (or lib-path normalized-name)))
               ;; Try to load the library
               (let ((handle (sb-alien:load-shared-object final-path)))
                 (setf *open-libraries* 
-                      (map:assoc *open-libraries* library-name handle))
-                handle))))))
+                      (map:assoc *open-libraries* normalized-name handle))
+                handle)))))))
 
 (defun lib-close (library-handle)
   "Closes a previously opened library"
@@ -553,30 +559,6 @@
                         #+linux "libsqlite3.so" #+linux "libsqlite3.so.0" #+linux "libsqlite3.so.3"
                         #+windows "sqlite3.dll")
     :description "SQLite database engine")
-  
-  (define-library openssl
-    :base-name "ssl"
-    :version "3"
-    :bundled-p nil
-    :critical-p nil
-    :search-names (list #+darwin "libssl.dylib" #+darwin "libssl.3.dylib"
-                        #+linux "libssl.so" #+linux "libssl.so.3" #+linux "libssl.so.1.1"
-                        #+windows "libssl-3.dll" #+windows "ssleay32.dll")
-    :description "OpenSSL SSL/TLS library")
-  
-  (define-library crypto
-    :base-name "crypto"
-    :version "3"
-    :bundled-p nil
-    :critical-p nil
-    :search-names (list #+darwin "/opt/homebrew/lib/libcrypto.3.dylib"
-                        #+darwin "/opt/homebrew/lib/libcrypto.dylib"
-                        #+darwin "libcrypto.dylib" #+darwin "libcrypto.3.dylib"
-                        #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libcrypto.so.3"
-                        #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libcrypto.so"
-                        #+linux "libcrypto.so.3" #+linux "libcrypto.so.1.1" #+linux "libcrypto.so"
-                        #+windows "libcrypto-3.dll" #+windows "libeay32.dll")
-    :description "OpenSSL cryptographic library")
   
   ;; Register both ffi and libffi names
   (define-library ffi
@@ -681,47 +663,4 @@
                         #+linux "/nix/store/adg9f2bkvq6pja884rdpzlm6dv9xkhsk-sqlite-3.43.2/lib/libsqlite3.so"
                         #+linux "libsqlite3.so" #+linux "libsqlite3.so.0"
                         #+windows "sqlite3.dll")
-    :description "SQLite database library")
-    
-  (define-library libcrypto
-    :base-name "crypto"
-    :version "3"
-    :bundled-p nil
-    :critical-p nil
-    :search-names (list #+darwin "/opt/homebrew/lib/libcrypto.3.dylib"
-                        #+darwin "/opt/homebrew/lib/libcrypto.dylib"
-                        #+darwin "libcrypto.dylib" #+darwin "libcrypto.3.dylib"
-                        #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libcrypto.so.3"
-                        #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libcrypto.so"
-                        #+linux "libcrypto.so.3" #+linux "libcrypto.so.1.1" #+linux "libcrypto.so"
-                        #+windows "libcrypto-3.dll" #+windows "libcrypto-1_1.dll")
-    :description "OpenSSL cryptography library")
-    
-  ;; Register both ssl and libssl names
-  (define-library ssl
-    :base-name "ssl"
-    :version "3"
-    :bundled-p nil
-    :critical-p nil
-    :search-names (list #+darwin "/opt/homebrew/lib/libssl.3.dylib"
-                        #+darwin "/opt/homebrew/lib/libssl.dylib"
-                        #+darwin "libssl.dylib" #+darwin "libssl.3.dylib"
-                        #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libssl.so.3"
-                        #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libssl.so"
-                        #+linux "libssl.so.3" #+linux "libssl.so.1.1" #+linux "libssl.so"
-                        #+windows "libssl-3.dll" #+windows "libssl-1_1.dll")
-    :description "OpenSSL SSL/TLS library")
-    
-  (define-library libssl
-    :base-name "ssl"
-    :version "3"
-    :bundled-p nil
-    :critical-p nil
-    :search-names (list #+darwin "/opt/homebrew/lib/libssl.3.dylib"
-                        #+darwin "/opt/homebrew/lib/libssl.dylib"
-                        #+darwin "libssl.dylib" #+darwin "libssl.3.dylib"
-                        #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libssl.so.3"
-                        #+linux "/nix/store/wvrg1kgiy79sln1fzhvj8w6g604ghsad-openssl-3.0.8/lib/libssl.so"
-                        #+linux "libssl.so.3" #+linux "libssl.so.1.1" #+linux "libssl.so"
-                        #+windows "libssl-3.dll" #+windows "libssl-1_1.dll")
-    :description "OpenSSL SSL/TLS library"))
+    :description "SQLite database library"))
