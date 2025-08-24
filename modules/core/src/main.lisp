@@ -93,6 +93,19 @@
     (argparse:add-argument parser "--quiet"
                            :action 'store-true
                            :help "Suppress warnings and minimize output")
+    ;; Add library management options
+    (argparse:add-argument parser "--check-libraries"
+                           :action 'store-true
+                           :help "Check status of all registered libraries")
+    (argparse:add-argument parser "--library-info"
+                           :metavar "NAME"
+                           :help "Show information about a specific library")
+    (argparse:add-argument parser "--available-libraries"
+                           :action 'store-true
+                           :help "List all available libraries")
+    (argparse:add-argument parser "--missing-libraries"
+                           :action 'store-true
+                           :help "List missing critical libraries")
     parser))
 
 ;;; Pure Data Transformation Functions
@@ -602,6 +615,78 @@
         ;; Handle --modules (can be processed anytime after environment setup)
         (when (map:get (argparse:parsed-options parsed-args) "modules")
           (display-modules environment)
+          (sb-ext:exit :code 0))
+        
+        ;; Handle library diagnostic commands
+        (when (map:get (argparse:parsed-options parsed-args) "check_libraries")
+          (handler-case
+              (progn
+                (loader:load-module environment "epsilon.library")
+                (let ((check-fn (find-symbol "CHECK-LIBRARIES" (find-package "EPSILON.LIBRARY"))))
+                  (when check-fn
+                    (let ((results (funcall check-fn)))
+                      (format t "~&Library Status~%")
+                      (format t "==============~%~%")
+                      (loop for (name . status) in (epsilon.map:seq results)
+                            do (format t "~20A: ~A~%" name (first status)))))))
+            (error (e)
+              (format *error-output* "Error checking libraries: ~A~%" e)))
+          (sb-ext:exit :code 0))
+        
+        (when (map:get (argparse:parsed-options parsed-args) "library_info")
+          (handler-case
+              (progn
+                (loader:load-module environment "epsilon.library")
+                (let* ((lib-name (map:get (argparse:parsed-options parsed-args) "library_info"))
+                       (info-fn (find-symbol "LIBRARY-INFO" (find-package "EPSILON.LIBRARY"))))
+                  (when info-fn
+                    (let ((info (funcall info-fn (intern (string-upcase lib-name) :keyword))))
+                      (if info
+                          (progn
+                            (format t "~&Library: ~A~%" (getf info :name))
+                            (format t "Base name: ~A~%" (getf info :base-name))
+                            (format t "Version: ~A~%" (or (getf info :version) "unspecified"))
+                            (format t "Bundled: ~A~%" (if (getf info :bundled-p) "yes" "no"))
+                            (format t "Critical: ~A~%" (if (getf info :critical-p) "yes" "no"))
+                            (format t "Platforms: ~A~%" (getf info :platforms))
+                            (format t "Description: ~A~%" (getf info :description))
+                            (format t "Path: ~A~%" (or (getf info :path) "not found")))
+                          (format t "Library ~A not registered~%" lib-name))))))
+            (error (e)
+              (format *error-output* "Error getting library info: ~A~%" e)))
+          (sb-ext:exit :code 0))
+        
+        (when (map:get (argparse:parsed-options parsed-args) "available_libraries")
+          (handler-case
+              (progn
+                (loader:load-module environment "epsilon.library")
+                (let ((avail-fn (find-symbol "AVAILABLE-LIBRARIES" (find-package "EPSILON.LIBRARY"))))
+                  (when avail-fn
+                    (let ((libs (funcall avail-fn)))
+                      (format t "~&Available Libraries~%")
+                      (format t "==================~%")
+                      (dolist (lib libs)
+                        (format t "  ~A~%" lib))))))
+            (error (e)
+              (format *error-output* "Error listing available libraries: ~A~%" e)))
+          (sb-ext:exit :code 0))
+        
+        (when (map:get (argparse:parsed-options parsed-args) "missing_libraries")
+          (handler-case
+              (progn
+                (loader:load-module environment "epsilon.library")
+                (let ((missing-fn (find-symbol "MISSING-LIBRARIES" (find-package "EPSILON.LIBRARY"))))
+                  (when missing-fn
+                    (let ((libs (funcall missing-fn)))
+                      (if libs
+                          (progn
+                            (format t "~&Missing Critical Libraries~%")
+                            (format t "=========================~%")
+                            (dolist (lib libs)
+                              (format t "  ~A~%" lib)))
+                          (format t "~&All critical libraries are available~%"))))))
+            (error (e)
+              (format *error-output* "Error listing missing libraries: ~A~%" e)))
           (sb-ext:exit :code 0))
             
         ;; STEP 4: Process --load, --eval, and --exec in order of appearance

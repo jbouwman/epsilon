@@ -69,6 +69,34 @@ jobs:
           ls -la /usr/local/opt/openssl@3/lib/libssl* | head -5
         fi
     
+    - name: Verify SQLite setup
+      run: |
+        echo "=== SQLite Configuration ==="
+        sqlite3 --version
+        echo "=== Checking for SQLite libraries ==="
+        # On Linux
+        if [ -f /usr/lib/x86_64-linux-gnu/libsqlite3.so ]; then
+          echo "Found libsqlite3.so"
+          ls -la /usr/lib/x86_64-linux-gnu/libsqlite3* | head -5
+        fi
+        # On macOS - SQLite is bundled with the system
+        if [ "${{ runner.os }}" = "macOS" ]; then
+          echo "macOS system SQLite libraries:"
+          # Check common locations for system SQLite
+          if [ -f /usr/lib/libsqlite3.dylib ]; then
+            echo "Found system libsqlite3.dylib"
+            ls -la /usr/lib/libsqlite3* 2>/dev/null | head -5 || true
+          fi
+          # Also check SDK location
+          if [ -d /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib ]; then
+            echo "Found SDK SQLite libraries:"
+            ls -la /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib/libsqlite3* 2>/dev/null | head -5 || true
+          fi
+          # Check with otool where sqlite3 binary links to
+          echo "SQLite3 binary links to:"
+          otool -L $(which sqlite3) | grep sqlite || true
+        fi
+    
     - name: Run smoke tests
       run: ./epsilon --exec epsilon.release:run-smoke-tests
       

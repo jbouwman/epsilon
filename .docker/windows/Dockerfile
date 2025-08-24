@@ -13,8 +13,8 @@ RUN powershell -Command \
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; \
     iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
 
-# Install Git and other tools via Chocolatey
-RUN choco install -y git curl
+# Install Git, SQLite and other tools via Chocolatey
+RUN choco install -y git curl sqlite
 
 # Download and install SBCL
 RUN powershell -Command \
@@ -41,7 +41,9 @@ RUN powershell -Command \
     } else { \
         Write-Host 'ERROR: SBCL not found after installation'; \
         exit 1 \
-    }
+    }; \
+    Write-Host 'Verifying SQLite installation...'; \
+    sqlite3 --version
 
 # Set working directory
 WORKDIR C:\workspace
