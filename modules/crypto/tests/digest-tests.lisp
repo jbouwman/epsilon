@@ -52,16 +52,16 @@
     bytes))
 
 (defun bytes-to-hex-string (bytes)
-  "Convert byte array to hex string"
-  (with-output-to-string (s)
-			 (loop for byte across bytes
-			       do (format s "~2,'0x" byte))))
+  "Convert byte array to lowercase hex string"
+  (string-downcase
+   (with-output-to-string (s)
+     (loop for byte across bytes
+           do (format s "~2,'0X" byte)))))
 
 ;;;; SHA-256 Tests
 
 (deftest test-sha256-empty-string
   "Test SHA-256 hash of empty string"
-  (skip)
   (let* ((data "")
          (hash (crypto:digest data crypto:+digest-sha256+))
          (hex-hash (bytes-to-hex-string hash)))
@@ -70,7 +70,6 @@
 
 (deftest test-sha256-abc
   "Test SHA-256 hash of 'abc'"
-  (skip)
   (let* ((data "abc")
          (hash (crypto:digest data crypto:+digest-sha256+))
          (hex-hash (bytes-to-hex-string hash)))
@@ -79,7 +78,6 @@
 
 (deftest test-sha256-quick-brown-fox
   "Test SHA-256 hash of 'The quick brown fox...'"
-  (skip)
   (let* ((data "The quick brown fox jumps over the lazy dog")
          (hash (crypto:digest data crypto:+digest-sha256+))
          (hex-hash (bytes-to-hex-string hash)))
@@ -99,7 +97,6 @@
 
 (deftest test-sha384-empty-string
   "Test SHA-384 hash of empty string"
-  (skip)
   (let* ((data "")
          (hash (crypto:digest data crypto:+digest-sha384+))
          (hex-hash (bytes-to-hex-string hash)))
@@ -117,7 +114,6 @@
 
 (deftest test-sha512-empty-string
   "Test SHA-512 hash of empty string"
-  (skip)
   (let* ((data "")
          (hash (crypto:digest data crypto:+digest-sha512+))
          (hex-hash (bytes-to-hex-string hash)))
@@ -268,8 +264,6 @@ Line 3")
 
 (deftest test-digest-known-vectors
   "Test against known test vectors"
-  ;; Test each known vector
-  (skip)
   (dolist (algo-vectors *test-vectors*)
     (let ((algo (first algo-vectors))
 	  (vectors (second algo-vectors)))

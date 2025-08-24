@@ -22,7 +22,35 @@
 		#:crypto-key-handle
 		#:crypto-key-type
 		#:crypto-error
-		#:+digest-sha256+))
+		#:+digest-sha256+
+		#:key-to-pem
+		#:key-from-pem)
+  (:export
+   ;; Certificate operations
+   #:create-certificate
+   #:load-certificate
+   #:save-certificate
+   #:certificate-public-key
+   #:verify-certificate
+   
+   ;; CSR operations
+   #:create-csr
+   #:sign-csr
+   #:load-csr
+   #:save-csr
+   
+   ;; Utility functions
+   #:save-key-and-cert-pair
+   #:load-key-and-cert-pair
+   
+   ;; Re-export imported types
+   #:x509-certificate
+   #:x509-certificate-p
+   #:x509-certificate-subject
+   #:x509-certificate-issuer
+   #:x509-certificate-serial
+   #:x509-certificate-not-before
+   #:x509-certificate-not-after))
 
 (in-package :epsilon.crypto.x509)
 

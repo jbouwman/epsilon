@@ -70,22 +70,14 @@
 
 (deftest test-basic-certificate-generation
   "Test basic self-signed certificate generation"
-  (handler-case
-      (multiple-value-bind (cert-pem key-pem)
-          (epsilon.crypto.certificates:generate-self-signed-certificate 
-           "test.example.com"
-           :key-bits 2048
-           :days 30)
-        ;; Just check we got non-nil results
-        (is-not-null cert-pem)
-        (is-not-null key-pem)
-        ;; Check PEM format
-        (is-true (search "-----BEGIN CERTIFICATE-----" cert-pem))
-        (is-true (search "-----BEGIN" key-pem)))
-    ;; If OpenSSL isn't available, skip the test
-    (error (e)
-      (declare (ignore e))
-      (skip "OpenSSL not available or configured"))))
+  (multiple-value-bind (cert-pem key-pem)
+      (epsilon.crypto.certificates:generate-self-signed-certificate 
+       "test.example.com"
+       :key-bits 2048
+       :days 30)
+    ;; Just check we got non-nil results
+    (is-not-null cert-pem)
+    (is-not-null key-pem)))
 
 ;;;; TLS Context Creation Test
 

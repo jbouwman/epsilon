@@ -80,26 +80,35 @@
 
 (defun platform-library-name (base-name &optional version)
   "Convert base library name to platform-specific format"
-  ;; Don't add lib prefix if already present
-  (let ((needs-lib-prefix (not (and (>= (length base-name) 3)
-                                     (string= (subseq base-name 0 3) "lib")))))
-    #+darwin
-    (if version
-        (format nil "~:[~;lib~]~A.~A.dylib" needs-lib-prefix base-name version)
-        (format nil "~:[~;lib~]~A.dylib" needs-lib-prefix base-name))
+  ;; Check if base-name already has platform extension
+  (let* ((extension (platform-library-extension))
+         (has-extension (and (>= (length base-name) (length extension))
+                           (string= (subseq base-name (- (length base-name) (length extension))) 
+                                  extension))))
+    ;; If already has extension, return as-is
+    (when has-extension
+      (return-from platform-library-name base-name))
     
-    #+linux
-    (if version
-        (format nil "~:[~;lib~]~A.so.~A" needs-lib-prefix base-name version)
-        (format nil "~:[~;lib~]~A.so" needs-lib-prefix base-name))
-    
-    #+windows
-    (if version
-        (format nil "~A-~A.dll" base-name version)
-        (format nil "~A.dll" base-name))
-    
-    #-(or darwin linux windows)
-    (format nil "~:[~;lib~]~A.so" needs-lib-prefix base-name)))
+    ;; Don't add lib prefix if already present
+    (let ((needs-lib-prefix (not (and (>= (length base-name) 3)
+                                       (string= (subseq base-name 0 3) "lib")))))
+      #+darwin
+      (if version
+          (format nil "~:[~;lib~]~A.~A.dylib" needs-lib-prefix base-name version)
+          (format nil "~:[~;lib~]~A.dylib" needs-lib-prefix base-name))
+      
+      #+linux
+      (if version
+          (format nil "~:[~;lib~]~A.so.~A" needs-lib-prefix base-name version)
+          (format nil "~:[~;lib~]~A.so" needs-lib-prefix base-name))
+      
+      #+windows
+      (if version
+          (format nil "~A-~A.dll" base-name version)
+          (format nil "~A.dll" base-name))
+      
+      #-(or darwin linux windows)
+      (format nil "~:[~;lib~]~A.so" needs-lib-prefix base-name))))
 
 ;;; Library Registry
 
@@ -464,10 +473,17 @@
                               ;; For system libraries, use standard resolution
                               (t
                                ;; Handle both "libcrypto" and "crypto" style names
-                               (let ((lookup-name (if (and (>= (length library-name) 3)
-                                                          (string= (subseq library-name 0 3) "lib"))
-                                                     (subseq library-name 3)
-                                                     library-name)))
+                               ;; First strip platform extension if present
+                               (let* ((extension (platform-library-extension))
+                                      (base-without-ext (if (and (>= (length library-name) (length extension))
+                                                               (string= (subseq library-name (- (length library-name) (length extension))) 
+                                                                      extension))
+                                                          (subseq library-name 0 (- (length library-name) (length extension)))
+                                                          library-name))
+                                      (lookup-name (if (and (>= (length base-without-ext) 3)
+                                                          (string= (subseq base-without-ext 0 3) "lib"))
+                                                     (subseq base-without-ext 3)
+                                                     base-without-ext)))
                                  (find-library (intern (string-upcase lookup-name) :keyword))))))
                    (final-path (or lib-path library-name)))
               ;; Try to load the library

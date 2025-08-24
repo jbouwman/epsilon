@@ -643,9 +643,6 @@
       (ffi:%evp-md-ctx-free md-ctx))
     digest-bytes))
 
-(defun digest-algorithm (name)
-  "Get digest algorithm identifier"
-  name)
 
 ;;;; Error Handling
 ;; get-crypto-errors defined in package.lisp

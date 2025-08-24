@@ -10,8 +10,6 @@
    #:generate-rsa-key
    #:generate-ec-key
    #:generate-ed25519-key
-   ;; Digest functions
-   #:digest
    ;; Random
    #:random-bytes))
 
@@ -179,60 +177,6 @@
       (when ctx
         (%evp-pkey-ctx-free ctx)))))
 
-;;;; Digest Functions
-
-(defun digest (algorithm data)
-  "Compute digest of data using specified algorithm (e.g., \"SHA256\")"
-  (let ((ctx (%evp-md-ctx-new))
-        (md-type (%evp-get-digestbyname algorithm)))
-    
-    (when (zerop (sb-sys:sap-int ctx))
-      (error "Failed to create digest context"))
-    
-    (when (zerop (sb-sys:sap-int md-type))
-      (error "Unknown digest algorithm: ~A" algorithm))
-    
-    (unwind-protect
-         (sb-alien:with-alien ((md-buf (sb-alien:array sb-alien:unsigned-char 64))
-                               (md-len sb-alien:unsigned-int))
-           ;; Initialize digest
-           (when (zerop (%evp-digestinit-ex ctx md-type (sb-sys:int-sap 0)))
-             (error "Failed to initialize digest: ~A" (get-error-string)))
-           
-           ;; Update with data
-           (if (stringp data)
-               ;; String data
-               (sb-alien:with-alien ((data-buf sb-alien:c-string))
-                 (setf data-buf data)
-                 (when (zerop (%evp-digestupdate ctx 
-                                                 (sb-alien:alien-sap data-buf)
-                                                 (length data)))
-                   (error "Failed to update digest: ~A" (get-error-string))))
-               ;; Byte array data
-               (sb-alien:with-alien ((data-buf (sb-alien:array sb-alien:unsigned-char 
-                                                               #.(expt 2 16))))
-                 (loop for i from 0 below (min (length data) #.(expt 2 16))
-                       do (setf (sb-alien:deref data-buf i) (aref data i)))
-                 (when (zerop (%evp-digestupdate ctx 
-                                                 (sb-alien:alien-sap data-buf)
-                                                 (length data)))
-                   (error "Failed to update digest: ~A" (get-error-string)))))
-           
-           ;; Finalize digest
-           (when (zerop (%evp-digestfinal-ex ctx 
-                                             (sb-alien:alien-sap md-buf)
-                                             (sb-alien:alien-sap (sb-alien:addr md-len))))
-             (error "Failed to finalize digest: ~A" (get-error-string)))
-           
-           ;; Convert to byte array
-           (let ((result (make-array (sb-alien:deref md-len) 
-                                    :element-type '(unsigned-byte 8))))
-             (loop for i from 0 below (sb-alien:deref md-len)
-                   do (setf (aref result i) (sb-alien:deref md-buf i)))
-             result))
-      ;; Cleanup
-      (when ctx
-        (%evp-md-ctx-free ctx)))))
 
 ;;;; Random Number Generation
 
