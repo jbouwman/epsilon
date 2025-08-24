@@ -99,7 +99,6 @@
    
    ;; Message digests
    #:digest
-   #:digest-algorithm
    #:+digest-sha256+
    #:+digest-sha384+
    #:+digest-sha512+

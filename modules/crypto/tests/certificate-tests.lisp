@@ -67,7 +67,8 @@
           (is-equal key-pem loaded-key))))))
 
 (deftest test-certificate-with-san
-  "Test generating certificate (SAN extensions not yet implemented)"
+  "Test generating certificate with Subject Alternative Names"
+  ;; Skip for now as SAN extensions require additional implementation
   (skip)
   (with-fixture (fixture certificate-test-setup)
     (multiple-value-bind (cert-pem key-pem)
@@ -82,7 +83,6 @@
 
 (deftest test-generate-ca-certificate
   "Test generating a CA certificate"
-  (skip)
   (with-fixture (fixture certificate-test-setup)
     (multiple-value-bind (ca-cert ca-key)
         (certs:generate-ca-certificate "Test CA"
@@ -98,7 +98,7 @@
       ;; Check certificate info
       (let ((cert-info (certs:certificate-info ca-cert)))
         (is-not-null (search "CN=Test CA" (getf cert-info :subject)))
-        (is-not-null (search "OU=Certificate Authority" (getf cert-info :subject)))))))
+        (is-not-null (search "O=Certificate Authority" (getf cert-info :subject)))))))
 
 ;;;; Certificate Signing Request Tests
 
@@ -110,8 +110,8 @@
         (certs:generate-ca-certificate "Test CA")
       
       ;; Generate a key pair for the certificate request
-      (let* ((client-key (openssl3:generate-rsa-key 2048))
-             (client-key-pem (certs::evp-pkey-to-pem client-key)))
+      (let* ((client-key (epsilon.crypto:generate-rsa-key :bits 2048))
+             (client-key-pem (epsilon.crypto:key-to-pem client-key :private-p t)))
         
         ;; Generate CSR
         (let ((csr-pem (certs:generate-certificate-request 
@@ -185,14 +185,13 @@
 
 (deftest test-certificate-verification
   "Test certificate chain verification"
-  (skip)
   (with-fixture (fixture certificate-test-setup)
     ;; Create a CA
     (multiple-value-bind (ca-cert ca-key)
         (certs:generate-ca-certificate "Verification Test CA")
       
       ;; Create a certificate signed by the CA
-      (let* ((server-key (openssl3:generate-rsa-key 2048))
+      (let* ((server-key (epsilon.crypto:generate-rsa-key :bits 2048))
              (csr (certs:generate-certificate-request "server.test" server-key))
              (server-cert (certs:sign-certificate-request csr ca-cert ca-key)))
         
@@ -209,7 +208,6 @@
 
 (deftest test-certificate-info-extraction
   "Test extracting information from certificates"
-  (skip)
   (with-fixture (fixture certificate-test-setup)
     (multiple-value-bind (cert-pem key-pem)
         (certs:generate-self-signed-certificate "info-test.example.com"
@@ -243,7 +241,6 @@
 
 (deftest test-certificate-with-email
   "Test generating certificate with email address"
-  (skip)
   (with-fixture (fixture certificate-test-setup)
     (multiple-value-bind (cert-pem key-pem)
         (certs:generate-self-signed-certificate "email.test"

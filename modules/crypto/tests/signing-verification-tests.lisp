@@ -20,7 +20,7 @@
 ;;;; RSA Signing Tests
 
 (deftest test-rsa-sign-verify-sha256
-  "Test RSA signing and verification with SHA-256"
+    "Test RSA signing and verification with SHA-256"
   (let ((key (crypto:generate-rsa-key :bits 2048)))
     ;; Sign message
     (let ((signature (crypto:sign-message key *test-message*
@@ -44,7 +44,7 @@
                                         :digest-algo crypto:+digest-sha256+)))))))
 
 (deftest test-rsa-sign-verify-sha512
-  "Test RSA signing and verification with SHA-512"
+    "Test RSA signing and verification with SHA-512"
   (let ((key (crypto:generate-rsa-key :bits 2048)))
     ;; Sign with SHA-512
     (let ((signature (crypto:sign-message key *test-message*
@@ -61,7 +61,7 @@
                                       :digest-algo crypto:+digest-sha256+))))))
 
 (deftest test-rsa-sign-binary-data
-  "Test RSA signing of binary data"
+    "Test RSA signing of binary data"
   (let ((key (crypto:generate-rsa-key :bits 2048)))
     ;; Sign binary data
     (let ((signature (crypto:sign-message key *test-binary-data*)))
@@ -78,7 +78,7 @@
 ;;;; EC Signing Tests
 
 (deftest test-ec-p256-sign-verify
-  "Test EC P-256 signing and verification"
+    "Test EC P-256 signing and verification"
   (let ((key (crypto:generate-ec-key :curve :p256)))
     ;; Sign message
     (let ((signature (crypto:sign-message key *test-message*)))
@@ -94,7 +94,7 @@
       (is (not (crypto:verify-message key *test-message-2* signature))))))
 
 (deftest test-ec-p384-sign-verify
-  "Test EC P-384 signing and verification"
+    "Test EC P-384 signing and verification"
   (let ((key (crypto:generate-ec-key :curve :p384)))
     (let ((signature (crypto:sign-message key *test-message*)))
       (is (typep signature '(vector (unsigned-byte 8))))
@@ -106,7 +106,7 @@
       (is (crypto:verify-message key *test-message* signature)))))
 
 (deftest test-ec-secp256k1-sign-verify
-  "Test secp256k1 signing (Bitcoin/Ethereum curve)"
+    "Test secp256k1 signing (Bitcoin/Ethereum curve)"
   (let ((key (crypto:generate-ec-key :curve :secp256k1)))
     (let ((signature (crypto:sign-message key *test-message*)))
       (is (typep signature '(vector (unsigned-byte 8))))
@@ -117,40 +117,46 @@
 ;;;; Ed25519 Signing Tests
 
 (deftest test-ed25519-sign-verify
-  "Test Ed25519 signing and verification"
-  (skip)
-  (let ((key (crypto:generate-ed25519-key)))
-    ;; Sign message
-    (let ((signature (crypto:sign-message key *test-message*)))
-      (is (typep signature '(vector (unsigned-byte 8))))
-      ;; Ed25519 signatures are always 64 bytes
-      (is-= (length signature) 64)
-      
-      ;; Verify correct message
-      (is (crypto:verify-message key *test-message* signature))
-      
-      ;; Verify wrong message fails
-      (is (not (crypto:verify-message key *test-message-2* signature)))
-      
-      ;; Verify tampered signature fails
-      (let ((bad-sig (copy-seq signature)))
-        (setf (aref bad-sig 32) (logxor (aref bad-sig 32) #x01))
-        (is (not (crypto:verify-message key *test-message* bad-sig)))))))
+    "Test Ed25519 signing and verification"
+  (handler-case
+      (let ((key (crypto:generate-ed25519-key)))
+	;; Sign message
+	(let ((signature (crypto:sign-message key *test-message*)))
+	  (is (typep signature '(vector (unsigned-byte 8))))
+	  ;; Ed25519 signatures are always 64 bytes
+	  (is-= (length signature) 64)
+	  
+	  ;; Verify correct message
+	  (is (crypto:verify-message key *test-message* signature))
+	  
+	  ;; Verify wrong message fails
+	  (is (not (crypto:verify-message key *test-message-2* signature)))
+	  
+	  ;; Verify tampered signature fails
+	  (let ((bad-sig (copy-seq signature)))
+            (setf (aref bad-sig 32) (logxor (aref bad-sig 32) #x01))
+            (is (not (crypto:verify-message key *test-message* bad-sig))))))
+    (crypto:crypto-error (e)
+      (declare (ignore e))
+      (skip "ED25519 not available on this OpenSSL version"))))
 
 (deftest test-ed25519-deterministic
-  "Test that Ed25519 signatures are deterministic"
-  (skip)
-  (let ((key (crypto:generate-ed25519-key)))
-    ;; Sign same message twice
-    (let ((sig1 (crypto:sign-message key *test-message*))
-          (sig2 (crypto:sign-message key *test-message*)))
-      ;; Ed25519 signatures should be deterministic
-      (is (equalp sig1 sig2)))))
+    "Test that Ed25519 signatures are deterministic"
+  (handler-case
+      (let ((key (crypto:generate-ed25519-key)))
+	;; Sign same message twice
+	(let ((sig1 (crypto:sign-message key *test-message*))
+              (sig2 (crypto:sign-message key *test-message*)))
+	  ;; Ed25519 signatures should be deterministic
+	  (is (equalp sig1 sig2))))
+    (crypto:crypto-error (e)
+      (declare (ignore e))
+      (skip "ED25519 not available on this OpenSSL version"))))
 
 ;;;; Cross-Key Verification Tests
 
 (deftest test-cross-key-verification-rsa
-  "Test verification with exported/imported RSA keys"
+    "Test verification with exported/imported RSA keys"
   (let* ((original-key (crypto:generate-rsa-key :bits 2048))
          (message "Test cross-key verification")
          (signature (crypto:sign-message original-key message)))
@@ -170,7 +176,7 @@
         (is (crypto:verify-message original-key message new-sig))))))
 
 (deftest test-cross-key-verification-ec
-  "Test verification with exported/imported EC keys"
+    "Test verification with exported/imported EC keys"
   (let* ((original-key (crypto:generate-ec-key :curve :p256))
          (message "Test EC cross-key")
          (signature (crypto:sign-message original-key message)))
@@ -183,7 +189,7 @@
 ;;;; Wrong Key Type Tests
 
 (deftest test-verify-with-wrong-key-type
-  "Test that verification with wrong key type fails"
+    "Test that verification with wrong key type fails"
   (let ((rsa-key (crypto:generate-rsa-key :bits 2048))
         (ec-key (crypto:generate-ec-key :curve :p256)))
     
@@ -200,7 +206,7 @@
 ;;;; Large Data Signing Tests
 
 (deftest test-sign-large-data
-  "Test signing large amounts of data"
+    "Test signing large amounts of data"
   (let ((key (crypto:generate-rsa-key :bits 2048))
         ;; Create 10KB of data
         (large-data (make-string 10000 :initial-element #\A)))
@@ -221,7 +227,7 @@
 ;;;; Error Handling Tests
 
 (deftest test-sign-without-private-key
-  "Test that signing without private key fails"
+    "Test that signing without private key fails"
   (let* ((key (crypto:generate-rsa-key :bits 2048))
          ;; Get public key only
          (public-pem (crypto:key-to-pem key :private-p nil))
@@ -233,10 +239,10 @@
           (crypto:sign-message public-key *test-message*)
           (is nil "Should have failed to sign without private key"))
       (error ()
-             (is t "Correctly rejected signing without private key")))))
+        (is t "Correctly rejected signing without private key")))))
 
 (deftest test-verify-without-public-key
-  "Test that verification requires public key component"
+    "Test that verification requires public key component"
   (let ((key (crypto:generate-rsa-key :bits 2048)))
     ;; Normal key has both public and private
     (let ((signature (crypto:sign-message key *test-message*)))
@@ -246,7 +252,7 @@
 ;;;; Algorithm Compatibility Tests
 
 (deftest test-signature-algorithm-mismatch
-  "Test that mismatched signature algorithms fail verification"
+    "Test that mismatched signature algorithms fail verification"
   (let ((key (crypto:generate-rsa-key :bits 2048)))
     ;; Sign with SHA-256
     (let ((sig256 (crypto:sign-message key *test-message*
@@ -265,9 +271,9 @@
 ;;;; Performance Tests
 
 (deftest test-signing-performance
-  "Test performance of signing operations"
-  (skip)
-  (let ((rsa-key (crypto:generate-rsa-key :bits 2048))
+    "Test performance of signing operations"
+  (handler-case
+      (let ((rsa-key (crypto:generate-rsa-key :bits 2048))
             (ec-key (crypto:generate-ec-key :curve :p256))
             (ed-key (crypto:generate-ed25519-key)))
         
@@ -291,4 +297,24 @@
           (dotimes (i 100)
             (crypto:sign-message ed-key *test-message*))
           (let ((elapsed (- (get-internal-real-time) start)))
-            (is (< elapsed internal-time-units-per-second))))))
+            (is (< elapsed internal-time-units-per-second)))))
+    (crypto:crypto-error (e)
+      (declare (ignore e))
+      ;; Test without ED25519 if not available
+      (let ((rsa-key (crypto:generate-rsa-key :bits 2048))
+            (ec-key (crypto:generate-ec-key :curve :p256)))
+        
+        ;; RSA signing performance
+        (let ((start (get-internal-real-time)))
+          (dotimes (i 10)
+            (crypto:sign-message rsa-key *test-message*))
+          (let ((elapsed (- (get-internal-real-time) start)))
+            ;; Should complete 10 signatures in reasonable time
+            (is (< elapsed (* 2 internal-time-units-per-second)))))
+        
+        ;; EC signing performance (should be faster than RSA)
+        (let ((start (get-internal-real-time)))
+          (dotimes (i 100)
+            (crypto:sign-message ec-key *test-message*))
+          (let ((elapsed (- (get-internal-real-time) start)))
+            (is (< elapsed internal-time-units-per-second))))))))

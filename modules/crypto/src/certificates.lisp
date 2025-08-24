@@ -475,31 +475,31 @@
                                          email)
   "Generate a self-signed certificate with private key.
    Returns (values certificate-pem private-key-pem)"
-  (handler-case
-      ;; Try real implementation 
-      (return-from generate-self-signed-certificate
-        (generate-self-signed-certificate-real
-         common-name
-         :days days
-         :key-bits key-bits
-         :organization organization
-         :country country
-         :state state
-         :locality locality
-         :email email))
-    (error (e)
-      (warn "Real certificate generation failed: ~A" e)))
-  
-  ;; Fallback to stub implementation
-  (values
-   (format nil "-----BEGIN CERTIFICATE-----
-Subject: CN=~A~@[, O=~A~]~@[, C=~A~]~@[, ST=~A~]~@[, L=~A~]
-(Stub certificate for testing)
------END CERTIFICATE-----"
-           common-name organization country state locality)
-   "-----BEGIN PRIVATE KEY-----
-(Stub private key for testing)
------END PRIVATE KEY-----"))
+  ;; Generate a key pair
+  (let ((key (epsilon.crypto:generate-rsa-key :bits key-bits)))
+    ;; Build subject DN
+    (let ((subject-dn (list "CN" common-name)))
+      (when organization
+        (setf subject-dn (append subject-dn (list "O" organization))))
+      (when country
+        (setf subject-dn (append subject-dn (list "C" country))))
+      (when state
+        (setf subject-dn (append subject-dn (list "ST" state))))
+      (when locality
+        (setf subject-dn (append subject-dn (list "L" locality))))
+      (when email
+        (setf subject-dn (append subject-dn (list "emailAddress" email))))
+      
+      ;; Create self-signed certificate using x509 module
+      (let ((cert (epsilon.crypto.x509:create-certificate
+                   :subject subject-dn
+                   :issuer subject-dn  ; Self-signed = same issuer and subject
+                   :public-key key
+                   :signing-key key
+                   :days days
+                   :serial (random 1000000))))
+        (values (epsilon.crypto.x509:save-certificate cert)
+                (epsilon.crypto:key-to-pem key :private-p t))))))
 
 (defun generate-certificate-request (common-name private-key &key
                                     organization
@@ -508,44 +508,33 @@ Subject: CN=~A~@[, O=~A~]~@[, C=~A~]~@[, ST=~A~]~@[, L=~A~]
                                     locality
                                     email)
   "Generate a Certificate Signing Request (CSR)"
-  (handler-case
-      ;; Try real implementation if available
-      (when (fboundp 'generate-certificate-request-real)
-        (return-from generate-certificate-request
-          (funcall 'generate-certificate-request-real
-                   common-name private-key
-                   :organization organization
-                   :country country
-                   :state state
-                   :locality locality
-                   :email email)))
-    (error (e)
-      (warn "Real CSR generation failed: ~A" e)))
-  
-  ;; Fallback to stub
-  (format nil "-----BEGIN CERTIFICATE REQUEST-----
-CN=~A~@[, O=~A~]
-(Stub CSR for testing)
------END CERTIFICATE REQUEST-----"
-          common-name organization))
+  ;; Build subject DN
+  (let ((subject-dn (list "CN" common-name)))
+    (when organization
+      (setf subject-dn (append subject-dn (list "O" organization))))
+    (when country
+      (setf subject-dn (append subject-dn (list "C" country))))
+    (when state
+      (setf subject-dn (append subject-dn (list "ST" state))))
+    (when locality
+      (setf subject-dn (append subject-dn (list "L" locality))))
+    (when email
+      (setf subject-dn (append subject-dn (list "emailAddress" email))))
+    
+    ;; Create CSR using x509 module
+    (epsilon.crypto.x509:create-csr private-key subject-dn)))
 
 (defun sign-certificate-request (csr-pem ca-cert-pem ca-key-pem &key (days 365))
   "Sign a CSR with a CA certificate to produce a signed certificate"
-  (handler-case
-      ;; Try real implementation if available  
-      (when (fboundp 'sign-certificate-request-real)
-        (return-from sign-certificate-request
-          (funcall 'sign-certificate-request-real
-                   csr-pem ca-cert-pem ca-key-pem
-                   :days days)))
-    (error (e)
-      (warn "Real CSR signing failed: ~A" e)))
-  
-  ;; Fallback to stub
-  (format nil "-----BEGIN CERTIFICATE-----
-Signed certificate from CSR
-(Stub certificate for testing)
------END CERTIFICATE-----"))
+  ;; Load components
+  (let* ((csr-handle (epsilon.crypto.x509:load-csr csr-pem))
+         (ca-cert (epsilon.crypto.x509:load-certificate ca-cert-pem))
+         (ca-key (epsilon.crypto:key-from-pem ca-key-pem :private-p t))
+         (issuer-dn (list "CN" (epsilon.crypto.x509:x509-certificate-subject ca-cert)))
+         (cert (epsilon.crypto.x509:sign-csr csr-handle issuer-dn nil ca-key
+                                             :days days
+                                             :serial (random 1000000))))
+    (epsilon.crypto.x509:save-certificate cert)))
 
 (defun generate-ca-certificate (common-name &key
                                (days 3650)
@@ -592,32 +581,27 @@ Signed certificate from CSR
 
 (defun load-private-key (filepath)
   "Load private key PEM from file"
-  (load-certificate filepath))
+  (with-open-file (stream filepath :direction :input)
+    (let ((contents (make-string (file-length stream))))
+      (read-sequence contents stream)
+      contents)))
 
 (defun verify-certificate-chain (cert-pem ca-cert-pem)
   "Verify that a certificate was signed by a CA"
-  (handler-case
-      ;; Try real implementation if available
-      (when (fboundp 'verify-certificate-chain-real)
-        (return-from verify-certificate-chain
-          (funcall 'verify-certificate-chain-real cert-pem ca-cert-pem)))
-    (error (e)
-      (warn "Real certificate verification failed: ~A" e)))
-  ;; Stub implementation - always passes
-  t)
+  (let* ((cert (epsilon.crypto.x509:load-certificate cert-pem))
+         (ca-cert (epsilon.crypto.x509:load-certificate ca-cert-pem))
+         (ca-public-key (epsilon.crypto.x509:certificate-public-key ca-cert)))
+    (epsilon.crypto.x509:verify-certificate cert ca-public-key)))
 
 (defun certificate-info (cert-pem)
   "Extract information from a certificate"
-  (handler-case
-      ;; Try real implementation if available
-      (when (fboundp 'certificate-info-real)
-        (return-from certificate-info
-          (funcall 'certificate-info-real cert-pem)))
-    (error (e)
-      (warn "Real certificate info extraction failed: ~A" e)))
-  ;; Stub implementation
-  (list :subject "CN=Test"
-        :issuer "CN=Test CA"))
+  (let ((cert (epsilon.crypto.x509:load-certificate cert-pem)))
+    (list :subject (epsilon.crypto.x509:x509-certificate-subject cert)
+          :issuer (epsilon.crypto.x509:x509-certificate-issuer cert)
+          :serial (epsilon.crypto.x509:x509-certificate-serial cert)
+          :not-before (epsilon.crypto.x509:x509-certificate-not-before cert)
+          :not-after (epsilon.crypto.x509:x509-certificate-not-after cert))))
+
 
 (defun make-certificate-pair (common-name &key (output-dir "/tmp"))
   "Generate a certificate and key pair, saving to files.
