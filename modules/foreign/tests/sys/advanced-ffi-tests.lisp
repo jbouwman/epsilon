@@ -16,7 +16,7 @@
 ;;     long   tv_nsec;
 ;; };
 
-(lib:defshared clock-gettime "clock_gettime" "libc" :int 
+(lib:defshared clock-gettime "clock_gettime" nil :int 
   (clockid :int) (tp :pointer)
   :documentation "Get time from clock")
 
@@ -36,7 +36,7 @@
       (lib:foreign-free timespec-ptr))))
 
 ;; Array handling tests
-(lib:defshared qsort "qsort" "libc" :void
+(lib:defshared qsort "qsort" nil :void
   (base :pointer) (nmemb :unsigned-long) (size :unsigned-long) (compar :pointer)
   :documentation "Sort array using comparator function")
 
@@ -64,17 +64,18 @@
 (deftest test-callback-preparation
   "Test preparation for callback functionality"
   ;; For now, just test that we can create function pointers
-  ;; Full callback implementation will come later
-  (let ((fn-ptr (lib:lib-function (lib:lib-open "libc") "strcmp")))
+  ;; Full callback implementation will come later  
+  ;; Use nil to access already-loaded libc symbols via default library
+  (let ((fn-ptr (lib:lib-function (lib:lib-open nil) "strcmp")))
     (is (not (null fn-ptr)))
     (is (sb-sys:system-area-pointer-p fn-ptr))))
 
 ;; String array tests
-(lib:defshared getenv "getenv" "libc" :pointer
+(lib:defshared getenv "getenv" nil :pointer
   (name :string)
   :documentation "Get environment variable")
 
-(lib:defshared setenv "setenv" "libc" :int
+(lib:defshared setenv "setenv" nil :int
   (name :string) (value :string) (overwrite :int)
   :documentation "Set environment variable")
 
@@ -98,11 +99,11 @@
           (is (string= value "test_value")))))))
 
 ;; File descriptor tests
-(lib:defshared pipe "pipe" "libc" :int
+(lib:defshared pipe "pipe" nil :int
   (pipefd :pointer)
   :documentation "Create pipe")
 
-(lib:defshared libc-close "close" "libc" :int
+(lib:defshared libc-close "close" nil :int
   (fd :int)
   :documentation "Close file descriptor")
 

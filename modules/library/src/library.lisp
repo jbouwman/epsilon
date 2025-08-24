@@ -294,9 +294,9 @@
 (defun find-library (name)
   "Find a library using tiered resolution"
   ;; Normalize name - convert keywords to regular symbols in this package
-  ;; Use string-downcase to handle case sensitivity issues
+  ;; Use string-upcase to match registration pattern
   (let* ((normalized-name (if (keywordp name)
-                              (intern (string-downcase (symbol-name name)) :epsilon.library)
+                              (intern (string-upcase (symbol-name name)) :epsilon.library)
                               name))
          (info (or (map:get *library-registry* normalized-name)
                    ;; Also try the original name in case it's already registered
@@ -441,47 +441,54 @@
 
 (defun lib-open (library-name &key local paths)
   "Opens a shared library and returns a handle"
-  (let ((existing (map:get *open-libraries* library-name)))
-    (if existing
-        existing
-        (let* ((is-absolute-path (and (stringp library-name)
-                                      (> (length library-name) 0)
-                                      (or (char= (char library-name 0) #\/)
-                                          #+windows (and (>= (length library-name) 3)
-                                                        (char= (char library-name 1) #\:)))))
-               (lib-path (cond
-                          ;; If it's an absolute path, use it directly
-                          (is-absolute-path library-name)
-                          ;; For local libraries, search in specified paths
-                          (local
-                           (find-library-in-paths 
-                            (list (platform-library-name library-name))
-                            (or paths '("."))))
-                          ;; For system libraries, use standard resolution
-                          (t
-                           ;; Handle both "libcrypto" and "crypto" style names
-                           (let ((lookup-name (if (and (>= (length library-name) 3)
-                                                      (string= (subseq library-name 0 3) "lib"))
-                                                 (subseq library-name 3)
-                                                 library-name)))
-                             (find-library (intern (string-upcase lookup-name) :keyword))))))
-               (final-path (or lib-path library-name)))
-          ;; Try to load the library
-          (let ((handle (sb-alien:load-shared-object final-path)))
-            (setf *open-libraries* 
-                  (map:assoc *open-libraries* library-name handle))
-            handle)))))
+  ;; Handle nil as a special case for default library (already loaded symbols)  
+  ;; Also handle "libc" as a special case - map to nil for already loaded symbols
+  (if (or (null library-name) (string= library-name "libc"))
+      nil ; Return nil to indicate default library
+      (let ((existing (map:get *open-libraries* library-name)))
+        (if existing
+            existing
+            (let* ((is-absolute-path (and (stringp library-name)
+                                          (> (length library-name) 0)
+                                          (or (char= (char library-name 0) #\/)
+                                              #+windows (and (>= (length library-name) 3)
+                                                            (char= (char library-name 1) #\:)))))
+                   (lib-path (cond
+                              ;; If it's an absolute path, use it directly
+                              (is-absolute-path library-name)
+                              ;; For local libraries, search in specified paths
+                              (local
+                               (find-library-in-paths 
+                                (list (platform-library-name library-name))
+                                (or paths '("."))))
+                              ;; For system libraries, use standard resolution
+                              (t
+                               ;; Handle both "libcrypto" and "crypto" style names
+                               (let ((lookup-name (if (and (>= (length library-name) 3)
+                                                          (string= (subseq library-name 0 3) "lib"))
+                                                     (subseq library-name 3)
+                                                     library-name)))
+                                 (find-library (intern (string-upcase lookup-name) :keyword))))))
+                   (final-path (or lib-path library-name)))
+              ;; Try to load the library
+              (let ((handle (sb-alien:load-shared-object final-path)))
+                (setf *open-libraries* 
+                      (map:assoc *open-libraries* library-name handle))
+                handle))))))
 
 (defun lib-close (library-handle)
   "Closes a previously opened library"
-  (loop for (name . handle) in (map:seq *open-libraries*)
-        when (eq handle library-handle)
-          do (progn
-               (setf *open-libraries* 
-                     (map:dissoc *open-libraries* name))
-               (sb-alien:unload-shared-object library-handle)
-               (return t))
-        finally (return nil)))
+  ;; Handle nil library-handle (already loaded symbols) - just return success
+  (if (null library-handle)
+      t ; Can't/don't need to close already loaded symbols
+      (loop for (name . handle) in (map:seq *open-libraries*)
+            when (eq handle library-handle)
+              do (progn
+                   (setf *open-libraries* 
+                         (map:dissoc *open-libraries* name))
+                   (sb-alien:unload-shared-object library-handle)
+                   (return t))
+            finally (return nil))))
 
 (defun lib-function (library-handle function-name)
   "Get function pointer from library"
