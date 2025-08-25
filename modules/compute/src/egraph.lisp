@@ -132,26 +132,17 @@
 
 (defun egraph-add-enode (egraph enode)
   "Add an e-node to the e-graph, return its e-class ID"
-  (format t "~%DEBUG egraph-add-enode: Adding enode with op: ~S, args: ~S~%" 
-          (enode-op enode) (enode-args enode))
   (let* ((canonical (canonicalize-enode egraph enode))
          (existing-id (gethash canonical (egraph-memo egraph))))
-    (format t "  -> Canonical enode: op=~S, args=~S~%" 
-            (enode-op canonical) (enode-args canonical))
     (if existing-id
-        (progn
-          (format t "  -> Found existing e-class: ~S~%" existing-id)
-          (uf-find (egraph-unionfind egraph) existing-id))
+(uf-find (egraph-unionfind egraph) existing-id)
         (let ((new-id (egraph-next-id egraph)))
-          (format t "  -> Creating new e-class with ID: ~S~%" new-id)
           ;; Create new e-class
           (incf (egraph-next-id egraph))
           (uf-make-set (egraph-unionfind egraph) new-id)
           (let ((new-class (make-eclass :id new-id :nodes (list canonical))))
             (setf (gethash new-id (egraph-classes egraph)) new-class)
             (setf (gethash canonical (egraph-memo egraph)) new-id)
-            (format t "  -> Added to memo. Memo now has ~S entries~%" 
-                    (hash-table-count (egraph-memo egraph)))
             ;; Add to parent lists
             (dolist (arg-id (enode-args canonical))
               (let ((parent-class (gethash arg-id (egraph-classes egraph))))
@@ -182,15 +173,12 @@
 
 (defun add-expr (egraph expr)
   "Add a symbolic expression to the e-graph, return its e-class ID"
-  (format t "~%DEBUG add-expr: Adding expr: ~S (type: ~S)~%" expr (type-of expr))
   (cond
     ((sym:var-p expr)
-     (format t "  -> It's a var: ~S~%" (sym:var-name expr))
      (let ((enode (make-enode :op (sym:var-name expr) :args nil)))
        (egraph-add-enode egraph enode)))
     
     ((sym:const-p expr)
-     (format t "  -> It's a const: ~S~%" (sym:const-value expr))
      (let ((enode (make-enode :op (sym:const-value expr) :args nil)))
        (egraph-add-enode egraph enode)))
     
@@ -198,17 +186,9 @@
      ;; Recursively add arguments first, then add this expression
      (let* ((op (sym:expr-op expr))
             (arg-exprs (sym:expr-args expr)))
-       (format t "  -> It's an expr with op: ~S, args: ~S~%" op arg-exprs)
-       (let* ((arg-ids (mapcar (lambda (arg) 
-                                (format t "  -> Adding arg: ~S~%" arg)
-                                (add-expr egraph arg)) 
-                              arg-exprs))
+       (let* ((arg-ids (mapcar (lambda (arg) (add-expr egraph arg)) arg-exprs))
               (enode (make-enode :op op :args arg-ids)))
-         (format t "  -> Created enode with op: ~S, arg-ids: ~S~%" op arg-ids)
-         (let ((result-id (egraph-add-enode egraph enode)))
-           (format t "  -> Added enode, got ID: ~S~%" result-id)
-           (format t "  -> Memo now has ~S entries~%" (hash-table-count (egraph-memo egraph)))
-           result-id))))
+         (egraph-add-enode egraph enode))))
     
     (t (error "Cannot add expression of unknown type: ~S" expr))))
 
@@ -246,11 +226,18 @@
              (when (consp work-item)
                (let ((enode (car work-item))
                      (old-id (cdr work-item)))
-                 ;; Re-canonicalize and potentially merge
+                 ;; Re-canonicalize the e-node
                  (let* ((canonical (canonicalize-enode egraph enode))
                         (existing-id (gethash canonical (egraph-memo egraph))))
-                   (when (and existing-id (not (= existing-id old-id)))
-                     (merge-eclasses egraph existing-id old-id))))))))
+                   (cond
+                     ;; If canonical form already exists in memo with different ID, merge
+                     ((and existing-id (not (= existing-id old-id)))
+                      (let ((new-canonical-id (merge-eclasses egraph existing-id old-id)))
+                        ;; Update memo with the new canonical ID
+                        (setf (gethash canonical (egraph-memo egraph)) new-canonical-id)))
+                     ;; If this e-node form doesn't exist, add it
+                     ((null existing-id)
+                      (setf (gethash canonical (egraph-memo egraph)) old-id)))))))))
 
 ;;; Cost-based extraction
 
@@ -262,7 +249,8 @@
 (defun extract-minimum-cost (egraph eclass-id cost-fn)
   "Extract minimum cost expression from e-class using dynamic programming"
   (let ((costs (make-hash-table :test 'eql))
-        (best-nodes (make-hash-table :test 'eql)))
+        (best-nodes (make-hash-table :test 'eql))
+        (*current-egraph* egraph))
     ;; Initialize costs for this e-class
     (extract-costs egraph eclass-id cost-fn costs best-nodes)
     ;; Reconstruct the best expression
@@ -271,32 +259,63 @@
 (defun extract-costs (egraph eclass-id cost-fn costs best-nodes)
   "Compute minimum costs for all e-classes reachable from eclass-id"
   (unless (gethash eclass-id costs)
-    (let ((eclass (gethash eclass-id (egraph-classes egraph))))
-      (when eclass
-        (let ((min-cost most-positive-fixnum)
-              (best-node nil))
-          (dolist (enode (eclass-nodes eclass))
-            ;; Recursively compute costs for arguments
-            (dolist (arg-id (enode-args enode))
-              (extract-costs egraph arg-id cost-fn costs best-nodes))
-            ;; Compute cost of this e-node
-            (let ((node-cost (compute-enode-cost enode cost-fn costs)))
-              (when (< node-cost min-cost)
-                (setf min-cost node-cost)
-                (setf best-node enode))))
-          ;; Record the best choice for this e-class
-          (setf (gethash eclass-id costs) min-cost)
-          (setf (gethash eclass-id best-nodes) best-node))))))
+    (let ((canonical-id (uf-find (egraph-unionfind egraph) eclass-id)))
+      (let ((eclass (gethash canonical-id (egraph-classes egraph))))
+        (if eclass
+            (let ((min-cost most-positive-fixnum)
+                  (best-node nil))
+              (dolist (enode (eclass-nodes eclass))
+                ;; Recursively compute costs for arguments first
+                (dolist (arg-id (enode-args enode))
+                  (let ((canonical-arg (uf-find (egraph-unionfind egraph) arg-id)))
+                    (extract-costs egraph canonical-arg cost-fn costs best-nodes)))
+                ;; Compute cost of this e-node
+                (let ((node-cost (compute-enode-cost enode cost-fn costs)))
+                  (when (< node-cost min-cost)
+                    (setf min-cost node-cost)
+                    (setf best-node enode))))
+              ;; Record the best choice for this e-class
+              (setf (gethash canonical-id costs) min-cost)
+              (setf (gethash canonical-id best-nodes) best-node))
+            ;; Handle missing e-class gracefully
+            (progn
+              (setf (gethash canonical-id costs) 1)
+              (setf (gethash canonical-id best-nodes) (make-enode :op 'unknown :args nil))))))))
 
 (defun compute-enode-cost (enode cost-fn costs)
   "Compute the cost of an e-node given costs of its arguments"
-  (let ((arg-costs (mapcar (lambda (id) (gethash id costs 0)) (enode-args enode))))
+  (let ((arg-costs (mapcar (lambda (id) 
+                            (let ((canonical-id (uf-find (egraph-unionfind *current-egraph*) id)))
+                              (gethash canonical-id costs 1))) 
+                          (enode-args enode))))
     (funcall cost-fn enode arg-costs)))
+
+(defparameter *current-egraph* nil "Current e-graph for cost computation")
 
 (defun expression-size-cost (enode arg-costs)
   "Simple cost function: size of expression tree"
   (declare (ignore enode))
   (1+ (reduce #'+ arg-costs :initial-value 0)))
+
+(defun operation-count-cost (enode arg-costs)
+  "Cost function based on operation complexity"
+  (let ((op (enode-op enode)))
+    (+ (case op
+         ((+ -) 1)
+         (* 2)
+         (/ 3)
+         (^ 4)
+         ((sin cos tan) 5)
+         ((exp log) 6)
+         (t 1))
+       (reduce #'+ arg-costs :initial-value 0))))
+
+(defun depth-cost (enode arg-costs)
+  "Cost function favoring shallow expressions"
+  (declare (ignore enode))
+  (if (null arg-costs)
+      1
+      (1+ (reduce #'max arg-costs :initial-value 0))))
 
 (defun reconstruct-expression (egraph eclass-id best-nodes)
   "Reconstruct the symbolic expression from the best e-node choices"
@@ -344,14 +363,23 @@
   "Initialize standard rules after packages are loaded"
   ;; Find the operator symbols at runtime
   (let ((add-op (find-symbol "+" "EPSILON.COMPUTE"))
-        (mul-op (find-symbol "*" "EPSILON.COMPUTE")))
-    ;; Debug: print what symbols we found
-    (format t "~%DEBUG init-standard-rules: add-op=~S mul-op=~S~%" add-op mul-op)
+        (sub-op (find-symbol "-" "EPSILON.COMPUTE"))
+        (mul-op (find-symbol "*" "EPSILON.COMPUTE"))
+        (div-op (find-symbol "/" "EPSILON.COMPUTE"))
+        (pow-op (find-symbol "^" "EPSILON.COMPUTE"))
+        (sin-op (find-symbol "SIN" "EPSILON.COMPUTE"))
+        (cos-op (find-symbol "COS" "EPSILON.COMPUTE"))
+        (exp-op (find-symbol "EXP" "EPSILON.COMPUTE"))
+        (log-op (find-symbol "LOG" "EPSILON.COMPUTE")))
     (setf *standard-rules*
           (list
             ;; Additive identity
             (make-rewrite 'add-zero-right `(,add-op ?x 0) '?x)
             (make-rewrite 'add-zero-left `(,add-op 0 ?x) '?x)
+            
+            ;; Subtractive identity  
+            (make-rewrite 'sub-zero `(,sub-op ?x 0) '?x)
+            (make-rewrite 'sub-self `(,sub-op ?x ?x) '0)
             
             ;; Multiplicative identity
             (make-rewrite 'mul-one-right `(,mul-op ?x 1) '?x)
@@ -360,6 +388,16 @@
             ;; Multiplicative zero
             (make-rewrite 'mul-zero-right `(,mul-op ?x 0) '0)
             (make-rewrite 'mul-zero-left `(,mul-op 0 ?x) '0)
+            
+            ;; Division identity and rules
+            (make-rewrite 'div-one `(,div-op ?x 1) '?x)
+            (make-rewrite 'div-self `(,div-op ?x ?x) '1 :condition (lambda (bindings) (not-zero-p bindings '?x)))
+            
+            ;; Exponent rules
+            (make-rewrite 'pow-zero `(,pow-op ?x 0) '1 :condition (lambda (bindings) (not-zero-p bindings '?x)))
+            (make-rewrite 'pow-one `(,pow-op ?x 1) '?x)
+            (make-rewrite 'pow-zero-base `(,pow-op 0 ?x) '0 :condition (lambda (bindings) (positive-p bindings '?x)))
+            (make-rewrite 'one-pow `(,pow-op 1 ?x) '1)
             
             ;; Commutativity
             (make-rewrite 'add-comm `(,add-op ?x ?y) `(,add-op ?y ?x))
@@ -370,8 +408,50 @@
             (make-rewrite 'mul-assoc `(,mul-op (,mul-op ?x ?y) ?z) `(,mul-op ?x (,mul-op ?y ?z)))
             
             ;; Distribution
-            (make-rewrite 'distribute `(,mul-op ?x (,add-op ?y ?z)) 
-                         `(,add-op (,mul-op ?x ?y) (,mul-op ?x ?z)))))))
+            (make-rewrite 'distribute-right `(,mul-op ?x (,add-op ?y ?z)) 
+                         `(,add-op (,mul-op ?x ?y) (,mul-op ?x ?z)))
+            (make-rewrite 'distribute-left `(,mul-op (,add-op ?x ?y) ?z)
+                         `(,add-op (,mul-op ?x ?z) (,mul-op ?y ?z)))
+            
+            ;; Factoring (reverse distribution)
+            (make-rewrite 'factor-add `(,add-op (,mul-op ?x ?y) (,mul-op ?x ?z))
+                         `(,mul-op ?x (,add-op ?y ?z)))
+            
+            ;; Double negation
+            (make-rewrite 'double-neg `(,sub-op 0 (,sub-op 0 ?x)) '?x)
+            
+            )))
+    
+    ;; Add conditional rules for transcendental functions
+    (when sin-op
+      (push (make-rewrite 'sin-zero `(,sin-op 0) '0) *standard-rules*))
+    (when cos-op  
+      (push (make-rewrite 'cos-zero `(,cos-op 0) '1) *standard-rules*))
+    (when exp-op
+      (push (make-rewrite 'exp-zero `(,exp-op 0) '1) *standard-rules*))
+    (when log-op
+      (push (make-rewrite 'log-one `(,log-op 1) '0) *standard-rules*)
+      (when exp-op
+        (push (make-rewrite 'log-exp `(,log-op (,exp-op ?x)) '?x) *standard-rules*)
+        (push (make-rewrite 'exp-log `(,exp-op (,log-op ?x)) '?x 
+                           :condition (lambda (bindings) (positive-p bindings '?x))) *standard-rules*)))
+    ;; Reverse to maintain intended order
+    (setf *standard-rules* (nreverse *standard-rules*)))
+
+;; Condition functions for rules
+(defun not-zero-p (bindings var)
+  "Check if variable binding is not zero"
+  (let ((binding (assoc var bindings)))
+    (when binding
+      (let ((value (cdr binding)))
+        (not (and (integerp value) (zerop value)))))))
+
+(defun positive-p (bindings var)
+  "Check if variable binding is positive"
+  (let ((binding (assoc var bindings)))
+    (when binding
+      (let ((value (cdr binding)))
+        (and (numberp value) (> value 0))))))
 
 ;;; Pattern matching for rules
 
@@ -464,11 +544,6 @@
   "Apply a single rewrite rule to all matching e-nodes in the e-graph"
   (let ((matches (find-matches egraph (rewrite-rule-lhs rule)))
         (new-facts 0))
-    ;; Debug: check if multiplication-by-zero rules find matches
-    (when (and (member (rewrite-rule-name rule) '(mul-zero-right mul-zero-left))
-               (null matches))
-      (format t "~%DEBUG: No matches for rule ~A, pattern: ~S~%" 
-              (rewrite-rule-name rule) (rewrite-rule-lhs rule)))
     (dolist (match matches)
       (let* ((bindings (cdr match))
              (matched-id (car match))
@@ -501,104 +576,91 @@
 
 (defun find-matches (egraph pattern)
   "Find all e-nodes that match the given pattern, return list of (eclass-id . bindings)"
-  (let ((matches nil)
-        (mul-op (find-symbol "*" "EPSILON.COMPUTE")))
-    ;; Debug: check what's in the memo table
-    (when (and (listp pattern) (eq (first pattern) mul-op))
-      (format t "~%DEBUG find-matches: Looking for mul pattern, memo has ~A entries~%" 
-              (hash-table-count (egraph-memo egraph)))
-      (maphash (lambda (enode eclass-id)
-                 (when (eq (enode-op enode) mul-op)
-                   (format t "  Found mul enode: ~S -> ~S~%" enode eclass-id)))
-               (egraph-memo egraph)))
-    ;; For now, implement specific pattern matching for our standard rules
+  (let ((matches nil))
     (maphash (lambda (enode eclass-id)
-               (let ((bindings (match-specific-patterns egraph enode pattern)))
+               (let ((bindings (match-enode-against-pattern egraph enode pattern)))
                  (when bindings
                    (push (cons eclass-id bindings) matches))))
              (egraph-memo egraph))
     matches))
 
-(defun match-specific-patterns (egraph enode pattern)
-  "Match specific patterns we know about"
-  (let ((add-op (find-symbol "+" "EPSILON.COMPUTE"))
-        (mul-op (find-symbol "*" "EPSILON.COMPUTE")))
-    ;; Debug: print what we're trying to match
-    (when (and (listp pattern) (member (first pattern) (list add-op mul-op)))
-      (format t "~%DEBUG match: enode-op=~S pattern-op=~S eq?=~S~%" 
-              (enode-op enode) (first pattern) (eq (enode-op enode) (first pattern))))
-    (cond
-      ;; Match (+ ?x 0) - addition with zero
-      ((and (listp pattern) (eq (first pattern) add-op) (= (length pattern) 3)
-            (pattern-var-p (second pattern)) (eql (third pattern) 0))
-       (when (and (eq (enode-op enode) add-op) (= (length (enode-args enode)) 2))
-         ;; Check if second argument is zero
-         (let ((second-arg-id (second (enode-args enode))))
-           (when (is-zero-eclass egraph second-arg-id)
-             (list (cons (second pattern) (first (enode-args enode))))))))
-      
-      ;; Match (+ 0 ?x) - addition with zero (left)
-      ((and (listp pattern) (eq (first pattern) add-op) (= (length pattern) 3)
-            (eql (second pattern) 0) (pattern-var-p (third pattern)))
-       (when (and (eq (enode-op enode) add-op) (= (length (enode-args enode)) 2))
-         ;; Check if first argument is zero
-         (let ((first-arg-id (first (enode-args enode))))
-           (when (is-zero-eclass egraph first-arg-id)
-             (list (cons (third pattern) (second (enode-args enode))))))))
-      
-      ;; Match (* ?x 0) - multiplication by zero
-      ((and (listp pattern) (eq (first pattern) mul-op) (= (length pattern) 3)
-            (pattern-var-p (second pattern)) (eql (third pattern) 0))
-       (when (and (eq (enode-op enode) mul-op) (= (length (enode-args enode)) 2))
-         (let ((second-arg-id (second (enode-args enode))))
-           (when (is-zero-eclass egraph second-arg-id)
-             ;; Return bindings for the match
-             (list (cons (second pattern) (first (enode-args enode))))))))
-      
-      ;; Match (* ?x 1) - multiplication by one
-      ((and (listp pattern) (eq (first pattern) mul-op) (= (length pattern) 3)
-            (pattern-var-p (second pattern)) (eql (third pattern) 1))
-       (when (and (eq (enode-op enode) mul-op) (= (length (enode-args enode)) 2))
-         (let ((second-arg-id (second (enode-args enode))))
-           (when (is-one-eclass egraph second-arg-id)
-             (list (cons (second pattern) (first (enode-args enode))))))))
-      
-      ;; Handle left versions for multiplication
-      ((and (listp pattern) (eq (first pattern) mul-op) (= (length pattern) 3)
-            (eql (second pattern) 0) (pattern-var-p (third pattern)))
-       (when (and (eq (enode-op enode) mul-op) (= (length (enode-args enode)) 2))
-         (let ((first-arg-id (first (enode-args enode))))
-           (when (is-zero-eclass egraph first-arg-id)
-             (list (cons (third pattern) (second (enode-args enode))))))))
-      
-      ((and (listp pattern) (eq (first pattern) mul-op) (= (length pattern) 3)
-            (eql (second pattern) 1) (pattern-var-p (third pattern)))
-       (when (and (eq (enode-op enode) mul-op) (= (length (enode-args enode)) 2))
-         (let ((first-arg-id (first (enode-args enode))))
-           (when (is-one-eclass egraph first-arg-id)
-             (list (cons (third pattern) (second (enode-args enode))))))))
-      
-      (t nil))))
+(defun match-enode-against-pattern (egraph enode pattern)
+  "Match an e-node against a pattern, return bindings or nil"
+  (cond
+    ;; Atomic pattern (number, symbol) - must match enode op exactly
+    ((atom pattern)
+     (when (and (null (enode-args enode))
+                (equal (enode-op enode) pattern))
+       '()))
+    
+    ;; List pattern - match structure recursively
+    ((listp pattern)
+     (let ((pattern-op (first pattern))
+           (pattern-args (rest pattern)))
+       (when (and (eq (enode-op enode) pattern-op)
+                  (= (length (enode-args enode)) (length pattern-args)))
+         ;; Try to match all arguments
+         (match-args-against-patterns egraph (enode-args enode) pattern-args '()))))
+    
+    (t nil)))
 
-(defun is-zero-eclass (egraph eclass-id)
-  "Check if an e-class represents zero"
+(defun match-args-against-patterns (egraph arg-ids patterns bindings)
+  "Match a list of e-class IDs against patterns, return unified bindings or nil"
+  (if (null patterns)
+      bindings
+      (let* ((arg-id (first arg-ids))
+             (pattern (first patterns))
+             (new-bindings (match-eclass-against-pattern egraph arg-id pattern bindings)))
+        (when new-bindings
+          (match-args-against-patterns egraph (rest arg-ids) (rest patterns) new-bindings)))))
+
+(defun match-eclass-against-pattern (egraph eclass-id pattern bindings)
+  "Match an e-class against a pattern, return updated bindings or nil"
+  (cond
+    ;; Pattern variable
+    ((pattern-var-p pattern)
+     (let ((existing (assoc pattern bindings)))
+       (if existing
+           ;; Variable already bound - check consistency
+           (when (= (cdr existing) eclass-id)
+             bindings)
+           ;; New binding
+           (cons (cons pattern eclass-id) bindings))))
+    
+    ;; Literal pattern - check if e-class contains matching literal
+    ((atom pattern)
+     (when (eclass-contains-literal egraph eclass-id pattern)
+       bindings))
+    
+    ;; Complex pattern - check if any e-node in the class matches
+    ((listp pattern)
+     (let ((eclass (gethash eclass-id (egraph-classes egraph))))
+       (when eclass
+         (some (lambda (enode)
+                 (match-enode-against-pattern egraph enode pattern))
+               (eclass-nodes eclass)))))
+    
+    (t nil)))
+
+(defun eclass-contains-literal (egraph eclass-id literal)
+  "Check if an e-class contains a literal value"
   (let ((canonical-id (uf-find (egraph-unionfind egraph) eclass-id)))
     (let ((eclass (gethash canonical-id (egraph-classes egraph))))
       (when eclass
         (some (lambda (enode)
                 (and (null (enode-args enode))
-                     (eql (enode-op enode) 0)))
+                     (equal (enode-op enode) literal)))
               (eclass-nodes eclass))))))
+
+
+;; Utility functions for checking special values
+(defun is-zero-eclass (egraph eclass-id)
+  "Check if an e-class represents zero"
+  (eclass-contains-literal egraph eclass-id 0))
 
 (defun is-one-eclass (egraph eclass-id)
   "Check if an e-class represents one"
-  (let ((canonical-id (uf-find (egraph-unionfind egraph) eclass-id)))
-    (let ((eclass (gethash canonical-id (egraph-classes egraph))))
-      (when eclass
-        (some (lambda (enode)
-                (and (null (enode-args enode))
-                     (eql (enode-op enode) 1)))
-              (eclass-nodes eclass))))))
+  (eclass-contains-literal egraph eclass-id 1))
 
 ;; Helper functions for pattern-to-expression conversion
 
@@ -675,23 +737,16 @@
 
 (defun optimize-with-egraph (expr &key (rules *standard-rules*) (iterations 10))
   "Optimize expression using e-graph equality saturation"
-  (format t "~%DEBUG optimize-with-egraph: Called with expr: ~S~%" expr)
   ;; Ensure rules are initialized
   (when (null *standard-rules*)
-    (format t "  -> Initializing standard rules~%")
     (init-standard-rules))
   (let ((egraph (create-egraph)))
-    (format t "  -> Created e-graph~%")
     ;; Add the expression to the e-graph
     (let ((expr-id (add-expr egraph expr)))
-      (format t "  -> Added expr, got ID: ~S~%" expr-id)
-      (format t "  -> E-graph memo has ~S entries~%" (hash-table-count (egraph-memo egraph)))
       ;; Run equality saturation
       (saturate egraph rules :limit iterations)
-      (format t "  -> After saturation, memo has ~S entries~%" (hash-table-count (egraph-memo egraph)))
       ;; Extract the best equivalent expression
       (let ((result (extract-best egraph expr-id)))
-        (format t "  -> Extracted best: ~S~%" result)
         ;; Return result, or original if nil
         (or result expr)))))
 
