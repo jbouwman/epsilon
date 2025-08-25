@@ -74,7 +74,7 @@
 
 (deftest test-compilation-capture
   "Test basic compilation capture"
-  (hooks:with-compilation-capture (:capture t)
+  (hooks:with-compilation-capture ()
     ;; Simulate capturing a warning
     (hooks:capture-compiler-condition 
      (make-condition 'simple-warning :format-control "Test warning")

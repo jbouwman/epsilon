@@ -210,30 +210,28 @@
 
 ;;; Main capture macro
 
-(defmacro with-compilation-capture ((&key (capture t)) &body body)
+(defmacro with-compilation-capture (() &body body)
   "Execute body with compilation output capture enabled."
-  `(let ((*capture-compilation-output* ,capture)
-         (*current-compilation-messages* nil)
-         (*current-compilation-statistics* (when ,capture
-                                              (api:make-compilation-statistics)))
-         (*form-counter* 0)
-         (*function-counter* 0)
-         (*macro-expansion-counter* 0))
-     (if ,capture
-         (handler-bind ((sb-c::compiler-error #'compiler-error-hook-handler)
-                        (warning #'warning-hook-handler)
-                        (style-warning #'style-warning-hook-handler))
-           (prog1
-               (progn ,@body)
-             ;; Update final statistics
-             (when *current-compilation-statistics*
-               (setf (api:compilation-statistics-forms-processed *current-compilation-statistics*)
-                     *form-counter*)
-               (setf (api:compilation-statistics-functions-compiled *current-compilation-statistics*)
-                     *function-counter*)
-               (setf (api:compilation-statistics-macros-expanded *current-compilation-statistics*)
-                     *macro-expansion-counter*))))
-         (progn ,@body))))
+  (let ((body-result (gensym "BODY-RESULT-")))
+    `(let ((*capture-compilation-output* t)
+           (*current-compilation-messages* nil)
+           (*current-compilation-statistics* (api:make-compilation-statistics))
+           (*form-counter* 0)
+           (*function-counter* 0)
+           (*macro-expansion-counter* 0))
+       (handler-bind ((sb-c::compiler-error #'compiler-error-hook-handler)
+                      (warning #'warning-hook-handler)
+                      (style-warning #'style-warning-hook-handler))
+         (let ((,body-result (progn ,@body)))
+           ;; Update final statistics
+           (when *current-compilation-statistics*
+             (setf (api:compilation-statistics-forms-processed *current-compilation-statistics*)
+                   *form-counter*)
+             (setf (api:compilation-statistics-functions-compiled *current-compilation-statistics*)
+                   *function-counter*)
+             (setf (api:compilation-statistics-macros-expanded *current-compilation-statistics*)
+                   *macro-expansion-counter*))
+           ,body-result)))))
 
 ;;; Hook installation utilities
 

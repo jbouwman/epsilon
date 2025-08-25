@@ -85,7 +85,7 @@
     (notify-observer :compilation-start input-file)
     
     ;; Perform compilation with output capture
-    (hooks:with-compilation-capture (:capture t)
+    (hooks:with-compilation-capture ()
       (let ((output nil)
             (warnings-p nil)
             (failure-p nil))
@@ -182,7 +182,7 @@
     ;; Notify observer of compilation start
     (notify-observer :compilation-start form)
     
-    (hooks:with-compilation-capture (:capture t)
+    (hooks:with-compilation-capture ()
       (let ((compiled-function nil)
             (warnings-p nil)
             (failure-p nil))

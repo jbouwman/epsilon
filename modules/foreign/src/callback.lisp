@@ -123,31 +123,21 @@
 
 (defun create-real-callback-or-dummy (function return-type arg-types 
                                       alien-return alien-args arg-names)
-  "Try to create a real callback, fall back to dummy if needed"
+  "Create a real callback or return a dummy pointer if unavailable"
   (handler-case
-      ;; Try to use SBCL's alien-lambda
-      (let ((alien-lambda-sym (find-symbol "ALIEN-LAMBDA" "SB-ALIEN")))
-        (if alien-lambda-sym
-            (let* ((typed-lambda-list (loop for name in arg-names
-                                           for type in alien-args
-                                           collect (list name type)))
-                   (lambda-form `(,alien-lambda-sym 
-                                  ,alien-return
-                                  ,typed-lambda-list
-                                  ,(build-callback-body function return-type arg-types arg-names)))
-                   (alien-cb (eval lambda-form))
-                   (pointer (sb-alien:alien-sap alien-cb)))
-              (format t "~%✓ Created real callback at ~A~%" pointer)
-              (list alien-cb pointer))
-            ;; alien-lambda not found, use dummy
-            (progn
-              (format t "~%⚠ ALIEN-LAMBDA not found, using dummy callback~%")
-              (list nil (sb-sys:int-sap (sb-thread:with-mutex (*callback-lock*)
-                                          (incf *dummy-pointer-counter*)))))))
-    (error (e)
-      ;; Real callback creation failed, use dummy
-      (format t "~%⚠ Real callback creation failed: ~A~%" e)
-      (format t "~%  Using dummy callback~%")
+      ;; Try to create real callback using SBCL's alien-lambda
+      (let* ((typed-lambda-list (loop for name in arg-names
+                                      for type in alien-args
+                                      collect (list name type)))
+             (lambda-form `(sb-alien::alien-lambda 
+                           ,alien-return
+                           ,typed-lambda-list
+                           ,(build-callback-body function return-type arg-types arg-names)))
+             (alien-cb (eval lambda-form))
+             (pointer (sb-alien:alien-sap alien-cb)))
+        (list alien-cb pointer))
+    (error ()
+      ;; Fall back to dummy pointer
       (list nil (sb-sys:int-sap (sb-thread:with-mutex (*callback-lock*)
                                   (incf *dummy-pointer-counter*)))))))
 

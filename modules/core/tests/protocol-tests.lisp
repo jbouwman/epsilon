@@ -1,7 +1,5 @@
 ;;;; Tests for the protocol system and package sources
 
-(in-package :cl-user)
-
 (defpackage :epsilon.test.protocol
   (:use :cl :epsilon.test)
   (:local-nicknames
