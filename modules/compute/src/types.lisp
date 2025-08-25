@@ -34,7 +34,15 @@
    ;; Type inference
    :infer-type
    :unify-types
-   :promote-type))
+   :promote-type
+   
+   ;; Enhanced shape inference
+   :infer-shape
+   :compatible-shapes-p
+   :broadcast-compatible-p
+   :matmul-shape
+   :einstein-shape
+   :reduce-shape))
 
 (in-package epsilon.compute.types)
 
@@ -187,3 +195,89 @@
   (reduce (lambda (t1 t2)
             (infer-type '+ t1 t2))
           types))
+
+;;; Enhanced Shape Inference
+
+(defun infer-shape (op &rest shapes)
+  "Infer the result shape for an operation on given shapes"
+  (case op
+    ((+ - * /)
+     (reduce #'broadcast-shapes shapes))
+    (matmul
+     (matmul-shape (first shapes) (second shapes)))
+    ((sum mean)
+     (let ((shape (first shapes))
+           (axis (second shapes)))
+       (reduce-shape shape axis)))
+    (transpose
+     (let ((shape (first shapes)))
+       (if (>= (length shape) 2)
+           (append (last shape 1) (butlast shape 1))
+           shape)))
+    (reshape
+     (second shapes))
+    (otherwise
+     (first shapes))))
+
+(defun compatible-shapes-p (shape1 shape2)
+  "Check if two shapes are compatible for element-wise operations"
+  (handler-case
+      (progn (broadcast-shapes shape1 shape2) t)
+    (error () nil)))
+
+(defun broadcast-compatible-p (shape1 shape2)
+  "Check if shapes are broadcast compatible"
+  (compatible-shapes-p shape1 shape2))
+
+(defun matmul-shape (shape1 shape2)
+  "Compute shape for matrix multiplication"
+  (cond
+    ((and (null shape1) (null shape2))
+     '())
+    ((null shape1)
+     (cdr shape2))
+    ((null shape2)
+     (butlast shape1))
+    ((and (= (length shape1) 1) (= (length shape2) 1))
+     (if (= (first shape1) (first shape2)) '() 
+         (error "Incompatible shapes for dot product: ~A and ~A" shape1 shape2)))
+    ((= (length shape1) 1)
+     (if (= (first shape1) (first shape2))
+         (cdr shape2)
+         (error "Incompatible shapes for matrix multiplication: ~A and ~A" shape1 shape2)))
+    ((= (length shape2) 1)
+     (if (= (car (last shape1)) (first shape2))
+         (butlast shape1)
+         (error "Incompatible shapes for matrix multiplication: ~A and ~A" shape1 shape2)))
+    (t
+     (if (= (car (last shape1)) (first shape2))
+         (append (butlast shape1) (cdr shape2))
+         (error "Incompatible shapes for matrix multiplication: ~A and ~A" shape1 shape2)))))
+
+(defun einstein-shape (subscripts input-shapes)
+  "Compute shape for Einstein summation"
+  (let* ((all-indices (remove-duplicates 
+                       (apply #'append 
+                              (mapcar (lambda (s) (coerce s 'list)) subscripts))))
+         (output-indices (if (find #\- subscripts)
+                             (coerce (subseq subscripts (1+ (position #\- subscripts))) 'list)
+                             all-indices)))
+    (mapcar (lambda (idx)
+              (let ((pos (position idx (coerce (first subscripts) 'list))))
+                (if pos 
+                    (nth pos (first input-shapes))
+                    1)))
+            output-indices)))
+
+(defun reduce-shape (shape axis)
+  "Compute shape after reduction along axis"
+  (cond
+    ((null axis) '())
+    ((numberp axis)
+     (if (and (>= axis 0) (< axis (length shape)))
+         (append (subseq shape 0 axis) (subseq shape (1+ axis)))
+         shape))
+    ((listp axis)
+     (let ((sorted-axes (sort (copy-list axis) #'>)))
+       (reduce (lambda (s ax) (reduce-shape s ax)) sorted-axes :initial-value shape)))
+    (t shape)))

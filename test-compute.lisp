@@ -44,7 +44,7 @@
       (y (var 'y)))
   (let ((expr (+ (^ x 2) (* 2 x y) (^ y 2))))
     (format t "  Expression: ~A~%" expr)
-    (format t "  Substitute x=3: ~A~%" (substitute expr '((x . 3))))
+    (format t "  Substitute x=3: ~A~%" (subst expr '((x . 3))))
     (format t "  Evaluate at x=3, y=4: ~A~%" (evaluate expr '((x . 3) (y . 4))))))
 
 ;; Test 5: Trigonometric identities

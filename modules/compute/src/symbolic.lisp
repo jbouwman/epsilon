@@ -40,7 +40,7 @@
    :polynomial-p
    
    ;; Expression manipulation
-   :substitute
+   :subst-vars
    :replace-var
    :rename-vars
    :canonicalize
@@ -48,7 +48,11 @@
    ;; Pattern matching
    :match-expr
    :unify
-   :apply-substitution))
+   :apply-substitution
+   
+   ;; Equality
+   :expr-equal-p
+   :var-equal-p))
 
 (in-package epsilon.compute.symbolic)
 
@@ -152,7 +156,7 @@
 
 ;;; Expression manipulation
 
-(defun substitute (expr bindings)
+(defun subst-vars (expr bindings)
   "Substitute variables with values in an expression"
   (cond
     ((var-p expr)
@@ -161,13 +165,13 @@
     ((const-p expr) expr)
     ((expr-p expr)
      (symbolic (expr-op expr)
-               (mapcar (lambda (arg) (substitute arg bindings))
+               (mapcar (lambda (arg) (subst-vars arg bindings))
                       (expr-args expr))))
     (t expr)))
 
 (defun replace-var (expr old-var new-var)
   "Replace all occurrences of a variable"
-  (substitute expr (list (cons (var-name old-var) new-var))))
+  (subst-vars expr (list (cons (var-name old-var) new-var))))
 
 (defun rename-vars (expr &optional (prefix "x"))
   "Rename all variables with a systematic naming scheme"
@@ -177,7 +181,7 @@
          (bindings (mapcar (lambda (var name)
                             (cons (var-name var) (sym name (var-type var))))
                           vars new-names)))
-    (substitute expr bindings)))
+    (subst-vars expr bindings)))
 
 (defun canonicalize (expr)
   "Convert expression to canonical form"
@@ -258,4 +262,4 @@
 
 (defun apply-substitution (template bindings)
   "Apply bindings from pattern matching to a template"
-  (substitute template bindings))
+  (subst-vars template bindings))

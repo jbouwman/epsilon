@@ -16,12 +16,12 @@
     ;; Addition
     (let ((sum (c:+ x y)))
       (is (sym:expr-p sum))
-      (is (eq (sym:expr-op sum) '+)))
+      (is (eq (sym:expr-op sum) 'epsilon.compute:+)))
     
     ;; Multiplication
     (let ((prod (c:* x 2)))
       (is (sym:expr-p prod))
-      (is (eq (sym:expr-op prod) '*)))
+      (is (eq (sym:expr-op prod) 'epsilon.compute:*)))
     
     ;; Mixed numeric and symbolic
     (let ((expr (c:+ 1 x 2)))
@@ -62,14 +62,14 @@
     (let* ((expr (c:^ x 2))
            (deriv (c:simplify (c:diff expr x))))
       (is (sym:expr-p deriv))
-      (is (eq (sym:expr-op deriv) '*)))
+      (is (eq (sym:expr-op deriv) 'epsilon.compute:*)))
     
     ;; d/dx(sin(x)) = cos(x)
     (let* ((expr (c:sin x))
            (deriv (c:diff expr x)))
       (is (sym:expr-p deriv))
-      (is (eq (sym:expr-op deriv) '*))
-      (is (eq (sym:expr-op (first (sym:expr-args deriv))) 'cos)))
+      (is (eq (sym:expr-op deriv) 'epsilon.compute:*))
+      (is (eq (sym:expr-op (first (sym:expr-args deriv))) 'epsilon.compute:cos)))
     
     ;; d/dx(x^3 + 2x^2 + x + 1)
     (let* ((expr (c:+ (c:^ x 3) (c:* 2 (c:^ x 2)) x 1))
@@ -83,7 +83,7 @@
         (y (c:var 'y)))
     ;; Substitute x = 2 in x + y
     (let* ((expr (c:+ x y))
-           (subst (c:substitute expr '((x . 2)))))
+           (subst (c:substitute-vars expr '((x . 2))))
       (is (sym:expr-p subst))
       (is (= (length (sym:expr-args subst)) 2)))
     
@@ -187,4 +187,4 @@
   ;; With substitution
   (let ((x (c:var 'x)))
     (is (= (c:evaluate (c:+ x 5) '((x . 3))) 8))
-    (is (= (c:evaluate (c:^ x 2) '((x . 4))) 16))))
+    (is (= (c:evaluate (c:^ x 2) '((x . 4))) 16)))))

@@ -14,7 +14,6 @@
    :*simplification-rules*
    
    ;; E-graph optimization
-   :make-egraph
    :add-to-egraph
    :extract-best
    :saturate-egraph
@@ -32,7 +31,10 @@
    
    ;; Calculus simplification
    :simplify-derivative
-   :simplify-integral))
+   :simplify-integral
+   
+   ;; Utilities
+   :get-numeric-op))
 
 (in-package epsilon.compute.simplify)
 
@@ -57,45 +59,7 @@
           :condition ',when)
          *simplification-rules*))
 
-;;; Basic algebraic rules
-
-(define-simplification-rule add-zero
-    (+ x 0) x)
-
-(define-simplification-rule zero-add
-    (+ 0 x) x)
-
-(define-simplification-rule mul-zero
-    (* x 0) 0)
-
-(define-simplification-rule zero-mul
-    (* 0 x) 0)
-
-(define-simplification-rule mul-one
-    (* x 1) x)
-
-(define-simplification-rule one-mul
-    (* 1 x) x)
-
-(define-simplification-rule div-one
-    (/ x 1) x)
-
-(define-simplification-rule div-self
-    (/ x x) 1
-    :when (not (zerop x)))
-
-(define-simplification-rule sub-self
-    (- x x) 0)
-
-(define-simplification-rule double-neg
-    (- (- x)) x)
-
-(define-simplification-rule power-zero
-    (^ x 0) 1
-    :when (not (zerop x)))
-
-(define-simplification-rule power-one
-    (^ x 1) x)
+;;; Basic algebraic rules - will be defined after compute package loads
 
 ;;; Trigonometric identities
 
@@ -179,20 +143,22 @@
 
 (defun get-numeric-op (op)
   "Get numeric function for symbolic operator"
-  (case op
-    (+ #'+)
-    (- #'-)
-    (* #'*)
-    (/ #'/)
-    (^ #'expt)
-    (sin #'sin)
-    (cos #'cos)
-    (tan #'tan)
-    (exp #'exp)
-    (log #'log)
-    (sqrt #'sqrt)
-    (abs #'abs)
-    (otherwise nil)))
+  ;; Note: op will be a symbol like EPSILON.COMPUTE:+ when called
+  (let ((op-name (if (symbolp op) (symbol-name op) (string op))))
+    (cond
+      ((string= op-name "+") #'cl:+)
+      ((string= op-name "-") #'cl:-)
+      ((string= op-name "*") #'cl:*)
+      ((string= op-name "/") #'cl:/)
+      ((string= op-name "^") #'cl:expt)
+      ((string= op-name "SIN") #'cl:sin)
+      ((string= op-name "COS") #'cl:cos)
+      ((string= op-name "TAN") #'cl:tan)
+      ((string= op-name "EXP") #'cl:exp)
+      ((string= op-name "LOG") #'cl:log)
+      ((string= op-name "SQRT") #'cl:sqrt)
+      ((string= op-name "ABS") #'cl:abs)
+      (t nil))))
 
 (defun apply-rules (expr)
   "Apply simplification rules to an expression"
@@ -315,9 +281,6 @@
   (classes (make-hash-table))
   (next-id 0))
 
-(defun make-egraph ()
-  "Create a new e-graph"
-  (make-egraph))
 
 (defun add-to-egraph (egraph expr)
   "Add an expression to the e-graph"

@@ -1,0 +1,478 @@
+;;;; Automatic Evaluation System
+;;;;
+;;;; Pattern recognition, lazy evaluation, memoization, and optimization
+
+(defpackage epsilon.compute.auto-eval
+  (:use :cl)
+  (:local-nicknames
+   (sym epsilon.compute.symbolic)
+   (types epsilon.compute.types))
+  (:export
+   ;; Pattern recognition
+   :recognize-computation-pattern
+   :register-pattern
+   :computation-pattern
+   :computation-pattern-p
+   
+   ;; Lazy evaluation
+   :make-lazy
+   :force-eval
+   :lazy-value
+   :lazy-value-p
+   
+   ;; Memoization
+   :with-memoization
+   :memoized-evaluate
+   
+   ;; Custom operators
+   :define-custom-op
+   :get-custom-op
+   
+   ;; Computation graph
+   :build-computation-graph
+   :graph-node-count
+   :graph-has-shared-nodes-p
+   :graph-has-parallel-branches-p
+   :evaluate-graph
+   :evaluate-graph-node
+   :differentiate-graph
+   :graph-node
+   :graph-node-p
+   
+   ;; Parallel evaluation
+   :with-parallel-evaluation
+   
+   ;; Expression compilation
+   :compile-expression
+   
+   ;; Caching
+   :with-caching
+   
+   ;; Type inference
+   :infer-type
+   :type-error-p
+   
+   ;; Broadcasting
+   :broadcast-arrays
+   :outer-product
+   
+   ;; Optimization
+   :with-optimization-level
+   :auto-evaluate))
+
+(in-package epsilon.compute.auto-eval)
+
+;;; Pattern Recognition
+
+(defparameter *computation-patterns* (make-hash-table :test 'equal)
+  "Registry of computation patterns")
+
+(defstruct computation-pattern
+  name
+  matcher   ; Function that tests if expression matches
+  optimizer ; Function that optimizes the expression
+  priority) ; Higher priority patterns are checked first
+
+(defun register-pattern (name matcher optimizer &key (priority 0))
+  "Register a computation pattern"
+  (setf (gethash name *computation-patterns*)
+        (make-computation-pattern :name name
+                                 :matcher matcher
+                                 :optimizer optimizer
+                                 :priority priority)))
+
+(defun recognize-computation-pattern (expr)
+  "Recognize computation patterns in expression"
+  (let ((matches nil))
+    (maphash (lambda (name pattern)
+               (when (funcall (computation-pattern-matcher pattern) expr)
+                 (push (cons name pattern) matches)))
+             *computation-patterns*)
+    ;; Sort by priority and return best match
+    (when matches
+      (let ((best (car (sort matches #'> 
+                            :key (lambda (x) 
+                                   (computation-pattern-priority (cdr x)))))))
+        (list (car best) expr)))))
+
+;;; Register common patterns
+
+;; BLAS GEMV: alpha*A*x + beta*y
+(register-pattern :blas-gemv
+  (lambda (expr)
+    (and (sym:expr-p expr)
+         (eq (sym:expr-op expr) '+)
+         (= (length (sym:expr-args expr)) 2)
+         ;; Check for alpha*A*x pattern
+         (let ((arg1 (first (sym:expr-args expr))))
+           (and (sym:expr-p arg1)
+                (eq (sym:expr-op arg1) '*)
+                (sym:expr-p (second (sym:expr-args arg1)))
+                (eq (sym:expr-op (second (sym:expr-args arg1))) 'dot)))))
+  (lambda (expr) 
+    ;; Return optimized GEMV call
+    (list :blas-gemv expr))
+  :priority 10)
+
+;; Matrix chain multiplication
+(register-pattern :matrix-chain
+  (lambda (expr)
+    (and (sym:expr-p expr)
+         (eq (sym:expr-op expr) 'dot)
+         (sym:expr-p (first (sym:expr-args expr)))
+         (eq (sym:expr-op (first (sym:expr-args expr))) 'dot)))
+  (lambda (expr)
+    ;; Optimize matrix chain multiplication order
+    (list :matrix-chain expr))
+  :priority 5)
+
+;; Einsum trace pattern: trace(A*B)
+(register-pattern :einsum-trace
+  (lambda (expr)
+    (and (sym:expr-p expr)
+         (eq (sym:expr-op expr) 'trace)
+         (= (length (sym:expr-args expr)) 1)
+         (let ((arg (first (sym:expr-args expr))))
+           (and (sym:expr-p arg)
+                (eq (sym:expr-op arg) 'dot)))))
+  (lambda (expr)
+    (list :einsum-trace expr))
+  :priority 8)
+
+;;; Lazy Evaluation
+
+(defstruct lazy-value
+  thunk      ; Function to compute value
+  computed-p ; Has it been computed?
+  value)     ; Cached result
+
+(defun make-lazy (thunk)
+  "Create a lazy value"
+  (make-lazy-value :thunk thunk :computed-p nil))
+
+(defun force-eval (expr bindings)
+  "Force evaluation of expression, handling lazy values"
+  (declare (ignore bindings))
+  (cond
+    ((lazy-value-p expr)
+     (unless (lazy-value-computed-p expr)
+       (setf (lazy-value-value expr) (funcall (lazy-value-thunk expr))
+             (lazy-value-computed-p expr) t))
+     (lazy-value-value expr))
+    ((sym:expr-p expr)
+     ;; Return the expression as-is, let caller evaluate it
+     expr)
+    (t expr)))
+
+;;; Memoization
+
+(defparameter *memoization-cache* nil
+  "Thread-local memoization cache")
+
+(defparameter *memoization-enabled* nil
+  "Whether memoization is currently enabled")
+
+(defmacro with-memoization (&body body)
+  "Execute body with memoization enabled"
+  `(let ((*memoization-enabled* t)
+         (*memoization-cache* (make-hash-table :test 'equal)))
+     ,@body))
+
+(defun memoized-evaluate (expr bindings)
+  "Evaluate with memoization"
+  (declare (ignore expr bindings))
+  ;; This is a stub - actual evaluation happens in compute package
+  nil)
+
+;;; Custom Operators
+
+(defparameter *custom-operators* (make-hash-table :test 'eq)
+  "Registry of custom operators")
+
+(defun define-custom-op (name function)
+  "Define a custom operator"
+  (setf (gethash name *custom-operators*) function))
+
+(defun get-custom-op (name)
+  "Get custom operator function"
+  (gethash name *custom-operators*))
+
+;;; Computation Graph
+
+(defstruct graph-node
+  id
+  op
+  inputs
+  outputs
+  value)
+
+(defstruct computation-graph
+  nodes
+  roots
+  inputs
+  outputs)
+
+(defun build-computation-graph (expr)
+  "Build computation graph from expression"
+  (let ((nodes (make-hash-table :test 'equal))
+        (node-counter 0))
+    (labels ((build-node (e)
+               (or (gethash e nodes)
+                   (let ((node (make-graph-node 
+                               :id (incf node-counter)
+                               :op (if (sym:expr-p e) 
+                                      (sym:expr-op e)
+                                      :const)
+                               :inputs (when (sym:expr-p e)
+                                        (mapcar #'build-node 
+                                               (sym:expr-args e))))))
+                     (setf (gethash e nodes) node)
+                     node))))
+      (let ((root (build-node expr)))
+        (make-computation-graph :nodes nodes
+                               :roots (list root)
+                               :inputs (collect-variables expr)
+                               :outputs (list root))))))
+
+(defun collect-variables (expr)
+  "Collect all variables in expression"
+  (let ((vars nil))
+    (labels ((collect (e)
+               (cond
+                 ((sym:var-p e)
+                  (pushnew e vars :test #'sym:var-equal-p))
+                 ((sym:expr-p e)
+                  (mapc #'collect (sym:expr-args e))))))
+      (collect expr))
+    vars))
+
+(defun graph-node-count (graph)
+  "Count nodes in graph"
+  (hash-table-count (computation-graph-nodes graph)))
+
+(defun graph-has-shared-nodes-p (graph)
+  "Check if graph has shared subexpressions"
+  (let ((visit-counts (make-hash-table)))
+    (labels ((count-visits (node)
+               (incf (gethash node visit-counts 0))
+               (dolist (input (graph-node-inputs node))
+                 (count-visits input))))
+      (dolist (root (computation-graph-roots graph))
+        (count-visits root)))
+    (loop for count being the hash-values of visit-counts
+          thereis (> count 1))))
+
+(defun graph-has-parallel-branches-p (graph)
+  "Check if graph has independent branches that can be parallelized"
+  ;; Simple heuristic: check if root has multiple independent children
+  (let ((root (first (computation-graph-roots graph))))
+    (and root
+         (> (length (graph-node-inputs root)) 1))))
+
+(defun evaluate-graph (graph bindings)
+  "Evaluate computation graph"
+  ;; Simplified evaluation - in practice would do topological sort
+  (if (computation-graph-p graph)
+      (evaluate-graph-node (first (computation-graph-roots graph)) bindings)
+      (evaluate-graph-node graph bindings)))
+
+(defun evaluate-graph-node (node bindings)
+  "Evaluate a single graph node"
+  (cond
+    ((null node) nil)
+    ((not (graph-node-p node)) 
+     ;; Return the node for external evaluation
+     node)
+    ((graph-node-value node) ; Already computed
+     (graph-node-value node))
+    (t
+     (let ((result
+            (case (graph-node-op node)
+              (:const 
+               ;; For constants, return the node itself or a default value
+               (or (graph-node-value node) 0))
+              (:var
+               ;; For variables, look up in bindings
+               (cdr (assoc (graph-node-id node) bindings)))
+              (otherwise
+               ;; For operations, evaluate inputs first
+               (let ((input-values (mapcar (lambda (n) (evaluate-graph-node n bindings))
+                                          (graph-node-inputs node))))
+                 (if (member nil input-values)
+                     nil
+                     (apply (get-graph-op (graph-node-op node)) input-values)))))))
+       (setf (graph-node-value node) result)
+       result))))
+
+(defun get-graph-op (op)
+  "Get function for graph operation"
+  (case op
+    ((+ epsilon.compute:+) #'cl:+)
+    ((- epsilon.compute:-) #'cl:-)
+    ((* epsilon.compute:*) #'cl:*)
+    ((/ epsilon.compute:/) #'cl:/)
+    (otherwise #'cl:+)))
+
+(defun differentiate-graph (graph var)
+  "Differentiate computation graph"
+  ;; Simplified - would build adjoint graph
+  graph)
+
+;;; Parallel Evaluation
+
+(defparameter *parallel-evaluation-enabled* nil
+  "Whether parallel evaluation is enabled")
+
+(defmacro with-parallel-evaluation (&body body)
+  "Execute body with parallel evaluation enabled"
+  `(let ((*parallel-evaluation-enabled* t))
+     ,@body))
+
+;;; Expression Compilation
+
+(defun compile-expression (expr variables)
+  "Compile expression to efficient function"
+  (let ((body (expr-to-lisp-form expr)))
+    (compile nil `(lambda ,variables
+                    ,body))))
+
+(defun expr-to-lisp-form (expr)
+  "Convert expression to evaluable Lisp form"
+  (cond
+    ((sym:var-p expr) (sym:var-name expr))
+    ((sym:const-p expr) (sym:const-value expr))
+    ((sym:expr-p expr)
+     (let ((op (sym:expr-op expr))
+           (args (mapcar #'expr-to-lisp-form (sym:expr-args expr))))
+       (case op
+         ((+ - * /) `(,(intern (symbol-name op) :cl) ,@args))
+         (^ `(expt ,@args))
+         (sin `(sin ,@args))
+         (cos `(cos ,@args))
+         (t `(,op ,@args)))))
+    (t expr)))
+
+;;; Caching
+
+(defparameter *computation-cache* nil
+  "Global computation cache")
+
+(defparameter *caching-enabled* nil
+  "Whether caching is enabled")
+
+(defmacro with-caching (&body body)
+  "Execute body with caching enabled"
+  `(let ((*caching-enabled* t)
+         (*computation-cache* (make-hash-table :test 'equal)))
+     ,@body))
+
+;;; Type Inference
+
+(defun infer-type (expr)
+  "Infer type of expression"
+  (cond
+    ((sym:var-p expr)
+     (or (getf (sym:var-type expr) :kind) :unknown))
+    ((sym:const-p expr)
+     (cond
+       ((numberp (sym:const-value expr)) :scalar)
+       ((vectorp (sym:const-value expr)) :vector)
+       ((arrayp (sym:const-value expr))
+        (case (array-rank (sym:const-value expr))
+          (1 :vector)
+          (2 :matrix)
+          (otherwise :tensor)))
+       (t :unknown)))
+    ((sym:expr-p expr)
+     (case (sym:expr-op expr)
+       (dot
+        ;; Matrix * vector = vector, Matrix * matrix = matrix
+        (let ((arg1-type (infer-type (first (sym:expr-args expr))))
+              (arg2-type (infer-type (second (sym:expr-args expr)))))
+          (cond
+            ((and (eq arg1-type :matrix) (eq arg2-type :vector)) :vector)
+            ((and (eq arg1-type :matrix) (eq arg2-type :matrix)) :matrix)
+            (t :unknown))))
+       ((+ - *)
+        ;; Preserve highest-dimensional type
+        (let ((types (mapcar #'infer-type (sym:expr-args expr))))
+          (cond
+            ((member :matrix types) :matrix)
+            ((member :vector types) :vector)
+            ((member :scalar types) :scalar)
+            (t :unknown))))
+       (t :unknown)))
+    (t :unknown)))
+
+(defun type-error-p (expr)
+  "Check if expression has type errors"
+  (handler-case
+      (progn (infer-type expr) nil)
+    (error () t)))
+
+;;; Broadcasting
+
+(defun broadcast-arrays (a b)
+  "Broadcast arrays to compatible shapes"
+  (cond
+    ;; Scalar + Array
+    ((numberp a)
+     (make-array (array-dimensions b)
+                :initial-element a))
+    ((numberp b)
+     (make-array (array-dimensions a)
+                :initial-element b))
+    ;; Both arrays - must have compatible shapes
+    (t (values a b))))
+
+(defun outer-product (v w)
+  "Compute outer product of vectors"
+  (let* ((m (length v))
+         (n (length w))
+         (result (make-array (list m n))))
+    (dotimes (i m)
+      (dotimes (j n)
+        (setf (aref result i j) (* (elt v i) (elt w j)))))
+    result))
+
+;;; Optimization Levels
+
+(defparameter *optimization-level* 1
+  "Current optimization level (0=none, 1=standard, 2=aggressive)")
+
+(defmacro with-optimization-level ((level) &body body)
+  "Execute body with specified optimization level"
+  `(let ((*optimization-level* ,level))
+     ,@body))
+
+;;; Integration with main evaluation
+
+(defun auto-evaluate (expr bindings)
+  "Automatically optimize and evaluate expression"
+  (declare (ignore bindings))
+  (case *optimization-level*
+    (0 expr) ; No optimization
+    (1 (optimize-standard expr))
+    (2 (optimize-aggressive expr))
+    (t expr)))
+
+(defun optimize-standard (expr)
+  "Standard optimization pass"
+  ;; Try pattern recognition
+  (let ((pattern (recognize-computation-pattern expr)))
+    (if pattern
+        (funcall (computation-pattern-optimizer (cdr (first pattern))) expr)
+        expr)))
+
+(defun optimize-aggressive (expr)
+  "Aggressive optimization pass"
+  ;; Build computation graph and optimize
+  (let ((graph (build-computation-graph expr)))
+    ;; Would do CSE, dead code elimination, etc.
+    expr))
+
+(defun cached-evaluate (expr bindings)
+  "Evaluate with caching"
+  (declare (ignore expr bindings))
+  ;; Stub - actual caching happens in compute package
+  nil)
