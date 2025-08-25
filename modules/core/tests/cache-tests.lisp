@@ -374,9 +374,3 @@
     
     ;; Verify all lookups were hits
     (is-= 1000 (cache:timed-cache-hits c))))
-
-(deftest test-concurrent-cache-access
-  "Test cache behavior under concurrent access (if threading is available)"
-  ;; Skip this test as caches are not designed to be thread-safe
-  ;; Document this limitation instead of testing concurrent access
-  (skip "Caches are not thread-safe - concurrent access not supported"))
