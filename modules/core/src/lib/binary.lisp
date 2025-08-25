@@ -50,6 +50,13 @@
    binary-output-stream
    get-output-stream-bytes
    
+   ;; bit field operations
+   extract-bit-field
+   bytes-to-bits
+   bits-to-bytes
+   make-bit-vector
+   pack-bit-field
+   
    ;; convenience macros
    with-output-to-octets))
 
@@ -154,6 +161,39 @@
   (if (logbitp (1- (* size 8)) value)
       (- value (ash 1 (* size 8)))
       value))
+
+;;; Bit field operations
+
+(defun extract-bit-field (integer position width)
+  "Extract WIDTH bits from INTEGER starting at POSITION.
+   This is equivalent to (ldb (byte width position) integer)."
+  (ldb (byte width position) integer))
+
+(defun bytes-to-bits (bytes)
+  "Convert a byte array to an integer (little-endian).
+   This converts the bytes to a single integer value."
+  (loop for i from 0 below (length bytes)
+        sum (ash (aref bytes i) (* i 8))))
+
+(defun bits-to-bytes (bits num-bytes)
+  "Convert an integer to a byte array (little-endian)."
+  (let ((bytes (make-array num-bytes :element-type '(unsigned-byte 8))))
+    (loop for i from 0 below num-bytes
+          do (setf (aref bytes i) (ldb (byte 8 (* i 8)) bits)))
+    bytes))
+
+(defun make-bit-vector (size &optional (initial-element 0))
+  "Create a bit vector of the specified size."
+  (make-array size :element-type 'bit :initial-element initial-element))
+
+(defun pack-bit-field (bit-vector position width value)
+  "Pack VALUE into WIDTH bits starting at POSITION in BIT-VECTOR.
+   This modifies the bit-vector in place."
+  (loop for i from 0 below width
+        for bit-pos from position
+        do (setf (bit bit-vector bit-pos)
+                 (if (logbitp i value) 1 0)))
+  bit-vector)
 
 ;;; Forward declarations and utility functions
 
