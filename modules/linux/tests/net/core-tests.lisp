@@ -165,11 +165,9 @@
       (is (stringp (net:socket-address-ip first-addr)))
       (is-equal 8080 (net:socket-address-port first-addr))))
   
-  ;; Test resolution of invalid hostname - Linux implementation doesn't check DNS
-  ;; It just parses the string, so this won't throw an error
-  (let ((addresses (net:resolve-address "this-should-not-exist.invalid" 8080)))
-    (is (listp addresses))
-    (is (> (length addresses) 0))))
+  ;; Test resolution of invalid hostname - should now properly fail with DNS error
+  (is-thrown (net:network-error) 
+    (net:resolve-address "this-should-not-exist.invalid" 8080)))
 
 
 (deftest test-tcp-data-transfer ()

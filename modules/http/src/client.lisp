@@ -46,9 +46,8 @@
    Example: (make-http-connection \"example.com\" 443 :ssl-p t 
                                   :cert-file \"client.pem\" :key-file \"key.pem\"
                                   :alpn-protocols '(\"h2\" \"http/1.1\"))"
-  (let* ((address (if (string= host "localhost")
-                       (net:make-socket-address "127.0.0.1" port)
-                       (net:make-socket-address host port)))
+  (let* ((addresses (net:resolve-address host port))
+         (address (first addresses))
          (socket (net:tcp-connect address))
          (tls-conn nil)
          (tls-ctx nil)

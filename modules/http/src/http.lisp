@@ -11,7 +11,8 @@
    (#:response #:epsilon.http.response)
    (#:security #:epsilon.http.security)
    (#:validation #:epsilon.http.validation)
-   (#:pool #:epsilon.http.connection-pool))
+   (#:pool #:epsilon.http.connection-pool)
+   (#:simple #:epsilon.http.simple))
   (:export
    ;; Client functions
    #:request
@@ -47,39 +48,91 @@
    
    ;; Connection pooling
    #:with-pooled-connection
-   #:pool-stats))
+   #:pool-stats
+   
+   ;; Simple API (re-export from simple package)
+   #:http-get
+   #:http-post
+   #:http-put
+   #:http-patch
+   #:http-delete
+   #:http-head
+   #:http-options
+   #:response-ok-p
+   #:response-json
+   #:response-text
+   #:response-headers
+   #:response-status
+   #:response-header
+   #:download-file
+   #:upload-file))
 
 (in-package #:epsilon.http)
 
-;;; Client Functions
-(defun request (url &key method headers body)
-  "Make HTTP request"
-  (client:request url :method (or method "GET") :headers headers :body body))
+;;; Simple API Functions (delegating to simple package)
+(defun http-get (url &rest options)
+  "Simple GET request"
+  (apply #'simple:http-get url options))
 
-(defun http-get (url &key headers)
-  "Make GET request"
-  (client:http-get url :headers headers))
+(defun http-post (url &rest options)
+  "Simple POST request"
+  (apply #'simple:http-post url options))
 
-(defun http-post (url &key headers body)
-  "Make POST request"
-  (client:http-post url :headers headers :body body))
+(defun http-put (url &rest options)
+  "Simple PUT request"
+  (apply #'simple:http-put url options))
 
-(defun http-put (url &key headers body)
-  "Make PUT request"
-  (client:http-put url :headers headers :body body))
+(defun http-patch (url &rest options)
+  "Simple PATCH request"
+  (apply #'simple:http-patch url options))
 
-(defun http-delete (url &key headers)
-  "Make DELETE request"
-  (client:http-delete url :headers headers))
+(defun http-delete (url &rest options)
+  "Simple DELETE request"
+  (apply #'simple:http-delete url options))
 
-(defun http-head (url &key headers)
-  "Make HEAD request"
-  (client:http-head url :headers headers))
+(defun http-head (url &rest options)
+  "Simple HEAD request"
+  (apply #'simple:http-head url options))
 
-(defun http-options (url &key headers)  
-  "Make OPTIONS request"
-  (client:http-options url :headers headers))
+(defun http-options (url &rest options)
+  "Simple OPTIONS request"
+  (apply #'simple:http-options url options))
 
+(defun response-ok-p (response)
+  "Check if response is successful"
+  (simple:response-ok-p response))
+
+(defun response-json (response)
+  "Parse response as JSON"
+  (simple:response-json response))
+
+(defun response-text (response)
+  "Get response text"
+  (simple:response-text response))
+
+(defun response-headers (response)
+  "Get response headers"
+  (simple:response-headers response))
+
+(defun response-status (response)
+  "Get response status code"
+  (simple:response-status response))
+
+(defun response-header (response header)
+  "Get specific response header"
+  (simple:response-header response header))
+
+(defun response-body (response)
+  "Get response body"
+  (simple:response-text response))
+
+(defun download-file (url filepath &rest options)
+  "Download file from URL"
+  (apply #'simple:download-file url filepath options))
+
+(defun upload-file (url filepath &rest options)
+  "Upload file to URL"
+  (apply #'simple:upload-file url filepath options))
 
 ;;; Server Functions
 (defun start-server (handler &key (port 8080) (address "127.0.0.1"))
@@ -124,18 +177,6 @@
   "Get request body"
   (request:request-body req))
 
-;; Response accessors
-(defun response-status (resp)
-  "Get response status"
-  (response:response-status resp))
-
-(defun response-headers (resp)
-  "Get response headers"
-  (response:response-headers resp))
-
-(defun response-body (resp)
-  "Get response body"
-  (response:response-body resp))
 
 ;;; Security Functions
 (defun cors-middleware (&rest args)
