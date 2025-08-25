@@ -14,7 +14,7 @@
 ;;; Basic functionality tests
 
 (deftest test-package-existence
-  "Test that the deep integration package exists and has key exports"
+  "Test that the integration package exists and has key exports"
   (is (find-package :epsilon.compile-integration))
   (is (find-symbol "WITH-SOURCE-TRACKING" :epsilon.compile-integration))
   (is (find-symbol "INSTALL-COMPILER-HOOKS" :epsilon.compile-integration)))
