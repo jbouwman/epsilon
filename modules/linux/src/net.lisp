@@ -401,7 +401,7 @@
       (error "Invalid address format: ~A" address-string))))
 
 (defun resolve-address (hostname-or-address port)
-  "Resolve hostname to socket addresses"
+  "Resolve hostname to socket addresses using getaddrinfo"
   (cond
    ;; If it looks like an IP address, use it directly
    ((and (stringp hostname-or-address)
@@ -413,12 +413,74 @@
    ((string= hostname-or-address "localhost")
     (list (make-socket-address "127.0.0.1" port)))
    
-   ;; Otherwise try DNS resolution (simplified)
+   ;; Otherwise use getaddrinfo for DNS resolution
    (t
     (handler-case
-        (list (make-socket-address "127.0.0.1" port)) ; Fallback for now
+        (dns-resolve-hostname hostname-or-address port)
       (error (e)
              (error 'network-error :message (format nil "Failed to resolve ~A: ~A" hostname-or-address e)))))))
+
+(defun dns-resolve-hostname (hostname port)
+  "Resolve hostname to IP addresses using getaddrinfo"
+  (handler-case
+      (lib:with-foreign-memory ((hints :char :count 48)  ; sizeof(struct addrinfo)
+                                (result-ptr :pointer :count 1))
+        ;; Initialize hints structure to zero
+        (loop for i from 0 below 48 do (setf (sb-sys:sap-ref-8 hints i) 0))
+        
+        ;; Set hints: ai_family = AF_UNSPEC (0), ai_socktype = SOCK_STREAM (1)
+        (setf (sb-sys:sap-ref-32 hints 0) 0)    ; ai_flags = 0
+        (setf (sb-sys:sap-ref-32 hints 4) 0)    ; ai_family = AF_UNSPEC
+        (setf (sb-sys:sap-ref-32 hints 8) +sock-stream+)  ; ai_socktype = SOCK_STREAM
+        (setf (sb-sys:sap-ref-32 hints 12) 0)   ; ai_protocol = 0
+        
+        ;; Call getaddrinfo
+        (let* ((port-str (if port (format nil "~D" port) "0"))
+               (result (lib:shared-call '("getaddrinfo" "libc.so.6")
+                                        :int 
+                                        '(:c-string :c-string :pointer :pointer)
+                                        hostname port-str hints result-ptr)))
+          (if (= result 0)
+              (let ((addrinfo-list (parse-addrinfo-results (sb-sys:sap-ref-sap result-ptr 0))))
+                ;; Free the result
+                (lib:shared-call '("freeaddrinfo" "libc.so.6")
+                                 :void '(:pointer)
+                                 (sb-sys:sap-ref-sap result-ptr 0))
+                addrinfo-list)
+              ;; getaddrinfo failed, fallback to treating as IP
+              (list (make-socket-address hostname (or port 80))))))
+    (error (e)
+      ;; Fallback on any error
+      (list (make-socket-address hostname (or port 80))))))
+
+(defun parse-addrinfo-results (addrinfo-ptr)
+  "Parse linked list of addrinfo structures"
+  (let ((results '())
+        (current addrinfo-ptr))
+    (loop while (and current (not (sb-sys:sap= current (sb-sys:int-sap 0))))
+          do (let* ((ai-family (sb-sys:sap-ref-32 current 4))     ; ai_family at offset 4
+                    (ai-addr-ptr (sb-sys:sap-ref-sap current 24))) ; ai_addr at offset 24 on Linux
+               ;; Check if ai_addr is valid
+               (when (and ai-addr-ptr (not (sb-sys:sap= ai-addr-ptr (sb-sys:int-sap 0))))
+                 (let ((socket-addr 
+                        (cond 
+                          ((= ai-family +af-inet+)
+                           ;; Parse IPv4 address
+                           (let* ((port-bytes (sb-sys:sap-ref-16 ai-addr-ptr 2))
+                                  (port (logior (ash (logand port-bytes #xff) 8)
+                                               (ash (logand port-bytes #xff00) -8)))
+                                  (ip (format nil "~D.~D.~D.~D"
+                                             (sb-sys:sap-ref-8 ai-addr-ptr 4)
+                                             (sb-sys:sap-ref-8 ai-addr-ptr 5)
+                                             (sb-sys:sap-ref-8 ai-addr-ptr 6)
+                                             (sb-sys:sap-ref-8 ai-addr-ptr 7))))
+                             (make-socket-address ip port)))
+                          (t nil))))
+                   (when socket-addr
+                     (push socket-addr results))))
+               ;; Move to next addrinfo in linked list
+               (setf current (sb-sys:sap-ref-sap current 40))) ; ai_next at offset 40
+    (nreverse results))))
 
 ;;; ============================================================================
 ;;; Socket Utilities
