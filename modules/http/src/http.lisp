@@ -51,13 +51,13 @@
    #:pool-stats
    
    ;; Simple API (re-export from simple package)
-   #:get
-   #:post
-   #:put
-   #:patch
-   #:delete
-   #:head
-   #:options
+   #:http-get
+   #:http-post
+   #:http-put
+   #:http-patch
+   #:http-delete
+   #:http-head
+   #:http-options
    #:response-ok-p
    #:response-json
    #:response-text
@@ -69,64 +69,34 @@
 
 (in-package #:epsilon.http)
 
-;;; Client Functions
-(defun request (url &key method headers body)
-  "Make HTTP request"
-  (client:request url :method (or method "GET") :headers headers :body body))
-
-(defun http-get (url &key headers)
-  "Make GET request"
-  (client:http-get url :headers headers))
-
-(defun http-post (url &key headers body)
-  "Make POST request"
-  (client:http-post url :headers headers :body body))
-
-(defun http-put (url &key headers body)
-  "Make PUT request"
-  (client:http-put url :headers headers :body body))
-
-(defun http-delete (url &key headers)
-  "Make DELETE request"
-  (client:http-delete url :headers headers))
-
-(defun http-head (url &key headers)
-  "Make HEAD request"
-  (client:http-head url :headers headers))
-
-(defun http-options (url &key headers)  
-  "Make OPTIONS request"
-  (client:http-options url :headers headers))
-
-
 ;;; Simple API Functions (delegating to simple package)
-(defun get (url &rest options)
+(defun http-get (url &rest options)
   "Simple GET request"
-  (apply #'simple:get url options))
+  (apply #'simple:http-get url options))
 
-(defun post (url &rest options)
+(defun http-post (url &rest options)
   "Simple POST request"
-  (apply #'simple:post url options))
+  (apply #'simple:http-post url options))
 
-(defun put (url &rest options)
+(defun http-put (url &rest options)
   "Simple PUT request"
-  (apply #'simple:put url options))
+  (apply #'simple:http-put url options))
 
-(defun patch (url &rest options)
+(defun http-patch (url &rest options)
   "Simple PATCH request"
-  (apply #'simple:patch url options))
+  (apply #'simple:http-patch url options))
 
-(defun delete (url &rest options)
+(defun http-delete (url &rest options)
   "Simple DELETE request"
-  (apply #'simple:delete url options))
+  (apply #'simple:http-delete url options))
 
-(defun head (url &rest options)
+(defun http-head (url &rest options)
   "Simple HEAD request"
-  (apply #'simple:head url options))
+  (apply #'simple:http-head url options))
 
-(defun options (url &rest options)
+(defun http-options (url &rest options)
   "Simple OPTIONS request"
-  (apply #'simple:options url options))
+  (apply #'simple:http-options url options))
 
 (defun response-ok-p (response)
   "Check if response is successful"
@@ -151,6 +121,10 @@
 (defun response-header (response header)
   "Get specific response header"
   (simple:response-header response header))
+
+(defun response-body (response)
+  "Get response body"
+  (simple:response-text response))
 
 (defun download-file (url filepath &rest options)
   "Download file from URL"
@@ -203,18 +177,6 @@
   "Get request body"
   (request:request-body req))
 
-;; Response accessors
-(defun response-status (resp)
-  "Get response status"
-  (response:response-status resp))
-
-(defun response-headers (resp)
-  "Get response headers"
-  (response:response-headers resp))
-
-(defun response-body (resp)
-  "Get response body"
-  (response:response-body resp))
 
 ;;; Security Functions
 (defun cors-middleware (&rest args)

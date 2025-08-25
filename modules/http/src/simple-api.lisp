@@ -12,13 +12,13 @@
    (#:str #:epsilon.string))
   (:export
    ;; Simple one-liner functions
-   #:get
-   #:post
-   #:put
-   #:patch
-   #:delete
-   #:head
-   #:options
+   #:http-get
+   #:http-post
+   #:http-put
+   #:http-patch
+   #:http-delete
+   #:http-head
+   #:http-options
    
    ;; Main request function
    #:request
@@ -172,55 +172,55 @@
 
 ;;;; Simple One-Liner Functions
 
-(defun get (url &rest options)
+(defun http-get (url &rest options)
   "Make a GET request.
    
    Examples:
-   (get \"https://api.example.com/data\")
-   (get \"https://api.example.com/data\" :headers '(\"Authorization\" \"Bearer token\"))"
+   (http-get \"https://api.example.com/data\")
+   (http-get \"https://api.example.com/data\" :headers '(\"Authorization\" \"Bearer token\"))"
   (apply #'request url :method :get options))
 
-(defun post (url &rest options)
+(defun http-post (url &rest options)
   "Make a POST request.
    
    Examples:
-   (post \"https://api.example.com/users\" :json '(:name \"John\" :age 30))
-   (post \"https://api.example.com/form\" :form '(:field1 \"value1\"))"
+   (http-post \"https://api.example.com/users\" :json '(:name \"John\" :age 30))
+   (http-post \"https://api.example.com/form\" :form '(:field1 \"value1\"))"
   (apply #'request url :method :post options))
 
-(defun put (url &rest options)
+(defun http-put (url &rest options)
   "Make a PUT request.
    
    Examples:
-   (put \"https://api.example.com/users/1\" :json '(:name \"Jane\"))"
+   (http-put \"https://api.example.com/users/1\" :json '(:name \"Jane\"))"
   (apply #'request url :method :put options))
 
-(defun patch (url &rest options)
+(defun http-patch (url &rest options)
   "Make a PATCH request.
    
    Examples:
-   (patch \"https://api.example.com/users/1\" :json '(:age 31))"
+   (http-patch \"https://api.example.com/users/1\" :json '(:age 31))"
   (apply #'request url :method :patch options))
 
-(defun delete (url &rest options)
+(defun http-delete (url &rest options)
   "Make a DELETE request.
    
    Examples:
-   (delete \"https://api.example.com/users/1\")"
+   (http-delete \"https://api.example.com/users/1\")"
   (apply #'request url :method :delete options))
 
-(defun head (url &rest options)
+(defun http-head (url &rest options)
   "Make a HEAD request.
    
    Examples:
-   (head \"https://example.com/large-file.pdf\")"
+   (http-head \"https://example.com/large-file.pdf\")"
   (apply #'request url :method :head options))
 
-(defun options (url &rest options)
+(defun http-options (url &rest options)
   "Make an OPTIONS request.
    
    Examples:
-   (options \"https://api.example.com/users\")"
+   (http-options \"https://api.example.com/users\")"
   (apply #'request url :method :options options))
 
 ;;;; Response Helper Functions

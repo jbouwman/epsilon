@@ -436,22 +436,23 @@
         
         ;; Call getaddrinfo
         (let* ((port-str (if port (format nil "~D" port) "0"))
-               (result (lib:shared-call '("getaddrinfo" "libc.so.6")
+               (result (lib:shared-call '("getaddrinfo" "libc")
                                         :int 
                                         '(:c-string :c-string :pointer :pointer)
                                         hostname port-str hints result-ptr)))
           (if (= result 0)
-              (let ((addrinfo-list (parse-addrinfo-results (sb-sys:sap-ref-sap result-ptr 0))))
-                ;; Free the result
-                (lib:shared-call '("freeaddrinfo" "libc.so.6")
+              (let* ((addrinfo-ptr (sb-sys:sap-ref-sap result-ptr 0))
+                     (addrinfo-list (parse-addrinfo-results addrinfo-ptr)))
+                ;; Free the result after processing
+                (lib:shared-call '("freeaddrinfo" "libc")
                                  :void '(:pointer)
-                                 (sb-sys:sap-ref-sap result-ptr 0))
+                                 addrinfo-ptr)
                 addrinfo-list)
-              ;; getaddrinfo failed, fallback to treating as IP
-              (list (make-socket-address hostname (or port 80))))))
+              ;; getaddrinfo failed
+              (error "getaddrinfo failed with code ~D for hostname ~A" result hostname))))
     (error (e)
-      ;; Fallback on any error
-      (list (make-socket-address hostname (or port 80))))))
+      ;; DNS resolution error
+      (error "DNS resolution failed for ~A: ~A" hostname e))))
 
 (defun parse-addrinfo-results (addrinfo-ptr)
   "Parse linked list of addrinfo structures"
