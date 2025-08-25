@@ -1,4 +1,4 @@
-;;;; Deep SBCL Integration for Real-time Source Location Tracking
+;;;; SBCL Integration for Real-time Source Location Tracking
 ;;;;
 ;;;; This module hooks directly into SBCL's compilation pipeline to provide
 ;;;; real-time source location information during compilation, including
@@ -126,7 +126,7 @@
                       (1+ (- char-position 
                              (aref line-positions (1- (length line-positions))))))))))))
 
-;;; Deep SBCL integration functions
+;;; SBCL integration functions
 
 (defun enhanced-process-toplevel-form (form path compile-time-too)
   "Enhanced version of SBCL's process-toplevel-form with source tracking."
@@ -224,7 +224,7 @@
 ;;; Hook installation and management
 
 (defun install-compiler-hooks ()
-  "Install deep hooks into SBCL's compilation system."
+  "Install hooks into SBCL's compilation system."
   (unless *original-process-toplevel-form*
     ;; Unlock SBCL packages to allow modification of internal functions
     (sb-ext:unlock-package :sb-c)
@@ -246,10 +246,10 @@
     ;; Enable real-time source tracking
     (setf *real-time-source-tracking* t)
     
-    (log:info "Deep SBCL compiler hooks installed")))
+    (log:debug "SBCL compiler hooks installed")))
 
 (defun uninstall-compiler-hooks ()
-  "Uninstall deep compiler hooks and restore original functions."
+  "Uninstall compiler hooks and restore original functions."
   (when *original-process-toplevel-form*
     ;; Unlock packages again in case they were re-locked
     (sb-ext:unlock-package :sb-c)
@@ -273,12 +273,12 @@
           (sb-ext:lock-package :sb-kernel))
       (error () nil))  ; Ignore errors if already locked
     
-    (log:info "Deep SBCL compiler hooks uninstalled")))
+    (log:debug "SBCL compiler hooks uninstalled")))
 
 ;;; High-level interface
 
 (defmacro with-source-tracking ((&key (enable t) file) &body body)
-  "Execute body with deep source location tracking enabled."
+  "Execute body with source location tracking enabled."
   `(let ((*real-time-source-tracking* ,enable)
          (*current-compilation-location* nil)
          (*current-file-info* ,(when file
@@ -412,9 +412,9 @@
 ;;; Initialization
 
 (defun initialize-integration ()
-  "Initialize deep SBCL integration."
+  "Initialize SBCL integration."
   (enhance-logging-with-compilation-context)
-  (log:info "Deep SBCL integration initialized"))
+  (log:debug "SBCL integration initialized"))
 
 ;;; Automatic initialization
 (initialize-integration)

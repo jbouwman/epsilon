@@ -7,7 +7,8 @@
   (:use :cl)
   (:local-nicknames
    (#:ffi #:epsilon.crypto.ffi)
-   (#:lib #:epsilon.foreign))
+   (#:lib #:epsilon.foreign)
+   (#:x509 #:epsilon.crypto.x509))
   (:export
    #:generate-self-signed-certificate
    #:generate-certificate-request
@@ -491,14 +492,14 @@
         (setf subject-dn (append subject-dn (list "emailAddress" email))))
       
       ;; Create self-signed certificate using x509 module
-      (let ((cert (epsilon.crypto.x509:create-certificate
+      (let ((cert (x509:create-certificate
                    :subject subject-dn
                    :issuer subject-dn  ; Self-signed = same issuer and subject
                    :public-key key
                    :signing-key key
                    :days days
                    :serial (random 1000000))))
-        (values (epsilon.crypto.x509:save-certificate cert)
+        (values (x509:save-certificate cert)
                 (epsilon.crypto:key-to-pem key :private-p t))))))
 
 (defun generate-certificate-request (common-name private-key &key
@@ -522,19 +523,19 @@
       (setf subject-dn (append subject-dn (list "emailAddress" email))))
     
     ;; Create CSR using x509 module
-    (epsilon.crypto.x509:create-csr private-key subject-dn)))
+    (x509:create-csr private-key subject-dn)))
 
 (defun sign-certificate-request (csr-pem ca-cert-pem ca-key-pem &key (days 365))
   "Sign a CSR with a CA certificate to produce a signed certificate"
   ;; Load components
-  (let* ((csr-handle (epsilon.crypto.x509:load-csr csr-pem))
-         (ca-cert (epsilon.crypto.x509:load-certificate ca-cert-pem))
+  (let* ((csr-handle (x509:load-csr csr-pem))
+         (ca-cert (x509:load-certificate ca-cert-pem))
          (ca-key (epsilon.crypto:key-from-pem ca-key-pem :private-p t))
-         (issuer-dn (list "CN" (epsilon.crypto.x509:x509-certificate-subject ca-cert)))
-         (cert (epsilon.crypto.x509:sign-csr csr-handle issuer-dn nil ca-key
+         (issuer-dn (list "CN" (x509:x509-certificate-subject ca-cert)))
+         (cert (x509:sign-csr csr-handle issuer-dn nil ca-key
                                              :days days
                                              :serial (random 1000000))))
-    (epsilon.crypto.x509:save-certificate cert)))
+    (x509:save-certificate cert)))
 
 (defun generate-ca-certificate (common-name &key
                                (days 3650)
@@ -588,19 +589,19 @@
 
 (defun verify-certificate-chain (cert-pem ca-cert-pem)
   "Verify that a certificate was signed by a CA"
-  (let* ((cert (epsilon.crypto.x509:load-certificate cert-pem))
-         (ca-cert (epsilon.crypto.x509:load-certificate ca-cert-pem))
-         (ca-public-key (epsilon.crypto.x509:certificate-public-key ca-cert)))
-    (epsilon.crypto.x509:verify-certificate cert ca-public-key)))
+  (let* ((cert (x509:load-certificate cert-pem))
+         (ca-cert (x509:load-certificate ca-cert-pem))
+         (ca-public-key (x509:certificate-public-key ca-cert)))
+    (x509:verify-certificate cert ca-public-key)))
 
 (defun certificate-info (cert-pem)
   "Extract information from a certificate"
-  (let ((cert (epsilon.crypto.x509:load-certificate cert-pem)))
-    (list :subject (epsilon.crypto.x509:x509-certificate-subject cert)
-          :issuer (epsilon.crypto.x509:x509-certificate-issuer cert)
-          :serial (epsilon.crypto.x509:x509-certificate-serial cert)
-          :not-before (epsilon.crypto.x509:x509-certificate-not-before cert)
-          :not-after (epsilon.crypto.x509:x509-certificate-not-after cert))))
+  (let ((cert (x509:load-certificate cert-pem)))
+    (list :subject (x509:x509-certificate-subject cert)
+          :issuer (x509:x509-certificate-issuer cert)
+          :serial (x509:x509-certificate-serial cert)
+          :not-before (x509:x509-certificate-not-before cert)
+          :not-after (x509:x509-certificate-not-after cert))))
 
 
 (defun make-certificate-pair (common-name &key (output-dir "/tmp"))

@@ -345,12 +345,12 @@
    
    Returns:
      A COMPILATION-RESULT object with enhanced source locations"
-  (let ((deep-pkg (find-package :epsilon.compile-integration)))
-    (if deep-pkg
-        (let ((install-fn (find-symbol "INSTALL-COMPILER-HOOKS" deep-pkg))
-              (uninstall-fn (find-symbol "UNINSTALL-COMPILER-HOOKS" deep-pkg))
-              (build-cache-fn (find-symbol "BUILD-FORM-POSITION-CACHE" deep-pkg))
-              (file-info-var (find-symbol "*CURRENT-FILE-INFO*" deep-pkg)))
+  (let ((integration (find-package :epsilon.compile-integration)))
+    (if integration
+        (let ((install-fn (find-symbol "INSTALL-COMPILER-HOOKS" integration))
+              (uninstall-fn (find-symbol "UNINSTALL-COMPILER-HOOKS" integration))
+              (build-cache-fn (find-symbol "BUILD-FORM-POSITION-CACHE" integration))
+              (file-info-var (find-symbol "*CURRENT-FILE-INFO*" integration)))
           (unwind-protect
                (progn
                  ;; Install hooks and set up file tracking
@@ -374,10 +374,10 @@
    
    Returns:
      A COMPILATION-RESULT object with enhanced source locations"
-  (let ((deep-pkg (find-package :epsilon.compile-integration)))
-    (if deep-pkg
-        (let ((install-fn (find-symbol "INSTALL-COMPILER-HOOKS" deep-pkg))
-              (uninstall-fn (find-symbol "UNINSTALL-COMPILER-HOOKS" deep-pkg)))
+  (let ((integration (find-package :epsilon.compile-integration)))
+    (if integration
+        (let ((install-fn (find-symbol "INSTALL-COMPILER-HOOKS" integration))
+              (uninstall-fn (find-symbol "UNINSTALL-COMPILER-HOOKS" integration)))
           (unwind-protect
                (progn
                  ;; Install hooks for form compilation

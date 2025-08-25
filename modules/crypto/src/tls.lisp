@@ -46,7 +46,21 @@
 		#:x509-certificate-subject
 		#:x509-certificate-issuer
 		#:make-x509-certificate
-		#:crypto-error))
+		#:crypto-error)
+  (:export
+   #:create-openssl-context
+   #:get-peer-certificate
+   #:make-x509-certificate
+   #:openssl-connection-p
+   #:openssl-connection-ssl
+   #:openssl-context-handle
+   #:tls-cipher
+   #:tls-close
+   #:tls-connect
+   #:tls-version
+   #:verify-peer-certificate
+   #:x509-certificate-p
+   #:x509-certificate-subject))
 
 (in-package :epsilon.crypto.tls)
 
