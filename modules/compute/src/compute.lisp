@@ -2115,3 +2115,19 @@
 (defmacro with-autodiff ((&key (mode :reverse)) &body body)
   "Execute body with automatic differentiation"
   `(ad:with-autodiff (:mode ,mode) ,@body))
+
+;;; E-graph equality saturation forwarding functions
+
+(defun create-egraph ()
+  "Create a new e-graph for equality saturation"
+  (egraph:create-egraph))
+
+(defun optimize-with-egraph (expr &key (rules nil) (iterations 10))
+  "Optimize expression using e-graph equality saturation"
+  (egraph:optimize-with-egraph expr 
+                               :rules (or rules egraph:*standard-rules*)
+                               :iterations iterations))
+
+(defun saturate-rules (egraph rules &key (limit 10))
+  "Apply rewrite rules to an e-graph until saturation"
+  (egraph:saturate-rules egraph rules :limit limit))

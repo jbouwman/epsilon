@@ -4,6 +4,8 @@
 
 (defpackage epsilon.compute.auto-eval
   (:use :cl)
+  (:local-nicknames
+   (sym epsilon.compute.symbolic))
   (:export
    ;; Pattern recognition
    :recognize-computation-pattern
@@ -196,122 +198,136 @@
   "Recognize computational patterns for optimization"
   (cond
     ;; Matrix chain operations - check for nested dot products
-    ((and (consp expr) (eq (first expr) 'dot)
-          (consp (second expr)) (eq (first (second expr)) 'dot))
+    ((matrix-chain-pattern-p expr)
      '(:matrix-chain :optimization-available))
      
     ;; BLAS GEMV pattern: alpha*A*x + beta*y  
-    ((gemv-pattern-p expr) '(:blas-gemv :level-2-blas))
+    ((gemv-pattern-p expr) 
+     '(:blas-gemv :level-2-blas))
     
     ;; BLAS GEMM pattern: C = alpha*A*B + beta*C
-    ((gemm-pattern-p expr) '(:blas-gemm :level-3-blas))
+    ((gemm-pattern-p expr) 
+     '(:blas-gemm :level-3-blas))
+    
+    ;; Einsum trace pattern
+    ((einsum-trace-pattern-p expr)
+     '(:einsum-trace :reduction))
     
     ;; Vector operations
-    ((vector-operation-p expr) '(:vector-ops :vectorizable))
+    ((vector-operation-p expr) 
+     '(:vector-ops :vectorizable))
     
     ;; Matrix operations  
-    ((matrix-operation-p expr) '(:matrix-ops :linear-algebra))
+    ((matrix-operation-p expr) 
+     '(:matrix-ops :linear-algebra))
     
-    ;; Reduction operations
-    ((reduction-operation-p expr) '(:reduction :parallelizable))
+    ;; Default - simple pattern name based on operation
+    ((sym:expr-p expr)
+     (list (intern (string-upcase (string (sym:expr-op expr))) :keyword) :basic))
     
-    ;; Broadcasting operations
-    ((broadcast-operation-p expr) '(:broadcast :element-wise))
-    
-    ;; Polynomial patterns
-    ((polynomial-pattern-p expr) '(:polynomial :symbolic))
-    
-    ;; Trigonometric patterns
-    ((trig-pattern-p expr) '(:trigonometric :transcendental))
-    
-    ;; Linear algebra patterns
-    ((linear-algebra-pattern-p expr) '(:linear-algebra :numerical))
-    
-    (t nil)))
+    (t '(:unknown :no-pattern))))
+
+(defun matrix-chain-pattern-p (expr)
+  "Check for matrix chain pattern: (A * B) * C"
+  (and (sym:expr-p expr)
+       (eq (sym:expr-op expr) (find-symbol "DOT" "EPSILON.COMPUTE"))
+       (let ((args (sym:expr-args expr)))
+         (and (= (length args) 2)
+              (sym:expr-p (first args))
+              (eq (sym:expr-op (first args)) (find-symbol "DOT" "EPSILON.COMPUTE"))))))
 
 (defun gemv-pattern-p (expr)
   "Check for GEMV pattern: alpha*A*x + beta*y"
-  (and (consp expr) (eq (first expr) '+)
-       (= (length (rest expr)) 2)
-       (let ((term1 (second expr))
-             (term2 (third expr)))
-         (and (matrix-vector-mult-p term1)
-              (scaled-vector-p term2)))))
+  (and (sym:expr-p expr)
+       (eq (sym:expr-op expr) (find-symbol "+" "EPSILON.COMPUTE"))
+       (let ((args (sym:expr-args expr)))
+         (and (= (length args) 2)
+              (matrix-vector-mult-p (first args))
+              (scaled-vector-p (second args))))))
 
 (defun gemm-pattern-p (expr)
   "Check for GEMM pattern: alpha*A*B + beta*C"
-  (and (consp expr) (eq (first expr) '+)
-       (= (length (rest expr)) 2)
-       (let ((term1 (second expr))
-             (term2 (third expr)))
-         (and (scaled-matrix-mult-p term1)
-              (scaled-matrix-p term2)))))
+  (and (sym:expr-p expr)
+       (eq (sym:expr-op expr) (find-symbol "+" "EPSILON.COMPUTE"))
+       (let ((args (sym:expr-args expr)))
+         (and (= (length args) 2)
+              (scaled-matrix-mult-p (first args))
+              (scaled-matrix-p (second args))))))
+
+(defun einsum-trace-pattern-p (expr)
+  "Check for einsum trace pattern: trace(A * B)"
+  (and (sym:expr-p expr)
+       (eq (sym:expr-op expr) (find-symbol "TRACE" "EPSILON.COMPUTE"))
+       (let ((args (sym:expr-args expr)))
+         (and (= (length args) 1)
+              (sym:expr-p (first args))
+              (eq (sym:expr-op (first args)) (find-symbol "DOT" "EPSILON.COMPUTE"))))))
 
 (defun matrix-vector-mult-p (expr)
   "Check if expression is matrix-vector multiplication"
-  (and (consp expr) (eq (first expr) '*)
-       (some (lambda (arg) (and (consp arg) (eq (first arg) 'dot))) (rest expr))))
+  (and (sym:expr-p expr)
+       (eq (sym:expr-op expr) (find-symbol "*" "EPSILON.COMPUTE"))
+       (some (lambda (arg)
+               (and (sym:expr-p arg)
+                    (eq (sym:expr-op arg) (find-symbol "DOT" "EPSILON.COMPUTE"))))
+             (sym:expr-args expr))))
 
 (defun scaled-vector-p (expr)
   "Check if expression is a scaled vector"
-  (and (consp expr) (eq (first expr) '*)))
+  (and (sym:expr-p expr)
+       (eq (sym:expr-op expr) (find-symbol "*" "EPSILON.COMPUTE"))))
 
 (defun scaled-matrix-mult-p (expr)
   "Check if expression is scaled matrix multiplication"
-  (and (consp expr) (eq (first expr) '*)
-       (some (lambda (arg) (and (consp arg) (eq (first arg) 'dot))) (rest expr))))
+  (and (sym:expr-p expr)
+       (eq (sym:expr-op expr) (find-symbol "*" "EPSILON.COMPUTE"))
+       (some (lambda (arg)
+               (and (sym:expr-p arg)
+                    (eq (sym:expr-op arg) (find-symbol "DOT" "EPSILON.COMPUTE"))))
+             (sym:expr-args expr))))
 
 (defun scaled-matrix-p (expr)
   "Check if expression is a scaled matrix"
-  (and (consp expr) (eq (first expr) '*)))
+  (and (sym:expr-p expr)
+       (eq (sym:expr-op expr) (find-symbol "*" "EPSILON.COMPUTE"))))
 
+;; Stub implementations for other pattern types
 (defun vector-operation-p (expr)
-  "Check if expression represents vector operations"
-  (and (consp expr)
-       (member (first expr) '(+ - * / dot cross norm))))
+  "Check if expression is a vector operation"
+  (and (sym:expr-p expr)
+       (member (sym:expr-op expr) 
+               (list (find-symbol "+" "EPSILON.COMPUTE")
+                     (find-symbol "-" "EPSILON.COMPUTE") 
+                     (find-symbol "*" "EPSILON.COMPUTE")))))
 
 (defun matrix-operation-p (expr)
-  "Check if expression represents matrix operations"
-  (and (consp expr)
-       (member (first expr) '(matmul transpose det inv trace))))
+  "Check if expression is a matrix operation"
+  (and (sym:expr-p expr)
+       (member (sym:expr-op expr)
+               (list (find-symbol "DOT" "EPSILON.COMPUTE")
+                     (find-symbol "TRANSPOSE" "EPSILON.COMPUTE")
+                     (find-symbol "INVERSE" "EPSILON.COMPUTE")))))
 
+; Simplified pattern recognition stubs for now
 (defun reduction-operation-p (expr)
   "Check if expression represents reduction operations"
-  (and (consp expr)
-       (member (first expr) '(sum mean max min))))
+  nil) ; Stub - not implemented yet
 
 (defun broadcast-operation-p (expr)
   "Check if expression involves broadcasting"
-  (and (consp expr)
-       (member (first expr) '(+ - * /))
-       (> (length expr) 2)))
+  nil) ; Stub - not implemented yet
 
 (defun polynomial-pattern-p (expr)
   "Check if expression is polynomial"
-  (cond
-    ((atom expr) t)
-    ((consp expr)
-     (case (first expr)
-       ((+ - *) (every #'polynomial-pattern-p (rest expr)))
-       (expt (and (polynomial-pattern-p (second expr))
-                 (integerp (third expr))
-                 (>= (third expr) 0)))
-       (t nil)))
-    (t nil)))
+  nil) ; Stub - not implemented yet
 
 (defun trig-pattern-p (expr)
   "Check if expression contains trigonometric functions"
-  (cond
-    ((atom expr) nil)
-    ((consp expr)
-     (or (member (first expr) '(sin cos tan sec csc cot))
-         (some #'trig-pattern-p (rest expr))))
-    (t nil)))
+  nil) ; Stub - not implemented yet
 
 (defun linear-algebra-pattern-p (expr)
   "Check if expression represents linear algebra operations"
-  (and (consp expr)
-       (member (first expr) '(solve eigenvalues eigenvectors svd qr lu))))
+  nil) ; Stub - not implemented yet
 
 ;; Lazy evaluation
 (defstruct lazy-value

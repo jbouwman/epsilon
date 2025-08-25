@@ -249,8 +249,7 @@
 (defun extract-minimum-cost (egraph eclass-id cost-fn)
   "Extract minimum cost expression from e-class using dynamic programming"
   (let ((costs (make-hash-table :test 'eql))
-        (best-nodes (make-hash-table :test 'eql))
-        (*current-egraph* egraph))
+        (best-nodes (make-hash-table :test 'eql)))
     ;; Initialize costs for this e-class
     (extract-costs egraph eclass-id cost-fn costs best-nodes)
     ;; Reconstruct the best expression
@@ -284,13 +283,9 @@
 
 (defun compute-enode-cost (enode cost-fn costs)
   "Compute the cost of an e-node given costs of its arguments"
-  (let ((arg-costs (mapcar (lambda (id) 
-                            (let ((canonical-id (uf-find (egraph-unionfind *current-egraph*) id)))
-                              (gethash canonical-id costs 1))) 
-                          (enode-args enode))))
+  (let ((arg-costs (mapcar (lambda (id) (gethash id costs 1)) (enode-args enode))))
     (funcall cost-fn enode arg-costs)))
 
-(defparameter *current-egraph* nil "Current e-graph for cost computation")
 
 (defun expression-size-cost (enode arg-costs)
   "Simple cost function: size of expression tree"
@@ -418,11 +413,9 @@
                          `(,mul-op ?x (,add-op ?y ?z)))
             
             ;; Double negation
-            (make-rewrite 'double-neg `(,sub-op 0 (,sub-op 0 ?x)) '?x)
-            
-            )))
+            (make-rewrite 'double-neg `(,sub-op 0 (,sub-op 0 ?x)) '?x)))
     
-    ;; Add conditional rules for transcendental functions
+    ;; Add conditional rules for transcendental functions within the let scope
     (when sin-op
       (push (make-rewrite 'sin-zero `(,sin-op 0) '0) *standard-rules*))
     (when cos-op  
@@ -436,7 +429,7 @@
         (push (make-rewrite 'exp-log `(,exp-op (,log-op ?x)) '?x 
                            :condition (lambda (bindings) (positive-p bindings '?x))) *standard-rules*)))
     ;; Reverse to maintain intended order
-    (setf *standard-rules* (nreverse *standard-rules*)))
+    (setf *standard-rules* (nreverse *standard-rules*))))
 
 ;; Condition functions for rules
 (defun not-zero-p (bindings var)
