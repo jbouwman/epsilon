@@ -24,16 +24,6 @@
   (is (boundp 'compile-integration:*real-time-source-tracking*))
   (is (boundp 'compile-integration:*current-compilation-location*)))
 
-(deftest test-initialization
-  "Test deep integration initialization"
-  (handler-case
-      (progn
-        (compile-integration:initialize-integration)
-        (is t))  ; Just test that it doesn't error
-    (error (e)
-      (warn "Initialization failed: ~A" e)
-      (is nil))))
-
 (deftest test-hook-functions-exist
   "Test that hook installation functions exist"
   (is (fboundp 'compile-integration:install-compiler-hooks))

@@ -1,6 +1,4 @@
-;;;; SBCL Integration for Real-time Source Location Tracking
-;;;;
-;;;; This module hooks directly into SBCL's compilation pipeline to provide
+;;;; This module hooks into SBCL's compilation pipeline to provide
 ;;;; real-time source location information during compilation, including
 ;;;; accurate line numbers and form offsets.
 
@@ -37,7 +35,6 @@
    
    ;; Integration functions
    #:enhance-logging-with-compilation-context
-   #:initialize-integration
    
    ;; SBCL source path analysis
    #:extract-line-from-sbcl-source-path
@@ -376,45 +373,3 @@
     ;; This is a simplified approximation
     ;; In practice, we'd need to correlate form numbers with actual positions
     (+ form-number 1))) ; Rough estimate
-
-;;; Integration with epsilon.log
-
-(defun enhance-logging-with-compilation-context ()
-  "Enhance the logging system to use real-time compilation context."
-  ;; Redefine the with-source-location macro to use our tracking
-  (eval
-   `(defmacro log:with-source-location ((file-var line-var) &body body)
-      "Enhanced source location capture using compilation context"
-      `(let ((,file-var ,(or 
-                          ;; Try real-time compilation tracking first
-                          '(when (and (boundp 'epsilon.compile-integration::*current-compilation-location*)
-                                     epsilon.compile-integration::*current-compilation-location*)
-                            (epsilon.compile-api:source-location-file 
-                             epsilon.compile-integration::*current-compilation-location*))
-                          ;; Fall back to SBCL state
-                          '(when (and (boundp 'sb-c::*compile-file-pathname*)
-                                     sb-c::*compile-file-pathname*)
-                            (namestring sb-c::*compile-file-pathname*))
-                          ;; Final fallback
-                          '(when (and (boundp 'sb-c::*load-pathname*)
-                                     sb-c::*load-pathname*)
-                            (namestring sb-c::*load-pathname*))))
-             (,line-var ,(or
-                          ;; Try real-time compilation tracking first
-                          '(when (and (boundp 'epsilon.compile-integration::*current-compilation-location*)
-                                     epsilon.compile-integration::*current-compilation-location*)
-                            (epsilon.compile-api:source-location-line
-                             epsilon.compile-integration::*current-compilation-location*))
-                          ;; No fallback for line numbers yet
-                          nil)))
-        ,@body))))
-
-;;; Initialization
-
-(defun initialize-integration ()
-  "Initialize SBCL integration."
-  (enhance-logging-with-compilation-context)
-  (log:debug "SBCL integration initialized"))
-
-;;; Automatic initialization
-(initialize-integration)
