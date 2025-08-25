@@ -112,13 +112,24 @@
         collect key))
 
 (defun cache-cleanup (cache)
-  "Remove expired entries from cache"
+  "Remove expired entries from cache, and enforce max-size limit"
   (let ((current-time (get-universal-time))
         (ttl (timed-cache-ttl cache))
-        (table (timed-cache-table cache)))
+        (table (timed-cache-table cache))
+        (max-size (timed-cache-max-size cache)))
+    ;; First remove expired entries
     (loop for key being the hash-keys of table using (hash-value entry)
           when (> (- current-time (cache-entry-timestamp entry)) ttl)
-          do (remhash key table))))
+          do (remhash key table))
+    ;; If still at or over max-size, remove oldest entry to make room for new one
+    (when (>= (hash-table-count table) max-size)
+      (let ((entries (loop for key being the hash-keys of table using (hash-value entry)
+                          collect (cons key (cache-entry-timestamp entry)))))
+        ;; Sort by timestamp (oldest first)
+        (setf entries (sort entries #'< :key #'cdr))
+        ;; Remove just one oldest entry to make room
+        (when entries
+          (remhash (car (first entries)) table))))))
 
 (defun cache-hits (cache)
   "Get the number of cache hits"
@@ -156,7 +167,7 @@
   "Create a new LRU cache with given capacity"
   (let ((cache (%make-lru-cache 
                 :table (make-hash-table :test 'equal)
-                :capacity capacity
+                :capacity (max 0 capacity)  ; Ensure non-negative capacity
                 :size 0)))
     ;; Initialize dummy head and tail nodes
     (setf (lru-cache-head cache) (make-lru-node))
@@ -200,6 +211,10 @@
 
 (defun lru-put (cache key value)
   "Put value in LRU cache"
+  ;; Handle zero capacity edge case
+  (when (zerop (lru-cache-capacity cache))
+    (return-from lru-put value))
+  
   (let ((node (gethash key (lru-cache-table cache))))
     (cond
       ;; Key exists, update value and move to head
@@ -210,19 +225,16 @@
       ;; New key
       (t
        (let ((new-node (make-lru-node :key key :value value)))
-         (cond
-           ;; Cache is full, remove LRU item
-           ((>= (lru-cache-size cache) (lru-cache-capacity cache))
-            (let ((tail (lru-remove-tail cache)))
-              (remhash (lru-node-key tail) (lru-cache-table cache))
-              (decf (lru-cache-size cache))))
-           
-           ;; Cache not full
-           (t
-            (incf (lru-cache-size cache))))
+         ;; Cache is full, remove LRU item
+         (when (>= (lru-cache-size cache) (lru-cache-capacity cache))
+           (let ((tail (lru-remove-tail cache)))
+             (remhash (lru-node-key tail) (lru-cache-table cache))
+             (decf (lru-cache-size cache))))
          
+         ;; Add new node
          (lru-add-to-head cache new-node)
-         (setf (gethash key (lru-cache-table cache)) new-node))))
+         (setf (gethash key (lru-cache-table cache)) new-node)
+         (incf (lru-cache-size cache)))))
     value))
 
 (defun lru-remove (cache key)
