@@ -64,7 +64,7 @@
   "Result of validation"
   (valid-p t :type boolean)
   (errors '() :type list)
-  (values (map:make-map) :type map:map))
+  (values (map:make-map)))
 
 ;;;; Validator Functions
 
@@ -270,18 +270,21 @@
   "Middleware to validate request body"
   (lambda (handler)
     (lambda (request)
-      (let ((body-data
+      (let* ((body (request:request-body request))
+             (body-data
               (cond
                 ((string= content-type "application/json")
-                 ;; Parse JSON body - stub for now
+                 ;; Parse JSON body
                  (handler-case
-                     (map:make-map) ; TODO: implement JSON parsing
+                     (if (and body (not (str:empty-p body)))
+                         (epsilon.json:parse body)
+                         (map:make-map))
                    (error ()
                      (return-from validate-request-body
                        (response:text-response "Invalid JSON" :status 400)))))
                 ((string= content-type "application/x-www-form-urlencoded")
                  ;; Parse form data
-                 (request:parse-form-data (request:request-body request)))
+                 (request:parse-form-data body))
                 (t (map:make-map)))))
         
         (let* ((validator (make-validator rules))

@@ -296,19 +296,29 @@
                                     (cookie-name "csrf_token")
                                     (safe-methods '("GET" "HEAD" "OPTIONS")))
   "CSRF protection middleware"
-  (declare (ignore cookie-name)) ;; TODO: Implement cookie-based CSRF token lookup
   (lambda (request)
     (let ((method (request:request-method request)))
       (if (member method safe-methods :test #'string=)
           ;; Safe methods don't need CSRF protection
           (funcall handler request)
-          ;; Check CSRF token
+          ;; Check CSRF token from header or cookie
           (let ((token (or (map:get (request:request-headers request) header-name)
-                           ;; Could also check cookies here
-                           nil)))
+                           (get-cookie-value request cookie-name))))
             (if (validate-csrf-token token)
                 (funcall handler request)
                 (response:text-response "Invalid CSRF token" :status 403)))))))
+
+(defun get-cookie-value (request cookie-name)
+  "Extract cookie value from request headers"
+  (let ((cookie-header (map:get (request:request-headers request) "Cookie")))
+    (when cookie-header
+      ;; Parse cookies: "name1=value1; name2=value2"
+      (let ((cookies (str:split "; " cookie-header)))
+        (loop for cookie in cookies
+              for parts = (str:split "=" cookie :limit 2)
+              when (and (= (length parts) 2)
+                       (string= (first parts) cookie-name))
+              return (second parts))))))
 
 ;;;; Authentication Helpers
 

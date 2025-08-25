@@ -11,7 +11,8 @@
    (#:response #:epsilon.http.response)
    (#:security #:epsilon.http.security)
    (#:validation #:epsilon.http.validation)
-   (#:pool #:epsilon.http.connection-pool))
+   (#:pool #:epsilon.http.connection-pool)
+   (#:simple #:epsilon.http.simple))
   (:export
    ;; Client functions
    #:request
@@ -47,7 +48,24 @@
    
    ;; Connection pooling
    #:with-pooled-connection
-   #:pool-stats))
+   #:pool-stats
+   
+   ;; Simple API (re-export from simple package)
+   #:get
+   #:post
+   #:put
+   #:patch
+   #:delete
+   #:head
+   #:options
+   #:response-ok-p
+   #:response-json
+   #:response-text
+   #:response-headers
+   #:response-status
+   #:response-header
+   #:download-file
+   #:upload-file))
 
 (in-package #:epsilon.http)
 
@@ -80,6 +98,67 @@
   "Make OPTIONS request"
   (client:http-options url :headers headers))
 
+
+;;; Simple API Functions (delegating to simple package)
+(defun get (url &rest options)
+  "Simple GET request"
+  (apply #'simple:get url options))
+
+(defun post (url &rest options)
+  "Simple POST request"
+  (apply #'simple:post url options))
+
+(defun put (url &rest options)
+  "Simple PUT request"
+  (apply #'simple:put url options))
+
+(defun patch (url &rest options)
+  "Simple PATCH request"
+  (apply #'simple:patch url options))
+
+(defun delete (url &rest options)
+  "Simple DELETE request"
+  (apply #'simple:delete url options))
+
+(defun head (url &rest options)
+  "Simple HEAD request"
+  (apply #'simple:head url options))
+
+(defun options (url &rest options)
+  "Simple OPTIONS request"
+  (apply #'simple:options url options))
+
+(defun response-ok-p (response)
+  "Check if response is successful"
+  (simple:response-ok-p response))
+
+(defun response-json (response)
+  "Parse response as JSON"
+  (simple:response-json response))
+
+(defun response-text (response)
+  "Get response text"
+  (simple:response-text response))
+
+(defun response-headers (response)
+  "Get response headers"
+  (simple:response-headers response))
+
+(defun response-status (response)
+  "Get response status code"
+  (simple:response-status response))
+
+(defun response-header (response header)
+  "Get specific response header"
+  (simple:response-header response header))
+
+(defun download-file (url filepath &rest options)
+  "Download file from URL"
+  (apply #'simple:download-file url filepath options))
+
+(defun upload-file (url filepath &rest options)
+  "Upload file to URL"
+  (apply #'simple:upload-file url filepath options))
 
 ;;; Server Functions
 (defun start-server (handler &key (port 8080) (address "127.0.0.1"))

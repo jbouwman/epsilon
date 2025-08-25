@@ -16,7 +16,9 @@
    #:add-header
    #:parse-query-string
    #:parse-form-data
-   #:parse-http-request))
+   #:parse-http-request
+   #:url-encode
+   #:url-decode))
 
 (in-package :epsilon.http.request)
 
@@ -65,6 +67,19 @@
 (defun parse-form-data (form-string)
   "Parse application/x-www-form-urlencoded data"
   (parse-query-string form-string))
+
+(defun url-encode (string)
+  "Encode string for use in URL"
+  (with-output-to-string (out)
+    (loop for char across string
+          do (cond
+               ((or (alphanumericp char)
+                    (member char '(#\- #\_ #\. #\~)))
+                (write-char char out))
+               ((char= char #\Space)
+                (write-char #\+ out))
+               (t
+                (format out "%~2,'0X" (char-code char)))))))
 
 (defun url-decode (string)
   "Decode URL-encoded string"

@@ -1,6 +1,6 @@
 # epsilon.http - HTTP Client and Server Library
 
-The `epsilon.http` package provides  HTTP client and server functionality for epsilon applications. It offers modern features including request/response objects, JSON support, URL parsing, and query string handling.
+The `epsilon.http` package provides comprehensive HTTP client and server functionality for epsilon applications. It offers modern features including a simple high-level API, request/response objects, JSON support, URL parsing, connection pooling, and full HTTP/HTTPS compliance testing.
 
 ## Architecture
 
@@ -14,27 +14,46 @@ The epsilon.http package is organized into several core modules:
 
 ## Quick Start
 
-### HTTP Client
+### Simple API (Recommended)
+
+The simple API provides an easy-to-use interface for common HTTP operations:
+
+```lisp
+(use-package :epsilon.http)
+
+;; Simple GET request
+(let ((response (get "https://api.github.com/users/github")))
+  (when (response-ok-p response)
+    (let ((data (response-json response)))
+      (format t "Name: ~A~%" (epsilon.map:get data "name")))))
+
+;; POST with JSON
+(post "https://api.example.com/users" 
+      :json '(:name "Alice" :age 30))
+
+;; POST with form data
+(post "https://example.com/login"
+      :form '(:username "alice" :password "secret"))
+
+;; Custom headers
+(get "https://api.example.com/protected"
+     :headers '("Authorization" "Bearer my-token"))
+
+;; Download a file
+(download-file "https://example.com/document.pdf" 
+               "/tmp/document.pdf")
+```
+
+### Traditional Client API
 
 ```lisp
 (use-package :epsilon.http.client)
 
-;; Simple GET request
+;; Traditional approach with more control
 (multiple-value-bind (status headers body)
     (http-get "http://example.com/api/data")
   (format t "Status: ~A~%" status)
   (format t "Body: ~A~%" body))
-
-;; POST request with JSON data
-(let ((json-data (with-output-to-string (s)
-                   (epsilon.json:encode 
-                    (epsilon.map:make-map "name" "test") s))))
-  (multiple-value-bind (status headers body)
-      (http-post "http://example.com/api/users"
-                 :body json-data
-                 :headers (epsilon.map:make-map 
-                          "Content-Type" "application/json"))
-    (format t "Created user, status: ~A~%" status)))
 ```
 
 ### HTTP Server
@@ -62,7 +81,97 @@ The epsilon.http package is organized into several core modules:
 (stop-server *server*)
 ```
 
-## HTTP Client API
+## Simple API
+
+The simple API provides the easiest way to make HTTP requests:
+
+### One-Liner Functions
+
+#### `(get url &key headers timeout)`
+Make a GET request and return a response object.
+
+```lisp
+(get "https://api.example.com/data")
+(get "https://api.example.com/data" :headers '("Authorization" "Bearer token"))
+```
+
+#### `(post url &key json form headers body)`
+Make a POST request with automatic content encoding.
+
+```lisp
+;; JSON data
+(post "https://api.example.com/users" :json '(:name "Alice" :age 30))
+
+;; Form data
+(post "https://example.com/login" :form '(:username "alice" :password "secret"))
+
+;; Raw body
+(post "https://api.example.com/data" :body "raw data" 
+      :headers '("Content-Type" "text/plain"))
+```
+
+#### `(put url &key json form headers body)`
+Make a PUT request.
+
+```lisp
+(put "https://api.example.com/users/1" :json '(:name "Alice Updated"))
+```
+
+#### `(delete url &key headers)`
+Make a DELETE request.
+
+```lisp
+(delete "https://api.example.com/users/1")
+```
+
+### Response Helpers
+
+#### `(response-ok-p response)`
+Check if response status is 2xx.
+
+```lisp
+(let ((resp (get "https://api.example.com/data")))
+  (when (response-ok-p resp)
+    (process-data resp)))
+```
+
+#### `(response-json response)`
+Parse response body as JSON, returns epsilon.map.
+
+```lisp
+(let* ((resp (get "https://api.github.com/users/github"))
+       (data (response-json resp)))
+  (epsilon.map:get data "name"))
+```
+
+#### `(response-text response)`
+Get response body as string.
+
+#### `(response-status response)`
+Get HTTP status code.
+
+#### `(response-header response header-name)`
+Get specific response header.
+
+### File Operations
+
+#### `(download-file url filepath)`
+Download file from URL.
+
+```lisp
+(download-file "https://example.com/document.pdf" "/tmp/document.pdf")
+```
+
+#### `(upload-file url filepath &key field-name additional-fields)`
+Upload file using multipart/form-data.
+
+```lisp
+(upload-file "https://api.example.com/upload" "/tmp/document.pdf"
+             :field-name "document"
+             :additional-fields '(:description "Important file"))
+```
+
+## Traditional HTTP Client API
 
 ### Core Functions
 
@@ -265,16 +374,33 @@ The epsilon.http package integrates seamlessly with epsilon.json for JSON proces
 
 ## Testing
 
-The package includes a  test suite covering:
-- URL parsing with various formats
-- Request and response object creation
-- Query string parsing and URL decoding
-- JSON response generation
-- HTTP message formatting
+The package includes a comprehensive test suite with multiple test categories:
 
-Run tests using:
+### Test Suites
+
+1. **Basic Tests** - Core functionality tests
+2. **Integration Tests** - Local client-server tests  
+3. **External Server Tests** - Compliance testing against:
+   - httpbin.org (HTTP methods, headers, auth)
+   - postman-echo.com (protocols, compression)
+   - badssl.com (TLS/SSL certificate validation)
+4. **Performance Tests** - Latency and throughput benchmarks
+5. **mTLS Tests** - Mutual TLS authentication
+6. **Streaming Tests** - Large payload and streaming responses
+
+### Running Tests
+
 ```bash
-epsilon test --package epsilon.http
+# Run all tests
+epsilon --module epsilon.http.test-runner --exec run-all-tests
+
+# Run specific test suites
+epsilon --module epsilon.http.test-runner --exec run-basic-tests
+epsilon --module epsilon.http.test-runner --exec run-integration-tests
+epsilon --module epsilon.http.test-runner --exec run-external-tests
+
+# Skip external tests (for CI/offline testing)
+EPSILON_SKIP_EXTERNAL_TESTS=1 epsilon --module epsilon.http.test-runner --exec run-all-tests
 ```
 
 ## Dependencies
