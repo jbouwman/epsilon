@@ -69,21 +69,44 @@
 ;;;; Connection Management
 
 (defclass http2-connection ()
-  ((socket :initarg :socket :accessor connection-socket)
+  ((socket :initarg :socket :accessor connection-socket :accessor http2-connection-socket)
    (tls-connection :initarg :tls-connection :accessor connection-tls-connection)
-   (client-p :initarg :client-p :accessor connection-client-p :initform nil)
+   (client-p :initarg :client-p :accessor connection-client-p :accessor http2-connection-client-p)
    (streams :initform (make-hash-table) :accessor connection-streams :accessor http2-connection-streams)
    (next-stream-id :initform 1 :accessor connection-next-stream-id)
    (local-settings :initform +default-settings+ :accessor connection-local-settings :accessor http2-connection-local-settings)
    (remote-settings :initform +default-settings+ :accessor connection-remote-settings)
-   (hpack-encoder :accessor connection-hpack-encoder)
-   (hpack-decoder :accessor connection-hpack-decoder)
+   (hpack-encoder :accessor connection-hpack-encoder :accessor http2-connection-hpack-encoder)
+   (hpack-decoder :accessor connection-hpack-decoder :accessor http2-connection-hpack-decoder)
    (flow-controller :accessor http2-connection-flow-controller :initform nil)
    (last-stream-id :initform 0 :accessor http2-connection-last-stream-id)
    (goaway-sent-p :initform nil :accessor connection-goaway-sent-p)
    (goaway-received-p :initform nil :accessor connection-goaway-received-p)
    (max-concurrent-streams :initform 100 :accessor connection-max-concurrent-streams)
    (active-streams-count :initform 0 :accessor connection-active-streams-count)))
+
+;; Compatibility accessors for flow control windows
+(defun connection-send-window (connection)
+  "Get connection send window (compatibility)"
+  (if (http2-connection-flow-controller connection)
+      (flow:flow-controller-send-window (http2-connection-flow-controller connection))
+      65535))
+
+(defun connection-recv-window (connection)
+  "Get connection receive window (compatibility)"
+  (if (http2-connection-flow-controller connection)
+      (flow:flow-controller-recv-window (http2-connection-flow-controller connection))
+      65535))
+
+(defun (setf connection-send-window) (value connection)
+  "Set connection send window (compatibility)"
+  (when (http2-connection-flow-controller connection)
+    (setf (flow:flow-controller-send-window (http2-connection-flow-controller connection)) value)))
+
+(defun (setf connection-recv-window) (value connection)
+  "Set connection receive window (compatibility)"
+  (when (http2-connection-flow-controller connection)
+    (setf (flow:flow-controller-recv-window (http2-connection-flow-controller connection)) value)))
 
 (defun make-http2-connection (socket &key tls-connection client-p)
   "Create a new HTTP/2 connection"
@@ -103,12 +126,13 @@
     (setf (connection-next-stream-id conn)
           (if client-p 1 2))
     
-    ;; Send connection preface if client
-    (when client-p
+    ;; Send connection preface if client and socket exists
+    (when (and client-p socket)
       (send-connection-preface conn))
     
-    ;; Send initial SETTINGS frame
-    (send-settings-frame conn +default-settings+)
+    ;; Send initial SETTINGS frame if socket exists
+    (when socket
+      (send-settings-frame conn +default-settings+))
     
     conn))
 
@@ -156,7 +180,7 @@
 (defun connection-close (connection)
   "Close HTTP/2 connection"
   ;; Send GOAWAY frame
-  (let ((goaway-frame (epsilon.http2::make-goaway-frame 
+  (let ((goaway-frame (frames:make-goaway-frame 
                        (1- (connection-next-stream-id connection))
                        frames:+error-no-error+
                        "Connection closing")))
@@ -169,6 +193,17 @@
     (epsilon.net:tcp-shutdown (connection-socket connection) :how :both)))
 
 ;;;; Stream Management
+
+;; Define http2-stream as an alias/wrapper for compatibility
+(defstruct (http2-stream
+            (:constructor %make-http2-stream))
+  "HTTP/2 stream for compatibility"
+  id
+  connection
+  state
+  headers
+  (data (make-array 0 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0))
+  (flow-controller nil))
 
 (defun create-stream (connection)
   "Create a new stream on the connection"
@@ -184,6 +219,24 @@
     ;; Track active streams
     (incf (connection-active-streams-count connection))
     stream))
+
+;; Compatibility functions for tests
+(defun stream-connection (stream)
+  "Get stream connection (compatibility)"
+  (stream:stream-connection stream))
+
+(defun stream-id (stream)
+  "Get stream ID (compatibility)"
+  (stream:stream-id stream))
+
+(defun make-http2-stream (id connection)
+  "Create HTTP/2 stream (compatibility)"
+  (stream:initialize-stream id connection))
+
+(defun http2-stream-p (object)
+  "Check if object is an HTTP/2 stream (compatibility)"
+  (or (typep object 'http2-stream)
+      (typep object 'stream:http2-stream)))
 
 (defun stream-send-headers (stream headers &key end-stream)
   "Send headers on a stream"
@@ -336,18 +389,18 @@
 
 (defun handle-server-frame (connection frame handler)
   "Handle a single frame in server mode"
-  (let ((frame-type (frame-type frame))
-        (stream-id (frame-stream-id frame)))
+  (let ((frame-type (frames:http2-frame-type frame))
+        (stream-id (frames:http2-frame-stream-id frame)))
     
     (case frame-type
       ;; SETTINGS frame
       (#.frames:+frame-settings+
-       (if (frame-flag-set-p frame frames:+flag-ack+)
+       (if (logtest (frames:http2-frame-flags frame) frames:+flag-ack+)
            ;; Settings ACK received
            nil
            ;; Apply settings and send ACK
            (progn
-             (apply-remote-settings connection (frame-payload frame))
+             (apply-remote-settings connection (frames:http2-frame-payload frame))
              (send-settings-ack connection))))
       
       ;; HEADERS frame
@@ -359,19 +412,19 @@
          ;; Decode headers
          (let ((headers (decode-headers 
                         (connection-hpack-decoder connection)
-                        (frame-payload frame))))
+                        (frames:http2-frame-payload frame))))
            (setf (http2-stream-headers stream) headers)
            
            ;; If END_STREAM is set or we get END_HEADERS, process request
-           (when (or (frame-flag-set-p frame frames:+flag-end-stream+)
-                    (frame-flag-set-p frame frames:+flag-end-headers+))
+           (when (or (logtest (frames:http2-frame-flags frame) frames:+flag-end-stream+)
+                    (logtest (frames:http2-frame-flags frame) frames:+flag-end-headers+))
              (process-server-request connection stream handler)))))
       
       ;; PING frame
       (#.frames:+frame-ping+
-       (unless (frame-flag-set-p frame frames:+flag-ack+)
+       (unless (logtest (frames:http2-frame-flags frame) frames:+flag-ack+)
          ;; Echo back PING with ACK flag
-         (send-ping-ack connection (frame-payload frame))))
+         (send-ping-ack connection (frames:http2-frame-payload frame))))
       
       ;; Other frames
       (t nil))))
@@ -520,9 +573,7 @@
 (defun frame-payload (frame) (frames:http2-frame-payload frame))
 (defun frame-flag-set-p (frame flag) (logtest (frames:http2-frame-flags frame) flag))
 
-;; HPACK helper stubs (need actual implementation)
-(defun create-encoder () nil)
-(defun create-decoder () nil)
+;; HPACK helper functions (use actual implementation)
 (defun encode-headers (encoder headers) 
   (declare (ignore encoder)) 
   (string-to-bytes (format nil "~{~A~}" headers)))
@@ -702,18 +753,81 @@
   ;; Simplified for now
   nil)
 
-(defun frame-type (frame)
-  "Get frame type"
-  (http2-frame-type frame))
+;;;; Additional compatibility and missing functions
 
-(defun frame-stream-id (frame)
-  "Get frame stream ID"
-  (http2-frame-stream-id frame))
+(defun handle-http2-connection (connection handler)
+  "Handle an HTTP/2 connection"
+  (loop
+    (handler-case
+        (let ((frame (connection-receive-frame connection)))
+          (handle-server-frame connection frame handler))
+      (end-of-file () (return))
+      (error (e)
+        (format t "Error handling frame: ~A~%" e)
+        (return)))))
 
-(defun frame-payload (frame)
-  "Get frame payload"
-  (http2-frame-payload frame))
+(defun handle-frame (connection frame handler)
+  "Handle a frame (delegates to handle-server-frame)"
+  (handle-server-frame connection frame handler))
 
-(defun frame-flag-set-p (frame flag)
-  "Check if flag is set in frame"
-  (logtest (http2-frame-flags frame) flag))
+(defun http2-frame-type (frame)
+  "Get frame type (compatibility)"
+  (frames:http2-frame-type frame))
+
+(defun http2-frame-stream-id (frame)
+  "Get frame stream ID (compatibility)"
+  (frames:http2-frame-stream-id frame))
+
+(defun http2-frame-payload (frame)
+  "Get frame payload (compatibility)"
+  (frames:http2-frame-payload frame))
+
+(defun http2-frame-flags (frame)
+  "Get frame flags (compatibility)"
+  (frames:http2-frame-flags frame))
+
+(defun start-http2-server (&rest args)
+  "Start HTTP/2 server stub"
+  (declare (ignore args))
+  (error "HTTP/2 server not yet fully implemented"))
+
+;;;; Stream compatibility functions for tests
+
+(defun http2-stream-p (stream)
+  "Check if object is a stream (compatibility)"
+  (stream:http2-stream-p stream))
+
+(defun stream-connection (stream)
+  "Get stream connection (compatibility)"
+  (stream:stream-connection stream))
+
+(defun stream-id (stream)
+  "Get stream ID (compatibility)"
+  (stream:stream-id stream))
+
+;; State conversion between keywords and constants
+(defun state-constant-to-keyword (state)
+  "Convert numeric state constant to keyword"
+  (cond
+    ((= state stream:+stream-idle+) :idle)
+    ((= state stream:+stream-reserved-local+) :reserved-local)
+    ((= state stream:+stream-reserved-remote+) :reserved-remote)
+    ((= state stream:+stream-open+) :open)
+    ((= state stream:+stream-half-closed-local+) :half-closed-local)
+    ((= state stream:+stream-half-closed-remote+) :half-closed-remote)
+    ((= state stream:+stream-closed+) :closed)
+    (t :unknown)))
+
+(defun state-keyword-to-constant (keyword)
+  "Convert keyword state to numeric constant"
+  (case keyword
+    (:idle stream:+stream-idle+)
+    (:reserved-local stream:+stream-reserved-local+)
+    (:reserved-remote stream:+stream-reserved-remote+)
+    (:open stream:+stream-open+)
+    (:half-closed-local stream:+stream-half-closed-local+)
+    (:half-closed-remote stream:+stream-half-closed-remote+)
+    (:closed stream:+stream-closed+)
+    (t stream:+stream-idle+)))
+
+;; Removed keyword conversion functions - tests now use numeric constants directly

@@ -185,37 +185,11 @@
 
 (deftest test-hpack-encoding-decoding
   "Test HPACK header compression round-trip"
-  (skip)
-  (let ((encoder (epsilon.http2.hpack:create-encoder))
-        (decoder (epsilon.http2.hpack:create-decoder))
-        (headers '((":method" . "GET")
-                  (":path" . "/")
-                  (":scheme" . "https")
-                  ("host" . "example.com"))))
-    
-    (let* ((encoded (epsilon.http2.hpack:encode-headers encoder headers))
-           (decoded (epsilon.http2.hpack:decode-headers decoder encoded)))
-      ;; Should get same headers back
-      (is-= (length headers) (length decoded))
-      (dolist (header headers)
-        (is-not-null (member header decoded :test #'equal))))))
+  (skip "HPACK functions not yet fully implemented"))
 
 (deftest test-hpack-static-table
   "Test HPACK static table entries"
-  ;; Test some well-known static table entries
-  (skip)
-  (let ((encoder (epsilon.http2.hpack:create-encoder))
-        (decoder (epsilon.http2.hpack:create-decoder)))
-    
-    ;; :method GET is index 2
-    (let* ((headers '((":method" . "GET")))
-           (encoded (epsilon.http2.hpack:encode-headers encoder headers)))
-      ;; Should be very small (just the index)
-      (is-true (< (length encoded) 5))
-      
-      ;; Should decode correctly
-      (let ((decoded (epsilon.http2.hpack:decode-headers decoder encoded)))
-        (is-equal headers decoded)))))
+  (skip "HPACK functions not yet fully implemented"))
 
 ;;;; Stream State Tests (RFC 7540 Section 5.1)
 
@@ -226,18 +200,25 @@
                               :client-p t))
          (stream (epsilon.http2::create-stream conn)))
     
-    ;; Initial state
-    (is-eq :idle (epsilon.http2::http2-stream-state stream))
+    ;; Initial state - use numeric constants
+    (is-= epsilon.http2.stream:+stream-idle+ 
+          (epsilon.http2.stream:http2-stream-state stream))
     
     ;; State transitions
-    (setf (epsilon.http2::http2-stream-state stream) :open)
-    (is-eq :open (epsilon.http2::http2-stream-state stream))
+    (setf (epsilon.http2.stream:http2-stream-state stream) 
+          epsilon.http2.stream:+stream-open+)
+    (is-= epsilon.http2.stream:+stream-open+ 
+          (epsilon.http2.stream:http2-stream-state stream))
     
-    (setf (epsilon.http2::http2-stream-state stream) :half-closed-local)
-    (is-eq :half-closed-local (epsilon.http2::http2-stream-state stream))
+    (setf (epsilon.http2.stream:http2-stream-state stream) 
+          epsilon.http2.stream:+stream-half-closed-local+)
+    (is-= epsilon.http2.stream:+stream-half-closed-local+ 
+          (epsilon.http2.stream:http2-stream-state stream))
     
-    (setf (epsilon.http2::http2-stream-state stream) :closed)
-    (is-eq :closed (epsilon.http2::http2-stream-state stream))))
+    (setf (epsilon.http2.stream:http2-stream-state stream) 
+          epsilon.http2.stream:+stream-closed+)
+    (is-= epsilon.http2.stream:+stream-closed+ 
+          (epsilon.http2.stream:http2-stream-state stream))))
 
 (deftest test-stream-id-assignment
   "Test proper stream ID assignment"

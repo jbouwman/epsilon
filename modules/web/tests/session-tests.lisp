@@ -70,11 +70,12 @@
       ;; Session should exist immediately
       (is (session:load-session store (session:session-id sess)))
       
-      ;; Wait for expiry
-      (sleep 1.5)
+      ;; Manually set the accessed time to past to ensure expiry
+      (setf (session:session-accessed sess) (- (get-universal-time) 2))
+      (session:save-session store sess) ; Update stored session
       
-      ;; Session should be expired
-      (is-not (session:load-session store (session:session-id sess))))))
+      ;; Session should be expired now
+      (is (null (session:load-session store (session:session-id sess)))))))
 
 (deftest test-session-middleware ()
   "Test session middleware integration"
