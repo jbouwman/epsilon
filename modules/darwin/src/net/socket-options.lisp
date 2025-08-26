@@ -9,11 +9,10 @@
    +so-rcvbuf+ +so-sndbuf+ +so-rcvtimeo+ +so-sndtimeo+
    +ipproto-tcp-level+ +tcp-nodelay+
    %setsockopt %getsockopt)
-  (:import-from epsilon.net.types
+  (:import-from epsilon.net.core
    tcp-listener tcp-listener-handle
    tcp-stream tcp-stream-handle
-   udp-socket udp-socket-handle)
-  (:import-from epsilon.net.errors
+   udp-socket udp-socket-handle
    network-error)
   (:export
    set-socket-option

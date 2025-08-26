@@ -6,6 +6,7 @@
   (:use :cl)
   (:local-nicknames
    (#:client #:epsilon.http.client)
+   (#:request #:epsilon.http.request)
    (#:response #:epsilon.http.response)
    (#:map #:epsilon.map)
    (#:json #:epsilon.json)
@@ -89,8 +90,8 @@
      (str:join "&"
               (loop for (key value) on data by #'cddr
                     collect (format nil "~A=~A" 
-                                   (epsilon.http.request:url-encode (string key))
-                                   (epsilon.http.request:url-encode (princ-to-string value))))))
+                                   (request:url-encode (string key))
+                                   (request:url-encode (princ-to-string value))))))
     (t (error "Invalid form data: ~A" data))))
 
 (defun handle-response (response)
