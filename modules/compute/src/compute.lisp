@@ -54,7 +54,16 @@
    
    ;; Broadcasting
    :broadcast-shapes
-   :broadcast-two-shapes
+   :broadcast-arrays
+   :broadcast-operation
+   :broadcast-view
+   :broadcast-view-p
+   :make-broadcast-view
+   :make-broadcast-view-from-array
+   :broadcast-view-ref
+   :broadcast-view-array
+   :broadcast-view-original-shape
+   :broadcast-view-broadcast-shape
    
    ;; Auto-evaluation and optimization
    :define-custom-op
@@ -268,31 +277,101 @@
     ((symbolp x) (sym:sym x))
     (t x)))
 
+(defun has-arrays-p (args)
+  "Check if any arguments are arrays (vs scalars or symbolic expressions)"
+  (some #'arrayp args))
+
+(defun extract-arrays (args)
+  "Extract arrays from mixed list of arrays, numbers, and expressions"
+  (remove-if-not #'arrayp args))
+
+(defun const-value-if-const (expr)
+  "Extract value from const expression, return expr otherwise"
+  (if (sym:const-p expr)
+      (sym:const-value expr)
+      expr))
+
 (defun + (&rest args)
-  "Symbolic addition"
-  (if (every #'numberp args)
-      (apply #'cl:+ args)
-      (apply #'sym:symbolic '+ (mapcar #'ensure-expr args))))
+  "Addition with broadcasting support"
+  (cond
+    ;; Pure numeric - use CL arithmetic
+    ((every #'numberp args)
+     (apply #'cl:+ args))
+    ;; Array broadcasting - use broadcasting engine
+    ((has-arrays-p args)
+     (let ((processed-args (mapcar (lambda (arg)
+                                    (cond
+                                      ((arrayp arg) arg)
+                                      ((numberp arg) arg)  
+                                      ((sym:const-p arg) (sym:const-value arg))
+                                      (t (error "Cannot broadcast non-numeric expression: ~A" arg))))
+                                  args)))
+       (apply #'broadcast-operation #'cl:+ processed-args)))
+    ;; Symbolic - use symbolic system
+    (t 
+     (apply #'sym:symbolic '+ (mapcar #'ensure-expr args)))))
 
 (defun - (&rest args)
-  "Symbolic subtraction"
-  (if (every #'numberp args)
-      (apply #'cl:- args)
-      (case (length args)
-        (1 (sym:symbolic '- (ensure-expr (first args))))
-        (t (apply #'sym:symbolic '- (mapcar #'ensure-expr args))))))
+  "Subtraction with broadcasting support"
+  (cond
+    ;; Pure numeric - use CL arithmetic
+    ((every #'numberp args)
+     (apply #'cl:- args))
+    ;; Array broadcasting - use broadcasting engine
+    ((has-arrays-p args)
+     (let ((processed-args (mapcar (lambda (arg)
+                                    (cond
+                                      ((arrayp arg) arg)
+                                      ((numberp arg) arg)  
+                                      ((sym:const-p arg) (sym:const-value arg))
+                                      (t (error "Cannot broadcast non-numeric expression: ~A" arg))))
+                                  args)))
+       (apply #'broadcast-operation #'cl:- processed-args)))
+    ;; Symbolic - use symbolic system
+    (t 
+     (case (length args)
+       (1 (sym:symbolic '- (ensure-expr (first args))))
+       (t (apply #'sym:symbolic '- (mapcar #'ensure-expr args)))))))
 
 (defun * (&rest args)
-  "Symbolic multiplication"
-  (if (every #'numberp args)
-      (apply #'cl:* args)
-      (apply #'sym:symbolic '* (mapcar #'ensure-expr args))))
+  "Multiplication with broadcasting support"
+  (cond
+    ;; Pure numeric - use CL arithmetic
+    ((every #'numberp args)
+     (apply #'cl:* args))
+    ;; Array broadcasting - use broadcasting engine
+    ((has-arrays-p args)
+     (let ((processed-args (mapcar (lambda (arg)
+                                    (cond
+                                      ((arrayp arg) arg)
+                                      ((numberp arg) arg)  
+                                      ((sym:const-p arg) (sym:const-value arg))
+                                      (t (error "Cannot broadcast non-numeric expression: ~A" arg))))
+                                  args)))
+       (apply #'broadcast-operation #'cl:* processed-args)))
+    ;; Symbolic - use symbolic system
+    (t 
+     (apply #'sym:symbolic '* (mapcar #'ensure-expr args)))))
 
 (defun / (&rest args)
-  "Symbolic division"
-  (if (every #'numberp args)
-      (apply #'cl:/ args)
-      (apply #'sym:symbolic '/ (mapcar #'ensure-expr args))))
+  "Division with broadcasting support"
+  (cond
+    ;; Pure numeric - use CL arithmetic
+    ((every #'numberp args)
+     (apply #'cl:/ args))
+    ;; Array broadcasting - use broadcasting engine
+    ((has-arrays-p args)
+     (let ((processed-args (mapcar (lambda (arg)
+                                    (cond
+                                      ((arrayp arg) arg)
+                                      ((numberp arg) arg)  
+                                      ((sym:const-p arg) (sym:const-value arg))
+                                      (t (error "Cannot broadcast non-numeric expression: ~A" arg))))
+                                  args)))
+       (apply #'broadcast-operation #'cl:/ processed-args)))
+    ;; Symbolic - use symbolic system
+    (t 
+     (apply #'sym:symbolic '/ (mapcar #'ensure-expr args)))))
 
 (defun ^ (base exponent)
   "Symbolic exponentiation"
@@ -853,8 +932,12 @@
     (sym:sym name computed-type metadata)))
 
 (defun const (value &key type)
-  "Create a constant with optional type"
-  (sym:lit value type))
+  "Create a constant with optional type. Arrays are passed through for broadcasting."
+  (if (arrayp value)
+      ;; Arrays are passed through directly for broadcasting
+      value
+      ;; Other values become symbolic constants
+      (sym:lit value type)))
 
 (defun simplify (expr)
   "Simplify an expression"
@@ -1923,34 +2006,133 @@
 
 ;;; Broadcasting support
 
-(defun broadcast-two-shapes (shape1 shape2)
-  "Compute broadcast shape for two tensor shapes using NumPy rules"
-  (let* ((shape1 (if (null shape1) '() shape1))
-         (shape2 (if (null shape2) '() shape2))
-         (rank1 (length shape1))
-         (rank2 (length shape2))
-         (max-rank (max rank1 rank2))
-         (result '()))
-    ;; Pad shorter shape with 1s on the left
-    (let ((padded1 (append (make-list (- max-rank rank1) :initial-element 1) shape1))
-          (padded2 (append (make-list (- max-rank rank2) :initial-element 1) shape2)))
-      ;; Check compatibility and compute output shape
-      (loop for d1 in padded1
-            for d2 in padded2
-            do (cond
-                 ((= d1 d2) (push d1 result))
-                 ((= d1 1) (push d2 result))
-                 ((= d2 1) (push d1 result))
-                 (t (error "Incompatible shapes for broadcasting: ~A and ~A" 
-                          shape1 shape2))))
-      (reverse result))))
 
 (defun broadcast-shapes (&rest shapes)
   "Compute the broadcast shape for multiple tensor shapes"
   (cond
     ((null shapes) nil)
     ((null (cdr shapes)) (car shapes))
-    (t (reduce #'broadcast-two-shapes shapes))))
+    (t (reduce #'types:broadcast-shapes shapes))))
+
+;;; Virtual Broadcasting Engine - Memory-Efficient Array Broadcasting
+
+(defstruct broadcast-view
+  "Virtual view of an array for broadcasting without copying data.
+   Provides lazy, memory-efficient access to broadcasted array elements."
+  array                 ; Original array
+  original-shape        ; Original array shape  
+  broadcast-shape       ; Target broadcast shape
+  stride-pattern        ; Stride pattern for virtual access
+  dimension-mapping)    ; Dimension mapping information
+
+(defun make-broadcast-view-from-array (array target-shape)
+  "Create a broadcast view of an array to a target shape without copying data."
+  (let* ((original-shape (array-dimensions array))
+         (stride-pattern (types:compute-stride-pattern original-shape target-shape))
+         (dimension-mapping (types:compute-dimension-mapping original-shape target-shape)))
+    (make-broadcast-view
+     :array array
+     :original-shape original-shape
+     :broadcast-shape target-shape
+     :stride-pattern stride-pattern
+     :dimension-mapping dimension-mapping)))
+
+(defun make-scalar-broadcast-view (scalar target-shape)
+  "Create a broadcast view for a scalar value to a target shape"
+  (make-broadcast-view
+   :array scalar  ; Store scalar in array slot for simplicity
+   :original-shape nil  ; Scalars have no shape
+   :broadcast-shape target-shape
+   :stride-pattern (make-list (length target-shape) :initial-element 0) ; All zeros = broadcast
+   :dimension-mapping nil)) ; No dimension mapping needed
+
+(defun broadcast-view-ref (view &rest indices)
+  "Access an element from a broadcast view using virtual indexing.
+   This is the core of memory-efficient broadcasting - no data copying."
+  (let* ((array (broadcast-view-array view))
+         (original-shape (broadcast-view-original-shape view)))
+    (if (null original-shape)
+        ;; Scalar view - always return the scalar value
+        array
+        ;; Array view - use original logic
+        (let* ((stride-pattern (broadcast-view-stride-pattern view))
+               (dimension-mapping (broadcast-view-dimension-mapping view))
+               ;; Convert broadcast indices to original array indices
+               (original-indices (compute-original-indices indices stride-pattern dimension-mapping original-shape)))
+          ;; Access original array with computed indices
+          (apply #'aref array original-indices)))))
+
+(defun compute-original-indices (broadcast-indices stride-pattern dimension-mapping original-shape)
+  "Convert broadcast indices to original array indices using stride patterns.
+   This implements the core broadcasting logic without memory allocation."
+  (let ((original-indices (make-list (length original-shape) :initial-element 0)))
+    ;; Map each broadcast dimension to the appropriate original dimension
+    (loop for broadcast-idx from 0
+          for broadcast-val in broadcast-indices
+          for stride in stride-pattern
+          when (> stride 0) ; Only process non-broadcast dimensions
+          do (let ((dim-map (find broadcast-idx dimension-mapping :key #'cdr)))
+               (when dim-map
+                 (let ((original-dim (car dim-map)))
+                   (when (< original-dim (length original-indices))
+                     (setf (nth original-dim original-indices) 
+                           (mod broadcast-val (nth original-dim original-shape))))))))
+    original-indices))
+
+(defun broadcast-arrays (&rest arrays)
+  "Create broadcast views for multiple arrays to enable element-wise operations.
+   Returns list of broadcast-view objects that provide virtual access to broadcasted data."
+  (let* ((shapes (mapcar (lambda (arg)
+                          (if (arrayp arg)
+                              (array-dimensions arg)
+                              nil)) ; scalars have nil shape
+                        arrays))
+         (target-shape (reduce #'types:broadcast-shapes shapes)))
+    ;; Create broadcast view for each array/scalar
+    (mapcar (lambda (array) 
+              (if (arrayp array)
+                  (make-broadcast-view-from-array array target-shape)
+                  ;; For scalars, create a virtual scalar "array" view
+                  (make-scalar-broadcast-view array target-shape)))
+            arrays)))
+
+(defun broadcast-operation (operation &rest arrays)
+  "Apply an operation element-wise to broadcasted arrays without copying data.
+   This is the main entry point for memory-efficient broadcasting operations."
+  (if (every #'numberp arrays)
+      ;; Direct operation on scalars
+      (apply operation arrays)
+      ;; Broadcasting operation on arrays
+      (let* ((views (apply #'broadcast-arrays arrays))
+             (target-shape (broadcast-view-broadcast-shape (first views)))
+             (result-array (make-array target-shape)))
+        ;; Apply operation element-wise using virtual broadcasting
+        (apply-broadcasted-operation operation views result-array target-shape)
+        result-array)))
+
+(defun apply-broadcasted-operation (operation views result-array target-shape)
+  "Apply operation to all elements using virtual broadcasting access patterns."
+  (let ((total-elements (reduce #'* target-shape)))
+    ;; Iterate through all elements in the result
+    (dotimes (linear-index total-elements)
+      (let* ((multi-indices (linear-to-multi-index linear-index target-shape))
+             ;; Get values from each broadcast view
+             (values (mapcar (lambda (view)
+                              (apply #'broadcast-view-ref view multi-indices))
+                            views))
+             ;; Apply operation
+             (result-value (apply operation values)))
+        ;; Store result
+        (setf (apply #'aref result-array multi-indices) result-value)))))
+
+(defun linear-to-multi-index (linear-index shape)
+  "Convert linear index to multi-dimensional indices for given shape."
+  (let ((indices nil)
+        (remaining linear-index))
+    (dolist (dim (reverse shape))
+      (push (mod remaining dim) indices)
+      (setf remaining (floor remaining dim)))
+    indices))
 
 ;;; Evaluation
 
@@ -2070,19 +2252,9 @@
     ((every #'numberp args)
      (apply fn args))
     
-    ;; Mixed scalar and array
+    ;; Has arrays - use the new broadcast-operation function
     ((some #'arrayp args)
-     (let* ((shapes (mapcar (lambda (arg)
-                              (cond
-                                ((numberp arg) nil)
-                                ((arrayp arg) (array-dimensions arg))
-                                (t nil)))
-                            args))
-            (result-shape (apply #'broadcast-shapes shapes)))
-       (if result-shape
-           (broadcast-arrays-and-apply fn args result-shape)
-           ;; All scalars after shape check
-           (apply fn args))))
+     (apply #'broadcast-operation fn args))
     
     ;; Default
     (t (apply fn args))))

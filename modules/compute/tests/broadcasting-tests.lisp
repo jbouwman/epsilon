@@ -74,15 +74,15 @@
 
 (deftest test-broadcast-addition
   "Test broadcasting in addition"
-  (skip "Broadcasting in addition not fully implemented")
   ;; Scalar + Vector
   (let ((result (c:evaluate (c:+ 1 (c:const #(2 3 4))))))
     (is (equalp result #(3 4 5))))
   
   ;; Vector + Vector (different shapes)
+  ;; Shape (3) + Shape (3,1) broadcasts to (3,3) according to NumPy rules
   (let ((result (c:evaluate (c:+ (c:const #(1 2 3)) 
                                  (c:const #2A((10) (20) (30)))))))
-    (is (equalp result #2A((11) (22) (33)))))
+    (is (equalp result #2A((11 12 13) (21 22 23) (31 32 33)))))
   
   ;; Matrix + Vector (row broadcast)
   (let ((result (c:evaluate (c:+ (c:const #2A((1 2 3) (4 5 6)))
