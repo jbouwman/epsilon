@@ -200,13 +200,10 @@
    :check-numerical-stability
    :with-numerical-stability
    :with-caching
-   :infer-type
    :type-error-p
-   :outer-product
    :with-optimization-level
    
    ;; E-graph optimization
-   :create-egraph
    :optimize-with-egraph
    :saturate-rules
    
@@ -1197,71 +1194,9 @@
   "Compile expression to efficient function"
   (auto:compile-expression expr variables))
 
-(defun define-custom-op (name function)
-  "Define a custom operator for evaluation"
-  (auto:define-custom-op name function))
-
-(defun recognize-computation-pattern (expr)
-  "Recognize computation patterns for optimization"
-  (auto:recognize-computation-pattern expr))
-
-(defun build-computation-graph (expr)
-  "Build computation graph from expression"
-  (auto:build-computation-graph expr))
-
-(defun evaluate-graph (graph bindings)
-  "Evaluate a computation graph"
-  (auto:evaluate-graph graph bindings))
-
-(defun force-eval (lazy-val &optional bindings)
-  "Force evaluation of a lazy value"
-  (auto:force-eval lazy-val bindings))
-
-(defun make-lazy (thunk)
-  "Create a lazy value"
-  (auto:make-lazy thunk))
-
-(defun infer-type (expr)
-  "Infer type of expression"
-  (auto:infer-type expr))
-
-(defun outer-product (v1 v2)
-  "Compute outer product of two vectors"
-  (auto:outer-product v1 v2))
-
-(defun graph-node-count (graph)
-  "Get number of nodes in graph"
-  (auto:graph-node-count graph))
-
-(defun graph-has-shared-nodes-p (graph)
-  "Check if graph has shared nodes"
-  (auto:graph-has-shared-nodes-p graph))
-
-(defun graph-has-parallel-branches-p (graph)
-  "Check if graph has parallel branches"
-  (auto:graph-has-parallel-branches-p graph))
-
-(defun differentiate-graph (graph var)
-  "Differentiate computation graph"
-  (auto:differentiate-graph graph var))
-
 (defun type-error-p (expr)
   "Check if expression has type errors"
   (auto:type-error-p expr))
-
-;;; E-graph Equality Saturation
-
-(defun create-egraph ()
-  "Create a new e-graph for equality saturation"
-  (egraph:create-egraph))
-
-(defun optimize-with-egraph (expr &key (rules egraph:*standard-rules*) (iterations 10))
-  "Optimize expression using e-graph equality saturation"
-  (egraph:optimize-with-egraph expr :rules rules :iterations iterations))
-
-(defun saturate-rules (egraph rules &key (limit 10))
-  "Apply rewrite rules to e-graph until saturation"
-  (egraph:saturate-rules egraph rules :limit limit))
 
 ;;; Enhanced Equation Solving Capabilities
 
@@ -1695,12 +1630,6 @@
 
 ;;; Enhanced Calculus Operations
 
-(defun integrate (expr var &optional bounds)
-  "Integrate expression with respect to variable"
-  (if bounds
-      (definite-integral expr var (first bounds) (second bounds))
-      (indefinite-integral expr var)))
-
 (defun indefinite-integral (expr var)
   "Compute indefinite integral (antiderivative)"
   (cond
@@ -2045,18 +1974,6 @@
   "Execute body with caching enabled"
   `(auto:with-caching ,@body))
 
-(defun infer-type (expr)
-  "Infer type of expression"
-  (auto:infer-type expr))
-
-(defun type-error-p (expr)
-  "Check if expression has type errors"
-  (auto:type-error-p expr))
-
-(defun outer-product (v w)
-  "Compute outer product of vectors"
-  (auto:outer-product v w))
-
 (defmacro with-optimization-level ((level) &body body)
   "Execute body with specified optimization level"
   `(auto:with-optimization-level (,level) ,@body))
@@ -2069,21 +1986,6 @@
   "Check if value is a graph node"
   (typep x 'auto:graph-node))
 
-;;; E-graph Integration
-
-(defun create-egraph ()
-  "Create a new e-graph for equality saturation"
-  (egraph:create-egraph))
-
-(defun optimize-with-egraph (expr &key rules iterations)
-  "Optimize expression using e-graph equality saturation"
-  (egraph:optimize-with-egraph expr
-                               :rules (or rules egraph:*standard-rules*)
-                               :iterations (or iterations 10)))
-
-(defun saturate-rules (egraph rules &key limit)
-  "Apply rules to e-graph until saturation"
-  (egraph:saturate egraph rules :limit (or limit 10)))
 
 ;;; Advanced Automatic Differentiation
 
@@ -2131,3 +2033,19 @@
 (defun saturate-rules (egraph rules &key (limit 10))
   "Apply rewrite rules to an e-graph until saturation"
   (egraph:saturate-rules egraph rules :limit limit))
+
+;;; Missing utility functions
+
+(defun outer-product (vec1 vec2)
+  "Compute outer product of two vectors"
+  (let* ((len1 (length vec1))
+         (len2 (length vec2))
+         (result (make-array (list len1 len2))))
+    (dotimes (i len1)
+      (dotimes (j len2)
+        (setf (aref result i j) (* (elt vec1 i) (elt vec2 j)))))
+    result))
+
+(defun infer-type (expr)
+  "Infer the type of an expression"
+  (auto:infer-type expr))

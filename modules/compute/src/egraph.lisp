@@ -135,7 +135,7 @@
   (let* ((canonical (canonicalize-enode egraph enode))
          (existing-id (gethash canonical (egraph-memo egraph))))
     (if existing-id
-(uf-find (egraph-unionfind egraph) existing-id)
+        (uf-find (egraph-unionfind egraph) existing-id)
         (let ((new-id (egraph-next-id egraph)))
           ;; Create new e-class
           (incf (egraph-next-id egraph))
@@ -186,9 +186,20 @@
      ;; Recursively add arguments first, then add this expression
      (let* ((op (sym:expr-op expr))
             (arg-exprs (sym:expr-args expr)))
-       (let* ((arg-ids (mapcar (lambda (arg) (add-expr egraph arg)) arg-exprs))
-              (enode (make-enode :op op :args arg-ids)))
-         (egraph-add-enode egraph enode))))
+       ;; Check if any arguments are pattern variables - if so, skip this expression
+       (if (some #'pattern-var-p arg-exprs)
+           ;; Don't add expressions containing pattern variables
+           ;; Return a dummy ID or handle specially
+           (progn
+             (warn "Skipping expression with pattern variables: ~S" expr)
+             0)  ; Return dummy ID
+           (let* ((arg-ids (mapcar (lambda (arg) (add-expr egraph arg)) arg-exprs))
+                  (enode (make-enode :op op :args arg-ids)))
+             (egraph-add-enode egraph enode)))))
+    
+    ;; Handle pattern variables specially - they shouldn't be added to e-graph
+    ((pattern-var-p expr)
+     (error "Pattern variable ~S should not be added to e-graph" expr))
     
     (t (error "Cannot add expression of unknown type: ~S" expr))))
 
@@ -244,7 +255,11 @@
 (defun extract-best (egraph root-id &key (cost-fn #'expression-size-cost))
   "Extract the best expression from an e-class using the given cost function"
   (let ((canonical-id (uf-find (egraph-unionfind egraph) root-id)))
-    (extract-minimum-cost egraph canonical-id cost-fn)))
+    (let ((result (extract-minimum-cost egraph canonical-id cost-fn)))
+      ;; Debug: log extraction result
+      (when (null result)
+        (format t "~%WARNING: extract-best returned nil for e-class ~A~%" canonical-id))
+      result)))
 
 (defun extract-minimum-cost (egraph eclass-id cost-fn)
   "Extract minimum cost expression from e-class using dynamic programming"
@@ -257,8 +272,11 @@
 
 (defun extract-costs (egraph eclass-id cost-fn costs best-nodes)
   "Compute minimum costs for all e-classes reachable from eclass-id"
-  (unless (gethash eclass-id costs)
-    (let ((canonical-id (uf-find (egraph-unionfind egraph) eclass-id)))
+  ;; Use canonical ID to ensure consistency
+  (let ((canonical-id (uf-find (egraph-unionfind egraph) eclass-id)))
+    (unless (gethash canonical-id costs)
+      ;; Mark as in-progress to prevent infinite recursion
+      (setf (gethash canonical-id costs) most-positive-fixnum)
       (let ((eclass (gethash canonical-id (egraph-classes egraph))))
         (if eclass
             (let ((min-cost most-positive-fixnum)
@@ -269,7 +287,7 @@
                   (let ((canonical-arg (uf-find (egraph-unionfind egraph) arg-id)))
                     (extract-costs egraph canonical-arg cost-fn costs best-nodes)))
                 ;; Compute cost of this e-node
-                (let ((node-cost (compute-enode-cost enode cost-fn costs)))
+                (let ((node-cost (compute-enode-cost enode cost-fn costs egraph)))
                   (when (< node-cost min-cost)
                     (setf min-cost node-cost)
                     (setf best-node enode))))
@@ -281,9 +299,12 @@
               (setf (gethash canonical-id costs) 1)
               (setf (gethash canonical-id best-nodes) (make-enode :op 'unknown :args nil))))))))
 
-(defun compute-enode-cost (enode cost-fn costs)
+(defun compute-enode-cost (enode cost-fn costs egraph)
   "Compute the cost of an e-node given costs of its arguments"
-  (let ((arg-costs (mapcar (lambda (id) (gethash id costs 1)) (enode-args enode))))
+  (let ((arg-costs (mapcar (lambda (id) 
+                             (let ((canonical-id (uf-find (egraph-unionfind egraph) id)))
+                               (gethash canonical-id costs 1))) 
+                           (enode-args enode))))
     (funcall cost-fn enode arg-costs)))
 
 
@@ -314,7 +335,8 @@
 
 (defun reconstruct-expression (egraph eclass-id best-nodes)
   "Reconstruct the symbolic expression from the best e-node choices"
-  (let ((best-node (gethash eclass-id best-nodes)))
+  (let ((canonical-id (uf-find (egraph-unionfind egraph) eclass-id)))
+    (let ((best-node (gethash canonical-id best-nodes)))
     (if best-node
         (if (null (enode-args best-node))
             ;; Leaf node (variable or constant)
@@ -326,11 +348,12 @@
             ;; Internal node
             (let* ((op (enode-op best-node))
                    (arg-exprs (mapcar (lambda (arg-id)
-                                       (reconstruct-expression egraph arg-id best-nodes))
+                                       (let ((canonical-arg (uf-find (egraph-unionfind egraph) arg-id)))
+                                         (reconstruct-expression egraph canonical-arg best-nodes)))
                                      (enode-args best-node))))
-              (sym:symbolic op arg-exprs)))
-        ;; No best node found, return a placeholder
-        (sym:sym 'unknown))))
+              (apply #'sym:symbolic op arg-exprs)))
+        ;; No best node found, return nil to signal extraction failure
+        nil))))
 
 (defun extract-minimal-expr (egraph eclass-id)
   "Extract a minimal expression from an e-class"
@@ -428,8 +451,9 @@
         (push (make-rewrite 'log-exp `(,log-op (,exp-op ?x)) '?x) *standard-rules*)
         (push (make-rewrite 'exp-log `(,exp-op (,log-op ?x)) '?x 
                            :condition (lambda (bindings) (positive-p bindings '?x))) *standard-rules*)))
-    ;; Reverse to maintain intended order
-    (setf *standard-rules* (nreverse *standard-rules*))))
+    ;; The rules are now in correct order
+    ;; (transcendental rules were pushed, so they're at the front)
+    ))
 
 ;; Condition functions for rules
 (defun not-zero-p (bindings var)
@@ -447,10 +471,6 @@
         (and (numberp value) (> value 0))))))
 
 ;;; Pattern matching for rules
-
-(defstruct pattern-var
-  "A pattern variable (starts with ?)"
-  (name nil))
 
 (defun pattern-var-p (obj)
   "Check if object is a pattern variable (symbol starting with ?)"
@@ -528,9 +548,12 @@
 
 (defun apply-rewrites (egraph rules)
   "Apply all rewrite rules to the e-graph, return number of new facts discovered"
-  (let ((new-facts 0))
+  (let ((new-facts 0)
+        (rule-count 0))
     (dolist (rule rules)
-      (incf new-facts (apply-single-rule egraph rule)))
+      (incf rule-count)
+      (let ((facts (apply-single-rule egraph rule)))
+        (incf new-facts facts)))
     new-facts))
 
 (defun apply-single-rule (egraph rule)
@@ -551,20 +574,39 @@
             ;; Determine the RHS e-class ID
             (let ((rhs-id 
                    (cond
-                     ;; If RHS is a pattern variable that resolved to an e-class ID
+                     ;; If RHS is a single e-class ID from a pattern variable
                      ((and (integerp rhs-expr) (>= rhs-expr 0))
                       rhs-expr)
-                     ;; If RHS is a literal number, create a const
-                     ((numberp rhs-expr)
-                      (add-expr egraph (sym:lit rhs-expr)))
+                     ;; If RHS is still a pattern variable, look it up
+                     ((pattern-var-p rhs-expr)
+                      (let ((binding (assoc rhs-expr bindings)))
+                        (if binding
+                            (cdr binding)  ; Should be an e-class ID
+                            (error "Unbound pattern variable: ~S" rhs-expr))))
+                     ;; If RHS is a list with all args being e-class IDs (after substitution)
+                     ((and (listp rhs-expr) 
+                           (symbolp (first rhs-expr))
+                           (every #'integerp (rest rhs-expr)))
+                      ;; Create e-node directly with e-class ID references
+                      (let* ((op (first rhs-expr))
+                             (enode (make-enode :op op :args (rest rhs-expr))))
+                        (egraph-add-enode egraph enode)))
                      ;; Otherwise, convert pattern to expression
                      (t
-                      (let ((rhs-expr-concrete (pattern-to-symbolic-expr-with-egraph egraph rhs-expr bindings)))
-                        (add-expr egraph rhs-expr-concrete))))))
+                      (handler-case
+                          (let ((rhs-expr-concrete (pattern-to-symbolic-expr-with-egraph egraph rhs-expr bindings)))
+                            (add-expr egraph rhs-expr-concrete))
+                        (error (e)
+                          ;; Log which rule is causing problems
+                          (warn "Error applying rule ~S with bindings ~S: ~A" 
+                                (rewrite-rule-name rule) bindings e)
+                          ;; Return dummy ID to continue
+                          0)))))))
               ;; Merge the matched e-class with the RHS e-class
-              (unless (= matched-id rhs-id)
+              ;; Skip if rhs-id is 0 (dummy ID from error handling)
+              (unless (or (= matched-id rhs-id) (= rhs-id 0))
                 (merge-eclasses egraph matched-id rhs-id)
-                (incf new-facts)))))))
+                (incf new-facts))))))
     new-facts))
 
 (defun find-matches (egraph pattern)
@@ -580,6 +622,10 @@
 (defun match-enode-against-pattern (egraph enode pattern)
   "Match an e-node against a pattern, return bindings or nil"
   (cond
+    ;; Pattern variable - matches anything
+    ((pattern-var-p pattern)
+     (list (cons pattern enode)))
+    
     ;; Atomic pattern (number, symbol) - must match enode op exactly
     ((atom pattern)
      (when (and (null (enode-args enode))
@@ -640,10 +686,11 @@
   (let ((canonical-id (uf-find (egraph-unionfind egraph) eclass-id)))
     (let ((eclass (gethash canonical-id (egraph-classes egraph))))
       (when eclass
-        (some (lambda (enode)
-                (and (null (enode-args enode))
-                     (equal (enode-op enode) literal)))
-              (eclass-nodes eclass))))))
+        (let ((result (some (lambda (enode)
+                             (and (null (enode-args enode))
+                                  (equal (enode-op enode) literal)))
+                           (eclass-nodes eclass))))
+          result)))))
 
 
 ;; Utility functions for checking special values
@@ -690,7 +737,8 @@
                  ;; Extract the best expression from this e-class
                  (extract-best egraph eclass-id)
                  eclass-id))
-           pattern)))
+           ;; Pattern variable not bound - this shouldn't happen in rule application
+           (error "Unbound pattern variable in egraph rule application: ~S" pattern))))
     ((symbolp pattern)
      (sym:sym pattern))
     ((numberp pattern)
@@ -699,7 +747,7 @@
      (let ((op (first pattern))
            (args (rest pattern)))
        (if args
-           (sym:symbolic op 
+           (apply #'sym:symbolic op 
              (mapcar (lambda (arg) (pattern-to-symbolic-expr-with-egraph egraph arg bindings))
                      args))
            (sym:sym op))))
@@ -720,6 +768,10 @@
         (return :limit-reached))
       
       (let ((new-facts (apply-rewrites egraph rules)))
+        ;; Bail out if too many facts are being created
+        (when (> new-facts 1000)
+          (format t "~%WARNING: Too many facts (~S), stopping saturation~%" new-facts)
+          (return :too-many-facts))
         (rebuild egraph)
         (incf iteration)
         
@@ -728,20 +780,22 @@
 
 ;; Standard rules are defined above
 
-(defun optimize-with-egraph (expr &key (rules *standard-rules*) (iterations 10))
+(defun optimize-with-egraph (expr &key (rules nil) (iterations 10))
   "Optimize expression using e-graph equality saturation"
   ;; Ensure rules are initialized
   (when (null *standard-rules*)
     (init-standard-rules))
-  (let ((egraph (create-egraph)))
-    ;; Add the expression to the e-graph
-    (let ((expr-id (add-expr egraph expr)))
-      ;; Run equality saturation
-      (saturate egraph rules :limit iterations)
-      ;; Extract the best equivalent expression
-      (let ((result (extract-best egraph expr-id)))
-        ;; Return result, or original if nil
-        (or result expr)))))
+  ;; Use standard rules if none provided
+  (let ((actual-rules (or rules *standard-rules*)))
+    (let ((egraph (create-egraph)))
+      ;; Add the expression to the e-graph
+      (let ((expr-id (add-expr egraph expr)))
+        ;; Run equality saturation
+        (saturate egraph actual-rules :limit iterations)
+        ;; Extract the best equivalent expression
+        (let ((result (extract-best egraph expr-id)))
+          ;; Return result, or original if nil
+          (or result expr))))))
 
 (defun saturate-rules (egraph rules &key (limit 10))
   "Apply rewrite rules to an e-graph until saturation - interface for tests"
