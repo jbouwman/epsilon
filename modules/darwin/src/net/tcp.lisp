@@ -11,12 +11,11 @@
    +shut-rd+ +shut-wr+ +shut-rdwr+
    %socket %bind %listen %accept %connect %send %recv %close %shutdown
    %setsockopt %getsockname %getpeername)
-  (:import-from epsilon.net.types
+  (:import-from epsilon.net.core
    socket-address socket-address-ip socket-address-port
    tcp-listener tcp-listener-handle tcp-listener-local-address tcp-listener-kqueue
    tcp-stream tcp-stream-handle tcp-stream-local-address tcp-stream-peer-address
-   tcp-stream-input tcp-stream-output tcp-stream-connected-p)
-  (:import-from epsilon.net.errors
+   tcp-stream-input tcp-stream-output tcp-stream-connected-p
    network-error connection-refused connection-reset get-errno errno-to-string)
   (:import-from epsilon.net.address
    normalize-address make-sockaddr-in-into parse-sockaddr-in)

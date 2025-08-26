@@ -8,10 +8,9 @@
   (:import-from epsilon.net.constants
    +af-inet+ +sock-dgram+ +ipproto-udp+
    %socket %bind %connect %sendto %recvfrom %getsockname)
-  (:import-from epsilon.net.types
+  (:import-from epsilon.net.core
    socket-address socket-address-ip socket-address-port
-   udp-socket udp-socket-handle udp-socket-local-address udp-socket-connected-peer)
-  (:import-from epsilon.net.errors
+   udp-socket udp-socket-handle udp-socket-local-address udp-socket-connected-peer
    network-error address-in-use would-block-error get-errno)
   (:import-from epsilon.net.address
    normalize-address make-sockaddr-in-into parse-sockaddr-in make-socket-address)

@@ -9,7 +9,7 @@
    (seq epsilon.sequence))
   (:import-from epsilon.net.constants
    +af-inet+ +af-inet6+ +sock-stream+ +sockaddr-in6-size+ +ipv6-addr-size+)
-  (:import-from epsilon.net.types
+  (:import-from epsilon.net.core
    socket-address socket-address-ip socket-address-port socket-address-family
    ipv4-address ipv6-address ipv6-address-words)
   (:export

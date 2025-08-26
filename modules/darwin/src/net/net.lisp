@@ -2,19 +2,17 @@
 
 (defpackage epsilon.net
   (:use cl)
-  (:import-from epsilon.net.errors
+  (:import-from epsilon.net.core
    network-error connection-refused connection-reset connection-aborted
-   timeout-error address-in-use would-block-error)
-  (:import-from epsilon.net.types
+   timeout-error address-in-use would-block-error
    address ipv4-address ipv6-address socket-address
    tcp-listener tcp-stream udp-socket
-   socket-address-ip socket-address-port socket-address-family)
+   socket-address-ip socket-address-port socket-address-family
+   tcp-stream-handle)
   (:import-from epsilon.net.address
    make-socket-address resolve-address parse-address)
   (:import-from epsilon.net.socket-options
    set-socket-option get-socket-option)
-  (:import-from epsilon.net.types
-   tcp-stream-handle)
   (:import-from epsilon.net.tcp
    tcp-bind tcp-accept tcp-incoming tcp-try-accept tcp-poll-accept tcp-local-addr
    tcp-connect tcp-read tcp-write tcp-write-all tcp-flush
