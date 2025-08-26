@@ -2,7 +2,10 @@
   (:use :cl)
   (:local-nicknames
    (sym epsilon.compute.symbolic)
-   (types epsilon.compute.types))
+   (types epsilon.compute.types)
+   (pat epsilon.compute.pattern)
+   (rules epsilon.compute.simplify-rules)
+   (alg epsilon.compute.algebraic))
   (:export
    ;; Main simplification
    :simplify
@@ -28,6 +31,7 @@
    :simplify-trig
    :expand-trig
    :contract-trig
+   :simplify-log-exp
    
    ;; Calculus simplification
    :simplify-derivative
@@ -100,13 +104,17 @@
 
 (defun simplify (expr)
   "Simplify an expression using all available techniques"
-  (let ((simplified (simplify-expr expr)))
-    ;; Apply multiple passes until no more changes
-    (loop for pass from 1 to 10
-          for new-expr = (simplify-expr simplified)
-          while (not (sym:expr-equal-p new-expr simplified))
-          do (setf simplified new-expr))
-    simplified))
+  ;; Multi-pass simplification strategy
+  (let* (;; First pass: rule-based simplification
+         (rule-simplified (rules:simplify-iterative expr 10))
+         ;; Second pass: algebraic normalization
+         (normalized (alg:normalize-expr rule-simplified))
+         ;; Third pass: term collection
+         (collected (alg:collect-terms normalized)))
+    ;; If no improvement, try old simplification
+    (if (sym:expr-equal-p collected expr)
+        (simplify-expr expr)
+        collected)))
 
 (defun simplify-expr (expr)
   "Single pass of simplification"
@@ -177,101 +185,66 @@
 ;;; Algebraic simplification
 
 (defun expand (expr)
-  "Expand products and powers"
-  (cond
-    ((or (sym:var-p expr) (sym:const-p expr))
-     expr)
-    
-    ((sym:expr-p expr)
-     (case (sym:expr-op expr)
-       (* (expand-product (sym:expr-args expr)))
-       (^ (expand-power (first (sym:expr-args expr))
-                       (second (sym:expr-args expr))))
-       (otherwise
-        (sym:symbolic (sym:expr-op expr)
-                     (mapcar #'expand (sym:expr-args expr))))))
-    
-    (t expr)))
+  "Expand products and powers using algebraic module"
+  (alg:expand-product expr))
 
-(defun expand-product (factors)
-  "Expand a product of factors"
-  (if (some (lambda (f) (and (sym:expr-p f) (eq (sym:expr-op f) '+)))
-            factors)
-      ;; Distribute multiplication over addition
-      (let ((sum-factor (find-if (lambda (f) 
-                                   (and (sym:expr-p f) (eq (sym:expr-op f) '+)))
-                                 factors))
-            (other-factors (remove-if (lambda (f)
-                                       (and (sym:expr-p f) (eq (sym:expr-op f) '+)))
-                                     factors :count 1)))
-        (sym:symbolic '+
-                     (mapcar (lambda (term)
-                              (sym:symbolic '* (cons term other-factors)))
-                            (sym:expr-args sum-factor))))
-      ;; No expansion needed
-      (sym:symbolic '* factors)))
-
-(defun expand-power (base exponent)
-  "Expand a power expression"
-  (cond
-    ;; (a + b)^2 = a^2 + 2ab + b^2
-    ((and (sym:expr-p base)
-          (eq (sym:expr-op base) '+)
-          (sym:const-p exponent)
-          (= (sym:const-value exponent) 2)
-          (= (length (sym:expr-args base)) 2))
-     (let ((a (first (sym:expr-args base)))
-           (b (second (sym:expr-args base))))
-       (sym:symbolic '+
-                    (sym:symbolic '^ a (sym:lit 2))
-                    (sym:symbolic '* (sym:lit 2) a b)
-                    (sym:symbolic '^ b (sym:lit 2)))))
-    
-    (t (sym:symbolic '^ base exponent))))
+(defun factor (expr)
+  "Factor common terms using algebraic module"
+  (alg:factor-common expr))
 
 (defun collect-terms (expr)
-  "Collect like terms in a sum"
-  (if (and (sym:expr-p expr) (eq (sym:expr-op expr) '+))
-      (let ((terms (flatten-sum expr))
-            (grouped (make-hash-table :test #'equal)))
-        ;; Group terms by their non-coefficient part
-        (dolist (term terms)
-          (multiple-value-bind (coeff base) (extract-coefficient term)
-            (incf (gethash base grouped 0) coeff)))
-        ;; Reconstruct the sum
-        (let ((result-terms nil))
-          (maphash (lambda (base coeff)
-                    (cond
-                      ((zerop coeff) nil)
-                      ((= coeff 1) (push base result-terms))
-                      (t (push (sym:symbolic '* (sym:lit coeff) base) result-terms))))
-                  grouped)
-          (if (null result-terms)
-              (sym:lit 0)
-              (if (= (length result-terms) 1)
-                  (first result-terms)
-                  (sym:symbolic '+ result-terms)))))
-      expr))
+  "Collect like terms using algebraic module"
+  (alg:collect-terms expr))
 
-(defun flatten-sum (expr)
-  "Flatten nested sums into a single list of terms"
-  (if (and (sym:expr-p expr) (eq (sym:expr-op expr) '+))
-      (reduce #'append (mapcar #'flatten-sum (sym:expr-args expr)))
-      (list expr)))
+(defun combine-like-terms (expr)
+  "Combine like terms using algebraic module"
+  (alg:combine-like-terms expr))
 
-(defun extract-coefficient (term)
-  "Extract numeric coefficient from a term"
-  (cond
-    ((sym:const-p term)
-     (values (sym:const-value term) (sym:lit 1)))
-    ((and (sym:expr-p term)
-          (eq (sym:expr-op term) '*)
-          (sym:const-p (first (sym:expr-args term))))
-     (values (sym:const-value (first (sym:expr-args term)))
-             (if (= (length (sym:expr-args term)) 2)
-                 (second (sym:expr-args term))
-                 (sym:symbolic '* (rest (sym:expr-args term))))))
-    (t (values 1 term))))
+;;; Special form handlers
+
+(defun simplify-trig (expr)
+  "Apply trigonometric simplification rules"
+  (rules:apply-rules expr 
+    (remove-if-not (lambda (rule)
+                     (let ((name (rules:simplification-rule-name rule)))
+                       (or (string-prefix-p "SIN" (symbol-name name))
+                           (string-prefix-p "COS" (symbol-name name))
+                           (string-prefix-p "TAN" (symbol-name name)))))
+                   (rules:list-rules))))
+
+(defun expand-trig (expr)
+  "Expand trigonometric expressions using angle addition formulas"
+  ;; Apply double angle and other expansion rules
+  (let ((expanded (rules:apply-rules expr
+                    (remove-if-not (lambda (rule)
+                                     (member (rules:simplification-rule-name rule)
+                                            '(sin-double-angle cos-double-angle)))
+                                   (rules:list-rules)))))
+    (if expanded expanded expr)))
+
+(defun contract-trig (expr)
+  "Contract trigonometric expressions"
+  ;; Apply contraction rules (inverse of expansion)
+  (let ((contracted (rules:apply-rules expr
+                      (remove-if-not (lambda (rule)
+                                       (eq (rules:simplification-rule-name rule) 
+                                          'sin-squared-plus-cos-squared))
+                                     (rules:list-rules)))))
+    (if contracted contracted expr)))
+
+(defun simplify-log-exp (expr)
+  "Apply logarithm and exponential simplification rules"
+  (rules:apply-rules expr
+    (remove-if-not (lambda (rule)
+                     (let ((name (rules:simplification-rule-name rule)))
+                       (or (string-prefix-p "LOG" (symbol-name name))
+                           (string-prefix-p "EXP" (symbol-name name)))))
+                   (rules:list-rules))))
+
+(defun string-prefix-p (prefix string)
+  "Check if string starts with prefix"
+  (and (>= (length string) (length prefix))
+       (string= prefix (subseq string 0 (length prefix)))))
 
 ;;; E-graph optimization (simplified version)
 
