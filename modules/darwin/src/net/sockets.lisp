@@ -22,8 +22,8 @@
    get-errno errno-to-string)
   (:import-from epsilon.net.address
    normalize-address make-sockaddr-in-into parse-sockaddr-in make-socket-address)
-  (:import-from epsilon.net.async
-   register-async-operation set-nonblocking)
+  (:import-from epsilon.async
+   set-nonblocking submit-async-operation make-async-operation)
   (:export
    ;; Common socket utilities
    create-socket
@@ -220,8 +220,12 @@
   (let ((result (tcp-try-accept listener)))
     (if (eq result :would-block)
         (progn
-          (register-async-operation (tcp-listener-handle listener) :accept waker)
-          :pending)
+          (let ((async-op (make-async-operation
+                           :fd (tcp-listener-handle listener)
+                           :type :accept
+                           :callback waker)))
+            (submit-async-operation async-op)
+            :pending))
         result)))
 
 (defun tcp-incoming (listener)
@@ -406,8 +410,13 @@
     (let ((result (tcp-try-read stream buffer)))
       (if (eq result :would-block)
           (progn
-            (register-async-operation (tcp-stream-handle stream) :read waker)
-            :pending)
+            (let ((async-op (make-async-operation
+                             :fd (tcp-stream-handle stream)
+                             :type :read
+                             :buffer buffer
+                             :callback waker)))
+              (submit-async-operation async-op)
+              :pending))
           result))))
 
 (defun tcp-poll-write (stream waker)
@@ -416,8 +425,13 @@
     (let ((result (tcp-try-write stream dummy-data)))
       (if (eq result :would-block)
           (progn
-            (register-async-operation (tcp-stream-handle stream) :write waker)
-            :pending)
+            (let ((async-op (make-async-operation
+                             :fd (tcp-stream-handle stream)
+                             :type :write
+                             :buffer dummy-data
+                             :callback waker)))
+              (submit-async-operation async-op)
+              :pending))
           :ready))))
 
 (defun tcp-peer-addr (stream)
@@ -586,8 +600,13 @@
                                 (make-socket-address "127.0.0.1" 1))))
       (if (eq result :would-block)
           (progn
-            (register-async-operation (udp-socket-handle socket) :write waker)
-            :pending)
+            (let ((async-op (make-async-operation
+                             :fd (udp-socket-handle socket)
+                             :type :write
+                             :buffer dummy-data
+                             :callback waker)))
+              (submit-async-operation async-op)
+              :pending))
           :ready))))
 
 (defun udp-poll-recv (socket waker)
@@ -596,6 +615,11 @@
     (let ((result (udp-try-recv socket buffer)))
       (if (eq result :would-block)
           (progn
-            (register-async-operation (udp-socket-handle socket) :read waker)
-            :pending)
+            (let ((async-op (make-async-operation
+                             :fd (udp-socket-handle socket)
+                             :type :read
+                             :buffer buffer
+                             :callback waker)))
+              (submit-async-operation async-op)
+              :pending))
           result))))
