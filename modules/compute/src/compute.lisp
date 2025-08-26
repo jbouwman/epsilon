@@ -377,11 +377,6 @@
   "Symbolic cross product"
   (sym:symbolic 'cross (ensure-expr v1) (ensure-expr v2)))
 
-(defun outer-product (v1 v2)
-  "Compute outer product of two tensors"
-  (let ((v1 (ensure-expr v1))
-        (v2 (ensure-expr v2)))
-    (sym:symbolic 'outer-product v1 v2)))
 
 ;;; Calculus
 
@@ -501,12 +496,6 @@
     
     (t (sym:lit 0))))
 
-(defun grad (expr &rest vars)
-  "Symbolic gradient"
-  (if (null vars)
-      (let ((free (sym:free-vars expr)))
-        (mapcar (lambda (v) (diff expr v)) free))
-      (mapcar (lambda (v) (diff expr v)) vars)))
 
 (defun integrate (expr var &optional lower upper)
   "Symbolic integration (basic)"
@@ -1075,61 +1064,6 @@
                                  (ensure-expr (cdr binding))))
                          bindings)))
 
-(defun evaluate (expr &optional bindings)
-  "Evaluate an expression numerically"
-  (if auto:*memoization-enabled*
-      ;; For memoization, pass original expression with bindings
-      (auto:memoized-evaluate expr bindings)
-      ;; For regular evaluation, substitute then evaluate
-      (let ((substituted (if bindings
-                            (substitute-vars expr bindings)
-                            expr)))
-        (eval-expr substituted))))
-
-(defun eval-expr (expr)
-  "Evaluate an expression to a numeric value"
-  (cond
-    ((sym:const-p expr) (sym:const-value expr))
-    ((sym:var-p expr) (error "Cannot evaluate variable ~A" (sym:var-name expr)))
-    ((sym:expr-p expr)
-     (let* ((op (sym:expr-op expr))
-            (raw-args (sym:expr-args expr))
-            ;; Handle nested list structure that might occur
-            (flat-args (if (and (listp raw-args) (every #'listp raw-args))
-                          (first raw-args)  ; Unwrap one level of nesting
-                          raw-args))
-            (args (mapcar (lambda (arg)
-                            (let ((result (eval-expr arg)))
-                              ;; If result is still symbolic, return a reasonable numeric value
-                              (cond ((numberp result) result)
-                                    ((arrayp result) result) 
-                                    (t 0))))  ; Default to 0 for unresolved expressions
-                          flat-args))
-            (numeric-op (simp:get-numeric-op op))
-            (custom-op (auto:get-custom-op op)))
-       (cond
-         ;; Check for custom operators first
-         (custom-op
-          (apply custom-op args))
-         ;; Handle vectorized operations
-         ((and numeric-op (some #'arrayp args))
-          (apply-vectorized op args))
-         (numeric-op
-          (apply numeric-op args))
-         (t
-          (error "No numeric evaluation available for operator ~A" op)))))
-    ((listp expr)
-     ;; If we get a list of expressions, evaluate each one
-     (mapcar #'eval-expr expr))
-    ((numberp expr) expr)
-    ((arrayp expr) expr)  ; Arrays evaluate to themselves
-    ((lazy-value-p expr)
-     ;; Force lazy evaluation
-     (force-eval expr nil))
-    ((graph-node-p expr)
-     ;; Evaluate graph node
-     (evaluate-graph-node expr nil))
-    (t (error "Cannot evaluate ~A" expr))))
 
 (defun apply-vectorized (op args)
   "Apply an operation element-wise to arrays"
@@ -2071,38 +2005,6 @@
 
 ;;; Broadcasting and tensor operations
 
-(defun broadcast-shapes (&rest shapes)
-  "Compute the broadcast shape for multiple tensor shapes.
-   Returns the resulting shape or signals an error if incompatible."
-  (cond
-    ((null shapes) nil)
-    ((null (cdr shapes)) (car shapes))
-    (t (reduce #'broadcast-two-shapes shapes))))
-
-(defun broadcast-two-shapes (shape1 shape2)
-  "Broadcast two shapes according to NumPy rules"
-  (cond
-    ;; Scalar broadcasts to any shape
-    ((null shape1) shape2)
-    ((null shape2) shape1)
-    ;; Same shapes
-    ((equal shape1 shape2) shape1)
-    ;; Different ranks - pad with 1s on the left
-    (t (let* ((rank1 (length shape1))
-              (rank2 (length shape2))
-              (max-rank (max rank1 rank2))
-              (padded1 (append (make-list (- max-rank rank1) :initial-element 1) shape1))
-              (padded2 (append (make-list (- max-rank rank2) :initial-element 1) shape2))
-              (result nil))
-         ;; Check compatibility dimension by dimension
-         (loop for d1 in padded1
-               for d2 in padded2
-               do (cond
-                    ((= d1 d2) (push d1 result))
-                    ((= d1 1) (push d2 result))
-                    ((= d2 1) (push d1 result))
-                    (t (error "Incompatible shapes for broadcasting: ~A and ~A" shape1 shape2))))
-         (nreverse result)))))
 
 (defun infer-shape (expr)
   "Infer the shape of an expression"
@@ -2155,10 +2057,10 @@
          (cond
            ;; Scalar * Vector
            ((and (numberp val1) (vectorp val2))
-            (sym:const (map 'vector (lambda (x) (* val1 x)) val2)))
+            (sym:lit (map 'vector (lambda (x) (* val1 x)) val2)))
            ;; Vector * Scalar  
            ((and (vectorp val1) (numberp val2))
-            (sym:const (map 'vector (lambda (x) (* x val2)) val1)))
+            (sym:lit (map 'vector (lambda (x) (* x val2)) val1)))
            ;; Vector * Vector -> Matrix
            ((and (vectorp val1) (vectorp val2))
             (let* ((len1 (length val1))
@@ -2167,7 +2069,7 @@
               (dotimes (i len1)
                 (dotimes (j len2)
                   (setf (aref result i j) (* (aref val1 i) (aref val2 j)))))
-              (sym:const result)))
+              (sym:lit result)))
            ;; Higher-rank tensors
            (t (sym:symbolic 'outer-product v1 v2)))))
       ;; Symbolic computation
@@ -2270,7 +2172,54 @@
     ((epsilon.compute:log log) (cl:log (first args)))
     ((epsilon.compute:sqrt sqrt) (cl:sqrt (first args)))
     ((epsilon.compute:^ ^) (expt (first args) (second args)))
+    ((epsilon.compute:sum sum) 
+     (cond 
+       ((null args) 0)
+       ((and (= (length args) 2) (numberp (second args)))
+        ;; sum(array, axis) - reduce along axis
+        (let ((array (first args))
+              (axis (second args)))
+          (if (arrayp array)
+              (reduce-along-axis array axis #'cl:+)
+              (first args))))
+       (t 
+        ;; sum(array) or sum(...args) - total sum
+        (if (= (length args) 1)
+            (let ((arg (first args)))
+              (if (arrayp arg)
+                  (reduce #'cl:+ (make-array (array-total-size arg)
+                                           :displaced-to arg))
+                  arg))
+            (apply #'cl:+ args)))))
     (t (error "Unknown operation: ~A" op))))
+
+(defun reduce-along-axis (array axis fn)
+  "Reduce array along specified axis using function"
+  (let* ((dims (array-dimensions array))
+         (new-dims (remove-nth axis dims))
+         (result (if new-dims 
+                     (make-array new-dims :initial-element 0)
+                     0)))
+    (if (zerop (length new-dims))
+        ;; Reducing to scalar
+        (let ((total (if (numberp result) 0 (aref result))))
+          (dotimes (i (array-total-size array))
+            (setf total (funcall fn total (row-major-aref array i))))
+          total)
+        ;; Reducing to lower-dimensional array  
+        (progn
+          ;; Simple implementation for axis=0 case
+          (when (= axis 0)
+            (dotimes (j (array-dimension array 1))
+              (let ((sum 0))
+                (dotimes (i (array-dimension array 0))
+                  (setf sum (funcall fn sum (aref array i j))))
+                (setf (aref result j) sum))))
+          result))))
+
+(defun remove-nth (n list)
+  "Remove nth element from list"
+  (append (subseq list 0 n) (subseq list (1+ n))))
 
 (defun apply-broadcast-op (fn args)
   "Apply operation with broadcasting support"
