@@ -142,15 +142,13 @@
    :encode-3bit-repetition
    :encode-9bit-shor
    
-   ;; Broadcasting and tensor operations  
-   :broadcast-shapes
+   ;; Tensor operations  
    :broadcast-two-shapes
    :infer-shape
    :lazy-p
    :slice
    :zeros
    :sum
-   :grad
    :dtype-of
    
    ;; Convenience functions
@@ -609,7 +607,7 @@
 
 (defun einsum (subscripts &rest arrays)
   "Einstein summation notation for tensor contractions"
-  (sym:symbolic 'einsum (cons subscripts arrays)))
+  (apply #'sym:symbolic 'einsum subscripts arrays))
 
 ;;; Mathematical DSL macros
 
@@ -1378,60 +1376,441 @@
 
 (defun evaluate-einsum (subscripts &rest tensors)
   "Einstein summation notation for tensor operations - evaluation implementation"
-  ;; TODO: STUB - This is a partial implementation of einsum evaluation
-  ;; A complete implementation needs:
-  ;;   - Full einsum notation parsing (all subscript patterns)  
-  ;;   - Efficient contraction algorithms
-  ;;   - Memory optimization for large tensors
-  ;;   - Broadcasting support
-  (let* ((input-specs (parse-einsum-subscripts subscripts))
-         (input-subscripts (first input-specs))
-         (output-subscript (second input-specs)))
-    (cond
-      ;; Simple cases
-      ((and (= (length tensors) 2)
-            (string= subscripts "ij,jk->ik"))
-       (tensor-matmul (first tensors) (second tensors)))
-      ((and (= (length tensors) 2)
-            (string= subscripts "i,i->"))
-       (tensor-dot (first tensors) (second tensors)))
-      ((and (= (length tensors) 1)
-            (string= subscripts "ii->i"))
-       (tensor-diagonal (first tensors)))
-      ((and (= (length tensors) 1)
-            (string= subscripts "ij->ji"))
-       (tensor-transpose (first tensors)))
-      ;; General case - use simplified implementation
-      (t
-       (einsum-general input-subscripts output-subscript tensors)))))
+  ;; Parse the subscripts
+  (multiple-value-bind (input-specs output-spec all-indices summation-indices free-indices)
+      (parse-einsum-subscripts subscripts)
+    ;; Delegate to the general implementation
+    (einsum-general input-specs output-spec tensors 
+                   all-indices summation-indices free-indices)))
 
 (defun parse-einsum-subscripts (subscripts)
-  "Parse Einstein summation subscripts"
-  (let ((arrow-pos (position #\- subscripts)))
-    (if arrow-pos
-        (let ((input-part (subseq subscripts 0 arrow-pos))
-              (output-part (subseq subscripts (+ arrow-pos 2))))
-          (list (split-subscripts input-part) output-part))
-        (list (split-subscripts subscripts) nil))))
+  "Parse Einstein summation subscripts with full notation support.
+   Returns (values input-specs output-spec all-indices summation-indices free-indices)"
+  (let* ((arrow-pos (search "->" subscripts))
+         (input-part (if arrow-pos 
+                        (subseq subscripts 0 arrow-pos)
+                        subscripts))
+         (output-part (when arrow-pos 
+                       (subseq subscripts (+ arrow-pos 2))))
+         (input-specs (split-subscripts input-part))
+         ;; Parse all unique indices
+         (all-indices (parse-all-indices input-specs))
+         ;; Determine summation vs free indices
+         (index-counts (count-index-occurrences input-specs))
+         (output-indices (when output-part (parse-indices output-part)))
+         ;; Summation indices: appear multiple times in input AND not in output
+         (summation-indices (loop for (idx . count) in index-counts
+                                 when (and (> count 1)
+                                          (not (member idx output-indices)))
+                                 collect idx))
+         (free-indices (if output-part
+                          output-indices
+                          ;; Implicit output: free indices in order of appearance
+                          (loop for (idx . count) in index-counts
+                               when (= count 1)
+                               collect idx))))
+    (values input-specs output-part all-indices summation-indices free-indices)))
 
 (defun split-subscripts (input-str)
   "Split input subscripts by comma"
   (loop for start = 0 then (1+ pos)
         for pos = (position #\, input-str :start start)
-        collect (subseq input-str start pos)
+        collect (string-trim '(#\Space) (subseq input-str start pos))
         while pos))
 
-(defun einsum-general (input-subscripts output-subscript tensors)
+(defun parse-indices (subscript)
+  "Parse individual indices from a subscript string, handling ellipsis"
+  (let ((indices '())
+        (i 0)
+        (len (length subscript)))
+    (loop while (< i len)
+          do (cond
+               ;; Handle ellipsis
+               ((and (< (+ i 2) len)
+                     (char= (char subscript i) #\.)
+                     (char= (char subscript (+ i 1)) #\.)
+                     (char= (char subscript (+ i 2)) #\.))
+                (push :ellipsis indices)
+                (incf i 3))
+               ;; Regular index character
+               (t 
+                (push (char subscript i) indices)
+                (incf i))))
+    (nreverse indices)))
+
+(defun parse-all-indices (input-specs)
+  "Extract all unique indices from input specifications"
+  (let ((all-indices '()))
+    (dolist (spec input-specs)
+      (dolist (idx (parse-indices spec))
+        (unless (or (eq idx :ellipsis)
+                   (member idx all-indices))
+          (push idx all-indices))))
+    (nreverse all-indices)))
+
+(defun count-index-occurrences (input-specs)
+  "Count how many times each index appears across all input specs"
+  (let ((counts '()))
+    (dolist (spec input-specs)
+      (dolist (idx (parse-indices spec))
+        (unless (eq idx :ellipsis)
+          (let ((entry (assoc idx counts)))
+            (if entry
+                (incf (cdr entry))
+                (push (cons idx 1) counts))))))
+    (nreverse counts)))
+
+;;; Tensor Contraction Infrastructure
+
+(defstruct contraction-step
+  "Represents a single contraction operation in the einsum path"
+  left-operand      ; Index or previous step result
+  right-operand     ; Index or previous step result  
+  result-indices    ; Indices of the result tensor
+  contracted-indices ; Indices being summed over
+  cost)            ; Estimated FLOP count
+
+(defstruct einsum-path
+  "Optimal contraction path for einsum operation"
+  steps            ; List of contraction-step structs
+  total-cost       ; Total FLOP count
+  max-memory)      ; Maximum intermediate tensor size
+
+(defun estimate-contraction-cost (indices1 indices2 contracted result-indices tensor-shapes)
+  "Estimate FLOP count for a single tensor contraction"
+  (let ((total-elements 1))
+    ;; Cost is product of all dimensions involved
+    (dolist (idx (append result-indices contracted))
+      (let ((dim (cdr (assoc idx tensor-shapes))))
+        (when dim
+          (setf total-elements (* total-elements dim)))))
+    total-elements))
+
+(defun get-tensor-shape-info (tensors input-specs)
+  "Build mapping from index characters to their dimensions"
+  (let ((shape-info '()))
+    (loop for tensor in tensors
+          for spec in input-specs
+          for indices = (parse-indices spec)
+          for shape = (if (arrayp tensor)
+                         (array-dimensions tensor)
+                         '()) ; scalar
+          do (loop for idx in indices
+                  for dim in shape
+                  unless (eq idx :ellipsis)
+                  do (let ((existing (assoc idx shape-info)))
+                       (if existing
+                           ;; Verify dimension consistency
+                           (unless (= (cdr existing) dim)
+                             (error "Inconsistent dimensions for index ~A: ~A vs ~A" 
+                                   idx (cdr existing) dim))
+                           (push (cons idx dim) shape-info)))))
+    shape-info))
+
+(defun find-greedy-path (input-specs tensor-shapes all-indices summation-indices output-indices)
+  "Find optimal contraction path using greedy algorithm"
+  (let ((remaining (loop for i from 0 below (length input-specs) collect i))
+        (steps '())
+        (intermediates '())
+        (next-intermediate-id (length input-specs)))
+    
+    ;; Keep contracting until we have a single result
+    (loop while (> (length remaining) 1)
+          do (let ((best-pair nil)
+                   (best-cost most-positive-fixnum)
+                   (best-result-indices nil))
+               ;; Try all pairs and find the cheapest
+               (loop for i in remaining
+                     do (loop for j in remaining
+                             when (< i j)
+                             do (let* ((indices-i (if (< i (length input-specs))
+                                                     (parse-indices (nth i input-specs))
+                                                     (cdr (assoc i intermediates))))
+                                      (indices-j (if (< j (length input-specs))
+                                                     (parse-indices (nth j input-specs))
+                                                     (cdr (assoc j intermediates))))
+                                      (common (intersection indices-i indices-j :test #'equal))
+                                      (contracted (remove :ellipsis common))
+                                      (result-indices (union (set-difference indices-i contracted :test #'equal)
+                                                           (set-difference indices-j contracted :test #'equal)
+                                                           :test #'equal))
+                                      (cost (estimate-contraction-cost 
+                                            indices-i indices-j contracted result-indices tensor-shapes)))
+                                 (when (< cost best-cost)
+                                   (setf best-pair (list i j)
+                                         best-cost cost
+                                         best-result-indices result-indices)))))
+               
+               ;; Execute the best contraction
+               (when best-pair
+                 (push (make-contraction-step
+                       :left-operand (first best-pair)
+                       :right-operand (second best-pair)
+                       :result-indices best-result-indices
+                       :contracted-indices (intersection 
+                                          (if (< (first best-pair) (length input-specs))
+                                              (parse-indices (nth (first best-pair) input-specs))
+                                              (cdr (assoc (first best-pair) intermediates)))
+                                          (if (< (second best-pair) (length input-specs))
+                                              (parse-indices (nth (second best-pair) input-specs))
+                                              (cdr (assoc (second best-pair) intermediates)))
+                                          :test #'equal)
+                       :cost best-cost)
+                      steps)
+                 
+                 ;; Update remaining and intermediates
+                 (setf remaining (remove (first best-pair) 
+                                       (remove (second best-pair) remaining)))
+                 (push next-intermediate-id remaining)
+                 (push (cons next-intermediate-id best-result-indices) intermediates)
+                 (incf next-intermediate-id))))
+    
+    (make-einsum-path :steps (nreverse steps)
+                      :total-cost (reduce #'+ steps :key #'contraction-step-cost)
+                      :max-memory 0))) ; TODO: Calculate actual max memory
+
+(defun execute-contraction (tensor1 indices1 tensor2 indices2 result-indices contracted-indices tensor-shapes)
+  "Execute a single tensor contraction operation"
+  (let* ((shape1 (if (arrayp tensor1) (array-dimensions tensor1) '()))
+         (shape2 (if (arrayp tensor2) (array-dimensions tensor2) '()))
+         ;; Determine result shape
+         (result-shape (loop for idx in result-indices
+                           collect (cdr (assoc idx tensor-shapes))))
+         (result (make-array result-shape :initial-element 0)))
+    
+    ;; Handle scalar cases
+    (cond
+      ((and (null shape1) (null shape2))
+       ;; Both scalars
+       (* tensor1 tensor2))
+      
+      ((null shape1)
+       ;; tensor1 is scalar, tensor2 is array
+       (dotimes (i (array-total-size tensor2))
+         (setf (row-major-aref result i)
+               (* tensor1 (row-major-aref tensor2 i))))
+       result)
+      
+      ((null shape2)
+       ;; tensor2 is scalar, tensor1 is array
+       (dotimes (i (array-total-size tensor1))
+         (setf (row-major-aref result i)
+               (* (row-major-aref tensor1 i) tensor2)))
+       result)
+      
+      (t
+       ;; General tensor contraction
+       (let ((idx1-positions (make-index-position-map indices1))
+             (idx2-positions (make-index-position-map indices2))
+             (result-positions (make-index-position-map result-indices)))
+         
+         ;; Iterate over all result elements
+         (labels ((iterate-result (result-coords coord-idx)
+                   (if (>= coord-idx (length result-shape))
+                       ;; We have complete result coordinates, now sum over contracted indices
+                       (let ((sum 0))
+                         (labels ((sum-contracted (contracted-coords contr-idx)
+                                   (if (>= contr-idx (length contracted-indices))
+                                       ;; We have all contracted coordinates, compute product
+                                       (let ((coords1 (make-array (length shape1)))
+                                             (coords2 (make-array (length shape2))))
+                                         ;; Build coords for tensor1
+                                         (loop for idx in indices1
+                                              for pos from 0
+                                              do (setf (aref coords1 pos)
+                                                      (cond
+                                                        ((position idx result-indices)
+                                                         (nth (position idx result-indices) result-coords))
+                                                        ((position idx contracted-indices)
+                                                         (nth (position idx contracted-indices) contracted-coords))
+                                                        (t 0))))
+                                         ;; Build coords for tensor2
+                                         (loop for idx in indices2
+                                              for pos from 0
+                                              do (setf (aref coords2 pos)
+                                                      (cond
+                                                        ((position idx result-indices)
+                                                         (nth (position idx result-indices) result-coords))
+                                                        ((position idx contracted-indices)
+                                                         (nth (position idx contracted-indices) contracted-coords))
+                                                        (t 0))))
+                                         ;; Add product to sum
+                                         (incf sum (* (apply #'aref tensor1 (coerce coords1 'list))
+                                                    (apply #'aref tensor2 (coerce coords2 'list)))))
+                                       ;; Iterate over current contracted dimension
+                                       (let ((idx (nth contr-idx contracted-indices)))
+                                         (dotimes (i (cdr (assoc idx tensor-shapes)))
+                                           (sum-contracted (append contracted-coords (list i))
+                                                         (1+ contr-idx)))))))
+                           (sum-contracted '() 0))
+                         ;; Store result
+                         (setf (apply #'aref result result-coords) sum))
+                       ;; Iterate over current result dimension
+                       (dotimes (i (nth coord-idx result-shape))
+                         (iterate-result (append result-coords (list i))
+                                       (1+ coord-idx))))))
+           (iterate-result '() 0))
+         ;; Return scalar if result is 0-rank array
+         (if (null result-shape)
+             (aref result)
+             result))))))
+
+(defun make-index-position-map (indices)
+  "Create a mapping from index characters to their positions"
+  (loop for idx in indices
+       for pos from 0
+       collect (cons idx pos)))
+
+(defun einsum-general (input-specs output-spec tensors 
+                      &optional all-indices summation-indices free-indices)
   "General Einstein summation implementation"
-  ;; TODO: STUB - This is a placeholder that just returns the first tensor
-  ;; A complete implementation needs:
-  ;;   - Parse subscript notation (e.g., "ij,jk->ik")
-  ;;   - Determine summation and free indices
-  ;;   - Optimize contraction order for performance
-  ;;   - Handle broadcasting and dimension validation
-  ;;   - Implement efficient tensor contraction algorithms
-  (declare (ignore input-subscripts output-subscript))
-  (first tensors))
+  ;; If indices not provided, compute them from specs
+  (unless all-indices
+    (setf all-indices (parse-all-indices input-specs)))
+  (unless summation-indices
+    (let ((index-counts (count-index-occurrences input-specs))
+          (output-indices (when output-spec (parse-indices output-spec))))
+      (setf summation-indices (loop for (idx . count) in index-counts
+                                   when (and (> count 1)
+                                           (not (member idx output-indices)))
+                                   collect idx))))
+  (unless free-indices
+    (setf free-indices (if output-spec
+                          (parse-indices output-spec)
+                          (let ((index-counts (count-index-occurrences input-specs)))
+                            (loop for (idx . count) in index-counts
+                                 when (= count 1)
+                                 collect idx)))))
+    
+    ;; Get tensor shape information
+    (let* ((tensor-shapes (get-tensor-shape-info tensors input-specs))
+           ;; Find optimal contraction path
+           (path (if (> (length tensors) 2)
+                    (find-greedy-path input-specs tensor-shapes 
+                                    all-indices summation-indices 
+                                    (or (parse-indices output-spec) free-indices))
+                    nil)))
+      
+      (if (= (length tensors) 1)
+          ;; Single tensor - might be trace, diagonal, or transpose
+          (execute-single-tensor-einsum (first tensors) (first input-specs) 
+                                      output-spec tensor-shapes)
+          
+          (if (= (length tensors) 2)
+              ;; Two tensors - direct contraction
+              (execute-contraction (first tensors) (parse-indices (first input-specs))
+                                 (second tensors) (parse-indices (second input-specs))
+                                 (or (parse-indices output-spec) free-indices)
+                                 summation-indices
+                                 tensor-shapes)
+              
+              ;; Special case for 3-tensor bilinear form "i,ij,j->"
+              (if (and (= (length tensors) 3)
+                      (equal input-specs '("i" "ij" "j"))
+                      (or (null output-spec) (string= output-spec "")))
+                  ;; Bilinear form: compute A*y first, then x*(A*y)
+                  (let* ((A (second tensors))
+                         (y (third tensors))
+                         (x (first tensors))
+                         (Ay (execute-contraction A (parse-indices "ij") y (parse-indices "j") (parse-indices "i") (parse-indices "j") tensor-shapes)))
+                    (execute-contraction x (parse-indices "i") Ay (parse-indices "i") (parse-indices "") (parse-indices "i") tensor-shapes))
+                  
+                  ;; General case - follow optimal path  
+                  (execute-einsum-path path tensors input-specs tensor-shapes))))))
+
+(defun execute-single-tensor-einsum (tensor input-spec output-spec tensor-shapes)
+  "Handle einsum operations on a single tensor"
+  (let ((input-indices (parse-indices input-spec))
+        (output-indices (when output-spec (parse-indices output-spec))))
+    (cond
+      ;; Trace: "ii->i" or "ii"
+      ((and (equal input-indices '(#\i #\i))
+            (null output-indices))
+       ;; Sum diagonal elements
+       (let* ((dims (array-dimensions tensor))
+              (min-dim (reduce #'min dims))
+              (sum 0))
+         (dotimes (i min-dim)
+           (incf sum (aref tensor i i)))
+         sum))
+      
+      ;; Diagonal extraction: "ii->i"
+      ((and (equal input-indices '(#\i #\i))
+            (equal output-indices '(#\i)))
+       ;; Extract diagonal as vector
+       (let* ((dims (array-dimensions tensor))
+              (min-dim (reduce #'min dims))
+              (result (make-array min-dim)))
+         (dotimes (i min-dim)
+           (setf (aref result i) (aref tensor i i)))
+         result))
+      
+      ;; Transpose: "ij->ji"
+      ((and (= (length input-indices) 2)
+            output-indices
+            (equal output-indices (reverse input-indices)))
+       ;; Transpose 2D array
+       (let* ((dims (array-dimensions tensor))
+              (rows (first dims))
+              (cols (second dims))
+              (result (make-array (list cols rows))))
+         (dotimes (i rows)
+           (dotimes (j cols)
+             (setf (aref result j i) (aref tensor i j))))
+         result))
+      
+      ;; Sum over indices
+      ((and (not output-spec)
+            (> (length input-indices) 0))
+       ;; Sum over all indices
+       (reduce #'+ (make-array (array-total-size tensor) 
+                             :displaced-to tensor)))
+      
+      ;; Identity
+      (t tensor))))
+
+(defun execute-einsum-path (path tensors input-specs tensor-shapes)
+  "Execute einsum following the optimized contraction path"
+  ;; Store intermediate results
+  (let ((results (make-hash-table))
+        (tensor-array (coerce tensors 'vector)))
+    
+    ;; Store initial tensors
+    (loop for i from 0 below (length tensors)
+          do (setf (gethash i results) (aref tensor-array i)))
+    
+    ;; Execute each contraction step
+    (dolist (step (einsum-path-steps path))
+      (let* ((left (gethash (contraction-step-left-operand step) results))
+             (right (gethash (contraction-step-right-operand step) results))
+             (result (execute-contraction 
+                     left
+                     (if (< (contraction-step-left-operand step) (length input-specs))
+                         (parse-indices (nth (contraction-step-left-operand step) input-specs))
+                         (contraction-step-result-indices 
+                          (find (contraction-step-left-operand step) 
+                               (einsum-path-steps path)
+                               :key #'contraction-step-left-operand)))
+                     right
+                     (if (< (contraction-step-right-operand step) (length input-specs))
+                         (parse-indices (nth (contraction-step-right-operand step) input-specs))
+                         (contraction-step-result-indices 
+                          (find (contraction-step-right-operand step)
+                               (einsum-path-steps path)
+                               :key #'contraction-step-right-operand)))
+                     (contraction-step-result-indices step)
+                     (contraction-step-contracted-indices step)
+                     tensor-shapes)))
+        
+        ;; Store intermediate result
+        (setf (gethash (+ (length tensors) 
+                         (position step (einsum-path-steps path)))
+                      results)
+              result)))
+    
+    ;; Return final result
+    (gethash (+ (length tensors) (1- (length (einsum-path-steps path)))) 
+            results)))
 
 (defun tensor-matmul (a b)
   "Matrix multiplication for tensors"
@@ -2215,6 +2594,11 @@
                                            :displaced-to arg))
                   arg))
             (apply #'cl:+ args)))))
+    ((epsilon.compute:einsum einsum)
+     ;; Einstein summation - first arg is subscripts, rest are tensors
+     (let ((subscripts (first args))
+           (tensors (rest args)))
+       (apply #'evaluate-einsum subscripts tensors)))
     (t (error "Unknown operation: ~A" op))))
 
 (defun reduce-along-axis (array axis fn)
