@@ -52,7 +52,7 @@
    :sparse-gradient-nnz
    
    ;; Memory management
-   :tape-memory-usage
+   :get-tape-memory-usage
    :peak-tape-memory
    :checkpoints-used-p
    :clear-tape-cache
@@ -434,7 +434,7 @@
 
 ;;; Memory management
 
-(defun tape-memory-usage (&optional (tape *current-tape*))
+(defun get-tape-memory-usage (&optional (tape *current-tape*))
   "Get current tape memory usage"
   (if tape
       (tape-memory-usage tape)

@@ -190,7 +190,7 @@
    :tensor-reshape
    :tensor-slice
    :tensor-broadcast
-   :make-tensor
+   :create-tensor
    :tensor-rank
    :tensor-size
    :integrate
@@ -741,178 +741,20 @@
 
 ;; Compilation
 
-(defparameter *compilation-stats* (make-hash-table :test 'equal)
-  "Statistics for compiled functions")
 
-(defun record-compilation-stats (expr compile-time)
-  "Record compilation statistics"
-  (let ((expr-key (format nil "~S" expr)))
-    (setf (gethash expr-key *compilation-stats*)
-          (list :compile-time compile-time
-                :uses 0
-                :total-time 0.0))))
 
-(defun get-compilation-stats ()
-  "Get compilation statistics"
-  *compilation-stats*)
 
-(defun optimize-for-native (expr)
-  "Optimize expression for native evaluation"
-  (cond
-    ;; Handle symbolic expressions - just return them
-    ;; They will be converted to Lisp code in generate-native-body
-    ((sym:expr-p expr) expr)
-    ((sym:const-p expr) expr)
-    ((sym:var-p expr) expr)
-    ;; Handle list forms
-    ((consp expr)
-     (case (first expr)
-       ((+ - * /)
-        (optimize-arithmetic expr))
-       (matmul
-        (optimize-matrix-multiply expr))
-       (dot
-        (optimize-dot-product expr))
-       (transpose
-        (optimize-transpose expr))
-       (otherwise expr)))
-    (t expr)))
 
-(defun optimize-arithmetic (expr)
-  "Optimize arithmetic operations for native compilation"
-  (let ((op (first expr))
-        (args (rest expr)))
-    (cond
-      ;; Vectorization opportunities
-      ((all-vectors-p args)
-       `(vectorized-,op ,@args))
-      ;; Matrix operations
-      ((all-matrices-p args)
-       `(matrix-,op ,@args))
-      (t expr))))
 
-(defun optimize-matrix-multiply (expr)
-  "Optimize matrix multiplication for BLAS"
-  (let ((a (second expr))
-        (b (third expr)))
-    `(native-matrix-multiply ,a ,b)))
 
-(defun optimize-dot-product (expr)
-  "Optimize dot product for BLAS"
-  (let ((x (second expr))
-        (y (third expr)))
-    `(native-dot-product ,x ,y)))
 
-(defun optimize-transpose (expr)
-  "Optimize transpose operation"
-  (let ((matrix (second expr)))
-    `(native-transpose ,matrix)))
 
-(defun all-vectors-p (args)
-  "Check if all arguments are vectors"
-  (every (lambda (arg) 
-           (and (symbolp arg) 
-                (string-suffix-p (string arg) "-VEC"))) args))
 
-(defun all-matrices-p (args)
-  "Check if all arguments are matrices"
-  (every (lambda (arg) 
-           (and (symbolp arg) 
-                (string-suffix-p (string arg) "-MAT"))) args))
 
-(defun string-suffix-p (string suffix)
-  "Check if string ends with suffix"
-  (and (>= (length string) (length suffix))
-       (string= string suffix :start1 (- (length string) (length suffix)))))
 
-(defun compile-to-native-code (expr variables)
-  "Compile expression to optimized native code"
-  (let ((optimized-expr (optimize-for-native expr)))
-    (generate-native-function optimized-expr variables)))
 
-(defun generate-native-function (expr variables)
-  "Generate a compiled native function"
-  (let* ((body-code (generate-native-body expr))
-         (lambda-expr `(lambda ,variables
-                         (declare (optimize (speed 3) (safety 0)))
-                         ,body-code)))
-    ;; The compile function should handle this
-    (handler-case
-        (compile nil lambda-expr)
-      (error (e)
-        ;; If compilation fails, return an interpreted function
-        (eval lambda-expr)))))
 
-(defun generate-native-body (expr)
-  "Generate the body of a native function"
-  ;; TODO: STUB - This is a simplified native code generation
-  ;; A complete implementation needs:
-  ;;   - Proper symbolic expression to Lisp code conversion
-  ;;   - Type-specific optimizations (SIMD, loop unrolling)
-  ;;   - Memory layout optimization
-  ;;   - Integration with LLVM or machine code generation
-  (cond
-    ;; Handle symbolic expressions
-    ((sym:expr-p expr)
-     (let ((op (sym:expr-op expr))
-           (args (sym:expr-args expr)))
-       ;; Map symbolic operators to Lisp functions
-       (let ((lisp-op (case op
-                        ((epsilon.compute:+ +) 'cl:+)
-                        ((epsilon.compute:- -) 'cl:-)
-                        ((epsilon.compute:* *) 'cl:*)
-                        ((epsilon.compute:/ /) 'cl:/)
-                        ((epsilon.compute:^ ^) 'expt)
-                        ((epsilon.compute:sin sin) 'cl:sin)
-                        ((epsilon.compute:cos cos) 'cl:cos)
-                        ((epsilon.compute:tan tan) 'cl:tan)
-                        ((epsilon.compute:exp exp) 'cl:exp)
-                        ((epsilon.compute:log log) 'cl:log)
-                        ((epsilon.compute:sqrt sqrt) 'cl:sqrt)
-                        ((epsilon.compute:abs abs) 'cl:abs)
-                        (otherwise op))))
-         `(,lisp-op ,@(mapcar #'generate-native-body args)))))
-    
-    ;; Handle symbolic constants
-    ((sym:const-p expr)
-     (sym:const-value expr))
-    
-    ;; Handle symbolic variables 
-    ((sym:var-p expr)
-     (sym:var-name expr))
-    
-    ;; Handle atoms (numbers, symbols)
-    ((atom expr) expr)
-    
-    ;; Handle native operations
-    ((eq (first expr) 'native-matrix-multiply)
-     `(native-matrix-multiply ,(second expr) ,(third expr)))
-    ((eq (first expr) 'native-dot-product)
-     `(native-dot-product ,(second expr) ,(third expr)))
-    ((eq (first expr) 'vectorized-+)
-     `(map 'vector #'+ ,@(rest expr)))
-    ((eq (first expr) 'matrix-+)
-     `(matrix-add ,@(rest expr)))
-    
-    ;; Default case for list expressions
-    (t
-     `(,(first expr) ,@(mapcar #'generate-native-body (rest expr))))))
 
-(defun compile-to-native (expr variables)
-  "Compile expression to optimized native function"
-  (let ((start-time (get-internal-real-time)))
-    (handler-case
-        (let ((native-fn (compile-to-native-code expr variables)))
-          (record-compilation-stats expr 
-                                   (/ (- (get-internal-real-time) start-time)
-                                      internal-time-units-per-second))
-          native-fn)
-      (error (e)
-        ;; Fallback to basic compilation if native optimization fails
-        (warn "Native compilation failed, using fallback: ~A" e)
-        (compile nil `(lambda ,variables
-                        (let ((result (evaluate ',expr (list ,@(mapcar (lambda (var) `(cons ',var ,var)) variables)))))
-                          result)))))))
 
 (defun qft (qubits)
   "Quantum Fourier Transform"
@@ -1399,7 +1241,7 @@
   strides
   dtype)
 
-(defun make-tensor (data &key shape dtype)
+(defun create-tensor (data &key shape dtype)
   "Create a tensor from data"
   (let* ((inferred-shape (or shape (infer-tensor-shape data)))
          (computed-strides (compute-strides inferred-shape))
@@ -1522,7 +1364,7 @@
                 (* (aref (tensor-data a) i k)
                    (aref (tensor-data b) k j))))))
     
-    (make-tensor result-data :shape result-shape)))
+    (create-tensor result-data :shape result-shape)))
 
 (defun tensor-dot (a b)
   "Dot product for tensors"
@@ -1539,7 +1381,7 @@
          (result-data (make-array min-dim :element-type 'double-float)))
     (dotimes (i min-dim)
       (setf (aref result-data i) (aref (tensor-data tensor) i i)))
-    (make-tensor result-data :shape (list min-dim))))
+    (create-tensor result-data :shape (list min-dim))))
 
 (defun tensor-transpose (tensor &optional axes)
   "Transpose tensor dimensions"
@@ -1555,7 +1397,7 @@
         (dotimes (j (second shape))
           (setf (aref result-data j i) (aref (tensor-data tensor) i j)))))
     
-    (make-tensor result-data :shape new-shape)))
+    (create-tensor result-data :shape new-shape)))
 
 (defun tensor-contract (tensor indices)
   "Contract tensor over specified indices"
@@ -1569,7 +1411,7 @@
         (dotimes (j (second shape))
           (incf (aref result-data i) (aref (tensor-data tensor) i j)))))
     
-    (make-tensor result-data :shape new-shape)))
+    (create-tensor result-data :shape new-shape)))
 
 (defun tensor-reshape (tensor new-shape)
   "Reshape tensor to new dimensions"
@@ -1577,7 +1419,7 @@
         (new-size (reduce #'* new-shape)))
     (unless (= old-size new-size)
       (error "Cannot reshape tensor from size ~A to size ~A" old-size new-size))
-    (make-tensor (tensor-data tensor) :shape new-shape)))
+    (create-tensor (tensor-data tensor) :shape new-shape)))
 
 (defun tensor-slice (tensor &rest slice-specs)
   "Slice tensor with given specifications"
@@ -1595,7 +1437,7 @@
       (setf (row-major-aref broadcasted-data i)
             (row-major-aref (tensor-data tensor) (mod i (array-total-size (tensor-data tensor))))))
     
-    (make-tensor broadcasted-data :shape target-shape)))
+    (create-tensor broadcasted-data :shape target-shape)))
 
 ;;; Enhanced Calculus Operations
 

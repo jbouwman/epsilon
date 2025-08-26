@@ -22,7 +22,7 @@
    :make-scalar
    :make-vector
    :make-matrix
-   :make-tensor
+   :create-tensor
    
    ;; Shape operations
    :shape

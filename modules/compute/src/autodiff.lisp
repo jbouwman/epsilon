@@ -193,7 +193,7 @@
 
 (defun tape-memory-usage ()
   "Get tape memory usage"
-  (rev:tape-memory-usage))
+  (rev:get-tape-memory-usage))
 
 (defun peak-tape-memory ()
   "Get peak tape memory"
