@@ -67,8 +67,9 @@
    ;; Caching
    :with-caching
    
-   ;; Type inference
+   ;; Type and shape inference
    :infer-type
+   :infer-shape
    :type-error-p
    
    ;; Broadcasting
@@ -78,7 +79,10 @@
    ;; Optimization
    :with-optimization-level
    :*optimization-level*
-   :auto-evaluate))
+   :auto-evaluate
+   
+   ;; Utility
+   :lazy-p))
 
 (in-package epsilon.compute.auto-eval)
 
@@ -1152,4 +1156,132 @@
     
     ;; Default case
     (t expr)))
+
+;;; Shape inference functions
+
+(defun broadcast-shapes-internal (shapes)
+  "Internal implementation of broadcast-shapes to avoid circular dependency"
+  (cond
+    ((null shapes) nil)
+    ((null (cdr shapes)) (car shapes))
+    (t (reduce #'broadcast-two-shapes-internal shapes))))
+
+(defun broadcast-two-shapes-internal (shape1 shape2)
+  "Internal broadcast two shapes"
+  (cond
+    ;; Scalar broadcasts to any shape
+    ((null shape1) shape2)
+    ((null shape2) shape1)
+    ;; Same shapes
+    ((equal shape1 shape2) shape1)
+    ;; Different ranks - pad with 1s on the left
+    (t (let* ((rank1 (length shape1))
+              (rank2 (length shape2))
+              (max-rank (max rank1 rank2))
+              (padded1 (append (make-list (- max-rank rank1) :initial-element 1) shape1))
+              (padded2 (append (make-list (- max-rank rank2) :initial-element 1) shape2))
+              (result nil))
+         ;; Check compatibility dimension by dimension
+         (loop for d1 in padded1
+               for d2 in padded2
+               do (cond
+                    ((= d1 d2) (push d1 result))
+                    ((= d1 1) (push d2 result))
+                    ((= d2 1) (push d1 result))
+                    (t (return-from broadcast-two-shapes-internal nil))))
+         (nreverse result)))))
+
+(defun infer-shape (expr)
+  "Infer the shape of an expression"
+  (cond
+    ((numberp expr) nil)  ; Scalar has no shape
+    ((arrayp expr) (array-dimensions expr))
+    ((sym:const-p expr)
+     (infer-shape (sym:const-value expr)))
+    ((sym:var-p expr)
+     ;; Look for shape metadata
+     (getf (sym:var-metadata expr) :shape))
+    ((sym:expr-p expr)
+     ;; Infer based on operation
+     (case (sym:expr-op expr)
+       ((+ - * /) 
+        ;; Binary ops - use broadcast shapes
+        (let ((arg-shapes (mapcar #'infer-shape (sym:expr-args expr))))
+          (when (every #'identity arg-shapes)
+            (broadcast-shapes-internal arg-shapes))))
+       (outer-product
+        ;; Outer product concatenates shapes
+        (let ((shape1 (infer-shape (first (sym:expr-args expr))))
+              (shape2 (infer-shape (second (sym:expr-args expr)))))
+          (when (and shape1 shape2)
+            (append shape1 shape2))))
+       (dot
+        ;; Dot product reduces dimensions
+        (let ((shape1 (infer-shape (first (sym:expr-args expr))))
+              (shape2 (infer-shape (second (sym:expr-args expr)))))
+          (when (and shape1 shape2)
+            (cond
+              ;; Vector dot vector -> scalar
+              ((and (= (length shape1) 1) (= (length shape2) 1)) nil)
+              ;; Matrix dot vector -> vector
+              ((and (= (length shape1) 2) (= (length shape2) 1))
+               (list (first shape1)))
+              ;; Matrix dot matrix -> matrix
+              ((and (= (length shape1) 2) (= (length shape2) 2))
+               (list (first shape1) (second shape2)))))))
+       (transpose
+        ;; Transpose reverses last two dimensions
+        (let ((shape (infer-shape (first (sym:expr-args expr)))))
+          (when shape
+            (let ((rank (length shape)))
+              (case rank
+                (0 nil)
+                (1 shape)
+                (2 (list (second shape) (first shape)))
+                (t 
+                 (append (butlast shape 2)
+                         (list (nth (- rank 1) shape)
+                               (nth (- rank 2) shape))))))))
+       ((sum reduce)
+        ;; Sum reduces along axis
+        (let ((shape (infer-shape (first (sym:expr-args expr))))
+              (axis (second (sym:expr-args expr))))
+          (when shape
+            (if axis
+                (append (subseq shape 0 axis)
+                       (subseq shape (1+ axis)))
+                nil))))  ; Sum all -> scalar
+       (t nil)))
+    (t nil))))
+
+(defun infer-type (expr)
+  "Infer the type of an expression"
+  (cond
+    ((numberp expr) (types:scalar-type))
+    ((arrayp expr) 
+     (case (array-rank expr)
+       (0 (types:scalar-type))
+       (1 (types:vector-type (array-dimension expr 0)))
+       (2 (types:matrix-type (array-dimension expr 0) (array-dimension expr 1)))
+       (otherwise (types:tensor-type (array-dimensions expr)))))
+    ((sym:const-p expr)
+     (infer-type (sym:const-value expr)))
+    ((sym:var-p expr)
+     (or (getf (sym:var-metadata expr) :type) (types:symbolic-type)))
+    ((sym:expr-p expr)
+     ;; Infer based on operation
+     (let ((shape (infer-shape expr)))
+       (if shape
+           (case (length shape)
+             (0 (types:scalar-type))
+             (1 (types:vector-type (first shape)))
+             (2 (types:matrix-type (first shape) (second shape)))
+             (otherwise (types:tensor-type shape)))
+           (types:symbolic-type))))
+    (t (types:symbolic-type))))
+
+(defun lazy-p (expr)
+  "Check if expression is lazy"
+  (lazy-value-p expr))
+
 

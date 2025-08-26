@@ -52,6 +52,10 @@
    :math
    :∇
    
+   ;; Broadcasting
+   :broadcast-shapes
+   :broadcast-two-shapes
+   
    ;; Auto-evaluation and optimization
    :define-custom-op
    :with-memoization
@@ -128,6 +132,17 @@
    :phase-estimation
    :encode-3bit-repetition
    :encode-9bit-shor
+   
+   ;; Broadcasting and tensor operations  
+   :broadcast-shapes
+   :broadcast-two-shapes
+   :infer-shape
+   :lazy-p
+   :slice
+   :zeros
+   :sum
+   :grad
+   :dtype-of
    
    ;; Convenience functions
    :x
@@ -361,6 +376,12 @@
 (defun cross (v1 v2)
   "Symbolic cross product"
   (sym:symbolic 'cross (ensure-expr v1) (ensure-expr v2)))
+
+(defun outer-product (v1 v2)
+  "Compute outer product of two tensors"
+  (let ((v1 (ensure-expr v1))
+        (v2 (ensure-expr v2)))
+    (sym:symbolic 'outer-product v1 v2)))
 
 ;;; Calculus
 
@@ -976,15 +997,29 @@
       ;; For 0-arg expressions, just return the op as a symbol
       op))
 
-(defun var (name &key type)
-  "Create a symbolic variable with optional type"
-  (sym:sym name (when type
-                  (case type
-                    (:scalar (types:scalar-type))
-                    (:vector (types:vector-type 0))  ; Size unknown
-                    (:matrix (types:matrix-type 0 0)) ; Size unknown
-                    (:tensor (types:tensor-type nil)) ; Shape unknown
-                    (otherwise type)))))
+(defun var (name &key type shape)
+  "Create a symbolic variable with optional type and shape"
+  (let* ((computed-type 
+          (cond
+            ;; If shape is provided, infer type from it
+            (shape
+             (case (length shape)
+               (0 (types:scalar-type))
+               (1 (types:vector-type (first shape)))
+               (2 (types:matrix-type (first shape) (second shape)))
+               (otherwise (types:tensor-type shape))))
+            ;; Otherwise use provided type
+            (type
+             (case type
+               (:scalar (types:scalar-type))
+               (:vector (types:vector-type 0))  ; Size unknown
+               (:matrix (types:matrix-type 0 0)) ; Size unknown
+               (:tensor (types:tensor-type nil)) ; Shape unknown
+               (otherwise type)))
+            ;; Default to symbolic
+            (t nil)))
+         (metadata (when shape (list :shape shape))))
+    (sym:sym name computed-type metadata)))
 
 (defun const (value &key type)
   "Create a constant with optional type"
@@ -2034,18 +2069,267 @@
   "Apply rewrite rules to an e-graph until saturation"
   (egraph:saturate-rules egraph rules :limit limit))
 
-;;; Missing utility functions
+;;; Broadcasting and tensor operations
+
+(defun broadcast-shapes (&rest shapes)
+  "Compute the broadcast shape for multiple tensor shapes.
+   Returns the resulting shape or signals an error if incompatible."
+  (cond
+    ((null shapes) nil)
+    ((null (cdr shapes)) (car shapes))
+    (t (reduce #'broadcast-two-shapes shapes))))
+
+(defun broadcast-two-shapes (shape1 shape2)
+  "Broadcast two shapes according to NumPy rules"
+  (cond
+    ;; Scalar broadcasts to any shape
+    ((null shape1) shape2)
+    ((null shape2) shape1)
+    ;; Same shapes
+    ((equal shape1 shape2) shape1)
+    ;; Different ranks - pad with 1s on the left
+    (t (let* ((rank1 (length shape1))
+              (rank2 (length shape2))
+              (max-rank (max rank1 rank2))
+              (padded1 (append (make-list (- max-rank rank1) :initial-element 1) shape1))
+              (padded2 (append (make-list (- max-rank rank2) :initial-element 1) shape2))
+              (result nil))
+         ;; Check compatibility dimension by dimension
+         (loop for d1 in padded1
+               for d2 in padded2
+               do (cond
+                    ((= d1 d2) (push d1 result))
+                    ((= d1 1) (push d2 result))
+                    ((= d2 1) (push d1 result))
+                    (t (error "Incompatible shapes for broadcasting: ~A and ~A" shape1 shape2))))
+         (nreverse result)))))
+
+(defun infer-shape (expr)
+  "Infer the shape of an expression"
+  (auto:infer-shape expr))
+
+(defun lazy-p (expr)
+  "Check if expression is lazy"
+  (auto:lazy-p expr))
+
+(defun slice (tensor &rest slice-specs)
+  "Slice a tensor"
+  (sym:symbolic 'slice tensor slice-specs))
+
+(defun zeros (shape &key (dtype :float64))
+  "Create a tensor of zeros"
+  (sym:symbolic 'zeros shape dtype))
+
+(defun sum (tensor &key axis)
+  "Sum tensor elements"
+  (if axis
+      (sym:symbolic 'sum tensor axis)
+      (sym:symbolic 'sum tensor)))
+
+(defun grad (expr var)
+  "Compute gradient with respect to a variable"
+  (diff expr var))
+
+(defun dtype-of (value)
+  "Get the dtype of a value"
+  (cond
+    ((integerp value) :int32)
+    ((floatp value) :float64)
+    ((complexp value) :complex)
+    ((arrayp value) 
+     (let ((first-elem (row-major-aref value 0)))
+       (dtype-of first-elem)))
+    (t :unknown)))
+
+;;; Missing utility functions - fixed implementation
 
 (defun outer-product (vec1 vec2)
-  "Compute outer product of two vectors"
-  (let* ((len1 (length vec1))
-         (len2 (length vec2))
-         (result (make-array (list len1 len2))))
-    (dotimes (i len1)
-      (dotimes (j len2)
-        (setf (aref result i j) (* (elt vec1 i) (elt vec2 j)))))
-    result))
+  "Compute outer product of two vectors/tensors"
+  (let ((v1 (ensure-expr vec1))
+        (v2 (ensure-expr vec2)))
+    ;; If both are constants, compute directly
+    (cond
+      ((and (sym:const-p v1) (sym:const-p v2))
+       (let* ((val1 (sym:const-value v1))
+              (val2 (sym:const-value v2)))
+         (cond
+           ;; Scalar * Vector
+           ((and (numberp val1) (vectorp val2))
+            (sym:const (map 'vector (lambda (x) (* val1 x)) val2)))
+           ;; Vector * Scalar  
+           ((and (vectorp val1) (numberp val2))
+            (sym:const (map 'vector (lambda (x) (* x val2)) val1)))
+           ;; Vector * Vector -> Matrix
+           ((and (vectorp val1) (vectorp val2))
+            (let* ((len1 (length val1))
+                   (len2 (length val2))
+                   (result (make-array (list len1 len2))))
+              (dotimes (i len1)
+                (dotimes (j len2)
+                  (setf (aref result i j) (* (aref val1 i) (aref val2 j)))))
+              (sym:const result)))
+           ;; Higher-rank tensors
+           (t (sym:symbolic 'outer-product v1 v2)))))
+      ;; Symbolic computation
+      (t (sym:symbolic 'outer-product v1 v2)))))
 
 (defun infer-type (expr)
   "Infer the type of an expression"
   (auto:infer-type expr))
+
+;;; Broadcasting support
+
+(defun broadcast-two-shapes (shape1 shape2)
+  "Compute broadcast shape for two tensor shapes using NumPy rules"
+  (let* ((shape1 (if (null shape1) '() shape1))
+         (shape2 (if (null shape2) '() shape2))
+         (rank1 (length shape1))
+         (rank2 (length shape2))
+         (max-rank (max rank1 rank2))
+         (result '()))
+    ;; Pad shorter shape with 1s on the left
+    (let ((padded1 (append (make-list (- max-rank rank1) :initial-element 1) shape1))
+          (padded2 (append (make-list (- max-rank rank2) :initial-element 1) shape2)))
+      ;; Check compatibility and compute output shape
+      (loop for d1 in padded1
+            for d2 in padded2
+            do (cond
+                 ((= d1 d2) (push d1 result))
+                 ((= d1 1) (push d2 result))
+                 ((= d2 1) (push d1 result))
+                 (t (error "Incompatible shapes for broadcasting: ~A and ~A" 
+                          shape1 shape2))))
+      (reverse result))))
+
+(defun broadcast-shapes (&rest shapes)
+  "Compute the broadcast shape for multiple tensor shapes"
+  (cond
+    ((null shapes) nil)
+    ((null (cdr shapes)) (car shapes))
+    (t (reduce #'broadcast-two-shapes shapes))))
+
+;;; Evaluation
+
+(defun evaluate (expr &optional bindings)
+  "Evaluate an expression with optional variable bindings"
+  (cond
+    ;; Numbers evaluate to themselves
+    ((numberp expr) expr)
+    
+    ;; Arrays evaluate to themselves
+    ((arrayp expr) expr)
+    
+    ;; Symbols look up in bindings
+    ((symbolp expr)
+     (let ((binding (assoc expr bindings)))
+       (if binding
+           (cdr binding)
+           (error "Unbound variable: ~A" expr))))
+    
+    ;; Symbolic constants
+    ((sym:const-p expr)
+     (sym:const-value expr))
+    
+    ;; Symbolic variables
+    ((sym:var-p expr)
+     (let ((name (sym:var-name expr)))
+       (if bindings
+           (let ((binding (assoc name bindings)))
+             (if binding
+                 (cdr binding)
+                 (error "Unbound variable: ~A" name)))
+           expr)))  ; Return unevaluated if no bindings
+    
+    ;; Symbolic expressions
+    ((sym:expr-p expr)
+     (evaluate-operation (sym:expr-op expr)
+                        (mapcar (lambda (arg) (evaluate arg bindings))
+                                (sym:expr-args expr))))
+    
+    ;; Lists evaluate each element
+    ((listp expr)
+     (mapcar (lambda (e) (evaluate e bindings)) expr))
+    
+    (t expr)))
+
+(defun evaluate-operation (op args)
+  "Evaluate an operation with given arguments"
+  (case op
+    ((epsilon.compute:+ +)
+     (apply-broadcast-op #'cl:+ args))
+    ((epsilon.compute:- -)
+     (apply-broadcast-op #'cl:- args))
+    ((epsilon.compute:* *)
+     (apply-broadcast-op #'cl:* args))
+    ((epsilon.compute:/ /)
+     (apply-broadcast-op #'cl:/ args))
+    ((epsilon.compute:sin sin) (cl:sin (first args)))
+    ((epsilon.compute:cos cos) (cl:cos (first args)))
+    ((epsilon.compute:tan tan) (cl:tan (first args)))
+    ((epsilon.compute:exp exp) (cl:exp (first args)))
+    ((epsilon.compute:log log) (cl:log (first args)))
+    ((epsilon.compute:sqrt sqrt) (cl:sqrt (first args)))
+    ((epsilon.compute:^ ^) (expt (first args) (second args)))
+    (t (error "Unknown operation: ~A" op))))
+
+(defun apply-broadcast-op (fn args)
+  "Apply operation with broadcasting support"
+  (cond
+    ;; All scalars
+    ((every #'numberp args)
+     (apply fn args))
+    
+    ;; Mixed scalar and array
+    ((some #'arrayp args)
+     (let* ((shapes (mapcar (lambda (arg)
+                              (cond
+                                ((numberp arg) nil)
+                                ((arrayp arg) (array-dimensions arg))
+                                (t nil)))
+                            args))
+            (result-shape (apply #'broadcast-shapes shapes)))
+       (if result-shape
+           (broadcast-arrays-and-apply fn args result-shape)
+           ;; All scalars after shape check
+           (apply fn args))))
+    
+    ;; Default
+    (t (apply fn args))))
+
+(defun broadcast-arrays-and-apply (fn args result-shape)
+  "Broadcast arrays to result shape and apply function"
+  (let ((result (make-array result-shape)))
+    (if (null result-shape)
+        ;; Scalar result
+        (apply fn args)
+        ;; Array result
+        (progn
+          (dotimes (i (array-total-size result))
+            (let ((indices (unflatten-index i result-shape)))
+              (setf (apply #'aref result indices)
+                    (apply fn (mapcar (lambda (arg)
+                                        (if (arrayp arg)
+                                            (apply #'aref arg 
+                                                   (broadcast-indices indices 
+                                                                     (array-dimensions arg)))
+                                            arg))
+                                      args)))))
+          result))))
+
+(defun unflatten-index (flat-index shape)
+  "Convert flat index to multi-dimensional indices"
+  (let ((indices '())
+        (remaining flat-index))
+    (dolist (dim (reverse shape))
+      (multiple-value-bind (quotient remainder) (floor remaining dim)
+        (push remainder indices)
+        (setf remaining quotient)))
+    indices))
+
+(defun broadcast-indices (indices shape)
+  "Map indices from broadcast shape to original shape"
+  (let* ((rank-diff (- (length indices) (length shape)))
+         (adjusted-indices (nthcdr rank-diff indices)))
+    (mapcar (lambda (idx dim)
+              (if (= dim 1) 0 idx))
+            adjusted-indices shape)))

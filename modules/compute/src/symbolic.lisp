@@ -18,6 +18,7 @@
    :make-var
    :var-name
    :var-type
+   :var-metadata
    
    ;; Constants
    :const
@@ -68,7 +69,8 @@
 (defstruct var
   "Symbolic variable"
   (name nil :type symbol)
-  (type nil :type (or null types:compute-type)))
+  (type nil :type (or null types:compute-type))
+  (metadata nil :type list))
 
 (defstruct const
   "Constant value"
@@ -83,9 +85,11 @@
          (result-type (apply #'types:infer-type op arg-types)))
     (make-expr :op op :args args :type result-type)))
 
-(defun sym (name &optional type)
-  "Create a symbolic variable"
-  (make-var :name name :type (or type (types:symbolic-type))))
+(defun sym (name &optional type metadata)
+  "Create a symbolic variable with optional type and metadata"
+  (make-var :name name 
+            :type (or type (types:symbolic-type))
+            :metadata metadata))
 
 (defun lit (value &optional type)
   "Create a literal constant"
