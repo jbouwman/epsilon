@@ -45,7 +45,11 @@
    ;; Settings
    #:make-settings
    #:apply-settings
-   #:+default-settings+))
+   #:+default-settings+
+   
+   ;; Frame serialization
+   #:serialize-frame
+   #:deserialize-frame))
 
 (in-package :epsilon.http2)
 
@@ -752,6 +756,67 @@
   (declare (ignore header-bytes payload-bytes))
   ;; Simplified for now
   nil)
+
+;;;; Frame Serialization
+
+(defun serialize-frame (frame)
+  "Serialize a frame to bytes according to HTTP/2 spec"
+  (let* ((payload (or (frames:http2-frame-payload frame) #()))
+         (length (length payload))
+         (type (frames:http2-frame-type frame))
+         (flags (frames:http2-frame-flags frame))
+         (stream-id (frames:http2-frame-stream-id frame))
+         (result (make-array (+ 9 length) :element-type '(unsigned-byte 8))))
+    
+    ;; Validate frame
+    (when (> length #xFFFFFF)
+      (error "Frame payload too large: ~D bytes (max ~D)" length #xFFFFFF))
+    (when (> stream-id #x7FFFFFFF)
+      (error "Invalid stream ID: ~D (max ~D)" stream-id #x7FFFFFFF))
+    
+    ;; Write 24-bit length
+    (setf (aref result 0) (ldb (byte 8 16) length))
+    (setf (aref result 1) (ldb (byte 8 8) length))
+    (setf (aref result 2) (ldb (byte 8 0) length))
+    
+    ;; Write type and flags
+    (setf (aref result 3) type)
+    (setf (aref result 4) flags)
+    
+    ;; Write 31-bit stream ID (bit 31 reserved)
+    (setf (aref result 5) (ldb (byte 8 24) stream-id))
+    (setf (aref result 6) (ldb (byte 8 16) stream-id))
+    (setf (aref result 7) (ldb (byte 8 8) stream-id))
+    (setf (aref result 8) (ldb (byte 8 0) stream-id))
+    
+    ;; Copy payload
+    (when (> length 0)
+      (replace result payload :start1 9))
+    
+    result))
+
+(defun deserialize-frame (bytes)
+  "Deserialize bytes to a frame"
+  (when (< (length bytes) 9)
+    (error "Invalid frame: too short (~D bytes)" (length bytes)))
+  
+  (let* ((length (logior (ash (aref bytes 0) 16)
+                        (ash (aref bytes 1) 8)
+                        (aref bytes 2)))
+         (type (aref bytes 3))
+         (flags (aref bytes 4))
+         (stream-id (logior (ash (logand #x7F (aref bytes 5)) 24)
+                           (ash (aref bytes 6) 16)
+                           (ash (aref bytes 7) 8)
+                           (aref bytes 8)))
+         (payload (when (> length 0)
+                   (subseq bytes 9 (+ 9 length)))))
+    
+    (frames:make-http2-frame :length length
+                             :type type
+                             :flags flags
+                             :stream-id stream-id
+                             :payload payload)))
 
 ;;;; Additional compatibility and missing functions
 

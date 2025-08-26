@@ -75,6 +75,8 @@
    #:make-rst-stream-frame
    #:make-data-frame
    #:make-headers-frame
+   #:make-priority-frame
+   #:make-continuation-frame
    
    ;; Header processing
    #:decode-headers-from-payload
@@ -231,8 +233,11 @@
 
 (defun make-ping-frame (&key ack data)
   "Create a PING frame"
-  (let ((payload (or data (make-array 8 :element-type '(unsigned-byte 8) 
-                                        :initial-element 0))))
+  (let ((payload (cond
+                  ((null data) (make-array 8 :element-type '(unsigned-byte 8) 
+                                          :initial-element 0))
+                  ((typep data '(vector (unsigned-byte 8))) data)
+                  (t (coerce data '(vector (unsigned-byte 8)))))))
     (make-http2-frame :type +frame-ping+
                       :flags (if ack +flag-ack+ 0)
                       :stream-id 0
@@ -292,43 +297,65 @@
                       :length 4
                       :payload payload)))
 
+(defun make-data-frame (stream-id data &key end-stream padded)
+  "Create a DATA frame"
+  (let* ((flags (logior (if end-stream +flag-end-stream+ 0)
+                       (if padded +flag-padded+ 0)))
+         ;; Ensure payload is the correct type
+         (payload (if (typep data '(vector (unsigned-byte 8)))
+                     data
+                     (coerce data '(vector (unsigned-byte 8))))))
+    (make-http2-frame :type +frame-data+
+                      :flags flags
+                      :stream-id stream-id
+                      :length (length payload)
+                      :payload payload)))
+
 (defun make-headers-frame (stream-id encoded-headers &key end-stream end-headers priority padded)
   "Create a HEADERS frame"
   (let* ((flags (logior (if end-stream +flag-end-stream+ 0)
                        (if end-headers +flag-end-headers+ 0)
                        (if priority +flag-priority+ 0)
                        (if padded +flag-padded+ 0)))
-         (payload encoded-headers))
+         (payload (if (typep encoded-headers '(vector (unsigned-byte 8)))
+                     encoded-headers
+                     (coerce encoded-headers '(vector (unsigned-byte 8))))))
     (make-http2-frame :type +frame-headers+
                       :flags flags
                       :stream-id stream-id
                       :length (length payload)
                       :payload payload)))
 
-(defun make-data-frame (stream-id data &key end-stream padded)
-  "Create a DATA frame"
-  (let* ((data-bytes (if (stringp data)
-                        (str:string-to-octets data)
-                        data))
-         (flags (logior (if end-stream +flag-end-stream+ 0)
-                       (if padded +flag-padded+ 0)))
-         (pad-length (if padded (random 16) 0))
-         (payload-size (+ (length data-bytes)
-                         (if padded (1+ pad-length) 0)))
-         (payload (make-array payload-size :element-type '(unsigned-byte 8))))
-    (if padded
-        (progn
-          (setf (aref payload 0) pad-length)
-          (replace payload data-bytes :start1 1)
-          ;; Fill padding with zeros
-          (loop for i from (1+ (length data-bytes)) below payload-size
-                do (setf (aref payload i) 0)))
-        (replace payload data-bytes))
-    (make-http2-frame :type +frame-data+
-                      :flags flags
+(defun make-priority-frame (stream-id &key dependency weight exclusive)
+  "Create a PRIORITY frame (always 5 bytes)"
+  (let ((payload (make-array 5 :element-type '(unsigned-byte 8)))
+        (dep (or dependency 0))
+        (w (or weight 16)))
+    ;; Dependency with exclusive flag in high bit
+    (setf (aref payload 0) (logior (if exclusive #x80 0)
+                                   (logand #x7F (ash dep -24))))
+    (setf (aref payload 1) (logand #xFF (ash dep -16)))
+    (setf (aref payload 2) (logand #xFF (ash dep -8)))
+    (setf (aref payload 3) (logand #xFF dep))
+    ;; Weight (actual weight - 1)
+    (setf (aref payload 4) (1- w))
+    (make-http2-frame :type +frame-priority+
+                      :flags 0
                       :stream-id stream-id
-                      :length payload-size
+                      :length 5
                       :payload payload)))
+
+(defun make-continuation-frame (stream-id headers &key end-headers)
+  "Create a CONTINUATION frame"
+  (let ((payload (if (typep headers '(vector (unsigned-byte 8)))
+                    headers
+                    (coerce headers '(vector (unsigned-byte 8))))))
+    (make-http2-frame :type +frame-continuation+
+                      :flags (if end-headers +flag-end-headers+ 0)
+                      :stream-id stream-id
+                      :length (length payload)
+                      :payload payload)))
+
 
 
 (defun decode-headers-from-payload (payload)
