@@ -39,6 +39,7 @@
    :trace
    :dot
    :cross
+   :outer-product
    
    ;; Calculus
    :diff
@@ -608,6 +609,10 @@
 (defun einsum (subscripts &rest arrays)
   "Einstein summation notation for tensor contractions"
   (apply #'sym:symbolic 'einsum subscripts arrays))
+
+(defun outer-product (a b)
+  "Symbolic outer product"
+  (sym:symbolic 'outer-product (ensure-expr a) (ensure-expr b)))
 
 ;;; Mathematical DSL macros
 
@@ -2599,6 +2604,9 @@
      (let ((subscripts (first args))
            (tensors (rest args)))
        (apply #'evaluate-einsum subscripts tensors)))
+    ((epsilon.compute:outer-product outer-product)
+     ;; Outer product - use the implementation in auto-eval.lisp
+     (epsilon.compute.auto-eval:outer-product (first args) (second args)))
     (t (error "Unknown operation: ~A" op))))
 
 (defun reduce-along-axis (array axis fn)

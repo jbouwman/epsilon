@@ -41,7 +41,6 @@
 
 (deftest test-outer-product-basic
   "Test outer product operation"
-  (skip "OUTER-PRODUCT operation not yet implemented")
   ;; Vector outer product
   (let* ((v1 (c:const #(1 2 3)))
          (v2 (c:const #(4 5)))
