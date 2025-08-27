@@ -7,7 +7,8 @@
    (simp epsilon.compute.simplify)
    (auto epsilon.compute.auto-eval)
    (egraph epsilon.compute.egraph)
-   (ad epsilon.compute.autodiff))
+   (ad epsilon.compute.autodiff)
+   (bc epsilon.compute.broadcasting))
   (:export
    ;; Main API
    :compute
@@ -606,10 +607,6 @@
 
 ;;; Einstein notation
 
-(defun einsum (subscripts &rest arrays)
-  "Einstein summation notation for tensor contractions"
-  (apply #'sym:symbolic 'einsum subscripts arrays))
-
 ;;; Mathematical DSL macros
 
 (defmacro math (&body body)
@@ -816,6 +813,20 @@
   "Get matrix backend"
   (declare (ignore matrix))
   :lisp)
+
+;;; Broadcasting Support
+
+(defun broadcast-shapes (&rest shapes)
+  "Compute the broadcasted shape from multiple input shapes"
+  (apply #'bc:broadcast-shapes shapes))
+
+(defun broadcast-arrays (&rest arrays)
+  "Broadcast arrays to a common shape"
+  (apply #'bc:broadcast-arrays arrays))
+
+(defun einsum (subscripts &rest arrays)
+  "Einstein summation notation"
+  (apply #'bc:einsum subscripts arrays))
 
 ;; Compilation
 
@@ -2378,16 +2389,10 @@
            ;; Vector * Scalar  
            ((and (vectorp val1) (numberp val2))
             (sym:lit (map 'vector (lambda (x) (* x val2)) val1)))
-           ;; Vector * Vector -> Matrix
-           ((and (vectorp val1) (vectorp val2))
-            (let* ((len1 (length val1))
-                   (len2 (length val2))
-                   (result (make-array (list len1 len2))))
-              (dotimes (i len1)
-                (dotimes (j len2)
-                  (setf (aref result i j) (* (aref val1 i) (aref val2 j)))))
-              (sym:lit result)))
-           ;; Higher-rank tensors
+           ;; Any array types - delegate to broadcasting module
+           ((or (arrayp val1) (arrayp val2))
+            (sym:lit (bc:outer-product val1 val2)))
+           ;; Other cases
            (t (sym:symbolic 'outer-product v1 v2)))))
       ;; Symbolic computation
       (t (sym:symbolic 'outer-product v1 v2)))))
@@ -2399,12 +2404,6 @@
 ;;; Broadcasting support
 
 
-(defun broadcast-shapes (&rest shapes)
-  "Compute the broadcast shape for multiple tensor shapes"
-  (cond
-    ((null shapes) nil)
-    ((null (cdr shapes)) (car shapes))
-    (t (reduce #'types:broadcast-shapes shapes))))
 
 ;;; Virtual Broadcasting Engine - Memory-Efficient Array Broadcasting
 
@@ -2471,36 +2470,22 @@
                            (mod broadcast-val (nth original-dim original-shape))))))))
     original-indices))
 
-(defun broadcast-arrays (&rest arrays)
-  "Create broadcast views for multiple arrays to enable element-wise operations.
-   Returns list of broadcast-view objects that provide virtual access to broadcasted data."
-  (let* ((shapes (mapcar (lambda (arg)
-                          (if (arrayp arg)
-                              (array-dimensions arg)
-                              nil)) ; scalars have nil shape
-                        arrays))
-         (target-shape (reduce #'types:broadcast-shapes shapes)))
-    ;; Create broadcast view for each array/scalar
-    (mapcar (lambda (array) 
-              (if (arrayp array)
-                  (make-broadcast-view-from-array array target-shape)
-                  ;; For scalars, create a virtual scalar "array" view
-                  (make-scalar-broadcast-view array target-shape)))
-            arrays)))
 
 (defun broadcast-operation (operation &rest arrays)
   "Apply an operation element-wise to broadcasted arrays without copying data.
    This is the main entry point for memory-efficient broadcasting operations."
-  (if (every #'numberp arrays)
-      ;; Direct operation on scalars
-      (apply operation arrays)
-      ;; Broadcasting operation on arrays
-      (let* ((views (apply #'broadcast-arrays arrays))
-             (target-shape (broadcast-view-broadcast-shape (first views)))
-             (result-array (make-array target-shape)))
-        ;; Apply operation element-wise using virtual broadcasting
-        (apply-broadcasted-operation operation views result-array target-shape)
-        result-array)))
+  (cond
+    ;; All scalars - direct operation
+    ((every #'numberp arrays)
+     (apply operation arrays))
+    
+    ;; Binary operation - delegate to broadcasting module
+    ((= (length arrays) 2)
+     (bc:broadcast-binary-op operation (first arrays) (second arrays)))
+    
+    ;; Multiple arrays - use reduce approach
+    (t 
+     (reduce (lambda (a b) (bc:broadcast-binary-op operation a b)) arrays))))
 
 (defun apply-broadcasted-operation (operation views result-array target-shape)
   "Apply operation to all elements using virtual broadcasting access patterns."
@@ -2569,6 +2554,45 @@
      (mapcar (lambda (e) (evaluate e bindings)) expr))
     
     (t expr)))
+
+(defun apply-broadcast-op (op args)
+  "Apply operation with broadcasting support"
+  (cond
+    ;; No args
+    ((null args) 
+     (funcall op))
+    
+    ;; Single arg
+    ((null (cdr args))
+     (if (eq op #'cl:-)
+         (cl:- 0 (first args))  ; Unary minus
+         (first args)))
+    
+    ;; Two args - use broadcasting if needed
+    ((null (cddr args))
+     (let ((arg1 (first args))
+           (arg2 (second args)))
+       (cond
+         ;; Both scalars
+         ((and (numberp arg1) (numberp arg2))
+          (funcall op arg1 arg2))
+         
+         ;; One scalar, one array
+         ((and (numberp arg1) (arrayp arg2))
+          (bc:broadcast-binary-op op arg1 arg2))
+         
+         ((and (arrayp arg1) (numberp arg2))
+          (bc:broadcast-binary-op op arg1 arg2))
+         
+         ;; Both arrays - use broadcasting
+         ((and (arrayp arg1) (arrayp arg2))
+          (bc:broadcast-binary-op op arg1 arg2))
+         
+         ;; Default
+         (t (funcall op arg1 arg2)))))
+    
+    ;; Multiple args - reduce with broadcasting
+    (t (reduce (lambda (a b) (apply-broadcast-op op (list a b))) args))))
 
 (defun evaluate-operation (op args)
   "Evaluate an operation with given arguments"
@@ -2666,19 +2690,6 @@
   "Remove nth element from list"
   (append (subseq list 0 n) (subseq list (1+ n))))
 
-(defun apply-broadcast-op (fn args)
-  "Apply operation with broadcasting support"
-  (cond
-    ;; All scalars
-    ((every #'numberp args)
-     (apply fn args))
-    
-    ;; Has arrays - use the new broadcast-operation function
-    ((some #'arrayp args)
-     (apply #'broadcast-operation fn args))
-    
-    ;; Default
-    (t (apply fn args))))
 
 (defun broadcast-arrays-and-apply (fn args result-shape)
   "Broadcast arrays to result shape and apply function"

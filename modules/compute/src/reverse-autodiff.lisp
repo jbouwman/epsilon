@@ -11,7 +11,8 @@
   (:local-nicknames
    (sym epsilon.compute.symbolic)
    (simp epsilon.compute.simplify)
-   (map epsilon.map))
+   (map epsilon.map)
+   (bc epsilon.compute.broadcasting))
   (:export
    ;; Tape construction
    :tape
@@ -145,19 +146,50 @@
   (register-gradient (intern "+" "EPSILON.COMPUTE")
     (lambda (node v-adjoints)
       ;; d/dx(x + y) = 1, d/dy(x + y) = 1
-      (mapcar (lambda (parent) (cons parent 1)) 
-              (tape-node-parents node))))
+      ;; Handle broadcasting by unbroadcasting gradients
+      (let ((parents (tape-node-parents node)))
+        (mapcar (lambda (parent)
+                  (let ((grad 1))
+                    ;; If parent value is array, check for broadcasting
+                    (when (arrayp (tape-node-value parent))
+                      (let ((parent-shape (array-dimensions (tape-node-value parent)))
+                            (result-shape (if (arrayp (tape-node-value node))
+                                            (array-dimensions (tape-node-value node))
+                                            nil)))
+                        ;; Unbroadcast if shapes differ
+                        (when (and result-shape (not (equal parent-shape result-shape)))
+                          (setf grad (make-array result-shape :initial-element 1))
+                          (setf grad (bc:unbroadcast-gradient grad parent-shape)))))
+                    (cons parent grad)))
+                parents))))
   
   (register-gradient (intern "*" "EPSILON.COMPUTE")
   (lambda (node v-adjoints)
     ;; d/dx(x * y) = y, d/dy(x * y) = x
-    (let ((values (mapcar #'tape-node-value (tape-node-parents node))))
+    (let ((values (mapcar #'tape-node-value (tape-node-parents node)))
+          (parents (tape-node-parents node))
+          (result-value (tape-node-value node)))
       (case (length values)
-        (2 (list (cons (first (tape-node-parents node)) (second values))
-                (cons (second (tape-node-parents node)) (first values))))
+        (2 (let ((grad-x (second values))
+                 (grad-y (first values)))
+             ;; Handle broadcasting for arrays
+             (when (and (arrayp result-value) (arrayp (first values)))
+               (let ((x-shape (array-dimensions (first values)))
+                     (result-shape (array-dimensions result-value)))
+                 (unless (equal x-shape result-shape)
+                   (setf grad-x (bc:broadcast-to grad-x result-shape))
+                   (setf grad-x (bc:unbroadcast-gradient grad-x x-shape)))))
+             (when (and (arrayp result-value) (arrayp (second values)))
+               (let ((y-shape (array-dimensions (second values)))
+                     (result-shape (array-dimensions result-value)))
+                 (unless (equal y-shape result-shape)
+                   (setf grad-y (bc:broadcast-to grad-y result-shape))
+                   (setf grad-y (bc:unbroadcast-gradient grad-y y-shape)))))
+             (list (cons (first parents) grad-x)
+                   (cons (second parents) grad-y))))
         (otherwise 
          ;; For n-ary multiplication
-         (loop for parent in (tape-node-parents node)
+         (loop for parent in parents
                for i from 0
                collect (cons parent 
                             (apply #'* (loop for j from 0
