@@ -175,8 +175,9 @@
                  (row-major-aref array2 j)))))
     result))
 
-;;; Gradient Support
+;;; Gradient Support (old versions - commented out, see better implementation below)
 
+#|
 (defun unbroadcast-gradient (grad original-shape)
   "Sum gradient to match original shape (reverse of broadcasting)"
   (sum-to-shape grad original-shape))
@@ -220,6 +221,7 @@
       (if (equal (array-dimensions result) target-shape)
           result
           (reshape-array result target-shape)))))
+|#
 
 (defun sum-over-dimension (array dim)
   "Sum array over specified dimension"
@@ -556,3 +558,97 @@
           batch matrix multiply (bij,bjk->bik), bilinear form (i,ij,j->), ~
           tensor contraction (ijk,jkl->il), kronecker product (ij,kl->ikjl)"
          input-specs output-spec))
+
+;;;; Gradient Support Functions
+
+(defun unbroadcast-gradient (gradient original-shape)
+  "Unbroadcast gradient by summing over broadcast dimensions.
+   This reverses the broadcasting operation for backpropagation."
+  (cond
+    ;; If gradient is scalar, return as is
+    ((numberp gradient) gradient)
+    
+    ;; If original was scalar, sum all elements
+    ((null original-shape)
+     (if (arrayp gradient)
+         (reduce #'+ (make-array (array-total-size gradient)
+                                :displaced-to gradient))
+         gradient))
+    
+    ;; If shapes are same, no unbroadcasting needed
+    ((and (arrayp gradient)
+          (equal (array-dimensions gradient) original-shape))
+     gradient)
+    
+    ;; Need to sum over broadcast dimensions
+    (t (sum-to-shape gradient original-shape))))
+
+(defun sum-to-shape (array target-shape)
+  "Sum array elements to match target shape by collapsing broadcast dimensions."
+  (let* ((current-shape (if (arrayp array) 
+                            (array-dimensions array)
+                            nil))
+         (current-rank (length current-shape))
+         (target-rank (length target-shape)))
+    
+    ;; Handle scalar target
+    (when (null target-shape)
+      (return-from sum-to-shape
+        (reduce #'+ (make-array (array-total-size array)
+                               :displaced-to array))))
+    
+    ;; Create result array
+    (let ((result (make-array target-shape :initial-element 0)))
+      
+      ;; Determine which dimensions to sum over
+      (cond
+        ;; Simple case: ranks are same, just sum where dimensions differ
+        ((= current-rank target-rank)
+         (let ((indices (make-list current-rank :initial-element 0)))
+           (labels ((iterate-indices (depth)
+                      (if (= depth current-rank)
+                          ;; Add current element to appropriate result position
+                          (let ((target-indices 
+                                 (loop for i from 0 below current-rank
+                                       for curr-dim = (nth i current-shape)
+                                       for targ-dim = (nth i target-shape)
+                                       collect (if (= targ-dim 1)
+                                                  0  ; Broadcast dimension
+                                                  (nth i indices)))))
+                            (incf (apply #'aref result target-indices)
+                                  (apply #'aref array indices)))
+                          ;; Recurse through dimensions
+                          (dotimes (i (nth depth current-shape))
+                            (setf (nth depth indices) i)
+                            (iterate-indices (1+ depth))))))
+             (iterate-indices 0))))
+        
+        ;; Different ranks: align from the right
+        ((> current-rank target-rank)
+         ;; Sum over leading dimensions
+         (let ((extra-dims (- current-rank target-rank)))
+           ;; This is complex - for now, use a simpler approach
+           (dotimes (i (array-total-size array))
+             (let* ((flat-idx i)
+                    (current-indices (make-list current-rank))
+                    (size (array-total-size array)))
+               ;; Convert flat index to multi-dimensional indices
+               (loop for dim from (1- current-rank) downto 0
+                     for dim-size = (nth dim current-shape)
+                     do (progn
+                          (setf size (/ size dim-size))
+                          (setf (nth dim current-indices) (mod (floor flat-idx size) dim-size))))
+               ;; Map to target indices (skip leading dimensions)
+               (let ((target-indices (subseq current-indices extra-dims)))
+                 ;; Adjust for broadcast dimensions
+                 (loop for i from 0 below target-rank
+                       when (= (nth i target-shape) 1)
+                       do (setf (nth i target-indices) 0))
+                 (incf (apply #'aref result target-indices)
+                       (apply #'aref array current-indices)))))))
+        
+        ;; Target rank > current rank: shouldn't happen in gradient computation
+        (t (error "Cannot unbroadcast to higher rank: ~A -> ~A" 
+                  current-shape target-shape)))
+      
+      result)))

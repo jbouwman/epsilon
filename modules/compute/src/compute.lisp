@@ -2475,6 +2475,27 @@
   "Apply an operation element-wise to broadcasted arrays without copying data.
    This is the main entry point for memory-efficient broadcasting operations."
   (cond
+    ;; No arguments - return identity element if possible
+    ((null arrays)
+     (funcall operation))
+    
+    ;; Single argument - handle unary operations  
+    ((= (length arrays) 1)
+     (let ((arg (first arrays)))
+       (cond
+         ;; For arrays, always use broadcast with appropriate identity element
+         ((arrayp arg)
+          ;; Unary minus is subtract from 0
+          ;; Check if operation is subtraction by testing on scalars
+          (if (handler-case (= (funcall operation 5) -5) 
+                (error () nil))
+              ;; It's unary minus
+              (bc:broadcast-binary-op operation 0 arg)
+              ;; Some other unary operation - just return arg for now
+              arg))
+         ;; For scalars, just apply the operation
+         (t (funcall operation arg)))))
+    
     ;; All scalars - direct operation
     ((every #'numberp arrays)
      (apply operation arrays))

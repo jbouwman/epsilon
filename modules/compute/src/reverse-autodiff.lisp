@@ -166,27 +166,31 @@
   (register-gradient (intern "*" "EPSILON.COMPUTE")
   (lambda (node v-adjoints)
     ;; d/dx(x * y) = y, d/dy(x * y) = x
-    (let ((values (mapcar #'tape-node-value (tape-node-parents node)))
-          (parents (tape-node-parents node))
-          (result-value (tape-node-value node)))
+    (let* ((parents (tape-node-parents node))
+           (values (mapcar #'tape-node-value parents)))
       (case (length values)
-        (2 (let ((grad-x (second values))
-                 (grad-y (first values)))
-             ;; Handle broadcasting for arrays
-             (when (and (arrayp result-value) (arrayp (first values)))
-               (let ((x-shape (array-dimensions (first values)))
-                     (result-shape (array-dimensions result-value)))
-                 (unless (equal x-shape result-shape)
-                   (setf grad-x (bc:broadcast-to grad-x result-shape))
-                   (setf grad-x (bc:unbroadcast-gradient grad-x x-shape)))))
-             (when (and (arrayp result-value) (arrayp (second values)))
-               (let ((y-shape (array-dimensions (second values)))
-                     (result-shape (array-dimensions result-value)))
-                 (unless (equal y-shape result-shape)
-                   (setf grad-y (bc:broadcast-to grad-y result-shape))
-                   (setf grad-y (bc:unbroadcast-gradient grad-y y-shape)))))
-             (list (cons (first parents) grad-x)
-                   (cons (second parents) grad-y))))
+        (2 (let* ((x-val (first values))
+                  (y-val (second values))
+                  ;; The gradient wrt x is y, but needs unbroadcasting to x's shape
+                  (grad-x (if (numberp x-val)
+                             ;; x is scalar, so sum all elements of y
+                             (if (arrayp y-val)
+                                 (reduce #'+ (make-array (array-total-size y-val)
+                                                       :displaced-to y-val))
+                                 y-val)
+                             ;; x is array, return y as-is (will be broadcast in propagate)
+                             y-val))
+                  ;; The gradient wrt y is x, but needs unbroadcasting to y's shape
+                  (grad-y (if (numberp y-val)
+                             ;; y is scalar, so sum all elements if x is array
+                             (if (arrayp x-val)
+                                 (reduce #'+ (make-array (array-total-size x-val)
+                                                       :displaced-to x-val))
+                                 x-val)
+                             ;; y is array, return x as-is (will be broadcast in propagate)
+                             x-val)))
+             (list (cons (first parents) grad-x)   ; df/dx = y (unbroadcast if needed)
+                   (cons (second parents) grad-y))))  ; df/dy = x (unbroadcast if needed)
         (otherwise 
          ;; For n-ary multiplication
          (loop for parent in parents
@@ -351,18 +355,58 @@
                      (symbol-name op)
                      (string op))))
     (cond
-      ((string= op-name "+") #'cl:+)
-      ((string= op-name "-") #'cl:-)
-      ((string= op-name "*") #'cl:*)
-      ((string= op-name "/") #'cl:/)
-      ((string= op-name "^") #'expt)
-      ((string= op-name "SIN") #'cl:sin)
-      ((string= op-name "COS") #'cl:cos)
-      ((string= op-name "TAN") #'cl:tan)
-      ((string= op-name "EXP") #'cl:exp)
-      ((string= op-name "LOG") #'cl:log)
-      ((string= op-name "SQRT") #'cl:sqrt)
-      ((string= op-name "ABS") #'cl:abs)
+      ((string= op-name "+") (lambda (&rest args) 
+                                (if (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")
+                                    (apply (symbol-function (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")) #'cl:+ args)
+                                    (apply #'cl:+ args))))
+      ((string= op-name "-") (lambda (&rest args) 
+                                (if (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")
+                                    (apply (symbol-function (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")) #'cl:- args)
+                                    (apply #'cl:- args))))
+      ((string= op-name "*") (lambda (&rest args) 
+                                (if (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")
+                                    (apply (symbol-function (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")) #'cl:* args)
+                                    (apply #'cl:* args))))
+      ((string= op-name "/") (lambda (&rest args) 
+                                (if (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")
+                                    (apply (symbol-function (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")) #'cl:/ args)
+                                    (apply #'cl:/ args))))
+      ((string= op-name "^") (lambda (&rest args) 
+                                (if (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")
+                                    (apply (symbol-function (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")) #'expt args)
+                                    (apply #'expt args))))
+      ((string= op-name "SIN") (lambda (x) 
+                                  (if (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")
+                                      (funcall (symbol-function (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")) #'cl:sin x)
+                                      (cl:sin x))))
+      ((string= op-name "COS") (lambda (x) 
+                                  (if (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")
+                                      (funcall (symbol-function (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")) #'cl:cos x)
+                                      (cl:cos x))))
+      ((string= op-name "TAN") (lambda (x) 
+                                  (if (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")
+                                      (funcall (symbol-function (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")) #'cl:tan x)
+                                      (cl:tan x))))
+      ((string= op-name "EXP") (lambda (x) 
+                                  (if (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")
+                                      (funcall (symbol-function (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")) #'cl:exp x)
+                                      (cl:exp x))))
+      ((string= op-name "LOG") (lambda (x) 
+                                  (if (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")
+                                      (funcall (symbol-function (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")) #'cl:log x)
+                                      (cl:log x))))
+      ((string= op-name "SQRT") (lambda (x) 
+                                   (if (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")
+                                       (funcall (symbol-function (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")) #'cl:sqrt x)
+                                       (cl:sqrt x))))
+      ((string= op-name "ABS") (lambda (x) 
+                                  (if (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")
+                                      (funcall (symbol-function (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")) #'cl:abs x)
+                                      (cl:abs x))))
+      ((string= op-name "SUM") (lambda (x)
+                                  (if (arrayp x)
+                                      (reduce #'+ (make-array (array-total-size x) :displaced-to x))
+                                      x)))
       ((string= op-name "STOP-GRADIENT") #'identity) ; Pass through value
       (t (error "Unknown operation: ~A" op)))))
 
@@ -397,7 +441,19 @@
       (dolist (parent-grad local-grads)
         (let ((parent (car parent-grad))
               (grad (cdr parent-grad)))
-          (incf (tape-node-adjoint parent) (* adjoint grad)))))))
+          ;; Use broadcast-aware multiplication for gradient accumulation
+          (let ((grad-contrib (if (and (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")
+                                       (or (arrayp adjoint) (arrayp grad)))
+                                  (funcall (symbol-function (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE"))
+                                          #'* adjoint grad)
+                                  (* adjoint grad))))
+            ;; Use broadcast-aware addition for gradient accumulation
+            (setf (tape-node-adjoint parent)
+                  (if (and (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE")
+                           (or (arrayp (tape-node-adjoint parent)) (arrayp grad-contrib)))
+                      (funcall (symbol-function (find-symbol "BROADCAST-OPERATION" "EPSILON.COMPUTE"))
+                              #'+ (or (tape-node-adjoint parent) 0) grad-contrib)
+                      (+ (or (tape-node-adjoint parent) 0) grad-contrib)))))))))
 
 ;;; Main interface
 
@@ -414,15 +470,36 @@
     ;; Extract gradients in order
     (mapcar (lambda (var) 
               (let ((grad (gethash var grad-table 0)))
-                ;; Handle NaN
-                (when (and (not (numberp grad)) handle-nan)
+                ;; Handle NaN - check for actual NaN values, not just non-numbers
+                (when (and handle-nan
+                          (or (and (numberp grad) 
+                                   (not (= grad grad))) ; NaN test for numbers
+                              (and (arrayp grad)
+                                   (some (lambda (x) (and (numberp x) (not (= x x))))
+                                         (make-array (array-total-size grad) 
+                                                    :displaced-to grad)))))
                   (setf grad (case handle-nan
-                              (:zero 0)
-                              (:warn (warn "NaN gradient for ~A" var) 0)
+                              (:zero (if (arrayp grad)
+                                        (make-array (array-dimensions grad) 
+                                                   :initial-element 0)
+                                        0))
+                              (:warn (warn "NaN gradient for ~A" var) 
+                                    (if (arrayp grad)
+                                        (make-array (array-dimensions grad) 
+                                                   :initial-element 0)
+                                        0))
                               (:error (error "NaN gradient for ~A" var)))))
-                ;; Apply clipping
+                ;; Apply clipping to arrays or scalars
                 (when clip-value
-                  (setf grad (max (- clip-value) (min clip-value grad))))
+                  (setf grad (if (arrayp grad)
+                                (let ((result (make-array (array-dimensions grad))))
+                                  (dotimes (i (array-total-size grad))
+                                    (setf (row-major-aref result i)
+                                          (max (- clip-value) 
+                                               (min clip-value 
+                                                    (row-major-aref grad i)))))
+                                  result)
+                                (max (- clip-value) (min clip-value grad)))))
                 grad))
             var-names)))
 
@@ -544,3 +621,204 @@
   "Get output value from tape"
   (tape-node-value (tape-output-node tape)))
 
+;;; Reverse-mode differentiation implementation
+
+#|
+;; DUPLICATE - Commented out, using HAMT version above
+(defparameter *gradient-rules* (make-hash-table :test #'eq)
+  "Hash table of gradient rules for operations")
+
+(defun register-gradient-rule (op-name gradient-fn)
+  "Register a gradient computation rule for an operation"
+  (setf (gethash op-name *gradient-rules*) gradient-fn))
+
+(defun get-gradient-fn (op)
+  "Get gradient function for an operation"
+  (gethash op *gradient-rules*))
+|#
+
+#|
+;; DUPLICATE - Using the earlier HAMT-based version
+(defun reverse-diff (expr vars bindings)
+  "Compute gradients using reverse-mode autodiff with tape.
+   Returns a list of gradients in the same order as vars."
+  (let* ((tape (build-tape expr bindings))
+         (nodes (tape-nodes tape))
+         (num-nodes (length nodes))
+         ;; Initialize adjoints (gradients) to 0
+         (adjoints (make-array num-nodes :initial-element 0)))
+    
+    ;; Set gradient of output to 1
+    (setf (aref adjoints (1- num-nodes)) 1)
+    
+    ;; Backward pass - propagate gradients
+    (loop for i from (1- num-nodes) downto 0
+          for node = (aref nodes i)
+          for adjoint = (aref adjoints i)
+          when (and (tape-node-parents node) 
+                   (not (zerop adjoint)))
+          do (propagate-gradient node adjoint nodes adjoints))
+    
+    ;; Extract gradients for requested variables
+    (mapcar (lambda (var)
+              (let ((var-node (gethash var (tape-var-nodes tape))))
+                (if var-node
+                    (aref adjoints (position var-node nodes))
+                    0)))
+            vars)))
+|#
+
+#|
+(defun propagate-gradient (node adjoint nodes adjoints)
+  "Propagate gradient from node to its parents"
+  (let* ((op (tape-node-op node))
+         (parents (tape-node-parents node))
+         (parent-values (mapcar #'tape-node-value parents))
+         (grad-rule (gethash op *gradient-rules*)))
+    
+    (when grad-rule
+      ;; Apply gradient rule
+      (let ((parent-grads (funcall grad-rule node adjoint parents parent-values)))
+        ;; Accumulate gradients to parents
+        (loop for parent in parents
+              for parent-grad in parent-grads
+              for parent-idx = (position parent nodes)
+              when parent-idx
+              do (incf (aref adjoints parent-idx) parent-grad))))))
+|#
+
+#|
+;;; Gradient Rules for Broadcasting Operations
+
+;; Addition gradient rule with broadcasting
+(register-gradient-rule '+
+  (lambda (node grad parents parent-values)
+    ;; Gradient of addition is 1 for each parent
+    ;; But we need to unbroadcast if shapes differ
+    (mapcar (lambda (parent parent-val)
+              (if (arrayp parent-val)
+                  (let ((parent-shape (array-dimensions parent-val))
+                        (output-shape (if (arrayp (tape-node-value node))
+                                        (array-dimensions (tape-node-value node))
+                                        nil)))
+                    (if (equal parent-shape output-shape)
+                        grad  ; No unbroadcasting needed
+                        (bc:unbroadcast-gradient grad parent-shape)))
+                  ;; Scalar parent - sum all gradient elements
+                  (if (arrayp grad)
+                      (reduce #'+ (make-array (array-total-size grad)
+                                            :displaced-to grad))
+                      grad)))
+            parents parent-values)))
+
+;; Multiplication gradient rule with broadcasting
+(register-gradient-rule '*
+  (lambda (node grad parents parent-values)
+    ;; Gradient of multiplication: df/dx = y, df/dy = x
+    (let ((x-val (first parent-values))
+          (y-val (second parent-values)))
+      (list
+       ;; Gradient wrt first parent
+       (let ((local-grad (if (arrayp grad)
+                             (bc:broadcast-binary-op #'* grad y-val)
+                             (* grad y-val))))
+         (if (arrayp x-val)
+             (bc:unbroadcast-gradient local-grad (array-dimensions x-val))
+             (bc:unbroadcast-gradient local-grad nil)))
+       ;; Gradient wrt second parent  
+       (let ((local-grad (if (arrayp grad)
+                             (bc:broadcast-binary-op #'* grad x-val)
+                             (* grad x-val))))
+         (if (arrayp y-val)
+             (bc:unbroadcast-gradient local-grad (array-dimensions y-val))
+             (bc:unbroadcast-gradient local-grad nil)))))))
+
+;; Subtraction gradient rule
+(register-gradient-rule '-
+  (lambda (node grad parents parent-values)
+    (if (= (length parents) 1)
+        ;; Unary minus: gradient is -grad
+        (list (if (arrayp grad)
+                  (bc:broadcast-binary-op #'* grad -1)
+                  (- grad)))
+        ;; Binary subtraction: df/dx = 1, df/dy = -1
+        (let ((x-val (first parent-values))
+              (y-val (second parent-values)))
+          (list
+           ;; Gradient wrt first parent
+           (if (arrayp x-val)
+               (bc:unbroadcast-gradient grad (array-dimensions x-val))
+               (bc:unbroadcast-gradient grad nil))
+           ;; Gradient wrt second parent (negated)
+           (let ((neg-grad (if (arrayp grad)
+                               (bc:broadcast-binary-op #'* grad -1)
+                               (- grad))))
+             (if (arrayp y-val)
+                 (bc:unbroadcast-gradient neg-grad (array-dimensions y-val))
+                 (bc:unbroadcast-gradient neg-grad nil))))))))
+
+;; Division gradient rule  
+(register-gradient-rule '/
+  (lambda (node grad parents parent-values)
+    (let ((x-val (first parent-values))
+          (y-val (second parent-values)))
+      (list
+       ;; df/dx = 1/y
+       (let ((local-grad (if (arrayp grad)
+                             (bc:broadcast-binary-op #'* grad 
+                                                    (bc:broadcast-binary-op #'/ 1 y-val))
+                             (* grad (/ 1 y-val)))))
+         (if (arrayp x-val)
+             (bc:unbroadcast-gradient local-grad (array-dimensions x-val))
+             (bc:unbroadcast-gradient local-grad nil)))
+       ;; df/dy = -x/y^2
+       (let ((local-grad (if (arrayp grad)
+                             (bc:broadcast-binary-op #'* grad
+                                                    (bc:broadcast-binary-op #'/ 
+                                                                           (bc:broadcast-binary-op #'* x-val -1)
+                                                                           (bc:broadcast-binary-op #'* y-val y-val)))
+                             (* grad (- (/ x-val (* y-val y-val)))))))
+         (if (arrayp y-val)
+             (bc:unbroadcast-gradient local-grad (array-dimensions y-val))
+             (bc:unbroadcast-gradient local-grad nil)))))))
+
+;; Power gradient rule
+(register-gradient-rule '^
+  (lambda (node grad parents parent-values)
+    (let ((x-val (first parent-values))
+          (y-val (second parent-values)))
+      (list
+       ;; df/dx = y * x^(y-1)
+       (let ((local-grad 
+              (if (arrayp grad)
+                  (bc:broadcast-binary-op #'* grad
+                                         (bc:broadcast-binary-op #'*
+                                                                y-val
+                                                                (bc:broadcast-binary-op #'expt x-val 
+                                                                                       (bc:broadcast-binary-op #'- y-val 1))))
+                  (* grad (* y-val (expt x-val (- y-val 1)))))))
+         (if (arrayp x-val)
+             (bc:unbroadcast-gradient local-grad (array-dimensions x-val))
+             (bc:unbroadcast-gradient local-grad nil)))
+       ;; df/dy = x^y * log(x)
+       (let ((local-grad
+              (if (arrayp grad)
+                  (bc:broadcast-binary-op #'* grad
+                                         (bc:broadcast-binary-op #'*
+                                                                (bc:broadcast-binary-op #'expt x-val y-val)
+                                                                (bc:broadcast-binary-op #'log x-val)))
+                  (* grad (* (expt x-val y-val) (log x-val))))))
+         (if (arrayp y-val)
+             (bc:unbroadcast-gradient local-grad (array-dimensions y-val))
+             (bc:unbroadcast-gradient local-grad nil)))))))
+
+;; Sum gradient rule
+(register-gradient-rule 'sum
+  (lambda (node grad parents parent-values)
+    ;; Gradient of sum: broadcast grad to shape of input
+    (let ((input-val (first parent-values)))
+      (if (arrayp input-val)
+          (list (make-array (array-dimensions input-val) 
+                           :initial-element grad))
+          (list grad)))))
+|#
