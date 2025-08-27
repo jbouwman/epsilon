@@ -201,7 +201,6 @@
 (deftest test-broadcast-type-promotion
   "Test type promotion during broadcasting"
   (epsilon.test:skip "Type promotion not yet implemented")
-  #|
   ;; Integer + Float should promote to float
   (let ((result (c:evaluate (c:+ (c:const 1 :dtype :int32)
                                  (c:const #(1.5 2.5) :dtype :float64)))))

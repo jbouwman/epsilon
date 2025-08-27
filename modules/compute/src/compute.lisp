@@ -610,10 +610,6 @@
   "Einstein summation notation for tensor contractions"
   (apply #'sym:symbolic 'einsum subscripts arrays))
 
-(defun outer-product (a b)
-  "Symbolic outer product"
-  (sym:symbolic 'outer-product (ensure-expr a) (ensure-expr b)))
-
 ;;; Mathematical DSL macros
 
 (defmacro math (&body body)

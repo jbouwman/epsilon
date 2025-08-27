@@ -973,14 +973,62 @@
 (defun outer-product (v w)
   "Compute outer product of two vectors"
   (let* ((v-vals (if (epsilon.compute.symbolic:const-p v) (epsilon.compute.symbolic:const-value v) v))
-         (w-vals (if (epsilon.compute.symbolic:const-p w) (epsilon.compute.symbolic:const-value w) w))
-         (n (length v-vals))
-         (m (length w-vals))
-         (result (make-array (list n m) :element-type 'double-float :initial-element 0.0d0)))
-    (dotimes (i n)
-      (dotimes (j m)
-        (setf (aref result i j) (coerce (* (aref v-vals i) (aref w-vals j)) 'double-float))))
-    result))
+         (w-vals (if (epsilon.compute.symbolic:const-p w) (epsilon.compute.symbolic:const-value w) w)))
+    (cond
+      ;; Scalar * Vector
+      ((and (numberp v-vals) (vectorp w-vals))
+       (map 'vector (lambda (x) (coerce (* v-vals x) 'double-float)) w-vals))
+      ;; Vector * Scalar
+      ((and (vectorp v-vals) (numberp w-vals))
+       (map 'vector (lambda (x) (coerce (* x w-vals) 'double-float)) v-vals))
+      ;; Vector * Vector -> Matrix
+      ((and (vectorp v-vals) (vectorp w-vals))
+       (let* ((n (length v-vals))
+              (m (length w-vals))
+              (result (make-array (list n m) :element-type 'double-float :initial-element 0.0d0)))
+         (dotimes (i n)
+           (dotimes (j m)
+             (setf (aref result i j) (coerce (* (aref v-vals i) (aref w-vals j)) 'double-float))))
+         result))
+      ;; Matrix * Vector -> 3D tensor
+      ((and (arrayp v-vals) (vectorp w-vals))
+       (let* ((v-dims (array-dimensions v-vals))
+              (w-len (length w-vals))
+              (result-dims (append v-dims (list w-len)))
+              (result (make-array result-dims :element-type 'double-float :initial-element 0.0d0)))
+         (case (length v-dims)
+           (2 ; 2D matrix
+            (let ((rows (first v-dims))
+                  (cols (second v-dims)))
+              (dotimes (i rows)
+                (dotimes (j cols)
+                  (dotimes (k w-len)
+                    (setf (aref result i j k) 
+                          (coerce (* (aref v-vals i j) (aref w-vals k)) 'double-float)))))))
+           (t (error "Unsupported matrix rank for outer product: ~A" (length v-dims))))
+         result))
+      ;; Vector * Matrix -> 3D tensor  
+      ((and (vectorp v-vals) (arrayp w-vals))
+       (let* ((v-len (length v-vals))
+              (w-dims (array-dimensions w-vals))
+              (result-dims (cons v-len w-dims))
+              (result (make-array result-dims :element-type 'double-float :initial-element 0.0d0)))
+         (case (length w-dims)
+           (2 ; 2D matrix
+            (let ((rows (first w-dims))
+                  (cols (second w-dims)))
+              (dotimes (i v-len)
+                (dotimes (j rows)
+                  (dotimes (k cols)
+                    (setf (aref result i j k)
+                          (coerce (* (aref v-vals i) (aref w-vals j k)) 'double-float)))))))
+           (t (error "Unsupported matrix rank for outer product: ~A" (length w-dims))))
+         result))
+      ;; Scalar * Scalar
+      ((and (numberp v-vals) (numberp w-vals))
+       (coerce (* v-vals w-vals) 'double-float))
+      ;; Error case
+      (t (error "Unsupported outer product between ~A and ~A" (type-of v-vals) (type-of w-vals))))))
 
 (defun eval-symbolic-expr (expr bindings)
   "Evaluate a symbolic expression with variable bindings"

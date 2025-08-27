@@ -18,7 +18,7 @@
   (let* ((matrix (c:var 'A))
          (det-expr (c:det matrix)))
     (is (sym:expr-p det-expr))
-    (is (eq (sym:expr-op det-expr) 'det))))
+    (is (string= (string (sym:expr-op det-expr)) "DET"))))
 
 (deftest test-cross-product-basic
   "Test basic cross product evaluation"
@@ -42,4 +42,4 @@
          (v2 (c:var 'v))
          (cross-expr (c:cross v1 v2)))
     (is (sym:expr-p cross-expr))
-    (is (eq (sym:expr-op cross-expr) 'cross))))
+    (is (string= (string (sym:expr-op cross-expr)) "CROSS"))))
