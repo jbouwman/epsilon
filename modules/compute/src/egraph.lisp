@@ -278,8 +278,12 @@
     ;; Reconstruct the best expression
     (reconstruct-expression egraph eclass-id best-nodes)))
 
-(defun extract-costs (egraph eclass-id cost-fn costs best-nodes)
+(defun extract-costs (egraph eclass-id cost-fn costs best-nodes &optional (depth 0))
   "Compute minimum costs for all e-classes reachable from eclass-id"
+  ;; Prevent infinite recursion
+  (when (> depth 100)
+    (return-from extract-costs))
+  
   ;; Use canonical ID to ensure consistency
   (let ((canonical-id (uf-find (egraph-unionfind egraph) eclass-id)))
     (unless (gethash canonical-id costs)
@@ -293,7 +297,7 @@
                 ;; Recursively compute costs for arguments first
                 (dolist (arg-id (enode-args enode))
                   (let ((canonical-arg (uf-find (egraph-unionfind egraph) arg-id)))
-                    (extract-costs egraph canonical-arg cost-fn costs best-nodes)))
+                    (extract-costs egraph canonical-arg cost-fn costs best-nodes (1+ depth))))
                 ;; Compute cost of this e-node
                 (let ((node-cost (compute-enode-cost enode cost-fn costs egraph)))
                   (when (< node-cost min-cost)
@@ -385,6 +389,9 @@
 (defparameter *standard-rules* nil
   "Standard algebraic rewrite rules - initialized after package loads")
 
+(defparameter *simplification-rules* nil
+  "Simplified rule set for basic simplifications without explosive growth")
+
 (defun init-standard-rules ()
   "Initialize standard rules after packages are loaded"
   ;; Find the operator symbols at runtime
@@ -461,7 +468,28 @@
                            :condition (lambda (bindings) (positive-p bindings '?x))) *standard-rules*)))
     ;; The rules are now in correct order
     ;; (transcendental rules were pushed, so they're at the front)
-    ))
+    
+    ;; Also initialize simplification rules (subset without commutativity/associativity)
+    (setf *simplification-rules*
+          (list
+            ;; Additive identity
+            (make-rewrite 'add-zero-right `(,add-op ?x 0) '?x)
+            (make-rewrite 'add-zero-left `(,add-op 0 ?x) '?x)
+            
+            ;; Subtractive identity  
+            (make-rewrite 'sub-zero `(,sub-op ?x 0) '?x)
+            (make-rewrite 'sub-self `(,sub-op ?x ?x) '0)
+            
+            ;; Multiplicative identity
+            (make-rewrite 'mul-one-right `(,mul-op ?x 1) '?x)
+            (make-rewrite 'mul-one-left `(,mul-op 1 ?x) '?x)
+            
+            ;; Multiplicative zero
+            (make-rewrite 'mul-zero-right `(,mul-op ?x 0) '0)
+            (make-rewrite 'mul-zero-left `(,mul-op 0 ?x) '0)
+            
+            ;; Division identity
+            (make-rewrite 'div-one `(,div-op ?x 1) '?x)))))
 
 ;; Condition functions for rules
 (defun not-zero-p (bindings var)
@@ -1033,15 +1061,17 @@
     ;; Default
     (t nil)))
 
-(defun saturate (egraph rules &key (limit 10) (timeout nil) (debug nil))
+(defun saturate (egraph rules &key (limit 10) (timeout 2) (debug nil))
   "Run equality saturation until fixed point or limits reached"
   (let ((iteration 0)
-        (start-time (get-internal-real-time)))
+        (start-time (get-internal-real-time))
+        (actual-timeout (or timeout 2))) ; Default 2 second timeout
     (loop
-      (when (and timeout 
-                 (> (/ (- (get-internal-real-time) start-time)
-                      internal-time-units-per-second)
-                    timeout))
+      (when (> (/ (- (get-internal-real-time) start-time)
+                  internal-time-units-per-second)
+               actual-timeout)
+        (when debug
+          (format t "~%DEBUG: Saturation timeout after ~A seconds~%" actual-timeout))
         (return :timeout))
       
       (when (>= iteration limit)
@@ -1066,13 +1096,16 @@
 
 ;; Standard rules are defined above
 
-(defun optimize-with-egraph (expr &key (rules nil) (iterations 10))
+(defun optimize-with-egraph (expr &key (rules nil) (iterations 3) (use-simple-rules t))
   "Optimize expression using e-graph equality saturation"
   ;; Ensure rules are initialized
   (when (null *standard-rules*)
     (init-standard-rules))
-  ;; Use standard rules if none provided
-  (let ((actual-rules (or rules *standard-rules*)))
+  ;; Choose rule set based on options
+  (let ((actual-rules (or rules 
+                          (if use-simple-rules
+                              *simplification-rules*
+                              *standard-rules*))))
     (let ((egraph (create-egraph)))
       ;; Add the expression to the e-graph
       (let ((expr-id (add-expr egraph expr)))

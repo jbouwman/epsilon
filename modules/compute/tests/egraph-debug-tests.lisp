@@ -11,7 +11,6 @@
 
 (deftest test-egraph-basic-simplification
   "Test basic e-graph simplification with debug output"
-  (skip "Saturation hanging - needs debugging")
   (let* ((x (sym:sym 'x))
          (expr (c:+ x 0)))
     (format t "~%DEBUG TEST: Original expression: ~S~%" expr)
@@ -42,7 +41,7 @@
         ;; Apply saturation
         (format t "DEBUG TEST: Starting saturation...~%")
         (handler-case
-            (let ((saturation-result (egraph:saturate eg egraph:*standard-rules* :limit 5 :debug t)))
+            (let ((saturation-result (egraph:saturate eg egraph::*simplification-rules* :limit 5 :debug t)))
               (format t "DEBUG TEST: Saturation result: ~S~%" saturation-result))
           (error (e)
             (format t "DEBUG TEST: Error during saturation: ~A~%" e)
