@@ -594,15 +594,6 @@
              pattern))
     (t pattern)))
 
-(defun apply-rewrites (egraph rules)
-  "Apply all rewrite rules to the e-graph, return number of new facts discovered"
-  (let ((new-facts 0)
-        (rule-count 0))
-    (dolist (rule rules)
-      (incf rule-count)
-      (let ((facts (apply-single-rule egraph rule)))
-        (incf new-facts facts)))
-    new-facts))
 
 (defun apply-single-rule (egraph rule)
   "Apply a single rewrite rule to all matching e-nodes in the e-graph"

@@ -2333,9 +2333,21 @@
       (sym:symbolic 'sum tensor axis)
       (sym:symbolic 'sum tensor)))
 
-(defun grad (expr var)
-  "Compute gradient with respect to a variable"
-  (diff expr var))
+(defun grad (expr &rest vars)
+  "Compute gradient with respect to one or more variables.
+   For single variable, returns the gradient expression.
+   For multiple variables, returns a list of gradient expressions."
+  (cond
+    ;; No variables specified - compute gradient w.r.t all free variables
+    ((null vars)
+     (let ((free-vars (sym:free-variables expr)))
+       (mapcar (lambda (v) (diff expr v)) free-vars)))
+    ;; Single variable - return single gradient  
+    ((= (length vars) 1)
+     (diff expr (first vars)))
+    ;; Multiple variables - return list of gradients
+    (t
+     (mapcar (lambda (v) (diff expr v)) vars))))
 
 (defun dtype-of (value)
   "Get the dtype of a value"

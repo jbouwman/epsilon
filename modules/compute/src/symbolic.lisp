@@ -34,6 +34,7 @@
    
    ;; Expression analysis
    :free-vars
+   :free-variables  ; Alias for free-vars
    :bound-vars
    :depends-on-p
    :constant-p
@@ -126,6 +127,10 @@
       (reduce #'append (mapcar #'free-vars (expr-args expr)))
       :test #'var-equal-p))
     (t nil)))
+
+(defun free-variables (expr)
+  "Alias for free-vars"
+  (free-vars expr))
 
 (defun var-equal-p (v1 v2)
   "Check if two variables are equal"

@@ -11,7 +11,6 @@
 
 (deftest test-tape-construction
   "Test computation tape construction"
-  (skip "Tape construction and autodiff package functions not yet implemented")
   ;; Simple expression: y = x^2
   (let* ((x (c:var 'x))
          (y (c:* x x))
@@ -24,7 +23,7 @@
     (let ((nodes (ad:tape-nodes tape)))
       (is (>= (length nodes) 2))
       ;; Each node should have: value, parents, adjoint
-      (dolist (node nodes)
+      (loop for node across nodes do
         (is (ad:tape-node-p node))
         (is (numberp (ad:tape-node-value node)))))))
 
@@ -101,7 +100,6 @@
 
 (deftest test-vector-jacobian-product
   "Test vector-Jacobian product (VJP) for efficiency"
-  (skip "Vector-Jacobian product and gradient function not yet implemented")
   ;; Multiple outputs: f = [x^2, x*y, y^2]
   (let* ((x (c:var 'x))
          (y (c:var 'y))
@@ -181,7 +179,7 @@
 
 (deftest test-sparse-gradients
   "Test sparse gradient representation for efficiency"
-  (skip "Sparse gradient representation not yet implemented")
+  ;; Sparse gradient test enabled
   ;; Large sparse computation
   (let* ((vars (loop for i from 1 to 100
                      collect (c:var (intern (format nil "X~A" i)))))
@@ -192,7 +190,7 @@
                         collect (cons v 1)))
          (grad (ad:sparse-gradient f var-names bindings)))
     ;; Gradient should be sparse
-    (is (ad:sparse-gradient-p grad))
+    (is-true (epsilon.compute.reverse-autodiff:sparse-gradient-p grad))
     ;; Only 3 non-zero entries
     (is (= (ad:sparse-gradient-nnz grad) 3))
     ;; Check values
@@ -246,7 +244,7 @@
 
 (deftest test-stop-gradient
   "Test stop-gradient operation"
-  (skip "Stop-gradient operation not yet implemented")
+  ;; Stop-gradient test enabled
   ;; Gradient should not flow through stop-gradient
   (let* ((x (c:var 'x))
          (y (c:* x 2))

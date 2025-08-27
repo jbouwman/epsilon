@@ -53,10 +53,11 @@
 
 (defun forward-diff (expr var-name &optional (seed 1))
   "Compute forward-mode derivative"
-  ;; Forward-mode differentiation is implemented in symbolic diff
-  ;; This function will be extended with dual number support later
+  ;; Forward-mode differentiation - use symbolic differentiation for now
+  ;; Will be replaced with dual number implementation later
   (declare (ignore seed))
-  (epsilon.compute:diff expr var-name))
+  ;; Call the differentiate function which should be loaded
+  (funcall (find-symbol "DIFF" "EPSILON.COMPUTE") expr var-name))
 
 (defun gradient (expr var-names bindings)
   "Compute gradient using reverse-mode"
@@ -201,59 +202,7 @@
   "Compute Hessian using mixed mode"
   (rev:hessian-mixed-mode expr var-names bindings))
 
-(defun reverse-diff-symbolic (expr var)
-  "Symbolic reverse-mode differentiation"
-  (rev:reverse-diff-symbolic expr var))
 
-(defun sparse-gradient (expr var-names bindings)
-  "Compute sparse gradient"
-  ;; TODO: Implement sparse gradient computation
-  (rev:make-sparse-gradient
-   :indices (loop for i below (length var-names) 
-                  when (< (random 1.0) 0.1) collect i)
-   :values (loop for i below (floor (length var-names) 10)
-                collect (random 1.0))
-   :size (length var-names)))
-
-(defun sparse-gradient-p (obj)
-  "Check if object is sparse gradient"
-  (rev:sparse-gradient-p obj))
-
-(defun sparse-gradient-get (grad index)
-  "Get value from sparse gradient"
-  (rev:sparse-gradient-get grad index))
-
-(defun sparse-gradient-nnz (grad)
-  "Get number of non-zeros in sparse gradient"
-  (rev:sparse-gradient-nnz grad))
-
-(defun vector-jacobian-product (exprs var-names bindings v)
-  "Compute vector-Jacobian product"
-  (rev:vector-jacobian-product exprs var-names bindings v))
-
-(defun register-vjp-rule (op rule-fn)
-  "Register custom VJP rule"
-  (rev:register-vjp-rule op rule-fn))
-
-(defun stop-gradient (expr)
-  "Stop gradient flow"
-  (rev:stop-gradient expr))
-
-(defun checkpoints-used-p ()
-  "Check if checkpoints were used"
-  (rev:checkpoints-used-p))
-
-(defun tape-memory-usage ()
-  "Get tape memory usage"
-  (rev:get-tape-memory-usage))
-
-(defun peak-tape-memory ()
-  "Get peak tape memory"
-  (rev:peak-tape-memory))
-
-(defun hessian-mixed-mode (expr var-names bindings)
-  "Compute Hessian using mixed mode"
-  (rev:hessian-mixed-mode expr var-names bindings))
 
 (defparameter *autodiff-mode* :reverse
   "Current autodiff mode")

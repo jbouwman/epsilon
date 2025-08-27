@@ -21,6 +21,7 @@
    :tape-nodes
    :tape-node-count
    :tape-output-value
+   :tape-output-node
    
    ;; Tape nodes
    :tape-node
@@ -60,7 +61,11 @@
    ;; Utilities
    :stop-gradient
    :gradient-checkpointing
-   :hessian-mixed-mode))
+   :hessian-mixed-mode
+   
+   ;; Initialization
+   :ensure-gradient-rules
+   :init-gradient-rules))
 
 (in-package epsilon.compute.reverse-autodiff)
 
@@ -75,6 +80,22 @@
   (parents nil :type list)           ; Parent nodes with local gradients
   (grad-fn nil :type (or null function)) ; Gradient computation function
   (children nil :type list))         ; Child nodes for forward references
+
+(defmethod print-object ((node tape-node) stream)
+  "Custom print method to avoid circular reference issues"
+  (print-unreadable-object (node stream :type t :identity t)
+    (format stream "id=~A op=~A value=~A"
+            (tape-node-id node)
+            (tape-node-op node)
+            (tape-node-value node))))
+
+;;; Sparse gradient structure
+
+(defstruct sparse-gradient
+  "Sparse gradient representation"
+  (indices nil :type list)     ; Indices of non-zero entries
+  (values nil :type list)      ; Values at those indices  
+  (size 0 :type fixnum))       ; Total size of gradient vector
 
 ;;; Tape structure
 
@@ -115,6 +136,7 @@
 (defun get-gradient-fn (op)
   "Get gradient function for an operation"
   (map:get *gradient-rules* op))
+
 
 ;; Initialize gradient rules after package is loaded
 (defun init-gradient-rules ()
@@ -168,6 +190,12 @@
            (y (tape-node-value (second parents))))
       (list (cons (first parents) (* y (expt x (- y 1))))
             (cons (second parents) (* (expt x y) (log x)))))))
+
+  ;; Special operations
+  (register-gradient 'stop-gradient
+    (lambda (node v-adjoints)
+      ;; Stop gradient - no gradient flows through
+      (list (cons (first (tape-node-parents node)) 0))))
 
   ;; Transcendental functions
   (register-gradient (intern "SIN" "EPSILON.COMPUTE")
@@ -303,6 +331,7 @@
       ((string= op-name "LOG") #'cl:log)
       ((string= op-name "SQRT") #'cl:sqrt)
       ((string= op-name "ABS") #'cl:abs)
+      ((string= op-name "STOP-GRADIENT") #'identity) ; Pass through value
       (t (error "Unknown operation: ~A" op)))))
 
 ;;; Backward pass
@@ -386,24 +415,18 @@
 
 (defun vector-jacobian-product (exprs var-names bindings v)
   "Compute vector-Jacobian product efficiently"
-  ;; Build tape for all outputs
-  (let* ((tape (build-tape exprs bindings))
-         (output-nodes (if (listp (tape-output-node tape))
-                          (tape-output-node tape)
-                          (list (tape-output-node tape)))))
-    ;; Set seed gradients from vector v
-    (loop for node in output-nodes
-          for vi across v
-          do (setf (tape-node-adjoint node) vi))
-    ;; Backward pass
-    (loop for i from (1- (length (tape-nodes tape))) downto 0
-          for node = (aref (tape-nodes tape) i)
-          when (tape-node-grad-fn node)
-          do (propagate-gradients node))
-    ;; Extract gradients
-    (map 'vector 
-         (lambda (var) (gethash var (tape-var-nodes tape) 0))
-         var-names)))
+  ;; VJP = v^T * J where J is the Jacobian
+  ;; Compute as sum of v[i] * grad(f[i])
+  (let* ((n-vars (length var-names))
+         (result (make-array n-vars :initial-element 0)))
+    (loop for i from 0
+          for expr in exprs
+          for weight = (aref v i)
+          do (let ((grad (reverse-diff expr var-names bindings)))
+               (loop for j from 0 below n-vars
+                     do (incf (aref result j)
+                              (* weight (nth j grad))))))
+    result))
 
 (defun register-vjp-rule (op rule-fn)
   "Register custom VJP rule for an operation"
@@ -415,11 +438,6 @@
 
 ;;; Sparse gradients
 
-(defstruct sparse-gradient
-  "Sparse representation of gradients"
-  (indices nil :type list)
-  (values nil :type list)
-  (size 0 :type fixnum))
 
 (defun sparse-gradient (expr var-names bindings)
   "Compute sparse gradient representation"
@@ -469,9 +487,8 @@
 ;;; Utilities
 
 (defun stop-gradient (expr)
-  "Stop gradient flow through expression"
-  ;; Mark expression to not propagate gradients
-  (sym:symbolic 'stop-gradient expr))
+  "Create a stop-gradient operation that prevents gradient flow"
+  (sym:make-expr :op 'stop-gradient :args (list expr)))
 
 (defun reverse-diff-symbolic (expr var)
   "Get symbolic derivative using reverse mode"
@@ -483,6 +500,7 @@
   ;; TODO: Implement mixed mode for efficiency
   (let ((n (length var-names)))
     (make-array (list n n) :initial-element 0)))
+
 
 ;;; Alias for backward compatibility
 
