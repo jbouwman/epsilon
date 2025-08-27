@@ -173,7 +173,7 @@
 
 (deftest test-einsum-broadcasting
   "Test einsum with implicit broadcasting"
-  (skip "Einsum with dtype features not yet implemented")
+  (skip "Causes infinite loop - needs debugging")
   ;; Batch matrix multiply with broadcasting
   (let* ((A (c:const #3A(((1 2) (3 4)))))  ; 1x2x2
          (B (c:const #2A((5 6) (7 8))))       ; 2x2
@@ -181,8 +181,7 @@
          (result (c:evaluate (c:einsum "bij,jk->bik" A B))))
     (is (= (array-rank result) 3))
     (is (= (array-dimension result 0) 1))
-    (is (equalp (aref result 0) #2A((19 22) (43 50)))))
-  |#)
+    (is (equalp (aref result 0) #2A((19 22) (43 50))))))
 
 (deftest test-broadcast-memory-efficiency
   "Test that broadcasting doesn't unnecessarily copy data"

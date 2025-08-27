@@ -2607,6 +2607,27 @@
     ((epsilon.compute:outer-product outer-product)
      ;; Outer product - use the implementation in auto-eval.lisp
      (epsilon.compute.auto-eval:outer-product (first args) (second args)))
+    ((epsilon.compute:det det)
+     ;; Determinant - basic 2x2 implementation
+     (let ((matrix (first args)))
+       (cond
+         ((and (arrayp matrix) (equal (array-dimensions matrix) '(2 2)))
+          ;; 2x2 determinant: ad - bc
+          (- (* (aref matrix 0 0) (aref matrix 1 1))
+             (* (aref matrix 0 1) (aref matrix 1 0))))
+         (t (error "Determinant only implemented for 2x2 matrices")))))
+    ((epsilon.compute:cross cross)
+     ;; Cross product - 3D vectors only
+     (let ((v1 (first args))
+           (v2 (second args)))
+       (if (and (arrayp v1) (arrayp v2)
+                (equal (array-dimensions v1) '(3))
+                (equal (array-dimensions v2) '(3)))
+           (make-array 3 :initial-contents
+                      (list (- (* (aref v1 1) (aref v2 2)) (* (aref v1 2) (aref v2 1)))
+                            (- (* (aref v1 2) (aref v2 0)) (* (aref v1 0) (aref v2 2)))
+                            (- (* (aref v1 0) (aref v2 1)) (* (aref v1 1) (aref v2 0)))))
+           (error "Cross product only implemented for 3D vectors"))))
     (t (error "Unknown operation: ~A" op))))
 
 (defun reduce-along-axis (array axis fn)
