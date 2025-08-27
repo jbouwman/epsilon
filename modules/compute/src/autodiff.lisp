@@ -53,10 +53,10 @@
 
 (defun forward-diff (expr var-name &optional (seed 1))
   "Compute forward-mode derivative"
-  ;; TODO: Implement dual number forward mode
-  ;; For now, return seed as placeholder to avoid circular dependency
-  (declare (ignore expr var-name))
-  seed)
+  ;; Forward-mode differentiation is implemented in symbolic diff
+  ;; This function will be extended with dual number support later
+  (declare (ignore seed))
+  (epsilon.compute:diff expr var-name))
 
 (defun gradient (expr var-names bindings)
   "Compute gradient using reverse-mode"
@@ -118,7 +118,7 @@
 ;;; Re-export reverse-mode functions
 
 (defun build-tape (expr bindings)
-  "Build computation tape"
+  "Build computation tape for expression"
   (rev:build-tape expr bindings))
 
 (defun tape-p (obj)
@@ -126,8 +126,8 @@
   (rev:tape-p obj))
 
 (defun tape-node-count (tape)
-  "Get node count in tape"
-  (rev:tape-node-count tape))
+  "Get number of nodes in tape"
+  (length (rev:tape-nodes tape)))
 
 (defun tape-nodes (tape)
   "Get nodes from tape"
@@ -135,7 +135,7 @@
 
 (defun tape-output-value (tape)
   "Get output value from tape"
-  (rev:tape-output-value tape))
+  (rev:tape-node-value (rev:tape-output-node tape)))
 
 (defun tape-node-p (obj)
   "Check if object is a tape node"
@@ -146,8 +146,60 @@
   (rev:tape-node-value node))
 
 (defun reverse-diff-with-checkpoints (expr var-names bindings &rest args)
-  "Reverse-mode with checkpointing"
+  "Reverse diff with checkpointing"
   (apply #'rev:reverse-diff-with-checkpoints expr var-names bindings args))
+
+(defun reverse-diff-symbolic (expr var)
+  "Symbolic reverse differentiation"
+  (rev:reverse-diff-symbolic expr var))
+
+(defun sparse-gradient (expr var-names bindings)
+  "Compute sparse gradient"
+  (rev:sparse-gradient expr var-names bindings))
+
+(defun sparse-gradient-p (obj)
+  "Check if object is sparse gradient"
+  (rev:sparse-gradient-p obj))
+
+(defun sparse-gradient-get (grad index)
+  "Get value from sparse gradient"
+  (rev:sparse-gradient-get grad index))
+
+(defun sparse-gradient-nnz (grad)
+  "Get number of nonzeros in sparse gradient"
+  (rev:sparse-gradient-nnz grad))
+
+(defun vector-jacobian-product (exprs var-names bindings v)
+  "Compute vector-Jacobian product"
+  (rev:vector-jacobian-product exprs var-names bindings v))
+
+(defun register-vjp-rule (op rule-fn)
+  "Register custom VJP rule"
+  (rev:register-vjp-rule op rule-fn))
+
+(defun stop-gradient (expr)
+  "Stop gradient flow"
+  (rev:stop-gradient expr))
+
+(defun checkpoints-used-p ()
+  "Check if checkpoints were used"
+  (rev:checkpoints-used-p))
+
+(defun tape-memory-usage (&optional tape)
+  "Get tape memory usage"
+  (if tape
+      (rev:get-tape-memory-usage tape)
+      (rev:get-tape-memory-usage)))
+
+(defun peak-tape-memory (&optional tape)
+  "Get peak tape memory"
+  (if tape
+      (rev:peak-tape-memory tape)
+      (rev:peak-tape-memory)))
+
+(defun hessian-mixed-mode (expr var-names bindings)
+  "Compute Hessian using mixed mode"
+  (rev:hessian-mixed-mode expr var-names bindings))
 
 (defun reverse-diff-symbolic (expr var)
   "Symbolic reverse-mode differentiation"

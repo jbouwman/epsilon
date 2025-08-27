@@ -173,6 +173,12 @@
 
 (defun add-expr (egraph expr)
   "Add a symbolic expression to the e-graph, return its e-class ID"
+  ;; Input validation
+  (unless egraph
+    (error "add-expr: egraph cannot be nil"))
+  (unless expr
+    (error "add-expr: expression cannot be nil"))
+  
   (cond
     ((sym:var-p expr)
      (let ((enode (make-enode :op (sym:var-name expr) :args nil)))
@@ -189,10 +195,8 @@
        ;; Check if any arguments are pattern variables - if so, skip this expression
        (if (some #'pattern-var-p arg-exprs)
            ;; Don't add expressions containing pattern variables
-           ;; Return a dummy ID or handle specially
-           (progn
-             (warn "Skipping expression with pattern variables: ~S" expr)
-             0)  ; Return dummy ID
+           ;; Return a dummy ID - this is expected during pattern matching
+           0  ; Return dummy ID for pattern variables
            (let* ((arg-ids (mapcar (lambda (arg) (add-expr egraph arg)) arg-exprs))
                   (enode (make-enode :op op :args arg-ids)))
              (egraph-add-enode egraph enode)))))
@@ -280,6 +284,14 @@
 
 (defun extract-costs (egraph eclass-id cost-fn costs best-nodes &optional (depth 0))
   "Compute minimum costs for all e-classes reachable from eclass-id"
+  ;; Input validation
+  (unless egraph
+    (error "extract-costs: egraph cannot be nil"))
+  (unless eclass-id
+    (error "extract-costs: eclass-id cannot be nil"))
+  (unless cost-fn
+    (error "extract-costs: cost-fn cannot be nil"))
+  
   ;; Prevent infinite recursion
   (when (> depth 100)
     (return-from extract-costs))

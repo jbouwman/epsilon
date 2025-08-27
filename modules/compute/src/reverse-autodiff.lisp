@@ -421,6 +421,22 @@
   (values nil :type list)
   (size 0 :type fixnum))
 
+(defun sparse-gradient (expr var-names bindings)
+  "Compute sparse gradient representation"
+  ;; For now, compute full gradient and convert to sparse
+  (let* ((full-grad (gradient expr var-names bindings))
+         (indices nil)
+         (values nil))
+    (loop for i from 0
+          for grad in full-grad
+          when (and grad (not (zerop grad)))
+          do (push i indices)
+             (push grad values))
+    (make-sparse-gradient 
+     :indices (nreverse indices)
+     :values (nreverse values)
+     :size (length var-names))))
+
 (defun sparse-gradient-get (grad index)
   "Get value from sparse gradient"
   (let ((pos (position index (sparse-gradient-indices grad))))
