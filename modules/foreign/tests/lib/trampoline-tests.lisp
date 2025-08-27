@@ -118,7 +118,7 @@
 (deftest test-enhanced-defshared
   "Test the enhanced defshared macro"
   ;; Define a function using the new system
-  (lib:defshared-fast test-strlen "strlen" "libc" :unsigned-long
+  (lib:defshared test-strlen "strlen" "libc" :unsigned-long
     (str :string))
   
   ;; Test it works

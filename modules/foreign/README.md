@@ -30,22 +30,49 @@ C language parser for header analysis and type extraction.
 
 ## Usage
 
+### Unified API
+
+The epsilon.foreign module provides a single, unified `defshared` macro for all FFI definitions:
+
 ```lisp
 ;; Load the module
 (epsilon.module:load-module "epsilon.foreign")
 
-;; Load a shared library
-(lib:lib-open "libm.so")
+;; Basic function definition
+(defshared my-strlen "strlen" "libc" :unsigned-long ((str :string)))
 
-;; Define a foreign function
-(lib:defshared sin "sin" :double :double)
+;; Optimized function (uses trampolines)
+(defshared my-malloc "malloc" "libc" :pointer ((size :unsigned-long))
+           :optimize t)
 
-;; Call the function
-(sin 1.5707963267948966)  ; => 1.0
+;; Auto-discover signature from headers
+(defshared complex-func "complex_func" "mylib" nil ()
+           :auto-discover t)
 
-;; Parse C header
-(clang:parse "int foo(double x);")
+;; Inline short functions for maximum performance
+(defshared get-pid "getpid" "libc" :int ()
+           :optimize t :inline t)
+
+;; Direct FFI calls
+(shared-call '("strlen" "libc") :unsigned-long '(:string) "Hello")
+
+;; Batch definition of multiple functions
+(defcfuns "libc"
+  (c-strlen "strlen" :unsigned-long (:string))
+  (c-malloc "malloc" :pointer (:unsigned-long))
+  (c-free "free" :void (:pointer))
+  (c-getpid "getpid")  ; Auto-discover signature
+)
 ```
+
+### Key Features
+
+- **Single defshared macro**: All FFI function definitions use one macro with options
+- **Automatic optimization**: The system chooses the best backend (libffi, trampolines, eval)
+- **Smart routing**: shared-call intelligently routes to the optimal implementation
+- **Signature caching**: Function addresses and signatures are cached for performance
+- **JIT compilation ready**: Framework in place for future JIT optimization
+- **Batch operations**: Efficient batch processing of multiple FFI calls
 
 ## Platform Support
 

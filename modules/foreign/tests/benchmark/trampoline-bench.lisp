@@ -13,14 +13,14 @@
 (lib:defshared old-getpid "getpid" "libc" :int
 	       :documentation "getpid using old eval-based approach")
 
-(lib:defshared-fast new-getpid "getpid" "libc" :int
+(lib:defshared new-getpid "getpid" "libc" :int
 		    :documentation "getpid using new trampoline approach")
 
 (lib:defshared old-strlen "strlen" "libc" :unsigned-long
 	       (str :string)
 	       :documentation "strlen using old eval-based approach")
 
-(lib:defshared-fast new-strlen "strlen" "libc" :unsigned-long
+(lib:defshared new-strlen "strlen" "libc" :unsigned-long
 		    (str :string)
 		    :documentation "strlen using new trampoline approach")
 

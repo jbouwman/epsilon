@@ -780,9 +780,4 @@
 
 ;;; Integration with defshared
 
-(defmacro defshared (name c-name library return-type &rest args)
-  "Define a foreign function (temporary compatibility)"
-  (declare (ignore c-name library return-type args))
-  `(defun ,name (&rest args)
-     (declare (ignore args))
-     0))
+;; defshared is defined in the main foreign.lisp file

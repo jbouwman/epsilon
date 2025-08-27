@@ -46,7 +46,7 @@
     ;; Time regular call (with trampolines)
     (let ((start (get-internal-real-time)))
       (dotimes (i iterations)
-        (ffi:shared-call-fast '("strlen" "libc") :unsigned-long '(:string) test-string))
+        (ffi:shared-call '("strlen" "libc") :unsigned-long '(:string) test-string))
       (let ((regular-time (- (get-internal-real-time) start)))
         
         ;; Time optimized call

@@ -64,7 +64,7 @@
 
 ;; fcntl system call
 (lib:defshared %fcntl "fcntl" "libc" :int
-  (fd :int) (cmd :int) (arg :int)
+  ((fd :int) (cmd :int) (arg :int))
   :documentation "File control operations")
 
 ;;; ============================================================================

@@ -30,10 +30,10 @@
     (is (= (epoll:epoll-data-fd (epoll:epoll-event-data event)) 42))))
 
 ;; Define system functions for testing
-(lib:defshared test-pipe "pipe" "libc" :int (pipefd :pointer))
+(lib:defshared test-pipe "pipe" "libc" :int ((pipefd :pointer)))
 (lib:defshared test-write "write" "libc" :long
-  (fd :int) (buf :pointer) (count :unsigned-long))
-(lib:defshared test-close "close" "libc" :int (fd :int))
+  ((fd :int) (buf :pointer) (count :unsigned-long)))
+(lib:defshared test-close "close" "libc" :int ((fd :int)))
 
 (deftest test-epoll-with-pipe
   "Test epoll with a pipe"

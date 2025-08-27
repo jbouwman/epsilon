@@ -116,66 +116,66 @@
 ;;; ============================================================================
 
 (lib:defshared %socket "socket" "libc" :int 
-  (domain :int) (type :int) (protocol :int)
+  ((domain :int) (type :int) (protocol :int))
   :documentation "Create socket")
 
 (lib:defshared %bind "bind" "libc" :int
-  (sockfd :int) (addr :pointer) (addrlen :unsigned-int)
+  ((sockfd :int) (addr :pointer) (addrlen :unsigned-int))
   :documentation "Bind socket to address")
 
 (lib:defshared %listen "listen" "libc" :int
-  (sockfd :int) (backlog :int)
+  ((sockfd :int) (backlog :int))
   :documentation "Listen for connections")
 
 (lib:defshared %accept "accept" "libc" :int
-  (sockfd :int) (addr :pointer) (addrlen :pointer)
+  ((sockfd :int) (addr :pointer) (addrlen :pointer))
   :documentation "Accept connection")
 
 (lib:defshared %connect "connect" "libc" :int
-  (sockfd :int) (addr :pointer) (addrlen :unsigned-int)
+  ((sockfd :int) (addr :pointer) (addrlen :unsigned-int))
   :documentation "Connect socket")
 
 (lib:defshared %send "send" "libc" :long
-  (sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int)
+  ((sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int))
   :documentation "Send data on socket")
 
 (lib:defshared %recv "recv" "libc" :long
-  (sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int)
+  ((sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int))
   :documentation "Receive data from socket")
 
 (lib:defshared %sendto "sendto" "libc" :long
-  (sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int)
-  (dest-addr :pointer) (addrlen :unsigned-int)
+  ((sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int)
+   (dest-addr :pointer) (addrlen :unsigned-int))
   :documentation "Send data to specific address")
 
 (lib:defshared %recvfrom "recvfrom" "libc" :long
-  (sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int)
-  (src-addr :pointer) (addrlen :pointer)
+  ((sockfd :int) (buf :pointer) (len :unsigned-long) (flags :int)
+   (src-addr :pointer) (addrlen :pointer))
   :documentation "Receive data and sender address")
 
-(lib:defshared %close "close" "libc" :int (fd :int)
+(lib:defshared %close "close" "libc" :int ((fd :int))
   :documentation "Close file descriptor")
 
 (lib:defshared %shutdown "shutdown" "libc" :int
-  (sockfd :int) (how :int)
+  ((sockfd :int) (how :int))
   :documentation "Shutdown socket")
 
 (lib:defshared %setsockopt "setsockopt" "libc" :int
-  (sockfd :int) (level :int) (optname :int) (optval :pointer) (optlen :unsigned-int)
+  ((sockfd :int) (level :int) (optname :int) (optval :pointer) (optlen :unsigned-int))
   :documentation "Set socket option")
 
 (lib:defshared %getsockopt "getsockopt" "libc" :int
-  (sockfd :int) (level :int) (optname :int) (optval :pointer) (optlen :pointer)
+  ((sockfd :int) (level :int) (optname :int) (optval :pointer) (optlen :pointer))
   :documentation "Get socket option")
 
 (lib:defshared %getsockname "getsockname" "libc" :int
-  (sockfd :int) (addr :pointer) (addrlen :pointer)
+  ((sockfd :int) (addr :pointer) (addrlen :pointer))
   :documentation "Get socket's own address")
 
 (lib:defshared %getpeername "getpeername" "libc" :int
-  (sockfd :int) (addr :pointer) (addrlen :pointer)
+  ((sockfd :int) (addr :pointer) (addrlen :pointer))
   :documentation "Get peer's address")
 
 (lib:defshared %fcntl "fcntl" "libc" :int
-  (fd :int) (cmd :int) (arg :long)
+  ((fd :int) (cmd :int) (arg :long))
   :documentation "File control operations")

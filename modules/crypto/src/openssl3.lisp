@@ -19,46 +19,46 @@
 
 ;; Context management
 (lib:defshared %evp-pkey-ctx-new-from-name "EVP_PKEY_CTX_new_from_name" "libcrypto" :pointer
-  (libctx :pointer) (name :string) (propquery :pointer))
+  ((libctx :pointer) (name :string) (propquery :pointer)))
 
 (lib:defshared %evp-pkey-ctx-free "EVP_PKEY_CTX_free" "libcrypto" :void
-  (ctx :pointer))
+  ((ctx :pointer)))
 
 ;; Key generation
 (lib:defshared %evp-pkey-keygen-init "EVP_PKEY_keygen_init" "libcrypto" :int
-  (ctx :pointer))
+  ((ctx :pointer)))
 
 (lib:defshared %evp-pkey-generate "EVP_PKEY_generate" "libcrypto" :int
-  (ctx :pointer) (ppkey :pointer))
+  ((ctx :pointer) (ppkey :pointer)))
 
 (lib:defshared %evp-pkey-ctx-set-rsa-keygen-bits "EVP_PKEY_CTX_set_rsa_keygen_bits" "libcrypto" :int
-  (ctx :pointer) (bits :int))
+  ((ctx :pointer) (bits :int)))
 
 ;; Key management
 (lib:defshared %evp-pkey-new "EVP_PKEY_new" "libcrypto" :pointer ())
-(lib:defshared %evp-pkey-free "EVP_PKEY_free" "libcrypto" :void (pkey :pointer))
-(lib:defshared %evp-pkey-bits "EVP_PKEY_get_bits" "libcrypto" :int (pkey :pointer))
-(lib:defshared %evp-pkey-id "EVP_PKEY_get_id" "libcrypto" :int (pkey :pointer))
+(lib:defshared %evp-pkey-free "EVP_PKEY_free" "libcrypto" :void ((pkey :pointer)))
+(lib:defshared %evp-pkey-bits "EVP_PKEY_get_bits" "libcrypto" :int ((pkey :pointer)))
+(lib:defshared %evp-pkey-id "EVP_PKEY_get_id" "libcrypto" :int ((pkey :pointer)))
 
 ;; Digest functions
 (lib:defshared %evp-md-ctx-new "EVP_MD_CTX_new" "libcrypto" :pointer ())
-(lib:defshared %evp-md-ctx-free "EVP_MD_CTX_free" "libcrypto" :void (ctx :pointer))
-(lib:defshared %evp-get-digestbyname "EVP_get_digestbyname" "libcrypto" :pointer (name :string))
+(lib:defshared %evp-md-ctx-free "EVP_MD_CTX_free" "libcrypto" :void ((ctx :pointer)))
+(lib:defshared %evp-get-digestbyname "EVP_get_digestbyname" "libcrypto" :pointer ((name :string)))
 (lib:defshared %evp-digestinit-ex "EVP_DigestInit_ex" "libcrypto" :int
-  (ctx :pointer) (type :pointer) (impl :pointer))
+  ((ctx :pointer) (type :pointer) (impl :pointer)))
 (lib:defshared %evp-digestupdate "EVP_DigestUpdate" "libcrypto" :int
-  (ctx :pointer) (d :pointer) (cnt :unsigned-long))
+  ((ctx :pointer) (d :pointer) (cnt :unsigned-long)))
 (lib:defshared %evp-digestfinal-ex "EVP_DigestFinal_ex" "libcrypto" :int
-  (ctx :pointer) (md :pointer) (s :pointer))
+  ((ctx :pointer) (md :pointer) (s :pointer)))
 
 ;; Random number generation
 (lib:defshared %rand-bytes "RAND_bytes" "libcrypto" :int
-  (buf :pointer) (num :int))
+  ((buf :pointer) (num :int)))
 
 ;; Error handling
 (lib:defshared %err-get-error "ERR_get_error" "libcrypto" :unsigned-long ())
 (lib:defshared %err-error-string "ERR_error_string" "libcrypto" :pointer
-  (e :unsigned-long) (buf :pointer))
+  ((e :unsigned-long) (buf :pointer)))
 
 ;;;; Helper Functions
 

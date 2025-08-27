@@ -18,29 +18,10 @@
 
 ;;; Smart defshared macro with auto-discovery
 
-(defmacro defshared-auto (lisp-name c-name &optional library)
-  "Define foreign function with automatic signature detection"
-  (let ((function-designator (if library
-                                 (list c-name library)
-                                 c-name)))
-    `(progn
-       ;; Try to discover signature at compile time
-       (eval-when (:compile-toplevel :load-toplevel)
-         (let ((signature (auto-discover-signature ',function-designator)))
-           (when signature
-             (format t "Auto-discovered signature for ~A: ~A~%" 
-                     ',c-name signature))))
-       
-       ;; Define the function with runtime signature discovery
-       (defun ,lisp-name (&rest args)
-         ,(format nil "Automatically generated FFI binding for ~A" c-name)
-         (let ((signature (auto-discover-signature ',function-designator)))
-           (if signature
-               (apply #'shared-call-unified ',function-designator
-                      (getf signature :return-type)
-                      (getf signature :arg-types)
-                      args)
-               (error "Could not determine signature for ~A" ',c-name)))))))
+;; Note: defshared-auto is now integrated into the main defshared macro
+;; This function is maintained for backward compatibility and re-exported from epsilon.foreign
+
+;; REMOVED: defshared-auto - use defshared directly
 
 
 ;;;; Enhanced function call interface
@@ -49,7 +30,7 @@
   "Smart FFI call with automatic signature detection"
   (let ((signature (auto-discover-signature function-name)))
     (if signature
-        (apply #'shared-call-unified function-name 
+        (apply #'shared-call function-name 
                (getf signature :return-type)
                (getf signature :arg-types)
                args)
@@ -67,7 +48,7 @@
                                     cached-sig)
                             nil)))
           (if sig-types
-              (apply #'shared-call-unified function-name
+              (apply #'shared-call function-name
                      (getf sig-types :return-type)
                      (getf sig-types :arg-types)
                      args)
@@ -166,7 +147,7 @@
            (handler-case
                (let ((start (get-internal-real-time)))
                  (dotimes (i iterations)
-                   (apply #'shared-call-unified function-name :int '() args))
+                   (apply #'shared-call function-name :int '() args))
                  (/ (- (get-internal-real-time) start) 
                     internal-time-units-per-second))
              (error (e)
@@ -209,16 +190,30 @@
      ,@body))
 
 (defmacro defcfuns (library-name &body function-specs)
-  "Define multiple C functions from the same library"
+  "Define multiple C functions from the same library.
+   
+   Each function-spec can be:
+     (lisp-name c-name) - Auto-discover signature
+     (lisp-name c-name return-type (arg-specs...)) - Explicit signature
+   
+   Example:
+     (defcfuns \"libc\"
+       (c-strlen \"strlen\" :unsigned-long (:string))
+       (c-malloc \"malloc\" :pointer (:unsigned-long))
+       (c-free \"free\" :void (:pointer))
+       (c-getpid \"getpid\")  ; Auto-discover
+       )"
   `(progn
      ,@(mapcar (lambda (spec)
                  (destructuring-bind (lisp-name c-name &optional return-type arg-types) spec
                    (if (and return-type arg-types)
-                       `(defun ,lisp-name (&rest args)
-                          ,(format nil "FFI binding for ~A (~A ~A)" c-name return-type arg-types)
-                          (apply #'shared-call-unified (list ',c-name ',library-name)
-                                 ',return-type ',arg-types args))
-                       `(defshared-auto ,lisp-name ,c-name ,library-name))))
+                       ;; Explicit signature provided
+                       `(defshared ,lisp-name ,c-name ,library-name ,return-type
+                                   ,(mapcar (lambda (type) (list (gensym) type)) arg-types)
+                                   :optimize t)
+                       ;; Auto-discover signature
+                       `(defshared ,lisp-name ,c-name ,library-name nil ()
+                                   :auto-discover t))))
                function-specs)))
 
 ;;;; Example usage and testing

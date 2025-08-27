@@ -17,7 +17,7 @@
 ;; };
 
 (lib:defshared clock-gettime "clock_gettime" nil :int 
-  (clockid :int) (tp :pointer)
+  ((clockid :int) (tp :pointer))
   :documentation "Get time from clock")
 
 (deftest test-struct-passing
@@ -37,7 +37,7 @@
 
 ;; Array handling tests
 (lib:defshared qsort "qsort" nil :void
-  (base :pointer) (nmemb :unsigned-long) (size :unsigned-long) (compar :pointer)
+  ((base :pointer) (nmemb :unsigned-long) (size :unsigned-long) (compar :pointer))
   :documentation "Sort array using comparator function")
 
 (deftest test-array-handling
@@ -72,11 +72,11 @@
 
 ;; String array tests
 (lib:defshared getenv "getenv" nil :pointer
-  (name :string)
+  ((name :string))
   :documentation "Get environment variable")
 
 (lib:defshared setenv "setenv" nil :int
-  (name :string) (value :string) (overwrite :int)
+  ((name :string) (value :string) (overwrite :int))
   :documentation "Set environment variable")
 
 (deftest test-string-return
@@ -100,11 +100,11 @@
 
 ;; File descriptor tests
 (lib:defshared pipe "pipe" nil :int
-  (pipefd :pointer)
+  ((pipefd :pointer))
   :documentation "Create pipe")
 
 (lib:defshared libc-close "close" nil :int
-  (fd :int)
+  ((fd :int))
   :documentation "Close file descriptor")
 
 (deftest test-output-parameters

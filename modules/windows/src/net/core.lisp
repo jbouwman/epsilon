@@ -116,7 +116,7 @@
 ;;; ============================================================================
 
 (lib:defshared %wsa-startup "WSAStartup" "ws2_32" :int
-  (version-requested :unsigned-short) (wsa-data :pointer)
+  ((version-requested :unsigned-short) (wsa-data :pointer))
   :documentation "Initialize Winsock")
 
 (lib:defshared %wsa-cleanup "WSACleanup" "ws2_32" :int ()

@@ -11,14 +11,14 @@
 
 ;; Test functions
 (lib:defshared bench-strlen "strlen" "libc" :unsigned-long
-  (str :string)
+  ((str :string))
   :documentation "strlen for benchmarking")
 
-(lib:defshared bench-getpid "getpid" "libc" :int
+(lib:defshared bench-getpid "getpid" "libc" :int ()
   :documentation "getpid for benchmarking")
 
 (lib:defshared bench-memcmp "memcmp" "libc" :int
-  (s1 :pointer) (s2 :pointer) (n :unsigned-long)
+  ((s1 :pointer) (s2 :pointer) (n :unsigned-long))
   :documentation "memcmp for benchmarking")
 
 (defun run-benchmark (name iterations fn)

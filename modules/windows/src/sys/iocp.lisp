@@ -77,66 +77,66 @@
 
 ;; Core IOCP functions
 (lib:defshared %create-io-completion-port "CreateIoCompletionPort" "kernel32" :pointer
-  (file-handle :pointer)
-  (existing-completion-port :pointer)
-  (completion-key :pointer)
-  (number-of-concurrent-threads :unsigned-long)
+  ((file-handle :pointer)
+   (existing-completion-port :pointer)
+   (completion-key :pointer)
+   (number-of-concurrent-threads :unsigned-long))
   :documentation "Create or associate with I/O completion port")
 
 (lib:defshared %get-queued-completion-status "GetQueuedCompletionStatus" "kernel32" :int
-  (completion-port :pointer)
-  (number-of-bytes-transferred :pointer)
-  (completion-key :pointer)
-  (overlapped :pointer)
-  (milliseconds :unsigned-long)
+  ((completion-port :pointer)
+   (number-of-bytes-transferred :pointer)
+   (completion-key :pointer)
+   (overlapped :pointer)
+   (milliseconds :unsigned-long))
   :documentation "Wait for I/O completion on completion port")
 
 (lib:defshared %post-queued-completion-status "PostQueuedCompletionStatus" "kernel32" :int
-  (completion-port :pointer)
-  (number-of-bytes-transferred :unsigned-long)
-  (completion-key :pointer)
-  (overlapped :pointer)
+  ((completion-port :pointer)
+   (number-of-bytes-transferred :unsigned-long)
+   (completion-key :pointer)
+   (overlapped :pointer))
   :documentation "Post completion packet to completion port")
 
 (lib:defshared %close-handle "CloseHandle" "kernel32" :int
-  (handle :pointer)
+  ((handle :pointer))
   :documentation "Close handle")
 
 ;; Winsock functions
 (lib:defshared %wsa-socket "WSASocketW" "ws2_32" :pointer
-  (af :int) (type :int) (protocol :int) (protocol-info :pointer) (group :unsigned-long) (flags :unsigned-long)
+  ((af :int) (type :int) (protocol :int) (protocol-info :pointer) (group :unsigned-long) (flags :unsigned-long))
   :documentation "Create socket with extended attributes")
 
 (lib:defshared %bind "bind" "ws2_32" :int
-  (socket :pointer) (addr :pointer) (namelen :int)
+  ((socket :pointer) (addr :pointer) (namelen :int))
   :documentation "Bind socket to address")
 
 (lib:defshared %listen "listen" "ws2_32" :int
-  (socket :pointer) (backlog :int)
+  ((socket :pointer) (backlog :int))
   :documentation "Listen for connections")
 
 (lib:defshared %wsa-recv "WSARecv" "ws2_32" :int
-  (socket :pointer) (buffers :pointer) (buffer-count :unsigned-long) 
-  (bytes-received :pointer) (flags :pointer) (overlapped :pointer) (completion-routine :pointer)
+  ((socket :pointer) (buffers :pointer) (buffer-count :unsigned-long) 
+   (bytes-received :pointer) (flags :pointer) (overlapped :pointer) (completion-routine :pointer))
   :documentation "Asynchronous receive")
 
 (lib:defshared %wsa-send "WSASend" "ws2_32" :int
-  (socket :pointer) (buffers :pointer) (buffer-count :unsigned-long)
-  (bytes-sent :pointer) (flags :unsigned-long) (overlapped :pointer) (completion-routine :pointer)
+  ((socket :pointer) (buffers :pointer) (buffer-count :unsigned-long)
+   (bytes-sent :pointer) (flags :unsigned-long) (overlapped :pointer) (completion-routine :pointer))
   :documentation "Asynchronous send")
 
 (lib:defshared %wsa-accept "WSAAccept" "ws2_32" :pointer
-  (listen-socket :pointer) (addr :pointer) (addrlen :pointer) 
-  (condition-func :pointer) (callback-data :pointer)
+  ((listen-socket :pointer) (addr :pointer) (addrlen :pointer) 
+   (condition-func :pointer) (callback-data :pointer))
   :documentation "Accept connection with conditions")
 
 (lib:defshared %wsa-connect "WSAConnect" "ws2_32" :int
-  (socket :pointer) (name :pointer) (namelen :int) (caller-data :pointer)
-  (callee-data :pointer) (sqos :pointer) (gqos :pointer)
+  ((socket :pointer) (name :pointer) (namelen :int) (caller-data :pointer)
+   (callee-data :pointer) (sqos :pointer) (gqos :pointer))
   :documentation "Connect with quality of service")
 
 (lib:defshared %closesocket "closesocket" "ws2_32" :int
-  (socket :pointer)
+  ((socket :pointer))
   :documentation "Close socket")
 
 ;;;; OVERLAPPED Structure

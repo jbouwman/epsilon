@@ -105,14 +105,14 @@
       (progn
         ;; Test getpid() - simple no-argument function
         (handler-case
-            (let ((pid (call-libffi-function 'shared-call-unified "getpid" :int '())))
+            (let ((pid (call-libffi-function 'shared-call "getpid" :int '())))
               (is (and (integerp pid) (> pid 0)) "getpid should return positive integer"))
           (error (e)
             (format t "getpid test failed: ~A~%" e)))
         
         ;; Test strlen() - function with string argument
         (handler-case
-            (let ((len (call-libffi-function 'shared-call-unified "strlen" :unsigned-long '(:string) "hello")))
+            (let ((len (call-libffi-function 'shared-call "strlen" :unsigned-long '(:string) "hello")))
               (is-= len 5 "strlen('hello') should return 5"))
           (error (e)
             (format t "strlen test failed: ~A~%" e))))
@@ -125,7 +125,7 @@
         ;; Test that both implementations give same results
         (handler-case
             (let ((original-result (foreign:shared-call "getpid" :int '()))
-                  (libffi-result (call-libffi-function 'shared-call-unified "getpid" :int '())))
+                  (libffi-result (call-libffi-function 'shared-call "getpid" :int '())))
               ;; PIDs might differ due to timing, but both should be positive
               (is (and (integerp original-result) (> original-result 0)) 
                   "Original implementation should work")
@@ -149,7 +149,7 @@
                  (setf (symbol-value (find-symbol "*USE-LIBFFI-CALLS*" '#:epsilon.foreign)) nil))
                
                (handler-case
-                   (let ((result (call-libffi-function 'shared-call-unified "getpid" :int '())))
+                   (let ((result (call-libffi-function 'shared-call "getpid" :int '())))
                      (is (and (integerp result) (> result 0))
                          "Fallback should work when libffi disabled"))
                  (error (e)
@@ -175,7 +175,7 @@
                
                ;; Make some calls
                (dotimes (i 5)
-                 (call-libffi-function 'shared-call-unified "getpid" :int '()))
+                 (call-libffi-function 'shared-call "getpid" :int '()))
                
                ;; Check statistics
                (let ((stats (call-libffi-function 'get-call-statistics '("getpid" "libc"))))

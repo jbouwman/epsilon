@@ -619,6 +619,8 @@
 
 ;;; Smart defshared macros
 
+#|
+;; REMOVED: defshared-auto - use defshared directly
 (defmacro defshared-auto (name c-name library &rest options)
   "Define a foreign function with automatic type marshalling"
   (declare (ignore options))
@@ -651,4 +653,5 @@
                  (error "Wrong number of arguments for ~A: expected ~D, got ~D"
                         ,c-name (length arg-types) (length args)))))
          (error "Could not determine signature for function ~A" ,c-name)))))
+|#
 

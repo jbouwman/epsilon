@@ -120,7 +120,7 @@
   "3.43.2")
 
 (ffi:defshared sqlite3-open-v2-raw "sqlite3_open_v2" *sqlite-library* :int 
-  (filename :pointer) (ppdb :pointer) (flags :int) (zvfs :pointer))
+  ((filename :pointer) (ppdb :pointer) (flags :int) (zvfs :pointer)))
 
 (defun sqlite3-open-v2 (filename ppdb flags zvfs)
   "Open SQLite database"
@@ -130,10 +130,10 @@
       (sb-alien:free-alien c-str))))
 
 (ffi:defshared sqlite3-close-v2 "sqlite3_close_v2" *sqlite-library* :int 
-  (db :pointer))
+  ((db :pointer)))
 
 (ffi:defshared sqlite3-errmsg-raw "sqlite3_errmsg" *sqlite-library* :pointer 
-  (db :pointer))
+  ((db :pointer)))
 
 (defun sqlite3-errmsg (db)
   "Get error message from SQLite"
@@ -142,10 +142,10 @@
       (sb-alien:cast (sb-alien:sap-alien ptr (* char)) sb-alien:c-string))))
 
 (ffi:defshared sqlite3-errcode "sqlite3_errcode" *sqlite-library* :int 
-  (db :pointer))
+  ((db :pointer)))
 
 (ffi:defshared sqlite3-prepare-v2-raw "sqlite3_prepare_v2" *sqlite-library* :int 
-  (db :pointer) (sql :pointer) (nbyte :int) (ppstmt :pointer) (pptail :pointer))
+  ((db :pointer) (sql :pointer) (nbyte :int) (ppstmt :pointer) (pptail :pointer)))
 
 (defun sqlite3-prepare-v2 (db sql nbyte ppstmt pptail)
   "Prepare SQL statement"
@@ -155,22 +155,22 @@
       (sb-alien:free-alien c-str))))
 
 (ffi:defshared sqlite3-bind-parameter-count "sqlite3_bind_parameter_count" *sqlite-library* :int 
-  (stmt :pointer))
+  ((stmt :pointer)))
 
 (ffi:defshared sqlite3-bind-null "sqlite3_bind_null" *sqlite-library* :int 
-  (stmt :pointer) (index :int))
+  ((stmt :pointer) (index :int)))
 
 (ffi:defshared sqlite3-bind-int "sqlite3_bind_int" *sqlite-library* :int 
-  (stmt :pointer) (index :int) (value :int))
+  ((stmt :pointer) (index :int) (value :int)))
 
 (ffi:defshared sqlite3-bind-int64 "sqlite3_bind_int64" *sqlite-library* :int 
-  (stmt :pointer) (index :int) (value :long))
+  ((stmt :pointer) (index :int) (value :long)))
 
 (ffi:defshared sqlite3-bind-double "sqlite3_bind_double" *sqlite-library* :int 
-  (stmt :pointer) (index :int) (value :float))
+  ((stmt :pointer) (index :int) (value :float)))
 
 (ffi:defshared sqlite3-bind-text-raw "sqlite3_bind_text" *sqlite-library* :int 
-  (stmt :pointer) (index :int) (text :pointer) (nbytes :int) (destructor :pointer))
+  ((stmt :pointer) (index :int) (text :pointer) (nbytes :int) (destructor :pointer)))
 
 (defun sqlite3-bind-text (stmt index text nbytes destructor)
   "Bind text parameter"
@@ -180,16 +180,16 @@
       (sb-alien:free-alien c-str))))
 
 (ffi:defshared sqlite3-bind-blob "sqlite3_bind_blob" *sqlite-library* :int 
-  (stmt :pointer) (index :int) (blob :pointer) (nbytes :int) (destructor :pointer))
+  ((stmt :pointer) (index :int) (blob :pointer) (nbytes :int) (destructor :pointer)))
 
 (ffi:defshared sqlite3-step "sqlite3_step" *sqlite-library* :int 
-  (stmt :pointer))
+  ((stmt :pointer)))
 
 (ffi:defshared sqlite3-column-count "sqlite3_column_count" *sqlite-library* :int 
-  (stmt :pointer))
+  ((stmt :pointer)))
 
 (ffi:defshared sqlite3-column-name-raw "sqlite3_column_name" *sqlite-library* :pointer 
-  (stmt :pointer) (index :int))
+  ((stmt :pointer) (index :int)))
 
 (defun sqlite3-column-name (stmt index)
   "Get column name"
@@ -198,19 +198,19 @@
       (sb-alien:cast (sb-alien:sap-alien ptr (* char)) sb-alien:c-string))))
 
 (ffi:defshared sqlite3-column-type "sqlite3_column_type" *sqlite-library* :int 
-  (stmt :pointer) (index :int))
+  ((stmt :pointer) (index :int)))
 
 (ffi:defshared sqlite3-column-int "sqlite3_column_int" *sqlite-library* :int 
-  (stmt :pointer) (index :int))
+  ((stmt :pointer) (index :int)))
 
 (ffi:defshared sqlite3-column-int64 "sqlite3_column_int64" *sqlite-library* :long 
-  (stmt :pointer) (index :int))
+  ((stmt :pointer) (index :int)))
 
 (ffi:defshared sqlite3-column-double "sqlite3_column_double" *sqlite-library* :float 
-  (stmt :pointer) (index :int))
+  ((stmt :pointer) (index :int)))
 
 (ffi:defshared sqlite3-column-text-raw "sqlite3_column_text" *sqlite-library* :pointer 
-  (stmt :pointer) (index :int))
+  ((stmt :pointer) (index :int)))
 
 (defun sqlite3-column-text (stmt index)
   "Get column text value"
@@ -226,28 +226,28 @@
               (sb-ext:octets-to-string bytes :external-format :utf-8)))))))
 
 (ffi:defshared sqlite3-column-blob "sqlite3_column_blob" *sqlite-library* :pointer 
-  (stmt :pointer) (index :int))
+  ((stmt :pointer) (index :int)))
 
 (ffi:defshared sqlite3-column-bytes "sqlite3_column_bytes" *sqlite-library* :int 
-  (stmt :pointer) (index :int))
+  ((stmt :pointer) (index :int)))
 
 (ffi:defshared sqlite3-finalize "sqlite3_finalize" *sqlite-library* :int 
-  (stmt :pointer))
+  ((stmt :pointer)))
 
 (ffi:defshared sqlite3-reset "sqlite3_reset" *sqlite-library* :int 
-  (stmt :pointer))
+  ((stmt :pointer)))
 
 (ffi:defshared sqlite3-clear-bindings "sqlite3_clear_bindings" *sqlite-library* :int 
-  (stmt :pointer))
+  ((stmt :pointer)))
 
 (ffi:defshared sqlite3-changes "sqlite3_changes" *sqlite-library* :int 
-  (db :pointer))
+  ((db :pointer)))
 
 (ffi:defshared sqlite3-last-insert-rowid "sqlite3_last_insert_rowid" *sqlite-library* :long 
-  (db :pointer))
+  ((db :pointer)))
 
 (ffi:defshared sqlite3-exec-raw "sqlite3_exec" *sqlite-library* :int 
-  (db :pointer) (sql :pointer) (callback :pointer) (user-data :pointer) (errmsg :pointer))
+  ((db :pointer) (sql :pointer) (callback :pointer) (user-data :pointer) (errmsg :pointer)))
 
 (defun sqlite3-exec (db sql callback user-data errmsg)
   "Execute SQL directly"

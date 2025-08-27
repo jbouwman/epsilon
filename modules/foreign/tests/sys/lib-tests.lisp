@@ -12,13 +12,13 @@
 
 ;; Simple libc function bindings for testing
 
-(lib:defshared test-strlen "strlen" "libc" :unsigned-long (str :string)
+(lib:defshared test-strlen "strlen" "libc" :unsigned-long ((str :string))
   :documentation "Get length of C string")
 
-(lib:defshared test-malloc "malloc" "libc" :pointer (size :unsigned-long)
+(lib:defshared test-malloc "malloc" "libc" :pointer ((size :unsigned-long))
   :documentation "Allocate memory")
 
-(lib:defshared test-free "free" "libc" :void (ptr :pointer)
+(lib:defshared test-free "free" "libc" :void ((ptr :pointer))
   :documentation "Free memory")
 
 ;;;; Basic FFI operation tests

@@ -116,8 +116,8 @@
 
 ;;; Compiler macro for defshared functions
 
-(define-compiler-macro ffi:shared-call-fast (&whole form function-designator return-type arg-types &rest args)
-  "Optimize shared-call-fast at compile time"
+(define-compiler-macro ffi:shared-call (&whole form function-designator return-type arg-types &rest args)
+  "Optimize shared-call at compile time"
   ;; Apply same optimizations as shared-call
   (cond
     ((and (constantp function-designator)

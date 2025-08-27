@@ -7,20 +7,10 @@
 
 ;;; Main entry point - replaces all hardcoded signatures
 
-(defun shared-call-unified (function-designator return-type arg-types &rest args)
-  "Unified shared-call using libffi for all FFI calls"
-  ;; Validate inputs
-  (validate-call-signature return-type arg-types args)
-  
-  ;; Resolve function address
-  (let ((function-address (resolve-function-address function-designator)))
-    (unless function-address
-      (error "Could not find function ~A" function-designator))
-    
-    ;; Use libffi for the call - note: args is already a list from &rest
-    (libffi-call function-address return-type arg-types args)))
+;; Note: shared-call is now defined in foreign.lisp as the main unified entry point
+;; Note: resolve-function-address is now defined in foreign.lisp with caching
 
-(defun resolve-function-address (function-designator)
+(defun resolve-function-address-libffi (function-designator)
   "Resolve function designator to memory address"
   (etypecase function-designator
     (string
@@ -64,17 +54,7 @@
 (defvar *call-statistics* (make-hash-table :test 'equal)
   "Statistics for function call frequency and performance")
 
-(defvar *use-libffi-calls* t
-  "Always use libffi for FFI calls (compatibility variable)")
-
-(defvar *libffi-function-whitelist* nil
-  "List of function names to use with libffi (nil = all)")
-
-(defvar *libffi-function-blacklist* '()
-  "List of function names to avoid with libffi")
-
-(defvar *track-call-performance* nil
-  "Whether to track call performance statistics")
+;;; Variables moved to foreign.lisp to avoid redefinition warnings
 
 (defstruct call-stats
   count
@@ -104,17 +84,9 @@
 
 ;;; Smart FFI with automatic signature detection
 
-(defun ffi-call-auto (function-designator &rest args)
-  "Smart FFI call with automatic signature detection"
-  (let ((signature (auto-discover-signature function-designator)))
-    (if signature
-        (apply #'shared-call-unified function-designator 
-               (getf signature :return-type)
-               (getf signature :arg-types)
-               args)
-        (error "Could not determine signature for function ~A" function-designator))))
+;; Note: ffi-call-auto is now defined in smart-ffi.lisp to avoid duplicates
 
-(defun auto-discover-signature (function-designator)
+(defun auto-discover-signature-libffi (function-designator)
   "Attempt to automatically discover function signature"
   ;; Try to get from clang signatures module
   (handler-case
@@ -160,10 +132,10 @@
   ;; Test simple function calls
   (handler-case
       (progn
-        (let ((result (shared-call-unified "getpid" :int '())))
+        (let ((result (shared-call "getpid" :int '())))
           (format t "getpid() = ~A~%" result))
         
-        (let ((result (shared-call-unified "strlen" :unsigned-long '(:string) "hello")))
+        (let ((result (shared-call "strlen" :unsigned-long '(:string) "hello")))
           (format t "strlen(\"hello\") = ~A~%" result))
         
         (format t "libffi integration tests passed~%")

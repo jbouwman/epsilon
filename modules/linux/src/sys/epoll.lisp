@@ -87,23 +87,23 @@
 ;;;; FFI Function Definitions using epsilon.foreign
 
 (lib:defshared %epoll-create "epoll_create" "libc" :int
-  (size :int)
+  ((size :int))
   :documentation "Create epoll file descriptor (legacy)")
 
 (lib:defshared %epoll-create1 "epoll_create1" "libc" :int
-  (flags :int)
+  ((flags :int))
   :documentation "Create epoll file descriptor with flags")
 
 (lib:defshared %epoll-ctl "epoll_ctl" "libc" :int
-  (epfd :int) (op :int) (fd :int) (event :pointer)
+  ((epfd :int) (op :int) (fd :int) (event :pointer))
   :documentation "Control epoll file descriptor")
 
 (lib:defshared %epoll-wait "epoll_wait" "libc" :int
-  (epfd :int) (events :pointer) (maxevents :int) (timeout :int)
+  ((epfd :int) (events :pointer) (maxevents :int) (timeout :int))
   :documentation "Wait for events on epoll file descriptor")
 
 (lib:defshared %close "close" "libc" :int
-  (fd :int)
+  ((fd :int))
   :documentation "Close file descriptor")
 
 ;;;; epoll_event Structure

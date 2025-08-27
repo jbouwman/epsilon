@@ -51,7 +51,8 @@
        (cleanup-batch *current-batch*))))
 
 (defun batch-call (name-lib return-type arg-types &rest args)
-  "Add a call to the current batch"
+  "Add a call to the current batch or execute immediately.
+   Uses the unified shared-call API for immediate execution."
   (if *current-batch*
       (let ((call-id (gensym "CALL")))
         (push (list call-id name-lib return-type arg-types args)
@@ -59,7 +60,7 @@
         ;; Return a promise for the result
         (lambda ()
           (map:get (batch-context-deferred-results *current-batch*) call-id)))
-      ;; No batch context, execute immediately  
+      ;; No batch context, execute immediately using unified API
       (if (find-package "EPSILON.FOREIGN")
           (apply (find-symbol "SHARED-CALL" "EPSILON.FOREIGN")
                  name-lib return-type arg-types args)
@@ -93,14 +94,14 @@
 ;;; Batch execution
 
 (defun execute-batch (batch)
-  "Execute all operations in a batch"
+  "Execute all operations in a batch using the unified FFI API."
   (when batch
     (let ((calls (nreverse (batch-context-calls batch))))
       ;; Optimize call sequence if threshold met
       (when (>= (length calls) *batch-threshold*)
         (setf calls (optimize-call-sequence calls)))
       
-      ;; Execute all calls
+      ;; Execute all calls using unified shared-call
       (dolist (call calls)
         (destructuring-bind (id name-lib return-type arg-types args) call
           (let ((result (if (find-package "EPSILON.FOREIGN")

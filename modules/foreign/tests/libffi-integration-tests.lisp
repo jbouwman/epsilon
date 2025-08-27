@@ -28,7 +28,7 @@
   
   ;; Public API functions
   (is (fboundp 'foreign:ffi-call) "ffi-call should be available")
-  (is (fboundp 'foreign:shared-call-unified) "shared-call-unified should be available")
+  (is (fboundp 'foreign:shared-call) "shared-call should be available")
   (is (fboundp 'foreign:auto-discover-signature) "auto-discover-signature should be available")
   
   ;; Configuration variables
@@ -42,11 +42,11 @@
   (handler-case
       (progn
         ;; Test getpid (no arguments)
-        (let ((pid (foreign:shared-call-unified "getpid" :int '())))
+        (let ((pid (foreign:shared-call "getpid" :int '())))
           (is (and (integerp pid) (> pid 0)) "getpid should return positive integer"))
         
         ;; Test strlen (string argument)  
-        (let ((len (foreign:shared-call-unified "strlen" :unsigned-long '(:string) "hello")))
+        (let ((len (foreign:shared-call "strlen" :unsigned-long '(:string) "hello")))
           (is-= len 5 "strlen('hello') should return 5")))
     (error (e)
 	   (format t "Basic FFI call test failed: ~A~%" e)
@@ -93,11 +93,11 @@
             (let ((pid (test-getpid)))
               (is (and (integerp pid) (> pid 0)) "defshared should work"))))
         
-        ;; Test defshared-auto
-        (eval '(foreign:defshared-auto test-getpid-auto "getpid" "libc"))
+        ;; Test defshared
+        (eval '(foreign:defshared test-getpid-auto "getpid" "libc"))
         (when (fboundp 'test-getpid-auto)
           (let ((pid (test-getpid-auto)))
-            (is (and (integerp pid) (> pid 0)) "defshared-auto should work"))))
+            (is (and (integerp pid) (> pid 0)) "defshared should work"))))
     (error (e)
 	   (format t "defshared compatibility test failed: ~A~%" e))))
 
@@ -160,13 +160,13 @@
   "Test error handling in various scenarios"
   ;; Test with nonexistent function
   (handler-case
-      (foreign:shared-call-unified "nonexistent_function_xyz" :int '())
+      (foreign:shared-call "nonexistent_function_xyz" :int '())
     (error (e)
 	   (is t "Should handle nonexistent functions gracefully")))
   
   ;; Test with invalid arguments
   (handler-case
-      (foreign:shared-call-unified "strlen" :unsigned-long '(:string) 123)
+      (foreign:shared-call "strlen" :unsigned-long '(:string) 123)
     (error (e)
 	   (is t "Should handle type mismatches gracefully")))
   
@@ -187,7 +187,7 @@
   (is (and (boundp 'foreign:*libffi-library*) foreign:*libffi-library*) "libffi should be loaded")
   
   ;; Test that we can make calls with libffi
-  (let ((result (foreign:shared-call-unified "getpid" :int '())))
+  (let ((result (foreign:shared-call "getpid" :int '())))
     (is (and (integerp result) (> result 0)) 
         "Should successfully call getpid through libffi")))
 
@@ -207,7 +207,7 @@
     (dolist (test-case test-cases)
       (destructuring-bind (fn-name return-type arg-types &rest args) test-case
 			  (handler-case
-			      (let ((result (apply #'foreign:shared-call-unified 
+			      (let ((result (apply #'foreign:shared-call 
 						   fn-name return-type arg-types args)))
 				(format t "~A: OK (~A)~%" fn-name result))
 			    (error (e)
@@ -227,7 +227,7 @@
           (let ((thread-id (sb-thread:thread-name sb-thread:*current-thread*)))
             (handler-case
                 (dotimes (j 10)
-                  (let ((pid (foreign:shared-call-unified "getpid" :int '())))
+                  (let ((pid (foreign:shared-call "getpid" :int '())))
                     (sb-thread:with-mutex (results-lock)
 					  (setf (gethash (list thread-id j) results) pid))))
               (error (e)
@@ -274,7 +274,7 @@
   
   ;; Test core functionality
   (handler-case
-      (let ((pid (foreign:shared-call-unified "getpid" :int '())))
+      (let ((pid (foreign:shared-call "getpid" :int '())))
         (is (and (integerp pid) (> pid 0)) "Basic FFI should work"))
     (error (e)
 	   (format t "Core functionality test failed: ~A~%" e)))
@@ -292,7 +292,7 @@
     (unwind-protect
         (progn
           (setf foreign:*track-call-performance* t)
-          (foreign:shared-call-unified "getpid" :int '())
+          (foreign:shared-call "getpid" :int '())
           (let ((stats (foreign:get-call-statistics)))
             (is (>= (length stats) 0) "Performance tracking should work")))
       (setf foreign:*track-call-performance* original-tracking)))

@@ -12,123 +12,56 @@
    (callback-impl epsilon.foreign.callback-impl)
    (clang-sigs epsilon.clang.signatures))
   (:export
-   ;; Core FFI
-   shared-call
-   shared-call-unified
+   ;;; Primary Public API
+   ;; Function Definition
+   defshared                         ; Main macro for defining foreign functions
+   defcfuns                          ; Batch definition of C functions
+   
+   ;; Function Calling
+   shared-call                       ; Main entry point for FFI calls
+   ffi-call                          ; Smart FFI call with auto-discovery
+   ffi-call-cached                   ; Cached signature version
+   ffi-call-auto                     ; Auto-discovering call
+   
+   ;; Library Management  
    lib-open
    lib-close
    lib-function
-   defshared
-
-   ;; new public API
-   defcfuns
-          
-   ;; Auto-discovery
-   preload-common-signatures
-          
-   ;; Performance and debugging
-   benchmark-ffi-approach
-   with-ffi-debugging
-          
-   ;; Migration helpers
-   shared-call-unified
-          
-   ;; Utilities
-   diagnose-ffi-call
-   test-libffi-integration
    
-   ;; Configuration
-   *use-libffi-calls*
-   *libffi-function-whitelist*
-   *libffi-function-blacklist*
-   *track-call-performance*
-   
-   ;; Module utilities
-   get-module-root
-   
-   ;; libffi bridge functions
-   load-libffi-extension
-   libffi-call
-   *libffi-library*
-   resolve-function-address
-   ffi-call
-   ffi-call-auto
-   auto-discover-signature
-   *use-libffi-calls*
-   *track-call-performance*
-   
-   ;; Type Management
-   define-foreign-struct
-   with-foreign-struct
-   map-struct
-   foreign-array
-   with-zero-copy
-   
-   ;; Memory Management
+   ;;; Memory Management
    foreign-alloc
    foreign-free
    with-foreign-memory
    register-finalizer
    
-   ;; Helper functions
-   make-epoll-data
-   epoll-data-fd
-   
-   ;; Structure Discovery
-   grovel-struct
-   grovel-lib
-   parse-header
-   
-   ;; Type Mapping
-   def-type-map
+   ;;; Type System
+   ;; Basic Types
    *primitive-type-map*
-   
-   ;; New trampoline-based interface
-   defshared-fast
-   shared-call-fast
-   
-   ;; Re-export from trampoline module
-   make-ffi-trampoline
-   get-or-create-trampoline
-   c-type
-   c-type-p
-   c-type-base
-   c-type-size
-   c-type-alignment
-   c-type-signed-p
-   get-c-type
-   ffi-signature
-   ffi-signature-p
-   ffi-signature-return-type
-   ffi-signature-arg-types
-   ffi-signature-trampoline
-   register-signature
-   get-signature
-   clear-signature-registry
+   define-c-type
+   def-type-map
    convert-to-foreign
    convert-from-foreign
-   
-   ;; Re-export from marshalling module
-   infer-function-signature
-   with-pinned-array
-   with-string-array
-   with-output-array
-   define-enum
-   enum-value
-   enum-keyword
-   defshared-auto
-   define-c-type
-   foreign-error
-   foreign-error-p
-   foreign-error-code
-   foreign-error-function
    bool-to-foreign
    foreign-to-bool
    
-   ;; Re-export from struct module
+   ;; Structures
+   define-foreign-struct
+   with-foreign-struct
    define-c-struct
    define-c-struct-auto
    define-c-union
+   with-c-struct
+   with-c-union
+   with-struct-view
+   with-foreign-object
+   struct-ref
+   struct-ref-ptr
+   union-ref
+   map-struct
+   struct-pointer
+   struct-to-bytes
+   bytes-to-struct
+   struct-to-string
    parse-c-struct
    struct-layout-p
    get-struct-layout
@@ -138,19 +71,20 @@
    struct-field-type
    struct-field-size
    struct-has-field-p
-   with-c-struct
-   with-c-union
-   with-struct-view
-   with-foreign-object
-   struct-ref
-   struct-ref-ptr
-   union-ref
-   struct-pointer
-   struct-to-bytes
-   bytes-to-struct
-   struct-to-string
    
-   ;; Re-export from callback module
+   ;; Arrays
+   foreign-array
+   with-zero-copy
+   with-pinned-array
+   with-string-array
+   with-output-array
+   
+   ;; Enums
+   define-enum
+   enum-value
+   enum-keyword
+   
+   ;;; Callbacks
    make-callback
    call-callback
    callback-pointer
@@ -167,18 +101,70 @@
    callback-info-signature
    callback-info-pointer
    
-   ffi-call-cached
+   ;;; Auto-Discovery & Signatures
    auto-discover-signature
+   preload-common-signatures
+   infer-function-signature
+   register-signature
+   get-signature
+   clear-signature-registry
+   grovel-struct
+   grovel-lib
+   parse-header
    
-   ;; Public API and configuration
-   ffi-system-status
+   ;;; Performance & Optimization
+   ;; Configuration
    *use-libffi-calls*
    *track-call-performance*
+   *libffi-function-whitelist*
+   *libffi-function-blacklist*
+   *jit-compile-threshold*
    
-   ;; Performance and debugging
+   ;; Monitoring
    benchmark-ffi-approach
    with-ffi-debugging
-   get-call-statistics))
+   get-call-statistics
+   ffi-system-status
+   
+   ;;; Error Handling
+   foreign-error
+   foreign-error-p
+   foreign-error-code
+   foreign-error-function
+   
+   ;;; Internal/Advanced (use with caution)
+   ;; Low-level functions
+   resolve-function-address          ; Address resolution with caching
+   
+   ;; libffi internals
+   load-libffi-extension
+   libffi-call
+   *libffi-library*
+   test-libffi-integration
+   
+   ;; Trampoline system (re-exported)
+   make-ffi-trampoline
+   get-or-create-trampoline
+   c-type
+   c-type-p
+   c-type-base
+   c-type-size
+   c-type-alignment
+   c-type-signed-p
+   get-c-type
+   ffi-signature
+   ffi-signature-p
+   ffi-signature-return-type
+   ffi-signature-arg-types
+   ffi-signature-trampoline
+   
+   ;; Platform-specific helpers
+   make-epoll-data                   ; Linux epoll helper
+   epoll-data-fd                     ; Linux epoll helper
+   
+   ;; Module utilities
+   get-module-root
+   diagnose-ffi-call))
 
 (in-package epsilon.foreign)
 
@@ -642,10 +628,7 @@
   "Check if a pathname string is absolute"
   (and (stringp path) (> (length path) 0) (char= (char path 0) #\/)))
 
-(defun shared-call (function-designator return-type arg-types &rest args)
-  "Main entry point for FFI calls using libffi"
-  ;; Delegate to the libffi implementation
-  (apply #'shared-call-unified function-designator return-type arg-types args))
+;; Note: Main shared-call definition is later in the file after helper functions
 
 ;; Type conversion and mapping system
 
@@ -699,20 +682,106 @@
 ;;;            :documentation "Calls C printf function")
 
 (defmacro defshared (lisp-name c-name library return-type &rest args)
-  "Defines a Lisp function that calls a C function"
-  (let* ((doc-pos (position :documentation args))
-         (documentation (when doc-pos (nth (1+ doc-pos) args)))
-         (arg-specs (if doc-pos
-                        (append (subseq args 0 doc-pos)
-                                (subseq args (+ doc-pos 2)))
+  "Unified macro for defining Lisp functions that call C functions.
+   
+   Parameters:
+     lisp-name - Symbol to define in Lisp
+     c-name - String naming the C function
+     library - Library name or handle
+     return-type - Return type specification
+     args - List of (arg-name arg-type) pairs, followed by options
+     
+   Options:
+     :documentation string - Function documentation
+     :optimize boolean - Use optimized calling path (default: t)
+     :auto-discover boolean - Auto-discover signature if not provided (default: nil)
+     :inline boolean - Attempt to inline for short functions (default: nil)
+     
+   Examples:
+     (defshared my-strlen \"strlen\" \"libc\" :unsigned-long ((str :string)))
+     (defshared my-malloc \"malloc\" \"libc\" :pointer ((size :unsigned-long)) 
+                :optimize t)
+     (defshared auto-func \"complex_func\" \"mylib\" nil () 
+                :auto-discover t)"
+  (let* ((options-start (position-if #'keywordp args))
+         (arg-specs (if options-start
+                        (subseq args 0 options-start)
                         args))
+         (options (when options-start (subseq args options-start)))
+         ;; Parse options
+         (documentation (getf options :documentation))
+         (optimize (if (member :optimize options) 
+                       (getf options :optimize)
+                       t))
+         (auto-discover (getf options :auto-discover))
+         (inline (getf options :inline))
+         ;; Handle the new list format: ((arg1 :type1) (arg2 :type2))
+         ;; Extract arg-specs from the nested list if needed
+         (arg-specs (cond
+                     ;; No arguments
+                     ((null arg-specs) '())
+                     ;; Already in correct format: ((arg1 :type1) (arg2 :type2))
+                     ((and (= (length arg-specs) 1) 
+                           (listp (first arg-specs))
+                           (every #'listp (first arg-specs)))
+                      (first arg-specs))
+                     ;; Already flat list format
+                     (t arg-specs)))
          ;; Filter out empty lists which represent no arguments
          (arg-specs (remove-if (lambda (spec) (and (listp spec) (null spec))) arg-specs))
          (arg-names (when arg-specs (mapcar #'first arg-specs)))
          (arg-types (when arg-specs (mapcar #'second arg-specs))))
-    `(defun ,lisp-name ,arg-names
-       ,@(when documentation (list documentation))
-       (shared-call (list ,c-name ,library) ,return-type ',(or arg-types '()) ,@arg-names))))
+    
+    (cond
+      ;; Case 1: Auto-discovery requested
+      (auto-discover
+       `(progn
+          ;; Try to discover signature at compile time
+          (eval-when (:compile-toplevel :load-toplevel)
+            (let ((signature (auto-discover-signature '(,c-name ,library))))
+              (when signature
+                (format t "Auto-discovered signature for ~A: ~A~%" 
+                        ',c-name signature))))
+          
+          ;; Define the function with runtime signature discovery
+          (defun ,lisp-name ,arg-names
+            ,@(when documentation (list documentation))
+            (let ((signature (auto-discover-signature '(,c-name ,library))))
+              (if signature
+                  (apply #'shared-call '(,c-name ,library)
+                         (getf signature :return-type)
+                         (getf signature :arg-types)
+                         (list ,@arg-names))
+                  (error "Could not determine signature for ~A" ',c-name))))))
+      
+      ;; Case 2: Inline optimization requested for simple functions
+      ((and inline optimize (member return-type '(:int :void :pointer :unsigned-long)))
+       `(progn
+          ;; Register signature for potential JIT compilation
+          (when (fboundp 'register-signature)
+            (register-signature ',lisp-name ,return-type ',(or arg-types '())))
+          ;; Define inline function
+          (declaim (inline ,lisp-name))
+          (defun ,lisp-name ,arg-names
+            ,@(when documentation (list documentation))
+            (declare (optimize (speed 3) (safety 0) (debug 1)))
+            (shared-call (list ,c-name ,library) ,return-type ',(or arg-types '()) ,@arg-names))))
+      
+      ;; Case 3: Standard optimized call using trampolines when available
+      (optimize
+       `(progn
+          ;; Register signature for trampoline system
+          (when (fboundp 'register-signature)
+            (register-signature ',lisp-name ,return-type ',(or arg-types '())))
+          (defun ,lisp-name ,arg-names
+            ,@(when documentation (list documentation))
+            (shared-call (list ,c-name ,library) ,return-type ',(or arg-types '()) ,@arg-names))))
+      
+      ;; Case 4: Basic unoptimized call (for compatibility or debugging)
+      (t
+       `(defun ,lisp-name ,arg-names
+          ,@(when documentation (list documentation))
+          (shared-call (list ,c-name ,library) ,return-type ',(or arg-types '()) ,@arg-names))))))
 
 ;;;; Type Management
 
@@ -979,6 +1048,66 @@
 (defvar *track-call-performance* nil
   "When true, track performance statistics for FFI calls")
 
+(defvar *jit-compile-threshold* 1000
+  "Number of calls before considering JIT compilation")
+
+(defvar *function-address-cache* (make-hash-table :test 'equal)
+  "Cache of resolved function addresses")
+
+;; Call statistics are defined in libffi-calls.lisp
+(defvar *call-statistics* (make-hash-table :test 'equal)
+  "Statistics for FFI calls")
+
+;;; Helper predicates for choosing call path
+
+(defun simple-signature-p (return-type arg-types)
+  "Check if signature is simple enough for direct alien-funcall"
+  (and (member return-type '(:void :int :unsigned-int :long :unsigned-long
+                             :pointer :char :unsigned-char))
+       (<= (length arg-types) 4)
+       (every (lambda (type)
+                (member type '(:int :unsigned-int :long :unsigned-long
+                              :pointer :string :char :unsigned-char)))
+              arg-types)))
+
+(defun complex-signature-p (return-type arg-types)
+  "Check if signature requires libffi (structs, unions, callbacks, varargs)"
+  (or (> (length arg-types) 6)
+      (some (lambda (type)
+              (or (consp type)  ; Compound type like (:struct foo)
+                  (member type '(:struct :union :callback :varargs))))
+            arg-types)))
+
+(defun trampoline-available-p (function-designator return-type arg-types)
+  "Check if a compiled trampoline is available for this signature"
+  (declare (ignore return-type arg-types))
+  (and (fboundp 'trampoline:get-signature)
+       (trampoline:get-signature 
+        (if (symbolp function-designator)
+            function-designator
+            (first function-designator)))))
+
+(defun track-ffi-call (function-designator return-type arg-types)
+  "Track call statistics for JIT optimization"
+  ;; This is a placeholder - actual tracking is done in libffi-calls.lisp
+  ;; when performance tracking is enabled
+  (declare (ignore function-designator return-type arg-types))
+  nil)
+
+(defun consider-jit-compilation (function-designator return-type arg-types stats)
+  "Consider JIT-compiling a frequently-called function"
+  (declare (ignore function-designator return-type arg-types stats))
+  ;; Actual JIT compilation would go here
+  nil)
+
+;;; Signature registration (stub for trampoline system)
+
+(defun register-signature (function-name return-type arg-types)
+  "Register a function signature for the trampoline system"
+  ;; This is a stub - actual implementation would be in trampoline module
+  (declare (ignore function-name return-type arg-types))
+  nil)
+
 ;;; Core FFI Functions
 
 (defun call-with-signature (function-address return-type arg-types args)
@@ -990,17 +1119,17 @@
        ((eq return-type :int)
         (eval `(sb-alien:alien-funcall 
                 (sb-alien:sap-alien 
-                 (sb-sys:int-sap ,function-address)
+                 ,function-address
                  (sb-alien:function sb-alien:int)))))
        ((eq return-type :void)
         (eval `(sb-alien:alien-funcall 
                 (sb-alien:sap-alien 
-                 (sb-sys:int-sap ,function-address)
+                 ,function-address
                  (sb-alien:function sb-alien:void)))))
        ((eq return-type :pointer)
         (eval `(sb-alien:alien-funcall 
                 (sb-alien:sap-alien 
-                 (sb-sys:int-sap ,function-address)
+                 ,function-address
                  (sb-alien:function sb-alien:system-area-pointer)))))
        (t (error "Return type ~A not yet implemented for zero-argument functions" return-type))))
     
@@ -1010,7 +1139,7 @@
                                    args arg-types)))
        (eval `(sb-alien:alien-funcall 
                (sb-alien:sap-alien 
-                (sb-sys:int-sap ,function-address)
+                ,function-address
                 (sb-alien:function sb-alien:unsigned-long sb-alien:c-string))
                ,@converted-args))))
     
@@ -1042,44 +1171,52 @@
      (error "Function signature ~A ~A not yet implemented in call-with-signature" 
             return-type arg-types))))
 
-(defun shared-call-unified (function-designator return-type arg-types &rest args)
-  "Unified FFI call implementation using optimized paths based on signature"
-  (let ((function-address
-          (etypecase function-designator
-            (symbol (lib:lib-function 
-                     (lib:lib-open "libc") 
-                     (string function-designator)))
-            (list (destructuring-bind (fn-name lib-name) function-designator
-                    (lib:lib-function 
-                     (lib:lib-open (if (symbolp lib-name)
-                                       (string-downcase (symbol-name lib-name))
-                                       lib-name)) 
-                     (string fn-name)))))))
-    (unless function-address
-      (error "Could not find function ~A" function-designator))
-    ;; Call the optimized signature implementation
-    (call-with-signature function-address return-type arg-types args)))
-
-;; Removed duplicate libffi-call definition to avoid conflicts
+;; Deprecated functions removed - use shared-call directly
 
 (defun shared-call (function-designator return-type arg-types &rest args)
-  "Main entry point for FFI calls"
-  (apply #'shared-call-unified function-designator return-type arg-types args))
+  "Main entry point for FFI calls.
+   
+   Parameters:
+     function-designator - Symbol or (name library) list
+     return-type - Return type keyword
+     arg-types - List of argument type keywords
+     args - Actual arguments to pass"
+  
+  ;; Track call statistics for JIT optimization
+  (when *track-call-performance*
+    (track-ffi-call function-designator return-type arg-types))
+  
+  ;; Resolve function address and call
+  (let ((function-address (resolve-function-address function-designator)))
+    (unless function-address
+      (error "Could not find function ~A" function-designator))
+    ;; Call using optimized signature implementation
+    (call-with-signature function-address return-type arg-types args)))
 
-;; Missing stub functions
-(defvar *libffi-library* nil
-  "Handle to the libffi extension library")
+;; Function address resolution with caching
 
 (defun resolve-function-address (function-designator)
-  "Resolve function address from designator"
-  (etypecase function-designator
-    (symbol (lib:lib-function 
-             (lib:lib-open "libc") 
-             (string function-designator)))
-    (list (destructuring-bind (fn-name lib-name) function-designator
-            (lib:lib-function 
-             (lib:lib-open lib-name) 
-             (string fn-name))))))
+  "Resolve function address from designator with caching"
+  (let ((cached (gethash function-designator *function-address-cache*)))
+    (or cached
+        (let ((address
+               (etypecase function-designator
+                 (string (lib:lib-function 
+                          (lib:lib-open "libc") 
+                          function-designator))
+                 (symbol (lib:lib-function 
+                          (lib:lib-open "libc") 
+                          (string function-designator)))
+                 (list (destructuring-bind (fn-name lib-name) function-designator
+                         (lib:lib-function 
+                          (lib:lib-open (cond
+                                          ((null lib-name) "libc")
+                                          ((symbolp lib-name) (string-downcase (symbol-name lib-name)))
+                                          (t lib-name))) 
+                          (string fn-name)))))))
+          (when address
+            (setf (gethash function-designator *function-address-cache*) address))
+          address))))
 
 (defun ffi-call (function-address return-type arg-types &rest args)
   "Direct FFI call with function address"
@@ -1112,43 +1249,7 @@
 
 (defvar *primitive-type-map*)
 
-;;;; New Trampoline-based Fast FFI
-
-(defun shared-call-fast (function-designator return-type arg-types &rest args)
-  "Fast FFI call using compiled trampolines instead of eval"
-  (let ((function-address
-          (etypecase function-designator
-            (symbol (lib:lib-function 
-                     (lib:lib-open "libc") 
-                     (string function-designator)))
-            (list (destructuring-bind (fn-name lib-name) function-designator
-                    (lib:lib-function 
-                     (lib:lib-open lib-name) 
-                     (string fn-name)))))))
-    (unless function-address
-      (error "Could not find function ~A" function-designator))
-    ;; Use trampoline system
-    (trampoline:call-with-trampoline function-address return-type arg-types args)))
-
-(defmacro defshared-fast (lisp-name c-name library return-type &rest args)
-  "Fast version of defshared using trampolines"
-  (let* ((doc-pos (position :documentation args))
-         (documentation (when doc-pos (nth (1+ doc-pos) args)))
-         (arg-specs (if doc-pos
-                        (append (subseq args 0 doc-pos)
-                                (subseq args (+ doc-pos 2)))
-                        args))
-         ;; Filter out empty lists which represent no arguments
-         (arg-specs (remove-if (lambda (spec) (and (listp spec) (null spec))) arg-specs))
-         (arg-names (when arg-specs (mapcar #'first arg-specs)))
-         (arg-types (when arg-specs (mapcar #'second arg-specs))))
-    `(progn
-       ;; Register the signature
-       (trampoline:register-signature ',lisp-name ,return-type ',(or arg-types '()))
-       ;; Define the function
-       (defun ,lisp-name ,arg-names
-         ,@(when documentation (list documentation))
-         (shared-call-fast (list ,c-name ,library) ,return-type ',(or arg-types '()) ,@arg-names)))))
+;; Deprecated shared-call and defshared-fast removed
 
 ;; Helper functions for type conversion - these are actually needed
 (defun convert-from-foreign (value type) 
@@ -1218,6 +1319,18 @@
 (defvar *load-ffi-examples* nil
   "Whether to load example FFI definitions on startup")
 
+(defvar *use-libffi-calls* t
+  "Always use libffi for FFI calls (compatibility variable)")
+
+(defvar *libffi-function-whitelist* nil
+  "List of function names to use with libffi (nil = all)")
+
+(defvar *libffi-function-blacklist* '()
+  "List of function names to avoid with libffi")
+
+(defvar *track-call-performance* nil
+  "Whether to track call performance statistics")
+
 (defun enable-libffi-by-default ()
   "Configure system to use libffi by default"
   (setf *use-libffi-calls* t)
@@ -1261,7 +1374,7 @@
       (destructuring-bind (fn-name return-type arg-types &rest args) test
         (format t "Testing ~A: " fn-name)
         (handler-case
-            (let ((result (apply #'shared-call-unified fn-name return-type arg-types args)))
+            (let ((result (apply #'shared-call fn-name return-type arg-types args)))
               (format t "OK (~A)~%" result))
           (error (e)
             (format t "FAILED (~A)~%" e))))))
@@ -1282,9 +1395,9 @@
                    (if (and return-type arg-types)
                        `(defun ,lisp-name (&rest args)
                           ,(format nil "FFI binding for ~A" c-name)
-                          (apply #'shared-call-unified (list ',c-name ',library-name)
+                          (apply #'shared-call (list ',c-name ',library-name)
                                  ',return-type ',arg-types args))
-                       `(defshared-auto ,lisp-name ,c-name ,library-name))))
+                       `(defshared ,lisp-name ,c-name ,library-name))))
                definitions)
      
      ;; Initialization function

@@ -68,7 +68,7 @@
   "Test that strings are automatically converted"
   (skip "String conversion test prints to stdout")
   ;; Define a function with automatic conversion
-  (marshalling:defshared-auto test-puts "puts" "libc")
+  (lib:defshared test-puts "puts" "libc")
   
   ;; Should work with Lisp strings directly
   (let ((result (test-puts "Hello from auto-marshalling!")))
@@ -107,12 +107,12 @@
 (deftest test-auto-return-type-handling
   "Test automatic handling of different return types"
   ;; Functions returning strings
-  (marshalling:defshared-auto test-getenv "getenv" "libc")
+  (lib:defshared test-getenv "getenv" "libc")
   (let ((path (test-getenv "PATH")))
     (is (or (null path) (stringp path)))) ; Could be null if not set
   
   ;; Functions returning booleans (as int)
-  (marshalling:defshared-auto test-isalpha "isalpha" "libc")
+  (lib:defshared test-isalpha "isalpha" "libc")
   (is (numberp (test-isalpha (char-code #\a))))
   (is (numberp (test-isalpha (char-code #\1)))))
 
@@ -120,7 +120,7 @@
   "Test handling of variadic functions with type hints"
   (skip "Variadic function test prints to stdout")
   ;; For variadic functions, we need to provide hints
-  (marshalling:defshared-auto test-printf "printf" "libc"
+  (lib:defshared test-printf "printf" "libc"
     :variadic t
     :arg-hints '(:string &rest))
   
@@ -132,7 +132,7 @@
 (deftest test-output-parameter-marshalling
   "Test automatic handling of output parameters"
   ;; Define a function that uses output parameters
-  (marshalling:defshared-auto test-pipe "pipe" "libc")
+  (lib:defshared test-pipe "pipe" "libc")
   
   ;; Should automatically handle int[2] as output
   (let* ((fds (lib:with-output-array (fd-ptr 2 :int)
@@ -164,9 +164,9 @@
 
 (deftest test-smart-defshared-inference
   "Test the smart defshared macro with automatic inference"
-  ;; Use defshared-auto directly since it creates runtime functions
-  (marshalling:defshared-auto smart-strlen "strlen" "libc")
-  (marshalling:defshared-auto smart-memcmp "memcmp" "libc")
+  ;; Use defshared directly since it creates runtime functions
+  (lib:defshared smart-strlen "strlen" "libc")
+  (lib:defshared smart-memcmp "memcmp" "libc")
   
   (is (= (smart-strlen "test") 4))
   (is (= (smart-strlen "") 0))
@@ -190,7 +190,7 @@
 (deftest test-errno-handling
   "Test automatic errno checking and conversion"
   ;; Functions that set errno on error
-  (marshalling:defshared-auto test-strtol "strtol" "libc"
+  (lib:defshared test-strtol "strtol" "libc"
     :check-errno t)
   
   ;; Should signal conditions on error
