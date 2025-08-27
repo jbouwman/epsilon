@@ -232,23 +232,31 @@
 
 (defun rebuild (egraph)
   "Rebuild the e-graph to maintain congruence closure"
-  (loop while (egraph-worklist egraph)
-        do (let ((work-item (pop (egraph-worklist egraph))))
-             (when (consp work-item)
-               (let ((enode (car work-item))
-                     (old-id (cdr work-item)))
-                 ;; Re-canonicalize the e-node
-                 (let* ((canonical (canonicalize-enode egraph enode))
-                        (existing-id (gethash canonical (egraph-memo egraph))))
-                   (cond
-                     ;; If canonical form already exists in memo with different ID, merge
-                     ((and existing-id (not (= existing-id old-id)))
-                      (let ((new-canonical-id (merge-eclasses egraph existing-id old-id)))
-                        ;; Update memo with the new canonical ID
-                        (setf (gethash canonical (egraph-memo egraph)) new-canonical-id)))
-                     ;; If this e-node form doesn't exist, add it
-                     ((null existing-id)
-                      (setf (gethash canonical (egraph-memo egraph)) old-id)))))))))
+  (let ((max-iterations 1000)
+        (iteration 0))
+    (loop while (egraph-worklist egraph)
+          do (progn
+               (incf iteration)
+               (when (> iteration max-iterations)
+                 (format t "~%WARNING: Rebuild exceeded ~A iterations, stopping~%" max-iterations)
+                 (setf (egraph-worklist egraph) nil)
+                 (return))
+               (let ((work-item (pop (egraph-worklist egraph))))
+                 (when (consp work-item)
+                   (let ((enode (car work-item))
+                         (old-id (cdr work-item)))
+                     ;; Re-canonicalize the e-node
+                     (let* ((canonical (canonicalize-enode egraph enode))
+                            (existing-id (gethash canonical (egraph-memo egraph))))
+                       (cond
+                         ;; If canonical form already exists in memo with different ID, merge
+                         ((and existing-id (not (= existing-id old-id)))
+                          (let ((new-canonical-id (merge-eclasses egraph existing-id old-id)))
+                            ;; Update memo with the new canonical ID
+                            (setf (gethash canonical (egraph-memo egraph)) new-canonical-id)))
+                         ;; If this e-node form doesn't exist, add it
+                         ((null existing-id)
+                          (setf (gethash canonical (egraph-memo egraph)) old-id)))))))))))
 
 ;;; Cost-based extraction
 
@@ -753,7 +761,279 @@
            (sym:sym op))))
     (t pattern)))
 
-(defun saturate (egraph rules &key (limit 10) (timeout nil))
+(defun apply-rewrites (egraph rules)
+  "Apply rewrite rules to e-graph, return number of new facts added"
+  (let ((new-facts 0)
+        (classes-snapshot (make-hash-table :test 'eql))
+        (max-iterations 1000)
+        (iteration-count 0))
+    ;; Take a snapshot of current e-classes to avoid modification during iteration
+    (maphash (lambda (k v) (setf (gethash k classes-snapshot) v))
+             (egraph-classes egraph))
+    ;; For each e-class in the snapshot
+    (maphash (lambda (eclass-id eclass)
+               (declare (ignore eclass-id))
+               ;; For each e-node in the e-class
+               (dolist (enode (eclass-nodes eclass))
+                 ;; Safety check for runaway loops
+                 (incf iteration-count)
+                 (when (> iteration-count max-iterations)
+                   (error "apply-rewrites exceeded ~A iterations" max-iterations))
+                 ;; Try each rule
+                 (dolist (rule rules)
+                   (handler-case
+                       (let ((matches (match-enode-with-rule egraph enode rule)))
+                         (when matches
+                           ;; Apply the rewrite
+                           (dolist (match matches)
+                             (let ((new-id (apply-single-rewrite egraph match rule)))
+                               (when new-id
+                                 (incf new-facts))))))
+                     (error (e)
+                       (format t "~%Error applying rule ~A: ~A~%" 
+                               (rewrite-rule-name rule) e))))))
+             classes-snapshot)
+    new-facts))
+
+(defun find-enode-eclass (egraph enode)
+  "Find which e-class an e-node belongs to"
+  (let ((result nil))
+    (maphash (lambda (eclass-id eclass)
+               (when (member enode (eclass-nodes eclass) :test #'enode-equal)
+                 (setf result eclass-id)))
+             (egraph-classes egraph))
+    result))
+
+(defun match-enode-with-rule (egraph enode rule)
+  "Try to match an e-node against a rule pattern, return bindings with e-class context"
+  (let ((pattern (rewrite-rule-lhs rule)))
+    ;; We need to track which e-class this enode belongs to
+    (let ((eclass-id (find-enode-eclass egraph enode)))
+      (when eclass-id
+        (let ((matches (match-enode-pattern egraph enode pattern nil)))
+          ;; Add the e-class ID to each match for context
+          (mapcar (lambda (m) (cons (cons :matched-eclass eclass-id) m)) matches))))))
+
+(defun match-enode-pattern-with-depth (egraph enode pattern bindings depth)
+  "Match an e-node against a pattern with recursion depth limit"
+  (when (> depth 10)
+    (return-from match-enode-pattern-with-depth nil))
+  
+  (cond
+    ;; Pattern variable - bind it to the enode
+    ((pattern-var-p pattern)
+     (list (cons (cons pattern enode) bindings)))
+    
+    ;; Constant pattern - must match exactly
+    ((numberp pattern)
+     (when (and (null (enode-args enode))
+                (numberp (enode-op enode))
+                (= (enode-op enode) pattern))
+       (list bindings)))
+    
+    ;; Compound pattern - match operator and recursively match args
+    ((and (listp pattern) (not (null pattern)))
+     (let ((pattern-op (first pattern))
+           (pattern-args (rest pattern)))
+       (when (eq (enode-op enode) pattern-op)
+         (if (= (length pattern-args) (length (enode-args enode)))
+             ;; Try to match arguments with increased depth
+             (match-args-pattern-with-depth egraph (enode-args enode) pattern-args bindings depth)
+             nil))))
+    
+    ;; Default - no match
+    (t nil)))
+
+(defun match-args-pattern-with-depth (egraph arg-ids pattern-args bindings depth)
+  "Match arguments with depth tracking"
+  (if (null pattern-args)
+      (list bindings)
+      (let ((results nil))
+        ;; Get all possible matches for first argument
+        (let ((first-matches (match-arg-pattern egraph (first arg-ids) (first pattern-args) bindings depth)))
+          (dolist (match first-matches)
+            ;; Recursively match remaining arguments
+            (let ((rest-matches (match-args-pattern-with-depth egraph (rest arg-ids) (rest pattern-args) match depth)))
+              (setf results (append results rest-matches)))))
+        results)))
+
+(defun match-enode-pattern (egraph enode pattern bindings)
+  "Match an e-node against a pattern, return list of binding sets"
+  (cond
+    ;; Pattern variable - bind it to the enode (will be resolved to e-class later)
+    ((pattern-var-p pattern)
+     (list (cons (cons pattern enode) bindings)))
+    
+    ;; Constant pattern - must match exactly
+    ((numberp pattern)
+     (when (and (null (enode-args enode))
+                (numberp (enode-op enode))
+                (= (enode-op enode) pattern))
+       (list bindings)))
+    
+    ;; Compound pattern - match operator and recursively match args
+    ((and (listp pattern) (not (null pattern)))
+     (let ((pattern-op (first pattern))
+           (pattern-args (rest pattern)))
+       (when (eq (enode-op enode) pattern-op)
+         (if (= (length pattern-args) (length (enode-args enode)))
+             ;; Try to match arguments (args are e-class IDs!)
+             (match-args-pattern egraph (enode-args enode) pattern-args bindings)
+             nil))))
+    
+    ;; Default - no match
+    (t nil)))
+
+(defun match-args-pattern (egraph arg-ids pattern-args bindings)
+  "Match argument e-class IDs against pattern arguments"
+  (if (null pattern-args)
+      (list bindings)
+      (let ((results nil))
+        ;; Get all possible matches for first argument
+        (let ((first-matches (match-arg-pattern egraph (first arg-ids) (first pattern-args) bindings)))
+          (dolist (match first-matches)
+            ;; Recursively match remaining arguments
+            (let ((rest-matches (match-args-pattern egraph (rest arg-ids) (rest pattern-args) match)))
+              (setf results (append results rest-matches)))))
+        results)))
+
+(defun match-arg-pattern (egraph arg-id pattern bindings &optional (depth 0))
+  "Match a single argument e-class ID against a pattern"
+  ;; Prevent infinite recursion
+  (when (> depth 10)
+    (return-from match-arg-pattern nil))
+  
+  (let ((canonical-arg-id (uf-find (egraph-unionfind egraph) arg-id)))
+    (cond
+      ;; Pattern variable - bind to the e-class ID
+      ((pattern-var-p pattern)
+       (let ((existing (assoc pattern bindings)))
+         (if existing
+             ;; Variable already bound - check consistency
+             (let ((bound-val (cdr existing)))
+               (cond
+                 ;; Bound to an e-class ID
+                 ((integerp bound-val)
+                  (when (= bound-val canonical-arg-id)
+                    (list bindings)))
+                 ;; Bound to an enode - shouldn't happen here
+                 ((enode-p bound-val)
+                  nil)
+                 ;; Something else
+                 (t nil)))
+             ;; New binding - bind to e-class ID
+             (list (cons (cons pattern canonical-arg-id) bindings)))))
+      
+      ;; Constant pattern
+      ((numberp pattern)
+       ;; Check if the e-class contains this constant
+       (let ((eclass (gethash canonical-arg-id (egraph-classes egraph))))
+         (when eclass
+           (dolist (enode (eclass-nodes eclass))
+             (when (and (null (enode-args enode))
+                       (numberp (enode-op enode))
+                       (= (enode-op enode) pattern))
+               (return (list bindings)))))))
+      
+      ;; Compound pattern - need to check e-nodes in the e-class
+      ((listp pattern)
+       (let ((eclass (gethash canonical-arg-id (egraph-classes egraph)))
+             (results nil))
+         (when eclass
+           (dolist (enode (eclass-nodes eclass))
+             (let ((matches (match-enode-pattern-with-depth egraph enode pattern bindings (1+ depth))))
+               (setf results (append results matches)))))
+         results))
+      
+      ;; Default
+      (t nil))))
+
+(defun apply-single-rewrite (egraph match rule)
+  "Apply a single rewrite rule with given bindings"
+  (let* ((bindings match)
+         (rhs (rewrite-rule-rhs rule))
+         (condition (rewrite-rule-condition rule))
+         (matched-eclass (cdr (assoc :matched-eclass bindings))))
+    ;; Check condition if present
+    (when (or (null condition)
+              (funcall condition bindings))
+      ;; Create or find the RHS e-class
+      (let ((rhs-id
+             (cond
+               ;; RHS is a pattern variable - use the bound e-class ID
+               ((pattern-var-p rhs)
+                (let ((binding (assoc rhs bindings)))
+                  (if binding
+                      ;; The binding might be to an enode or an e-class ID
+                      (let ((val (cdr binding)))
+                        (if (enode-p val)
+                            ;; It's an enode - we need its e-class
+                            (find-enode-eclass egraph val)
+                            ;; It's already an e-class ID
+                            val))
+                      ;; No binding found - error
+                      (error "Pattern variable ~A not bound in ~A" rhs bindings))))
+               
+               ;; RHS is a constant
+               ((numberp rhs)
+                (egraph-add-enode egraph (make-enode :op rhs :args nil)))
+               
+               ;; RHS is a compound pattern
+               (t
+                (let ((new-expr (instantiate-pattern rhs bindings egraph)))
+                  (when new-expr
+                    (add-pattern-to-egraph egraph new-expr bindings)))))))
+        
+        ;; Merge the matched e-class with the RHS e-class
+        (when (and matched-eclass rhs-id)
+          (merge-eclasses egraph matched-eclass rhs-id)
+          rhs-id)))))
+
+(defun instantiate-pattern (pattern bindings egraph)
+  "Instantiate a pattern with given bindings"
+  (declare (ignore egraph))
+  (cond
+    ;; Pattern variable - look up binding
+    ((pattern-var-p pattern)
+     (let ((binding (assoc pattern bindings)))
+       (when binding
+         (cdr binding))))
+    
+    ;; Constant
+    ((numberp pattern) pattern)
+    
+    ;; Compound pattern
+    ((listp pattern)
+     (cons (first pattern)
+           (mapcar (lambda (p) (instantiate-pattern p bindings egraph))
+                   (rest pattern))))
+    
+    ;; Default
+    (t pattern)))
+
+(defun add-pattern-to-egraph (egraph pattern bindings)
+  "Add an instantiated pattern to the e-graph"
+  (declare (ignore bindings))
+  (cond
+    ;; E-class ID
+    ((integerp pattern) pattern)
+    
+    ;; Constant
+    ((numberp pattern)
+     (egraph-add-enode egraph (make-enode :op pattern :args nil)))
+    
+    ;; Compound expression
+    ((listp pattern)
+     (let* ((op (first pattern))
+            (args (rest pattern))
+            (arg-ids (mapcar (lambda (arg) (add-pattern-to-egraph egraph arg bindings))
+                            args)))
+       (egraph-add-enode egraph (make-enode :op op :args arg-ids))))
+    
+    ;; Default
+    (t nil)))
+
+(defun saturate (egraph rules &key (limit 10) (timeout nil) (debug nil))
   "Run equality saturation until fixed point or limits reached"
   (let ((iteration 0)
         (start-time (get-internal-real-time)))
@@ -765,9 +1045,13 @@
         (return :timeout))
       
       (when (>= iteration limit)
+        (when debug
+          (format t "~%DEBUG: Saturation reached iteration limit ~A~%" limit))
         (return :limit-reached))
       
       (let ((new-facts (apply-rewrites egraph rules)))
+        (when debug
+          (format t "~%DEBUG: Iteration ~A, new facts: ~A~%" iteration new-facts))
         ;; Bail out if too many facts are being created
         (when (> new-facts 1000)
           (format t "~%WARNING: Too many facts (~S), stopping saturation~%" new-facts)
@@ -776,6 +1060,8 @@
         (incf iteration)
         
         (when (zerop new-facts)
+          (when debug
+            (format t "~%DEBUG: Saturation complete after ~A iterations~%" iteration))
           (return :saturated))))))
 
 ;; Standard rules are defined above

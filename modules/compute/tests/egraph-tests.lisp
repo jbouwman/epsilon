@@ -27,7 +27,7 @@
 
 (deftest test-equality-saturation
   "Test basic equality saturation"
-  (skip "RHS-ID variable unbound in saturation")
+  (skip "E-graph saturation creates too many equivalences - needs optimization")
   (let* ((x (sym:sym 'x))
          (expr (c:+ x 0)))
     ;; Should simplify x + 0 to x

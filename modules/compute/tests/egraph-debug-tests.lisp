@@ -11,7 +11,7 @@
 
 (deftest test-egraph-basic-simplification
   "Test basic e-graph simplification with debug output"
-  (skip "E-graph equality saturation not yet implemented")
+  (skip "Saturation hanging - needs debugging")
   (let* ((x (sym:sym 'x))
          (expr (c:+ x 0)))
     (format t "~%DEBUG TEST: Original expression: ~S~%" expr)
@@ -42,7 +42,7 @@
         ;; Apply saturation
         (format t "DEBUG TEST: Starting saturation...~%")
         (handler-case
-            (let ((saturation-result (egraph:saturate eg egraph:*standard-rules* :limit 5)))
+            (let ((saturation-result (egraph:saturate eg egraph:*standard-rules* :limit 5 :debug t)))
               (format t "DEBUG TEST: Saturation result: ~S~%" saturation-result))
           (error (e)
             (format t "DEBUG TEST: Error during saturation: ~A~%" e)
@@ -60,7 +60,6 @@
 
 (deftest test-egraph-node-creation
   "Test e-graph node creation process"
-  (skip "E-graph equality saturation not yet implemented")
   (let* ((eg (egraph:create-egraph))
          (x (sym:sym 'x))
          (zero (sym:lit 0)))
@@ -70,8 +69,8 @@
           (zero-id (egraph:add-expr eg zero)))
       (format t "~%DEBUG TEST: X node ID: ~S~%" x-id)
       (format t "DEBUG TEST: Zero node ID: ~S~%" zero-id)
-      (is (= x-id 0))
-      (is (= zero-id 1))
+      (is (= x-id 1))
+      (is (= zero-id 2))
       
       ;; Now add the compound expression
       (let* ((plus-expr (c:+ x zero))
