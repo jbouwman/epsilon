@@ -53,13 +53,38 @@ Download the appropriate release for your platform from [GitHub Releases](https:
 ./epsilon --modules
 ```
 
-### Testing
+## Testing in Epsilon
+
+Epsilon has a comprehensive testing system built around the `epsilon.test` framework. Unlike Common Lisp systems that use ASDF or Quicklisp, Epsilon uses its own module system with dependency resolution based on `module.lisp` files.
+
+### Understanding Epsilon's Module System
+
+Epsilon determines load order by examining `defpackage` forms within each module. Inter-module dependencies are specified in `module.lisp` files using these key fields:
+
+- **`name`**: The module's unique identifier (e.g., "epsilon.linux")
+- **`requires`**: List of module names this module depends on
+- **`provides`**: Virtual packages this module implements (e.g., "epsilon.net")
+- **`platform`**: Target platform ("linux", "darwin", "windows", or omit for all)
+
+Example `module.lisp`:
+```lisp
+(:name "epsilon.linux"
+ :version "1.0.0" 
+ :description "Linux-specific functions (epoll networking)"
+ :requires ("epsilon.foreign")
+ :platform "linux"
+ :provides ("epsilon.net" "epsilon.async"))
+```
+
+### Running Tests
+
+#### Basic Test Commands
 
 ```bash
 # Test specific module
 ./epsilon --test epsilon.core
 
-# Test specific package within a module
+# Test specific package within a module  
 ./epsilon --test epsilon.core:epsilon.log.tests
 
 # Test specific test by name
@@ -68,16 +93,191 @@ Download the appropriate release for your platform from [GitHub Releases](https:
 # Test with verbose output for debugging
 ./epsilon --test epsilon.core --verbose
 ./epsilon --test epsilon.core:epsilon.log.tests:test-detailed-formatter --verbose
+```
 
-# Self-test all modules
+#### Platform-Specific Testing
+
+```bash
+# Test Linux networking (when on Linux)
+./epsilon --test epsilon.linux
+
+# Test Darwin/macOS networking (when on macOS)
+./epsilon --test epsilon.darwin
+
+# Test platform-agnostic modules
+./epsilon --test epsilon.json
+```
+
+#### Comprehensive Testing
+
+```bash
+# Self-test all modules (discovers and runs all tests)
 ./epsilon --exec epsilon.release:selftest
 
-# Run all tests with JUnit output
+# Run all tests with JUnit XML output
 ./epsilon --exec epsilon.release:selftest --format junit --file target/TEST-results.xml
 
 # Run CLI smoke tests
 ./scripts/smoke.sh
+
+# Run development test suite
+./scripts/test.sh
 ```
+
+### Test Framework Features
+
+#### Test Definition
+
+Tests use the `deftest` macro with assertion functions:
+
+```lisp
+(deftest test-socket-creation ()
+  "Test TCP socket creation"
+  (let ((fd (create-socket +af-inet+ +sock-stream+ +ipproto-tcp+)))
+    (is (integerp fd))
+    (is (>= fd 0))
+    (when (>= fd 0)
+      (%close fd))))
+```
+
+#### Assertion Functions
+
+- `(is condition)` - Assert condition is true
+- `(is-equal expected actual)` - Assert equality
+- `(is-thrown (condition-type) form)` - Assert form throws specific condition
+- `(skip "reason")` - Skip test with reason
+
+#### Test Fixtures and Utilities
+
+Tests can define helper functions and fixtures:
+
+```lisp
+(defclass test-echo-server ()
+  ((listener :initarg :listener :accessor server-listener)
+   (port :initarg :port :accessor server-port)))
+
+(defmacro with-echo-server ((server &key (port 0)) &body body)
+  "Run body with an echo server"
+  `(let ((,server (start-echo-server :port ,port)))
+     (unwind-protect
+          (progn ,@body)
+       (stop-echo-server ,server))))
+```
+
+### Module Testing Structure
+
+Each module organizes tests in a `tests/` directory:
+
+```
+modules/
+├── linux/
+│   ├── module.lisp           # Module definition
+│   ├── src/
+│   │   ├── net.lisp         # Main implementation
+│   │   └── net/             # Modular components
+│   └── tests/
+│       ├── net/
+│       │   ├── socket-tests.lisp    # Basic socket tests
+│       │   ├── tcp-tests.lisp       # TCP integration tests
+│       │   ├── udp-tests.lisp       # UDP tests
+│       │   └── async-tests.lisp     # Async operations tests
+│       └── core-tests.lisp          # Legacy tests
+```
+
+### Writing Effective Tests
+
+#### Integration Testing
+
+Epsilon encourages integration tests with real network fixtures:
+
+```lisp
+(deftest test-tcp-echo-string ()
+  "Test sending and receiving string data"
+  (with-echo-server (server)
+    (let* ((port (server-port server))
+           (addr (make-socket-address "127.0.0.1" port))
+           (client (tcp-connect addr :timeout 2.0))
+           (test-string "Hello, Echo Server!"))
+      
+      ;; Send string
+      (let ((bytes-sent (tcp-write client test-string)))
+        (is-equal (length test-string) bytes-sent))
+      
+      ;; Receive echo  
+      (let ((buffer (make-array 100 :element-type '(unsigned-byte 8))))
+        (let ((bytes-read (tcp-read client buffer :timeout 2.0)))
+          (is-equal (length test-string) bytes-read)
+          (let ((received (sb-ext:octets-to-string (subseq buffer 0 bytes-read))))
+            (is-equal test-string received))))
+      
+      (tcp-shutdown client :how :both))))
+```
+
+#### Error Condition Testing
+
+Test error conditions and edge cases:
+
+```lisp
+(deftest test-tcp-connect-refused ()
+  "Test connection to non-existent server"
+  (let ((addr (make-socket-address "127.0.0.1" 54321)))
+    (is-thrown (connection-refused)
+      (tcp-connect addr :timeout 0.5))))
+```
+
+#### Performance and Load Testing
+
+Include performance tests for critical paths:
+
+```lisp
+(deftest test-tcp-multiple-clients ()
+  "Test handling multiple concurrent clients"
+  (with-echo-server (server)
+    (let* ((port (server-port server))
+           (num-clients 10)
+           (clients '()))
+      
+      ;; Create multiple clients
+      (dotimes (i num-clients)
+        (let ((client (tcp-connect 
+                       (make-socket-address "127.0.0.1" port) 
+                       :timeout 2.0)))
+          (push client clients)))
+      
+      ;; All should be connected
+      (dolist (client clients)
+        (is (tcp-connected-p client)))
+      
+      ;; Clean up
+      (dolist (client clients)
+        (tcp-shutdown client :how :both)))))
+```
+
+### Test Output Formats
+
+Epsilon supports multiple output formats:
+
+- **Shell**: Human-readable output for development
+- **REPL**: Interactive testing with detailed feedback  
+- **JUnit**: XML format for CI/CD integration
+
+### Debugging Failed Tests
+
+Use verbose mode for detailed test output:
+
+```bash
+# Debug specific failing test
+./epsilon --test epsilon.linux:epsilon.net.tcp-tests:test-tcp-echo-string --verbose
+
+# Debug all tests in a module
+./epsilon --test epsilon.linux --verbose
+```
+
+The verbose output shows:
+- Test execution timeline
+- Assertion details 
+- Error stack traces
+- Resource cleanup status
 
 ### Development
 
