@@ -241,6 +241,15 @@
 
 (in-package epsilon.compute)
 
+;;; Export sym functions for convenience
+(defun var (name &optional type metadata)
+  "Create a symbolic variable"
+  (sym:sym name type metadata))
+
+(defun const (value &optional type)
+  "Create a constant"
+  (sym:lit value type))
+
 ;;;; IMPLEMENTATION STATUS SUMMARY:
 ;;;;
 ;;;; COMPLETE IMPLEMENTATIONS:

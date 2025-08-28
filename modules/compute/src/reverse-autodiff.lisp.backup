@@ -168,240 +168,210 @@
   (register-gradient (intern "+" "EPSILON.COMPUTE")
     (lambda (node v-adjoints)
       (declare (ignorable v-adjoints))
-      ;; d/dx(x + y) = 1, d/dy(x + y) = 1
-      ;; But we need to handle broadcasting correctly
-      (let* ((parents (tape-node-parents node))
-             (values (mapcar #'tape-node-value parents)))
-        (case (length values)
-          (2 (let* ((x-val (first values))
-                    (y-val (second values))
-                    (result-val (tape-node-value node))
-                    ;; Gradient is 1, but needs correct shape
-                    (grad-x (cond
-                             ;; x is scalar - sum of ones = size of result
-                             ((numberp x-val)
-                              (if (arrayp result-val)
-                                  (array-total-size result-val)
-                                  1))
-                             ;; x is array - array of ones same shape
-                             ((arrayp x-val)
-                              (make-array (array-dimensions x-val)
-                                         :initial-element 1))
-                             (t 1)))
-                    (grad-y (cond
-                             ;; y is scalar - sum of ones = size of result
-                             ((numberp y-val)
-                              (if (arrayp result-val)
-                                  (array-total-size result-val)
-                                  1))
-                             ;; y is array - array of ones same shape
-                             ((arrayp y-val)
-                              (make-array (array-dimensions y-val)
-                                         :initial-element 1))
-                             (t 1))))
-               (list (cons (first parents) grad-x)
-                     (cons (second parents) grad-y))))
-          ;; Handle single argument (shouldn't happen for +)
-          (1 (list (cons (first parents) 1)))
-          ;; Multiple arguments
-          (otherwise 
-           (mapcar (lambda (parent)
-                    (let ((val (tape-node-value parent)))
-                      (cons parent
-                            (if (arrayp val)
-                                (make-array (array-dimensions val)
-                                           :initial-element 1)
-                                1))))
-                  parents))))))
+  ;; d/dx(x + y) = 1, d/dy(x + y) = 1
+  ;; But we need to handle broadcasting correctly
+  (let* ((parents (tape-node-parents node))
+         (values (mapcar #'tape-node-value parents)))
+    (case (length values)
+      (2 (let* ((x-val (first values))
+                (y-val (second values))
+                (result-val (tape-node-value node))
+                ;; Gradient is 1, but needs correct shape
+                (grad-x (cond
+                         ;; x is scalar - sum of ones = size of result
+                         ((numberp x-val)
+                          (if (arrayp result-val)
+                              (array-total-size result-val)
+                              1))
+                         ;; x is array - array of ones same shape
+                         ((arrayp x-val)
+                          (make-array (array-dimensions x-val)
+                                     :initial-element 1))
+                         (t 1)))
+                (grad-y (cond
+                         ;; y is scalar - sum of ones = size of result
+                         ((numberp y-val)
+                          (if (arrayp result-val)
+                              (array-total-size result-val)
+                              1))
+                         ;; y is array - array of ones same shape
+                         ((arrayp y-val)
+                          (make-array (array-dimensions y-val)
+                                     :initial-element 1))
+                         (t 1))))
+           (list (cons (first parents) grad-x)
+                 (cons (second parents) grad-y))))
+      ;; Handle single argument (shouldn't happen for +)
+      (1 (list (cons (first parents) 1)))
+      ;; Multiple arguments
+      (otherwise 
+       (mapcar (lambda (parent)
+                (let ((val (tape-node-value parent)))
+                  (cons parent
+                        (if (arrayp val)
+                            (make-array (array-dimensions val)
+                                       :initial-element 1)
+                            1))))
+              parents))))))
 
-  ;; Multiplication gradient rule  
+  ;; Multiplication gradient rule
   (register-gradient (intern "*" "EPSILON.COMPUTE")
     (lambda (node v-adjoints)
       (declare (ignorable v-adjoints))
-      ;; d/dx(x * y) = y, d/dy(x * y) = x
-      (let* ((parents (tape-node-parents node))
-             (values (mapcar #'tape-node-value parents)))
-        (case (length values)
-          (2 (let* ((x-val (first values))
-                    (y-val (second values))
-                    ;; The gradient wrt x is y (possibly broadcast to x's shape)
-                    (grad-x (cond
-                             ;; x is scalar, y is array - sum y
-                             ((and (numberp x-val) (arrayp y-val))
-                              (reduce #'+ (make-array (array-total-size y-val)
-                                                    :displaced-to y-val)))
-                             ;; x is array, y is scalar - broadcast y
-                             ((and (arrayp x-val) (numberp y-val))
-                              (make-array (array-dimensions x-val) 
-                                         :initial-element y-val))
-                             ;; Both same type - return as is
-                             (t y-val)))
-                    ;; The gradient wrt y is x (possibly broadcast to y's shape)
-                    (grad-y (cond
-                             ;; y is scalar, x is array - sum x
-                             ((and (numberp y-val) (arrayp x-val))
-                              (reduce #'+ (make-array (array-total-size x-val)
-                                                    :displaced-to x-val)))
-                             ;; y is array, x is scalar - broadcast x
-                             ((and (arrayp y-val) (numberp x-val))
-                              (make-array (array-dimensions y-val)
-                                         :initial-element x-val))
-                             ;; Both same type - return as is
-                             (t x-val))))
-               (list (cons (first parents) grad-x)   ; df/dx = y (unbroadcast if needed)
-                     (cons (second parents) grad-y))))  ; df/dy = x (unbroadcast if needed)
-          (otherwise 
-           ;; For n-ary multiplication
-           (loop for parent in parents
-                 for i from 0
-                 collect (cons parent 
-                              (apply #'* (loop for j from 0
-                                             for v in values
-                                             when (/= i j)
-                                             collect v)))))))))
+  ;; d/dx(x * y) = y, d/dy(x * y) = x
+  (let* ((parents (tape-node-parents node))
+         (values (mapcar #'tape-node-value parents)))
+    (case (length values)
+      (2 (let* ((x-val (first values))
+                (y-val (second values))
+                ;; The gradient wrt x is y (possibly broadcast to x's shape)
+                (grad-x (cond
+                         ;; x is scalar, y is array - sum y
+                         ((and (numberp x-val) (arrayp y-val))
+                          (reduce #'+ (make-array (array-total-size y-val)
+                                                :displaced-to y-val)))
+                         ;; x is array, y is scalar - broadcast y
+                         ((and (arrayp x-val) (numberp y-val))
+                          (make-array (array-dimensions x-val) 
+                                     :initial-element y-val))
+                         ;; Both same type - return as is
+                         (t y-val)))
+                ;; The gradient wrt y is x (possibly broadcast to y's shape)
+                (grad-y (cond
+                         ;; y is scalar, x is array - sum x
+                         ((and (numberp y-val) (arrayp x-val))
+                          (reduce #'+ (make-array (array-total-size x-val)
+                                                :displaced-to x-val)))
+                         ;; y is array, x is scalar - broadcast x
+                         ((and (arrayp y-val) (numberp x-val))
+                          (make-array (array-dimensions y-val)
+                                     :initial-element x-val))
+                         ;; Both same type - return as is
+                         (t x-val))))
+           (list (cons (first parents) grad-x)   ; df/dx = y (unbroadcast if needed)
+                 (cons (second parents) grad-y))))  ; df/dy = x (unbroadcast if needed)
+      (otherwise 
+       ;; For n-ary multiplication
+       (loop for parent in parents
+             for i from 0
+             collect (cons parent 
+                          (apply #'* (loop for j from 0
+                                         for v in values
+                                         when (/= i j)
+                                         collect v))))))))
 
-  ;; Subtraction gradient rule
-  (register-gradient (intern "-" "EPSILON.COMPUTE")
-    (lambda (node v-adjoints)
-      (declare (ignorable v-adjoints))
-      ;; d/dx(x - y) = 1, d/dy(x - y) = -1
-      (case (length (tape-node-parents node))
-        (1 (list (cons (first (tape-node-parents node)) -1))) ; Unary minus
-        (2 (list (cons (first (tape-node-parents node)) 1)
-                (cons (second (tape-node-parents node)) -1))))))
+;; Subtraction gradient rule
+(define-gradient-rule "-"
+  ;; d/dx(x - y) = 1, d/dy(x - y) = -1
+  (case (length (tape-node-parents node))
+    (1 (list (cons (first (tape-node-parents node)) -1))) ; Unary minus
+    (2 (list (cons (first (tape-node-parents node)) 1)
+            (cons (second (tape-node-parents node)) -1)))))
 
-  ;; Division gradient rule
-  (register-gradient (intern "/" "EPSILON.COMPUTE")
-    (lambda (node v-adjoints)
-      (declare (ignorable v-adjoints))
-      ;; d/dx(x / y) = 1/y, d/dy(x / y) = -x/y^2
-      (let* ((parents (tape-node-parents node))
-             (x-val (tape-node-value (first parents)))
-             (y-val (tape-node-value (second parents)))
-             ;; Compute gradients using broadcast-aware operations
-             (grad-x (cond
-                      ;; x is scalar, y is array - sum(1/y)
-                      ((and (numberp x-val) (arrayp y-val))
-                       (reduce #'+ (map 'vector (lambda (yi) (/ 1 yi)) y-val)))
-                      ;; x is array, y is scalar - broadcast 1/y to match x shape
-                      ((and (arrayp x-val) (numberp y-val))
-                       (make-array (array-dimensions x-val) 
-                                  :initial-element (/ 1 y-val)))
-                      ;; x is array, y is array - element-wise 1/y for each element of y
-                      ((and (arrayp x-val) (arrayp y-val))
-                       (map 'vector (lambda (yi) (/ 1 yi)) y-val))
-                      ;; Both scalars
-                      (t (/ 1 y-val))))
-             (grad-y (cond
-                      ;; y is scalar, x is array - sum(-x/y^2)
-                      ((and (numberp y-val) (arrayp x-val))
-                       (- (reduce #'+ (map 'vector (lambda (xi) (/ xi (* y-val y-val))) x-val))))
-                      ;; y is array, x is scalar - broadcast -x/y^2 to match y shape
-                      ((and (arrayp y-val) (numberp x-val))
-                       (make-array (array-dimensions y-val)
-                                  :initial-element (- (/ x-val (* y-val y-val)))))
-                      ;; Both arrays - element-wise -x/y^2 for corresponding elements
-                      ((and (arrayp x-val) (arrayp y-val))
-                       (map 'vector (lambda (xi yi) (- (/ xi (* yi yi)))) x-val y-val))
-                      ;; Both scalars
-                      (t (- (/ x-val (* y-val y-val)))))))
-        (list (cons (first parents) grad-x)
-              (cons (second parents) grad-y)))))
+;; Division gradient rule
+(define-gradient-rule "/"
+  ;; d/dx(x / y) = 1/y, d/dy(x / y) = -x/y^2
+  (let* ((parents (tape-node-parents node))
+         (x-val (tape-node-value (first parents)))
+         (y-val (tape-node-value (second parents)))
+         ;; Compute gradients using broadcast-aware operations
+         (grad-x (cond
+                  ;; x is scalar, y is array - sum(1/y)
+                  ((and (numberp x-val) (arrayp y-val))
+                   (reduce #'+ (map 'vector (lambda (yi) (/ 1 yi)) y-val)))
+                  ;; x is array, y is scalar - broadcast 1/y to match x shape
+                  ((and (arrayp x-val) (numberp y-val))
+                   (make-array (array-dimensions x-val) 
+                              :initial-element (/ 1 y-val)))
+                  ;; x is array, y is array - element-wise 1/y for each element of y
+                  ((and (arrayp x-val) (arrayp y-val))
+                   (map 'vector (lambda (yi) (/ 1 yi)) y-val))
+                  ;; Both scalars
+                  (t (/ 1 y-val))))
+         (grad-y (cond
+                  ;; y is scalar, x is array - sum(-x/y^2)
+                  ((and (numberp y-val) (arrayp x-val))
+                   (- (reduce #'+ (map 'vector (lambda (xi) (/ xi (* y-val y-val))) x-val))))
+                  ;; y is array, x is scalar - broadcast -x/y^2 to match y shape
+                  ((and (arrayp y-val) (numberp x-val))
+                   (make-array (array-dimensions y-val)
+                              :initial-element (- (/ x-val (* y-val y-val)))))
+                  ;; Both arrays - element-wise -x/y^2 for corresponding elements
+                  ((and (arrayp x-val) (arrayp y-val))
+                   (map 'vector (lambda (xi yi) (- (/ xi (* yi yi)))) x-val y-val))
+                  ;; Both scalars
+                  (t (- (/ x-val (* y-val y-val)))))))
+    (list (cons (first parents) grad-x)
+          (cons (second parents) grad-y))))
 
-  ;; Power gradient rule  
-  (register-gradient (intern "^" "EPSILON.COMPUTE")
-    (lambda (node v-adjoints)
-      (declare (ignorable v-adjoints))
-      ;; d/dx(x^y) = y*x^(y-1), d/dy(x^y) = x^y * log(x)
-      (let* ((parents (tape-node-parents node))
-             (x-val (tape-node-value (first parents)))
-             (y-val (tape-node-value (second parents)))
-             ;; Compute gradients with broadcasting support
-             (grad-x (cond
-                      ;; x is array, y is scalar - apply to each element of x
-                      ((and (arrayp x-val) (numberp y-val))
-                       (map 'vector (lambda (xi) (* y-val (expt xi (- y-val 1)))) x-val))
-                      ;; x is scalar, y is array - sum over all y elements
-                      ((and (numberp x-val) (arrayp y-val))
-                       (reduce #'+ (map 'vector (lambda (yi) (* yi (expt x-val (- yi 1)))) y-val)))
-                      ;; Both arrays - element-wise computation
-                      ((and (arrayp x-val) (arrayp y-val))
-                       (map 'vector (lambda (xi yi) (* yi (expt xi (- yi 1)))) x-val y-val))
-                      ;; Both scalars
-                      (t (* y-val (expt x-val (- y-val 1))))))
-             (grad-y (cond
-                      ;; y is scalar, x is array - sum x^y * log(x) over all x
-                      ((and (numberp y-val) (arrayp x-val))
-                       (reduce #'+ (map 'vector (lambda (xi) (* (expt xi y-val) (log xi))) x-val)))
-                      ;; y is array, x is scalar - apply to each element of y
-                      ((and (arrayp y-val) (numberp x-val))
-                       (make-array (array-dimensions y-val)
-                                  :initial-element (* (expt x-val y-val) (log x-val))))
-                      ;; Both arrays - element-wise computation
-                      ((and (arrayp x-val) (arrayp y-val))
-                       (map 'vector (lambda (xi yi) (* (expt xi yi) (log xi))) x-val y-val))
-                      ;; Both scalars
-                      (t (* (expt x-val y-val) (log x-val))))))
-        (list (cons (first parents) grad-x)
-              (cons (second parents) grad-y)))))
+;; Power gradient rule  
+(define-gradient-rule "^"
+  ;; d/dx(x^y) = y*x^(y-1), d/dy(x^y) = x^y * log(x)
+  (let* ((parents (tape-node-parents node))
+         (x-val (tape-node-value (first parents)))
+         (y-val (tape-node-value (second parents)))
+         ;; Compute gradients with broadcasting support
+         (grad-x (cond
+                  ;; x is array, y is scalar - apply to each element of x
+                  ((and (arrayp x-val) (numberp y-val))
+                   (map 'vector (lambda (xi) (* y-val (expt xi (- y-val 1)))) x-val))
+                  ;; x is scalar, y is array - sum over all y elements
+                  ((and (numberp x-val) (arrayp y-val))
+                   (reduce #'+ (map 'vector (lambda (yi) (* yi (expt x-val (- yi 1)))) y-val)))
+                  ;; Both arrays - element-wise computation
+                  ((and (arrayp x-val) (arrayp y-val))
+                   (map 'vector (lambda (xi yi) (* yi (expt xi (- yi 1)))) x-val y-val))
+                  ;; Both scalars
+                  (t (* y-val (expt x-val (- y-val 1))))))
+         (grad-y (cond
+                  ;; y is scalar, x is array - sum x^y * log(x) over all x
+                  ((and (numberp y-val) (arrayp x-val))
+                   (reduce #'+ (map 'vector (lambda (xi) (* (expt xi y-val) (log xi))) x-val)))
+                  ;; y is array, x is scalar - apply to each element of y
+                  ((and (arrayp y-val) (numberp x-val))
+                   (make-array (array-dimensions y-val)
+                              :initial-element (* (expt x-val y-val) (log x-val))))
+                  ;; Both arrays - element-wise computation
+                  ((and (arrayp x-val) (arrayp y-val))
+                   (map 'vector (lambda (xi yi) (* (expt xi yi) (log xi))) x-val y-val))
+                  ;; Both scalars
+                  (t (* (expt x-val y-val) (log x-val))))))
+    (list (cons (first parents) grad-x)
+          (cons (second parents) grad-y))))
 
-  ;; Special operations
-  (register-gradient 'stop-gradient
-    (lambda (node v-adjoints)
-      (declare (ignorable v-adjoints))
-      ;; Stop gradient - no gradient flows through
-      (list (cons (first (tape-node-parents node)) 0))))
+;; Special operations
+(define-gradient-rule stop-gradient
+  ;; Stop gradient - no gradient flows through
+  (list (cons (first (tape-node-parents node)) 0)))
 
-  ;; Transcendental functions
-  (register-gradient (intern "SIN" "EPSILON.COMPUTE")
-    (lambda (node v-adjoints)
-      (declare (ignorable v-adjoints))
-      ;; d/dx(sin(x)) = cos(x)
-      (let ((x (tape-node-value (first (tape-node-parents node)))))
-        (list (cons (first (tape-node-parents node)) (cos x))))))
+;; Transcendental functions
+(define-gradient-rule "SIN"
+  ;; d/dx(sin(x)) = cos(x)
+  (let ((x (tape-node-value (first (tape-node-parents node)))))
+    (list (cons (first (tape-node-parents node)) (cos x)))))
 
-  (register-gradient (intern "COS" "EPSILON.COMPUTE")
-    (lambda (node v-adjoints)
-      (declare (ignorable v-adjoints))
-      ;; d/dx(cos(x)) = -sin(x)
-      (let ((x (tape-node-value (first (tape-node-parents node)))))
-        (list (cons (first (tape-node-parents node)) (- (sin x)))))))
+(define-gradient-rule "COS"
+  ;; d/dx(cos(x)) = -sin(x)
+  (let ((x (tape-node-value (first (tape-node-parents node)))))
+    (list (cons (first (tape-node-parents node)) (- (sin x))))))
 
-  (register-gradient (intern "EXP" "EPSILON.COMPUTE")
-    (lambda (node v-adjoints)
-      (declare (ignorable v-adjoints))
-      ;; d/dx(exp(x)) = exp(x)
-      (list (cons (first (tape-node-parents node)) 
-                 (tape-node-value node)))))
+(define-gradient-rule "EXP"
+  ;; d/dx(exp(x)) = exp(x)
+  (list (cons (first (tape-node-parents node)) 
+             (tape-node-value node))))
 
-  (register-gradient (intern "LOG" "EPSILON.COMPUTE")
-    (lambda (node v-adjoints)
-      (declare (ignorable v-adjoints))
-      ;; d/dx(log(x)) = 1/x
-      (let ((x (tape-node-value (first (tape-node-parents node)))))
-        (list (cons (first (tape-node-parents node)) (/ 1 x))))))
+(define-gradient-rule "LOG"
+  ;; d/dx(log(x)) = 1/x
+  (let ((x (tape-node-value (first (tape-node-parents node)))))
+    (list (cons (first (tape-node-parents node)) (/ 1 x)))))
 
-  (register-gradient (intern "SQRT" "EPSILON.COMPUTE")
-    (lambda (node v-adjoints)
-      (declare (ignorable v-adjoints))
-      ;; d/dx(sqrt(x)) = 1/(2*sqrt(x))
-      (list (cons (first (tape-node-parents node))
-                 (/ 1 (* 2 (tape-node-value node)))))))
-  
-  ;; Also register with strings as fallback (using map:get instead of gethash)
-  (let ((plus-fn (map:get *gradient-rules* (intern "+" "EPSILON.COMPUTE"))))
-    (when plus-fn (register-gradient "+" plus-fn)))
-  (let ((mult-fn (map:get *gradient-rules* (intern "*" "EPSILON.COMPUTE"))))
-    (when mult-fn (register-gradient "*" mult-fn)))
-  (let ((sub-fn (map:get *gradient-rules* (intern "-" "EPSILON.COMPUTE"))))
-    (when sub-fn (register-gradient "-" sub-fn)))
-  (let ((div-fn (map:get *gradient-rules* (intern "/" "EPSILON.COMPUTE"))))
-    (when div-fn (register-gradient "/" div-fn)))
-  (let ((pow-fn (map:get *gradient-rules* (intern "^" "EPSILON.COMPUTE"))))
-    (when pow-fn (register-gradient "^" pow-fn)))
-  
-  ;; Mark as initialized
-  t)
+(define-gradient-rule "SQRT"
+  ;; d/dx(sqrt(x)) = 1/(2*sqrt(x))
+  (list (cons (first (tape-node-parents node))
+             (/ 1 (* 2 (tape-node-value node))))))
+
+;; Gradient rules are now registered at load time via define-gradient-rule macro
+;; No explicit initialization needed
 
 ;;; Tape construction
 
@@ -592,8 +562,6 @@
                     (clip-value *gradient-clip-value*)
                     (handle-nan *handle-nan*))
   "Compute reverse-mode gradients"
-  ;; Ensure gradient rules are initialized
-  (ensure-gradient-rules)
   (let* ((*gradient-clip-norm* clip-norm)
          (*gradient-clip-value* clip-value)
          (*handle-nan* handle-nan)
