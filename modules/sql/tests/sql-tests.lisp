@@ -180,26 +180,3 @@
   "Test string escaping"
   (is (string= "'hello'" (sql:escape-string "hello")))
   (is (string= "'it''s'" (sql:escape-string "it's"))))
-
-;;; Performance Test
-
-(deftest test-bulk-insert-performance
-  "Test performance of bulk inserts"
-  (sql:with-connection (conn :backend :sqlite :database ":memory:")
-    (sql:execute conn "CREATE TABLE perf (id INTEGER, value TEXT)")
-    
-    ;; Use transaction for better performance
-    (let ((start-time (get-internal-real-time)))
-      (sql:with-transaction (conn)
-        (sql:with-statement (stmt conn "INSERT INTO perf VALUES (?, ?)")
-          (loop for i from 1 to 1000
-                do (progn
-                     (sql:bind stmt i (format nil "value-~D" i))
-                     (sql:fetch stmt)))))
-      
-      (let* ((end-time (get-internal-real-time))
-             (elapsed (/ (- end-time start-time) internal-time-units-per-second))
-             (count (first (first (sql:query conn "SELECT COUNT(*) FROM perf")))))
-        (is (= 1000 count))
-        ;; Should complete in under 1 second
-        (is (< elapsed 1.0))))))

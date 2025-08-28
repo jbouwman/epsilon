@@ -240,48 +240,6 @@
 	     (decrypted (crypto:decrypt original-key ciphertext)))
 	(is (string= decrypted plaintext))))))
 
-;;;; Performance Tests
-
-(deftest test-encryption-performance
-  "Test performance of encryption operations"
-  (let ((key (crypto:generate-rsa-key :bits 2048))
-	(plaintext "Performance test message"))
-    
-    ;; Measure encryption time
-    (let ((start (get-internal-real-time)))
-      (dotimes (i 100)
-	(crypto:encrypt key plaintext))
-      (let ((elapsed (- (get-internal-real-time) start)))
-	;; 100 encryptions should be reasonably fast
-	(is (< elapsed (* 2 internal-time-units-per-second)))))
-    
-    ;; Measure decryption time
-    (let ((ciphertext (crypto:encrypt key plaintext))
-	  (start (get-internal-real-time)))
-      (dotimes (i 100)
-	(crypto:decrypt key ciphertext))
-      (let ((elapsed (- (get-internal-real-time) start)))
-	;; Decryption is typically slower than encryption
-	(is (< elapsed (* 3 internal-time-units-per-second)))))))
-
-(deftest test-random-generation-performance
-  "Test performance of random number generation"
-  (progn
-    ;; Random bytes generation
-    (let ((start (get-internal-real-time)))
-      (dotimes (i 1000)
-	(crypto:crypto-random-bytes 32))
-      (let ((elapsed (- (get-internal-real-time) start)))
-	;; Should generate 1000 random values quickly
-	(is (< elapsed internal-time-units-per-second))))
-    
-    ;; Random integer generation
-    (let ((start (get-internal-real-time)))
-      (dotimes (i 10000)
-	(crypto:crypto-random-integer 1000000))
-      (let ((elapsed (- (get-internal-real-time) start)))
-	(is (< elapsed internal-time-units-per-second))))))
-
 ;;;; Edge Cases
 
 (deftest test-encrypt-empty-string

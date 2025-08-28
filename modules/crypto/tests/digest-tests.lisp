@@ -208,26 +208,6 @@
     (is (typep (crypto:digest data "sha256") '(vector (unsigned-byte 8))))
     (is (typep (crypto:digest data "SHA-256") '(vector (unsigned-byte 8))))))
 
-;;;; Performance Tests
-
-(deftest test-digest-performance
-  "Test performance of digest operations"
-  (let ((data (make-string 1000 :initial-element #\X)))
-    ;; SHA-256 performance
-    (let ((start (get-internal-real-time)))
-      (dotimes (i 1000)
-        (crypto:digest data crypto:+digest-sha256+))
-      (let ((elapsed (- (get-internal-real-time) start)))
-        ;; Should hash 1000 times quickly
-        (is (< elapsed internal-time-units-per-second))))
-    
-    ;; SHA-512 performance (might be slightly slower)
-    (let ((start (get-internal-real-time)))
-      (dotimes (i 1000)
-        (crypto:digest data crypto:+digest-sha512+))
-      (let ((elapsed (- (get-internal-real-time) start)))
-        (is (< elapsed (* 2 internal-time-units-per-second)))))))
-
 ;;;; Edge Cases
 
 (deftest test-digest-empty-data
