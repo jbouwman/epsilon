@@ -14,21 +14,9 @@
 
 (deftest test-automatic-type-inference
   "Test automatic type inference from function signatures"
-  ;; Test that we can infer common C function signatures
-  (let ((strlen-sig (marshalling:infer-function-signature "strlen")))
-    (is (trampoline:ffi-signature-p strlen-sig))
-    (is (eq (trampoline:ffi-signature-return-type strlen-sig) :size-t))
-    (is (equal (trampoline:ffi-signature-arg-types strlen-sig) '(:string))))
-  
-  (let ((malloc-sig (marshalling:infer-function-signature "malloc")))
-    (is (trampoline:ffi-signature-p malloc-sig))
-    (is (eq (trampoline:ffi-signature-return-type malloc-sig) :pointer))
-    (is (equal (trampoline:ffi-signature-arg-types malloc-sig) '(:size-t))))
-  
-  (let ((memcpy-sig (marshalling:infer-function-signature "memcpy")))
-    (is (trampoline:ffi-signature-p memcpy-sig))
-    (is (eq (trampoline:ffi-signature-return-type memcpy-sig) :pointer))
-    (is (equal (trampoline:ffi-signature-arg-types memcpy-sig) '(:pointer :pointer :size-t)))))
+  ;; SKIP: Automatic type inference was removed during API cleanup
+  ;; The new unified API requires explicit type specifications
+  (skip "Automatic type inference removed - use explicit types with defshared"))
 
 (deftest test-array-marshalling
   "Test automatic marshalling of arrays"
@@ -68,7 +56,7 @@
   "Test that strings are automatically converted"
   (skip "String conversion test prints to stdout")
   ;; Define a function with automatic conversion
-  (lib:defshared test-puts "puts" "libc")
+  (lib:defshared test-puts "puts" "libc" :int ((str :string)))
   
   ;; Should work with Lisp strings directly
   (let ((result (test-puts "Hello from auto-marshalling!")))
@@ -107,12 +95,12 @@
 (deftest test-auto-return-type-handling
   "Test automatic handling of different return types"
   ;; Functions returning strings
-  (lib:defshared test-getenv "getenv" "libc")
+  (lib:defshared test-getenv "getenv" "libc" :string ((name :string)))
   (let ((path (test-getenv "PATH")))
     (is (or (null path) (stringp path)))) ; Could be null if not set
   
   ;; Functions returning booleans (as int)
-  (lib:defshared test-isalpha "isalpha" "libc")
+  (lib:defshared test-isalpha "isalpha" "libc" :int ((c :int)))
   (is (numberp (test-isalpha (char-code #\a))))
   (is (numberp (test-isalpha (char-code #\1)))))
 
@@ -120,9 +108,8 @@
   "Test handling of variadic functions with type hints"
   (skip "Variadic function test prints to stdout")
   ;; For variadic functions, we need to provide hints
-  (lib:defshared test-printf "printf" "libc"
-    :variadic t
-    :arg-hints '(:string &rest))
+  (lib:defshared test-printf "printf" "libc" :int ((format :string) (args :pointer))
+    :variadic t)
   
   ;; Should work with various argument counts
   (is (numberp (test-printf "Hello\n")))
@@ -132,7 +119,7 @@
 (deftest test-output-parameter-marshalling
   "Test automatic handling of output parameters"
   ;; Define a function that uses output parameters
-  (lib:defshared test-pipe "pipe" "libc")
+  (lib:defshared test-pipe "pipe" "libc" :int ((pipefd :pointer)))
   
   ;; Should automatically handle int[2] as output
   (let* ((fds (lib:with-output-array (fd-ptr 2 :int)
@@ -165,8 +152,8 @@
 (deftest test-smart-defshared-inference
   "Test the smart defshared macro with automatic inference"
   ;; Use defshared directly since it creates runtime functions
-  (lib:defshared smart-strlen "strlen" "libc")
-  (lib:defshared smart-memcmp "memcmp" "libc")
+  (lib:defshared smart-strlen "strlen" "libc" :unsigned-long ((str :string)))
+  (lib:defshared smart-memcmp "memcmp" "libc" :int ((s1 :pointer) (s2 :pointer) (n :unsigned-long)))
   
   (is (= (smart-strlen "test") 4))
   (is (= (smart-strlen "") 0))
@@ -190,7 +177,7 @@
 (deftest test-errno-handling
   "Test automatic errno checking and conversion"
   ;; Functions that set errno on error
-  (lib:defshared test-strtol "strtol" "libc"
+  (lib:defshared test-strtol "strtol" "libc" :long ((str :string) (endptr :pointer) (base :int))
     :check-errno t)
   
   ;; Should signal conditions on error

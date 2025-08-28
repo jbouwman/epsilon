@@ -638,14 +638,14 @@
              ;; Handle variadic functions
              (if (member '&rest arg-types)
                  ;; For variadic functions, pass all args
-                 (apply (find-symbol "SHARED-CALL-FAST" "EPSILON.FOREIGN")
+                 (apply (find-symbol "SHARED-CALL" "EPSILON.FOREIGN")
                         (list ,c-name ,library)
                         return-type
                         (remove '&rest arg-types)
                         args)
                ;; Non-variadic - check arg count and call
                (if (= (length args) (length arg-types))
-                   (apply (find-symbol "SHARED-CALL-FAST" "EPSILON.FOREIGN")
+                   (apply (find-symbol "SHARED-CALL" "EPSILON.FOREIGN")
                           (list ,c-name ,library)
                           return-type
                           arg-types

@@ -1111,65 +1111,34 @@
 ;;; Core FFI Functions
 
 (defun call-with-signature (function-address return-type arg-types args)
-  "Call function using signature-specific optimized paths"
-  (cond
-    ;; No arguments - simple function calls
-    ((null arg-types)
-     (cond
-       ((eq return-type :int)
-        (eval `(sb-alien:alien-funcall 
-                (sb-alien:sap-alien 
-                 ,function-address
-                 (sb-alien:function sb-alien:int)))))
-       ((eq return-type :void)
-        (eval `(sb-alien:alien-funcall 
-                (sb-alien:sap-alien 
-                 ,function-address
-                 (sb-alien:function sb-alien:void)))))
-       ((eq return-type :pointer)
-        (eval `(sb-alien:alien-funcall 
-                (sb-alien:sap-alien 
-                 ,function-address
-                 (sb-alien:function sb-alien:system-area-pointer)))))
-       (t (error "Return type ~A not yet implemented for zero-argument functions" return-type))))
-    
-    ;; String functions - strlen style: unsigned-long fn(string)
-    ((and (eq return-type :unsigned-long) (equal arg-types '(:string)))
-     (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
-                                   args arg-types)))
-       (eval `(sb-alien:alien-funcall 
-               (sb-alien:sap-alien 
-                ,function-address
-                (sb-alien:function sb-alien:unsigned-long sb-alien:c-string))
-               ,@converted-args))))
-    
-    ;; Memory allocation - malloc style: pointer fn(unsigned-long)
-    ((and (eq return-type :pointer) (equal arg-types '(:unsigned-long)))
-     (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
-                                   args arg-types)))
-       (eval `(sb-alien:alien-funcall 
-               (sb-alien:sap-alien 
-                (sb-sys:int-sap ,function-address)
-                (sb-alien:function sb-alien:system-area-pointer sb-alien:unsigned-long))
-               ,@converted-args))))
-    
-    ;; Simple system calls - getpid style: int fn()
-    ((and (eq return-type :int) (null arg-types))
-     (eval `(sb-alien:alien-funcall 
-             (sb-alien:sap-alien 
-              (sb-sys:int-sap ,function-address)
-              (sb-alien:function sb-alien:int)))))
-    
-    ;; Pointer-returning functions with no args - like sqlite3_libversion: pointer fn()
-    ((and (eq return-type :pointer) (null arg-types))
-     (eval `(sb-alien:alien-funcall 
-             (sb-alien:sap-alien 
-              (sb-sys:int-sap ,function-address)
-              (sb-alien:function sb-alien:system-area-pointer)))))
+  "Call function using generic alien-funcall with dynamic signature building"
+  (let* ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type)) 
+                                args arg-types))
+         (alien-return-type (convert-type-to-alien return-type))
+         (alien-arg-types (mapcar #'convert-type-to-alien arg-types))
+         (function-type `(sb-alien:function ,alien-return-type ,@alien-arg-types)))
+    (eval `(sb-alien:alien-funcall 
+            (sb-alien:sap-alien 
+             ,(if (sb-sys:system-area-pointer-p function-address)
+                  function-address
+                  `(sb-sys:int-sap ,function-address))
+             ,function-type)
+            ,@converted-args))))
 
-    (t
-     (error "Function signature ~A ~A not yet implemented in call-with-signature" 
-            return-type arg-types))))
+(defun convert-type-to-alien (type)
+  "Convert epsilon foreign type to SBCL alien type"
+  (case type
+    (:int 'sb-alien:int)
+    (:unsigned-int 'sb-alien:unsigned-int)
+    (:long 'sb-alien:long)
+    (:unsigned-long 'sb-alien:unsigned-long)
+    (:size-t 'sb-alien:unsigned-long)  ; Typically same as unsigned-long
+    (:float 'sb-alien:single-float)
+    (:double 'sb-alien:double-float)
+    (:void 'sb-alien:void)
+    (:pointer 'sb-alien:system-area-pointer)
+    (:string 'sb-alien:c-string)
+    (t (error "Unknown type for alien conversion: ~A" type))))
 
 ;; Deprecated functions removed - use shared-call directly
 

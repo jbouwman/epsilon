@@ -94,7 +94,7 @@
               (is (and (integerp pid) (> pid 0)) "defshared should work"))))
         
         ;; Test defshared
-        (eval '(foreign:defshared test-getpid-auto "getpid" "libc"))
+        (eval '(foreign:defshared test-getpid-auto "getpid" "libc" :int ()))
         (when (fboundp 'test-getpid-auto)
           (let ((pid (test-getpid-auto)))
             (is (and (integerp pid) (> pid 0)) "defshared should work"))))
