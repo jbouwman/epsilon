@@ -45,25 +45,16 @@ jobs:
     - name: Setup SBCL (Windows)
       if: runner.os == 'Windows'
       run: |
-        # Download and install SBCL for Windows
-        $sbclVersion = "2.4.11"
-        $url = "https://github.com/sbcl/sbcl/releases/download/sbcl-$sbclVersion/sbcl-$sbclVersion-x86-64-windows-binary.msi"
-        $installerPath = "$env:TEMP\sbcl-installer.msi"
+        # Install SBCL using chocolatey
+        Write-Host "Installing SBCL via Chocolatey..."
+        choco install sbcl -y
         
-        Write-Host "Downloading SBCL $sbclVersion..."
-        Invoke-WebRequest -Uri $url -OutFile $installerPath
-        
-        Write-Host "Installing SBCL..."
-        Start-Process msiexec.exe -ArgumentList "/i", $installerPath, "/quiet", "/norestart" -Wait
-        
-        # Add SBCL to PATH for this session and future steps
-        $sbclPath = "C:\Program Files\Steel Bank Common Lisp"
-        $env:PATH = "$sbclPath;$env:PATH"
-        echo "$sbclPath" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+        # Refresh environment to get SBCL in PATH
+        $env:PATH = [System.Environment]::GetEnvironmentVariable("PATH","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH","User")
         
         # Verify installation
         Write-Host "Verifying SBCL installation..."
-        & "$sbclPath\sbcl.exe" --version
+        sbcl --version
       shell: powershell
       
     - name: Setup CI environment (Windows)  
