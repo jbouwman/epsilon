@@ -45,6 +45,8 @@
    :checkpoints-used-p
    :tape-memory-usage
    :peak-tape-memory
+   :get-current-tape-memory
+   :get-current-peak-memory
    :hessian-mixed-mode))
 
 (in-package epsilon.compute.autodiff)
@@ -189,14 +191,22 @@
 (defun tape-memory-usage (&optional tape)
   "Get tape memory usage"
   (if tape
-      (rev:get-tape-memory-usage tape)
-      (rev:get-tape-memory-usage)))
+      (rev:tape-memory-usage tape)
+      (rev:get-current-tape-memory)))
 
 (defun peak-tape-memory (&optional tape)
   "Get peak tape memory"
   (if tape
-      (rev:peak-tape-memory tape)
-      (rev:peak-tape-memory)))
+      (rev:tape-peak-memory tape)
+      (rev:get-current-peak-memory)))
+
+(defun get-current-tape-memory ()
+  "Get current tape memory usage"
+  (rev:get-current-tape-memory))
+
+(defun get-current-peak-memory ()
+  "Get current peak memory usage"
+  (rev:get-current-peak-memory))
 
 (defun hessian-mixed-mode (expr var-names bindings)
   "Compute Hessian using mixed mode"

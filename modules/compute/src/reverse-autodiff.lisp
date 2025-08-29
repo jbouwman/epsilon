@@ -54,10 +54,10 @@
    :sparse-gradient-nnz
    
    ;; Memory management
-   :get-tape-memory-usage
+   :get-current-tape-memory
+   :get-current-peak-memory
    :tape-memory-usage  ; struct accessor
    :tape-peak-memory   ; struct accessor
-   :peak-tape-memory
    :checkpoints-used-p
    :clear-tape-cache
    
@@ -113,12 +113,39 @@
   "Map of operation symbols to gradient functions")
 
 (defun register-gradient (op grad-fn)
-  "Register a gradient function for an operation"
+  "Register a gradient function for an operation.
+   OP: Symbol representing the operation (e.g., '*, '+, 'DOT)
+   GRAD-FN: Function (lambda (node v-adjoints)) that returns
+            list of (parent . local-gradient) pairs for chain rule"
   (setf *gradient-rules* (map:assoc *gradient-rules* op grad-fn)))
 
 (defun get-gradient-fn (op)
-  "Get gradient function for an operation"
+  "Get gradient function for an operation.
+   Returns the registered gradient function or NIL if not found."
   (map:get *gradient-rules* op))
+
+;;; Helper functions for common gradient patterns
+
+(defun make-binary-gradient (grad-fn-a grad-fn-b)
+  "Create gradient function for binary operations.
+   GRAD-FN-A: Function to compute gradient w.r.t. first arg
+   GRAD-FN-B: Function to compute gradient w.r.t. second arg"
+  (lambda (node v-adjoints)
+    (declare (ignore v-adjoints))
+    (let* ((parents (tape-node-parents node))
+           (a-val (tape-node-value (first parents)))
+           (b-val (tape-node-value (second parents))))
+      (list (cons (first parents) (funcall grad-fn-a a-val b-val))
+            (cons (second parents) (funcall grad-fn-b a-val b-val))))))
+
+(defun make-unary-gradient (grad-fn)
+  "Create gradient function for unary operations.
+   GRAD-FN: Function to compute gradient given input value"
+  (lambda (node v-adjoints)
+    (declare (ignore v-adjoints))
+    (let* ((parent (first (tape-node-parents node)))
+           (x-val (tape-node-value parent)))
+      (list (cons parent (funcall grad-fn x-val))))))
 
 ;; Initialize gradient rules after package is loaded
 (defun init-gradient-rules ()
@@ -281,30 +308,31 @@
       ;; For matrix multiplication C = A·B:
       ;; dL/dA = dL/dC · B^T
       ;; dL/dB = A^T · dL/dC
-      ;; The gradient function receives the adjoint (dL/dC) during backprop
-      ;; For now, return identity matrices scaled appropriately for the shapes
+      ;; The local gradients specify how C changes w.r.t A and B
       (let* ((parents (tape-node-parents node))
              (a-val (tape-node-value (first parents)))
-             (b-val (tape-node-value (second parents))))
+             (b-val (tape-node-value (second parents)))
+             (dot-fn (find-symbol "DOT" "EPSILON.COMPUTE"))
+             (transpose-fn (find-symbol "TRANSPOSE" "EPSILON.COMPUTE")))
         (list 
-         ;; Gradient w.r.t first argument (A)
+         ;; Gradient w.r.t first argument (A): local gradient is B^T
+         ;; During backprop, this will be: adjoint · B^T
          (cons (first parents) 
                (cond
-                 ;; Both matrices - return appropriately shaped gradient
-                 ((and (arrayp a-val) (arrayp b-val))
-                  (let ((a-dims (array-dimensions a-val)))
-                    (make-array a-dims :initial-element 1)))
+                 ;; Both matrices - gradient is B^T
+                 ((and (arrayp a-val) (arrayp b-val) transpose-fn)
+                  (funcall transpose-fn b-val))
                  ;; Scalar case
-                 (t 1)))
-         ;; Gradient w.r.t second argument (B)
+                 (t b-val)))
+         ;; Gradient w.r.t second argument (B): local gradient is A^T  
+         ;; During backprop, this will be: A^T · adjoint
          (cons (second parents)
                (cond
-                 ;; Both matrices - return appropriately shaped gradient  
-                 ((and (arrayp a-val) (arrayp b-val))
-                  (let ((b-dims (array-dimensions b-val)))
-                    (make-array b-dims :initial-element 1)))
+                 ;; Both matrices - gradient is A^T
+                 ((and (arrayp a-val) (arrayp b-val) transpose-fn)
+                  (funcall transpose-fn a-val))
                  ;; Scalar case
-                 (t 1)))))))
+                 (t a-val)))))))
   
   (register-gradient (intern "TRANSPOSE" "EPSILON.COMPUTE")
     (lambda (node v-adjoints)
@@ -365,7 +393,10 @@
     *current-tape*))
 
 (defun tape-forward (expr bindings)
-  "Forward pass: build tape and compute values"
+  "Forward pass to build computation tape from expression.
+   EXPR: Symbolic expression to evaluate
+   BINDINGS: Alist of (variable . value) pairs
+   Returns: tape-node representing the computation"
   (cond
     ;; Constants
     ((numberp expr)
@@ -419,12 +450,18 @@
     (dolist (parent parents)
       (when parent
         (push node (tape-node-children parent))))
-    ;; Update memory tracking
-    (incf (tape-memory-usage *current-tape*) 
-          (+ 64 (* 8 (length parents))))  ; Rough estimate
-    (setf (tape-peak-memory *current-tape*)
-          (max (tape-peak-memory *current-tape*)
-               (tape-memory-usage *current-tape*)))
+    ;; Update memory tracking with more accurate estimate
+    (let ((node-size (+ 64  ; Base struct size
+                       (cond
+                         ((numberp value) 8)  ; Scalar
+                         ((arrayp value) (* 8 (array-total-size value)))  ; Array
+                         (t 16))  ; Other types
+                       (* 8 (length parents))  ; Parent references
+                       8)))  ; Gradient function pointer
+      (incf (tape-memory-usage *current-tape*) node-size)
+      (setf (tape-peak-memory *current-tape*)
+            (max (tape-peak-memory *current-tape*)
+                 (tape-memory-usage *current-tape*))))
     ;; Set as output node
     (setf (tape-output-node *current-tape*) node)
     node))
@@ -607,7 +644,10 @@
                (type-of current) (type-of new-grad))))))
 
 (defun backward (tape &optional seed-gradient)
-  "Perform backward pass on tape"
+  "Perform backward pass on tape to compute gradients.
+   TAPE: Computation tape from forward pass containing all operations
+   SEED-GRADIENT: Initial gradient for output (default 1)
+   Returns: Hash table mapping variable names to their gradients"
   (let* ((output-node (tape-output-node tape))
          (output-val (tape-node-value output-node))
          ;; Default seed gradient based on output shape
@@ -638,14 +678,33 @@
   (when (and (tape-node-parents node)
              (tape-node-grad-fn node))
     (let* ((adjoint (tape-node-adjoint node))
-           (local-grads (funcall (tape-node-grad-fn node) node nil)))
+           (local-grads (funcall (tape-node-grad-fn node) node nil))
+           ;; Check if this is a matrix operation
+           (is-matrix-op (and (tape-node-op node)
+                             (symbolp (tape-node-op node))
+                             (string= (symbol-name (tape-node-op node)) "DOT"))))
       (dolist (parent-grad local-grads)
         (let ((parent (car parent-grad))
               (grad (cdr parent-grad)))
-          ;; Use broadcasting-aware chain rule
+          ;; Use matrix multiplication for matrix ops, broadcasting for others
           (let ((grad-contrib 
                  (cond
-                   ;; Both arrays - use broadcasting
+                   ;; Matrix operation with matrix gradients - use actual matrix multiply
+                   ((and is-matrix-op 
+                         (arrayp adjoint) 
+                         (arrayp grad)
+                         (= (length (array-dimensions adjoint)) 2)
+                         (= (length (array-dimensions grad)) 2))
+                    ;; Determine multiplication order based on parent position
+                    (let ((dot-fn (find-symbol "DOT" "EPSILON.COMPUTE")))
+                      (if (eq parent (first (tape-node-parents node)))
+                          ;; For first parent (A): dL/dA = dL/dC · B^T
+                          ;; grad is already B^T, so: adjoint · grad
+                          (funcall dot-fn adjoint grad)
+                          ;; For second parent (B): dL/dB = A^T · dL/dC
+                          ;; grad is already A^T, so: grad · adjoint
+                          (funcall dot-fn grad adjoint))))
+                   ;; Both arrays - use broadcasting for element-wise ops
                    ((and (arrayp adjoint) (arrayp grad))
                     (bc:broadcast-binary-op #'* adjoint grad))
                    ;; adjoint is array, grad is scalar - broadcast scalar to array
@@ -737,12 +796,21 @@
                     (clip-norm *gradient-clip-norm*)
                     (clip-value *gradient-clip-value*)
                     (handle-nan *handle-nan*))
-  "Compute reverse-mode gradients"
+  "Compute gradients using reverse-mode automatic differentiation.
+   EXPR: Symbolic expression to differentiate
+   VAR-NAMES: List of variable symbols to compute gradients for
+   BINDINGS: Alist of (variable . value) pairs for evaluation
+   CLIP-NORM: Optional L2 norm threshold for gradient clipping
+   CLIP-VALUE: Optional per-element value threshold for clipping  
+   HANDLE-NAN: How to handle NaN/Inf (:error, :zero, :clip)
+   Returns: List of gradients in same order as VAR-NAMES"
   (let* ((*gradient-clip-norm* clip-norm)
          (*gradient-clip-value* clip-value)
          (*handle-nan* handle-nan)
          (tape (build-tape expr bindings))
          (grad-table (backward tape)))
+    ;; Store tape for memory tracking
+    (setf *current-tape* tape)
     ;; Extract gradients in order
     (mapcar (lambda (var) 
               (let ((grad (gethash var grad-table nil)))
@@ -902,16 +970,16 @@
 
 ;;; Memory management
 
-(defun get-tape-memory-usage (&optional (tape *current-tape*))
-  "Get current tape memory usage"
-  (if tape
-      (tape-memory-usage tape)
+(defun get-current-tape-memory ()
+  "Get current tape memory usage in bytes"
+  (if *current-tape*
+      (tape-memory-usage *current-tape*)
       0))
 
-(defun peak-tape-memory (&optional (tape *current-tape*))
-  "Get peak tape memory usage"
-  (if tape
-      (tape-peak-memory tape)
+(defun get-current-peak-memory ()
+  "Get peak tape memory usage in bytes"
+  (if *current-tape*
+      (tape-peak-memory *current-tape*)
       0))
 
 (defun clear-tape-cache ()
