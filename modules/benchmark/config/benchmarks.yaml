@@ -1,0 +1,79 @@
+# Benchmark Configuration
+# This file defines benchmark suites and their settings
+
+suites:
+  # Core operations benchmark suite
+  core-operations:
+    description: "Core Lisp operations benchmarks"
+    enabled: true
+    baseline: true
+    benchmarks:
+      - core-list-creation
+      - core-list-append
+      - core-list-reverse
+      - core-list-sort
+      - core-hash-creation
+      - core-hash-lookup
+      - core-string-concat
+      - core-string-format
+      - core-arithmetic-integer
+      - core-arithmetic-float
+      - core-function-call
+
+  # FFI benchmark suite
+  ffi-operations:
+    description: "Foreign Function Interface benchmarks"
+    enabled: true
+    baseline: false
+    benchmarks:
+      - ffi-strlen
+      - ffi-getpid
+      - ffi-malloc-free
+
+  # HTTP/2 benchmark suite
+  http2-operations:
+    description: "HTTP/2 protocol benchmarks"
+    enabled: true
+    baseline: false
+    benchmarks:
+      - http2-frame-creation
+      - http2-hpack-encode
+      - http2-huffman-encode
+
+  # Quick smoke test suite
+  quick:
+    description: "Quick benchmarks for smoke testing"
+    enabled: true
+    baseline: false
+    benchmarks:
+      - quick-simple-arithmetic
+      - quick-list-ops
+      - quick-string-ops
+
+# Configuration settings
+settings:
+  # Default suites to run
+  default_suites:
+    - core-operations
+
+  # Suites for CI/CD
+  ci_suites:
+    - quick
+
+  # Performance thresholds
+  regression_threshold: 1.1  # 10% slower is a regression
+  improvement_threshold: 0.9  # 10% faster is an improvement
+
+  # Benchmark execution settings
+  default_min_time: 1.0       # seconds
+  default_warmup_time: 0.1    # seconds
+  confidence_level: 0.95      # 95% confidence intervals
+  bootstrap_iterations: 1000  # for confidence intervals
+
+  # Output settings
+  default_output_format: text  # text, json, csv
+  precision: 2                # decimal places for formatting
+
+  # Baseline settings
+  baseline_directory: benchmarks/baselines/
+  auto_save_baseline: false   # automatically save baselines after runs

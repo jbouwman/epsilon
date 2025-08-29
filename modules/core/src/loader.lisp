@@ -1017,6 +1017,9 @@
 (defmethod project-resources ((project project) (resource-type (eql :tests)))
   (project-tests project))
 
+(defmethod project-resources ((project project) (resource-type (eql :benchmarks)))
+  (project-benchmarks project))
+
 (defun load-module-resources (environment module resource-type &key force compile-only)
   "Load resources of a specific type for a module.
    ENVIRONMENT - The loader environment
