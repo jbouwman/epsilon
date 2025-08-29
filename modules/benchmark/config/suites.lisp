@@ -6,19 +6,22 @@
 
 ;;; Suite definitions
 
-(defparameter *default-suites* '(core-operations)
-  "Default benchmark suites to run")
+(defparameter *default-suites* '(core-operations functional-data-structures)
+  "Default benchmark suites to run - focus on critical functional data structures")
 
-(defparameter *ci-suites* '(quick)
-  "Suites to run in CI/CD pipelines")
+(defparameter *ci-suites* '(quick core-operations)
+  "Suites to run in CI/CD pipelines - include core HAMT performance")
 
-(defparameter *all-suites* '(core-operations ffi-operations http2-operations crypto-operations)
+(defparameter *performance-critical-suites* '(core-operations functional-data-structures)
+  "Performance-critical suites for regression detection")
+
+(defparameter *all-suites* '(core-operations functional-data-structures ffi-operations http2-operations crypto-operations)
   "All available benchmark suites")
 
 ;;; Configuration for baseline comparison
 
-(defparameter *baseline-suites* '(core-operations crypto-operations)
-  "Suites to track for baseline comparison")
+(defparameter *baseline-suites* '(core-operations functional-data-structures crypto-operations)
+  "Suites to track for baseline comparison - emphasize functional data structures")
 
 (defparameter *regression-threshold* 1.1
   "Performance ratio threshold for regression detection (1.1 = 10% slower)")
@@ -37,9 +40,20 @@
       (run-suite suite))))
 
 (defun run-ci-benchmarks ()
-  "Run quick benchmarks for CI"
-  (register-quick-suite)
-  (run-suite 'quick))
+  "Run benchmarks appropriate for CI - quick plus core performance tests"
+  (register-all-suites)
+  (dolist (suite *ci-suites*)
+    (when (get-suite suite)
+      (format t "~%Running CI suite: ~A~%" suite)
+      (run-suite suite))))
+
+(defun run-performance-critical-benchmarks ()
+  "Run performance-critical benchmarks for regression testing"
+  (register-all-suites)
+  (dolist (suite *performance-critical-suites*)
+    (when (get-suite suite)
+      (format t "~%Running performance-critical suite: ~A~%" suite)
+      (run-suite suite))))
 
 (defun run-all-benchmarks ()
   "Run all benchmark suites"

@@ -18,6 +18,7 @@
    
    ;; Standard suites
    register-core-suite
+   register-functional-data-suite
    register-ffi-suite
    register-http2-suite
    register-crypto-suite
@@ -30,6 +31,7 @@
    ;; Configuration functions
    run-default-benchmarks
    run-ci-benchmarks
+   run-performance-critical-benchmarks
    run-all-benchmarks
    save-baselines
    compare-baselines))
@@ -281,22 +283,45 @@
 ;;; Quick benchmark suite for smoke testing
 
 (defun register-quick-suite ()
-  "Register quick benchmark suite for CI/CD"
+  "Register quick benchmark suite for CI/CD smoke testing"
   
-  (benchmark:defbenchmark quick-simple-arithmetic ()
-    (+ 1 2 3 4 5))
-  
-  (benchmark:defbenchmark quick-list-ops ()
-    (length (list 1 2 3 4 5)))
-  
-  (benchmark:defbenchmark quick-string-ops ()
-    (string-upcase "hello"))
-  
-  (define-suite quick
-      (:description "Quick benchmarks for smoke testing")
-    quick-simple-arithmetic
-    quick-list-ops
-    quick-string-ops))
+  ;; Essential HAMT operations for smoke testing
+  (let ((map-pkg (find-package "EPSILON.MAP"))
+        (set-pkg (find-package "EPSILON.SET")))
+    
+    (if (and map-pkg set-pkg)
+        (progn
+          ;; Quick HAMT smoke tests
+          (benchmark:defbenchmark quick-map-basic ()
+            (let ((m (funcall (intern "ASSOC" map-pkg) 
+                             (symbol-value (intern "+EMPTY+" map-pkg)) :key "value")))
+              (funcall (intern "GET" map-pkg) m :key)))
+          
+          (benchmark:defbenchmark quick-set-basic ()
+            (let ((s (funcall (intern "ADD" set-pkg) 
+                             (symbol-value (intern "+EMPTY+" set-pkg)) :element)))
+              (funcall (intern "CONTAINS-P" set-pkg) s :element)))
+          
+          (benchmark:defbenchmark quick-map-build-10 ()
+            (loop with m = (symbol-value (intern "+EMPTY+" map-pkg))
+                  for i from 0 below 10
+                  do (setf m (funcall (intern "ASSOC" map-pkg) m i i))
+                  finally (return m)))
+          
+          (define-suite quick
+              (:description "Quick HAMT smoke tests")
+            quick-map-basic
+            quick-set-basic
+            quick-map-build-10))
+        
+        ;; Fallback if HAMT packages not available
+        (progn
+          (benchmark:defbenchmark quick-function-call ()
+            (+ 1 2 3 4 5))
+          
+          (define-suite quick
+              (:description "Quick smoke tests (fallback)")
+            quick-function-call)))))
 
 ;;; Crypto suite
 
@@ -321,11 +346,87 @@
       (error (e)
         (format t "Warning: Could not load crypto benchmarks: ~A~%" e)))))
 
+;;; Functional Data Structures Suite
+
+(defun register-functional-data-suite ()
+  "Register functional data structures benchmark suite"
+  
+  ;; Try to load functional data benchmarks from core module
+  (handler-case
+      (let ((loader (find-package "EPSILON.CORE.LOADER")))
+        (when loader
+          ;; Load benchmark resources for the core module
+          (funcall (intern "LOAD-MODULE-RESOURCES" loader)
+                   (symbol-value (intern "*ENVIRONMENT*" loader))
+                   'epsilon.core
+                   :benchmarks)
+          ;; Now register the benchmarks after loading
+          (when (find-package "EPSILON.CORE.BENCHMARKS.HAMT")
+            ;; Try the framework registration first
+            (let ((register-fn (find-symbol "REGISTER-HAMT-BENCHMARKS-WITH-FRAMEWORK" 
+                                           "EPSILON.CORE.BENCHMARKS.HAMT")))
+              (when register-fn
+                (funcall register-fn))))))
+    (error (e)
+      ;; Fall back to inline benchmarks if loading fails
+      (format t "Warning: Could not load HAMT benchmarks from core module: ~A~%" e)
+      
+      (let ((map-pkg (find-package "EPSILON.MAP"))
+            (set-pkg (find-package "EPSILON.SET")))
+        
+        (when (and map-pkg set-pkg)
+          ;; Define key functional data benchmarks inline
+          (benchmark:defbenchmark hamt-map-assoc-1000 ()
+            (let ((large-map (loop with m = (symbol-value (intern "+EMPTY+" map-pkg))
+                                  for i from 0 below 1000
+                                  do (setf m (funcall (intern "ASSOC" map-pkg) m 
+                                                     (intern (format nil "KEY~D" i)) i))
+                                  finally (return m))))
+              (funcall (intern "ASSOC" map-pkg) large-map :new-key "new")))
+          
+          (benchmark:defbenchmark hamt-map-get-10k ()
+            (let ((xl-map (loop with m = (symbol-value (intern "+EMPTY+" map-pkg))
+                               for i from 0 below 10000
+                               do (setf m (funcall (intern "ASSOC" map-pkg) m 
+                                                  (intern (format nil "KEY~D" i)) i))
+                               finally (return m))))
+              (funcall (intern "GET" map-pkg) xl-map 'key5000)))
+          
+          (benchmark:defbenchmark hamt-set-add-1000 ()
+            (let ((large-set (loop with s = (symbol-value (intern "+EMPTY+" set-pkg))
+                                  for i from 0 below 1000
+                                  do (setf s (funcall (intern "ADD" set-pkg) s 
+                                                     (intern (format nil "ELEM~D" i))))
+                                  finally (return s))))
+              (funcall (intern "ADD" set-pkg) large-set :new-element)))
+          
+          (benchmark:defbenchmark hamt-set-union-performance ()
+            (let ((set1 (loop with s = (symbol-value (intern "+EMPTY+" set-pkg))
+                             for i from 0 below 100
+                             do (setf s (funcall (intern "ADD" set-pkg) s 
+                                                (intern (format nil "ELEM~D" i))))
+                             finally (return s)))
+                  (set2 (loop with s = (symbol-value (intern "+EMPTY+" set-pkg))
+                             for i from 50 below 150
+                             do (setf s (funcall (intern "ADD" set-pkg) s 
+                                                (intern (format nil "ELEM~D" i))))
+                             finally (return s))))
+              (funcall (intern "UNION" set-pkg) set1 set2)))
+          
+          ;; Register the suite
+          (define-suite functional-data-structures
+              (:description "HAMT-based functional data structures performance")
+            hamt-map-assoc-1000
+            hamt-map-get-10k
+            hamt-set-add-1000
+            hamt-set-union-performance))))))
+
 ;;; Registration function
 
 (defun register-all-suites ()
   "Register all standard benchmark suites"
   (register-core-suite)
+  (register-functional-data-suite)
   (register-ffi-suite)
   (register-http2-suite)
   (register-crypto-suite)
