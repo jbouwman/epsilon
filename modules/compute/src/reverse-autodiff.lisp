@@ -73,7 +73,7 @@
   (id nil :type (or null fixnum))
   (op nil :type symbol)
   (value nil)                        ; Forward pass value
-  (adjoint 0)                         ; Accumulated gradient
+  (adjoint nil)                       ; Accumulated gradient (starts nil, not 0)
   (parents nil :type list)           ; Parent nodes with local gradients
   (grad-fn nil :type (or null function)) ; Gradient computation function
   (children nil :type list))         ; Child nodes for forward references
@@ -575,7 +575,10 @@
          (grad-table (backward tape)))
     ;; Extract gradients in order
     (mapcar (lambda (var) 
-              (let ((grad (gethash var grad-table 0)))
+              (let ((grad (gethash var grad-table nil)))
+                ;; Default to 0 if no gradient found
+                (unless grad
+                  (setf grad 0))
                 ;; Handle NaN
                 (when (and (not (numberp grad)) handle-nan)
                   (setf grad (case handle-nan
