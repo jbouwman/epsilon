@@ -55,6 +55,8 @@
    
    ;; Memory management
    :get-tape-memory-usage
+   :tape-memory-usage  ; struct accessor
+   :tape-peak-memory   ; struct accessor
    :peak-tape-memory
    :checkpoints-used-p
    :clear-tape-cache
@@ -194,8 +196,53 @@
     (let* ((parents (tape-node-parents node))
            (x (tape-node-value (first parents)))
            (y (tape-node-value (second parents))))
-      (list (cons (first parents) (* y (expt x (- y 1))))
-            (cons (second parents) (* (expt x y) (log x)))))))
+      (list 
+        ;; Gradient w.r.t. x: y*x^(y-1)
+        (cons (first parents) 
+              (cond
+                ;; Both arrays - use broadcasting
+                ((and (arrayp x) (arrayp y))
+                 (bc:broadcast-binary-op #'*
+                   y
+                   (bc:broadcast-binary-op #'expt x 
+                     (bc:broadcast-binary-op #'- y 1))))
+                ;; x is array, y is scalar
+                ((arrayp x)
+                 (bc:broadcast-binary-op #'*
+                   y
+                   (bc:broadcast-binary-op #'expt x (- y 1))))
+                ;; x is scalar, y is array
+                ((arrayp y)
+                 (bc:broadcast-binary-op #'*
+                   y
+                   (expt x (bc:broadcast-binary-op #'- y 1))))
+                ;; Both scalars
+                (t (* y (expt x (- y 1))))))
+        ;; Gradient w.r.t. y: x^y * log(x)  
+        (cons (second parents)
+              (cond
+                ;; Both arrays - use broadcasting
+                ((and (arrayp x) (arrayp y))
+                 (bc:broadcast-binary-op #'*
+                   (bc:broadcast-binary-op #'expt x y)
+                   (let ((log-x (make-array (array-dimensions x))))
+                     (dotimes (i (array-total-size x))
+                       (setf (row-major-aref log-x i)
+                             (log (row-major-aref x i))))
+                     log-x)))
+                ;; x is array, y is scalar
+                ((arrayp x)
+                 (let ((xy-result (bc:broadcast-binary-op #'expt x y))
+                       (log-x (make-array (array-dimensions x))))
+                   (dotimes (i (array-total-size x))
+                     (setf (row-major-aref log-x i)
+                           (log (row-major-aref x i))))
+                   (bc:broadcast-binary-op #'* xy-result log-x)))
+                ;; x is scalar, y is array  
+                ((arrayp y)
+                 (* (expt x y) (log x)))
+                ;; Both scalars
+                (t (* (expt x y) (log x)))))))))
 
   ;; Transcendental functions
   (register-gradient (intern "SIN" "EPSILON.COMPUTE")
@@ -228,6 +275,35 @@
       (list (cons (first (tape-node-parents node))
                  (/ 1 (* 2 (tape-node-value node)))))))
 
+  ;; Matrix operations
+  (register-gradient (intern "DOT" "EPSILON.COMPUTE")
+    (lambda (node v-adjoints)
+      ;; For matrix multiplication C = A·B:
+      ;; dL/dA = dL/dC · B^T
+      ;; dL/dB = A^T · dL/dC
+      (let* ((parents (tape-node-parents node))
+             (a-val (tape-node-value (first parents)))
+             (b-val (tape-node-value (second parents)))
+             (transpose-fn (find-symbol "TRANSPOSE" "EPSILON.COMPUTE")))
+        (list 
+         ;; Gradient w.r.t first argument (A): adjoint · B^T
+         (cons (first parents) 
+               (if (and (arrayp a-val) (arrayp b-val) transpose-fn)
+                   (funcall transpose-fn b-val)
+                   1))  ; Fallback for incompatible shapes
+         ;; Gradient w.r.t second argument (B): A^T · adjoint  
+         (cons (second parents)
+               (if (and (arrayp a-val) (arrayp b-val) transpose-fn)
+                   (funcall transpose-fn a-val)
+                   1))))))
+  
+  (register-gradient (intern "TRANSPOSE" "EPSILON.COMPUTE")
+    (lambda (node v-adjoints)
+      ;; d/dX(transpose(X)) = transpose(adjoint)
+      (list (cons (first (tape-node-parents node))
+                  (funcall (find-symbol "TRANSPOSE" "EPSILON.COMPUTE")
+                           (tape-node-adjoint node))))))
+  
   ;; Special operations
   (register-gradient 'stop-gradient
     (lambda (node v-adjoints)
@@ -421,6 +497,13 @@
                (reduce #'min (make-array (array-total-size (first values))
                                         :displaced-to (first values)))
                (first values)))
+          ;; Matrix operations
+          ((string= op-name "DOT")
+           (funcall (find-symbol "DOT" "EPSILON.COMPUTE") 
+                    (first values) (second values)))
+          ((string= op-name "TRANSPOSE")
+           (funcall (find-symbol "TRANSPOSE" "EPSILON.COMPUTE")
+                    (first values)))
           ;; Special operations
           ((string= op-name "STOP-GRADIENT")
            ;; Stop-gradient passes through the value unchanged
@@ -453,6 +536,8 @@
       ((string= op-name "MAX") (lambda (x) x))  ; For scalar case
       ((string= op-name "MIN") (lambda (x) x))  ; For scalar case
       ((string= op-name "STOP-GRADIENT") (lambda (x) x))  ; Pass through value
+      ((string= op-name "DOT") (lambda (a b) (funcall (find-symbol "DOT" "EPSILON.COMPUTE") a b)))
+      ((string= op-name "TRANSPOSE") (lambda (x) (funcall (find-symbol "TRANSPOSE" "EPSILON.COMPUTE") x)))
       (t (error "Unknown operation: ~A" op)))))
 
 ;;; Backward pass
@@ -737,6 +822,29 @@
     (map 'vector 
          (lambda (var) (gethash var (tape-var-nodes tape) 0))
          var-names)))
+
+(defun vector-jacobian-product (exprs var-names bindings vector)
+  "Compute vector-Jacobian product efficiently using reverse mode"
+  ;; VJP: v^T * J where J is Jacobian of exprs w.r.t. var-names
+  ;; This is equivalent to reverse-mode AD with vector as seed gradient
+  (let* ((tapes (mapcar (lambda (expr) (build-tape expr bindings)) exprs))
+         (gradients (make-hash-table :test 'equal)))
+    ;; Initialize all gradients to zero
+    (dolist (var var-names)
+      (setf (gethash var gradients) 0))
+    
+    ;; For each expression, compute gradients weighted by vector component
+    (loop for tape in tapes
+          for i from 0
+          for weight = (aref vector i)
+          do (let ((grad-table (backward tape weight)))  ; Use weight as seed
+               (dolist (var var-names)
+                 (let ((grad (gethash var grad-table 0)))
+                   (setf (gethash var gradients)
+                         (+ (gethash var gradients) grad))))))
+    
+    ;; Return gradient vector
+    (map 'vector (lambda (var) (gethash var gradients)) var-names)))
 
 (defun register-vjp-rule (op rule-fn)
   "Register custom VJP rule for an operation"

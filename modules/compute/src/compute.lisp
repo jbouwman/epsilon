@@ -414,10 +414,16 @@
      (apply #'sym:symbolic '/ (mapcar #'ensure-expr args)))))
 
 (defun ^ (base exponent)
-  "Symbolic exponentiation"
-  (if (and (numberp base) (numberp exponent))
-      (cl:expt base exponent)
-      (sym:symbolic '^ (ensure-expr base) (ensure-expr exponent))))
+  "Exponentiation with broadcasting support"
+  (cond
+    ;; Both numbers
+    ((and (numberp base) (numberp exponent))
+     (cl:expt base exponent))
+    ;; Array operations - use broadcasting
+    ((or (arrayp base) (arrayp exponent))
+     (broadcast-operation #'expt base exponent))
+    ;; Symbolic
+    (t (sym:symbolic '^ (ensure-expr base) (ensure-expr exponent)))))
 
 ;;; Transcendental functions
 
