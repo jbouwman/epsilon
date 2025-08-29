@@ -96,7 +96,6 @@
    define-enum
    enum-value
    enum-keyword
-   defshared-auto
    define-c-type
    foreign-error
    foreign-error-p
@@ -1148,9 +1147,6 @@
 (defvar *replace-shared-call* nil
   "Whether to replace the original shared-call with unified version")
 
-(defvar *load-ffi-examples* nil
-  "Whether to load example FFI definitions on startup")
-
 (defun enable-libffi-by-default ()
   "Configure system to use libffi by default"
   (setf *use-libffi-calls* t)
@@ -1181,88 +1177,6 @@
          (*libffi-function-blacklist* '()))
      (format t "libffi testing mode enabled~%")
      ,@body))
-
-(defun run-ffi-smoke-tests ()
-  "Run basic smoke tests for FFI functionality"
-  (format t "Running FFI smoke tests...~%")
-  
-  (let ((tests '(("getpid" :int '())
-                 ("strlen" :unsigned-long '(:string) "test")
-                 ("malloc" :pointer '(:unsigned-long) 100))))
-    
-    (dolist (test tests)
-      (destructuring-bind (fn-name return-type arg-types &rest args) test
-        (format t "Testing ~A: " fn-name)
-        (handler-case
-            (let ((result (apply #'shared-call-unified fn-name return-type arg-types args)))
-              (format t "OK (~A)~%" result))
-          (error (e)
-            (format t "FAILED (~A)~%" e))))))
-  
-  (format t "Smoke tests complete~%"))
-
-;;;; Advanced usage patterns
-
-(defmacro define-c-library (library-name &body definitions)
-  "Define an entire C library interface"
-  `(progn
-     ;; Library-specific configuration
-     (defvar ,(intern (format nil "*~A-LOADED*" (string-upcase library-name))) nil)
-     
-     ;; Function definitions
-     ,@(mapcar (lambda (def)
-                 (destructuring-bind (lisp-name c-name &optional return-type arg-types) def
-                   (if (and return-type arg-types)
-                       `(defun ,lisp-name (&rest args)
-                          ,(format nil "FFI binding for ~A" c-name)
-                          (apply #'shared-call-unified (list ',c-name ',library-name)
-                                 ',return-type ',arg-types args))
-                       `(defshared-auto ,lisp-name ,c-name ,library-name))))
-               definitions)
-     
-     ;; Initialization function
-     (defun ,(intern (format nil "INITIALIZE-~A" (string-upcase library-name))) ()
-       ,(format nil "Initialize ~A library interface" library-name)
-       (setf ,(intern (format nil "*~A-LOADED*" (string-upcase library-name))) t)
-       (format t "~A library interface initialized~%" ,library-name))
-     
-     ;; Auto-initialize
-     (,(intern (format nil "INITIALIZE-~A" (string-upcase library-name))))))
-
-(defmacro with-error-handling (&body body)
-  "Execute FFI calls with  error handling"
-  `(handler-case
-       (progn ,@body)
-     (error (e)
-       (format t "FFI error: ~A~%" e)
-       (format t "System status:~%")
-       (format t "  libffi available: ~A~%" (and (boundp '*libffi-library*) *libffi-library* t))
-       (when (find-package :epsilon.clang.signatures)
-         (format t "  Signature extraction available: Yes~%"))
-       (error e))))
-
-;;;; Example library definitions
-
-(defun load-example-definitions ()
-  "Load example library definitions to demonstrate usage"
-  (format t "Loading example FFI definitions...~%")
-  
-  ;; Standard C library essentials
-  (defcfuns "libc"
-    (c-strlen "strlen" :unsigned-long (:string))
-    (c-malloc "malloc" :pointer (:unsigned-long))
-    (c-free "free" :void (:pointer))
-    (c-getpid "getpid" :int ())
-    (c-printf "printf" :int (:string)))
-  
-  ;; Math library
-  (when (probe-file "/usr/lib/libm.so")
-    (defcfuns "libm"
-      (c-sin "sin" :double (:double))
-      (c-cos "cos" :double (:double))
-      (c-sqrt "sqrt" :double (:double))))
-  
-  (format t "Example definitions loaded~%"))
 
 ;;;; System status and diagnostics
 
@@ -1315,18 +1229,8 @@
 
 (defun initialize-public-api ()
   "Initialize the public API system"
-  (format t "Initializing epsilon.foreign public API...~%")
-  
-  ;; Set reasonable defaults
   (unless (boundp '*use-libffi-calls*)
-    (setf *use-libffi-calls* t))
-  
-  ;; Load examples if requested
-  (when (and (boundp '*load-ffi-examples*) *load-ffi-examples*)
-    (load-example-definitions))
-  
-  (format t "Public API initialization complete~%")
-  (format t "Type (ffi-help) for usage information~%"))
+    (setf *use-libffi-calls* t)))
 
 ;; Initialize when loaded
 (eval-when (:load-toplevel :execute)
