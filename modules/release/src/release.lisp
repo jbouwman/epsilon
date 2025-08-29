@@ -690,24 +690,20 @@ exec \"$SBCL\" --script \"$EPSILON_BOOT\" \"$@\"
 ;;; CLI Smoke Tests
 
 (defun run-smoke-tests ()
-  "Run basic CLI smoke tests."
-  (let ((passed 0)
-        (failed 0)
+  "Run basic CLI smoke tests. These check that epsilon can start up, and load modules."
+  (let ((failed 0)
         (epsilon-path "./epsilon"))
     
     (log:info "Running CLI smoke tests...")
     
     ;; Test 1: Version command
     (handler-case
-        (progn
-          (process:run-sync epsilon-path 
-                           :args '("--version")
-                           :check-executable nil)
-          (incf passed)
-          (log:info "✓ Version command"))
+        (process:run-sync epsilon-path 
+                          :args '("--version")
+                          :check-executable nil)
       (process:process-error-condition (e)
         (incf failed)
-        (log:error "✗ Version command failed with exit code ~A" 
+        (log:error "Version command failed with exit code ~A" 
                    (process:process-error-exit-code e)))
       (error (e)
         (incf failed)
@@ -715,15 +711,12 @@ exec \"$SBCL\" --script \"$EPSILON_BOOT\" \"$@\"
     
     ;; Test 2: Help command
     (handler-case
-        (progn
-          (process:run-sync epsilon-path
-                           :args '("--help")
-                           :check-executable nil)
-          (incf passed)
-          (log:info "✓ Help command"))
+        (process:run-sync epsilon-path
+                          :args '("--help")
+                          :check-executable nil)
       (process:process-error-condition (e)
         (incf failed)
-        (log:error "✗ Help command failed with exit code ~A" 
+        (log:error "Help command failed with exit code ~A" 
                    (process:process-error-exit-code e)))
       (error (e)
         (incf failed)
@@ -739,7 +732,7 @@ exec \"$SBCL\" --script \"$EPSILON_BOOT\" \"$@\"
               (progn (incf failed) (log:error "✗ Simple evaluation: unexpected output"))))
       (process:process-error-condition (e)
         (incf failed)
-        (log:error "✗ Simple evaluation failed with exit code ~A" 
+        (log:error "Simple evaluation failed with exit code ~A" 
                    (process:process-error-exit-code e)))
       (error (e)
         (incf failed)
@@ -747,21 +740,18 @@ exec \"$SBCL\" --script \"$EPSILON_BOOT\" \"$@\"
     
     ;; Test 4: Module loading
     (handler-case
-        (progn
-          (process:run-sync epsilon-path
-                           :args '("--module" "epsilon.test" "--eval" "(epsilon.test:deftest foo () t)")
-                           :check-executable nil)
-          (incf passed)
-          (log:info "✓ Module loading"))
+        (process:run-sync epsilon-path
+                          :args '("--module" "epsilon.test" "--eval" "(epsilon.test:deftest foo () t)")
+                          :check-executable nil)
       (process:process-error-condition (e)
         (incf failed)
-        (log:error "✗ Module loading failed with exit code ~A" 
+        (log:error "Module loading failed with exit code ~A" 
                    (process:process-error-exit-code e)))
       (error (e)
         (incf failed)
         (log:error "✗ Module loading: ~A" e)))
     
-    (log:info "Smoke tests complete: ~D passed, ~D failed" passed failed)
+    (log:info "Smoke tests complete: ~D failed" failed)
     (zerop failed)))
 
 (defun create-tar-archive-with-working-directory (release-dir release-name working-dir)

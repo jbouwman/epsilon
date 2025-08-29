@@ -51,7 +51,7 @@ C language parser for header analysis and type extraction.
 
 The module integrates with platform-specific code for:
 - **Darwin**: BSD kqueue, TLS, networking
-- **Linux**: epoll, networking  
+- **Linux**: networking  
 - **Windows**: IOCP, networking
 
 ## Dependencies
