@@ -41,7 +41,6 @@ package-name-1.0.0-darwin-arm64.epk
  :version "1.0.0"
  :description "Cross-platform filesystem path manipulation"
  :author "Jesse Bouwman"
- :license "MIT"
  :homepage "https://github.com/epsilon-org/epsilon"
  
  ;; Platform targeting

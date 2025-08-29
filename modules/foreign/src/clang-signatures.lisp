@@ -45,7 +45,6 @@
    #:function-signature-arg-types
    
    ;; Integration
-   #:auto-discover-signature
    #:clang-signature-pipeline))
 
 (in-package :epsilon.clang.signatures)
@@ -338,29 +337,6 @@
             when (and (listp entry) (= (length entry) 2))
               do (setf (gethash (first entry) *signature-database*)
                        (second entry))))))
-
-;;;; Automatic Signature Discovery
-
-(defun auto-discover-signature (function-designator)
-  "Automatically discover function signature using clang"
-  (let* ((fn-name (if (listp function-designator)
-                      (first function-designator)
-                      (string function-designator)))
-         (lib-name (if (listp function-designator)
-                       (second function-designator)
-                       "libc")))
-    
-    ;; Try cache first
-    (or (get-cached-signature fn-name lib-name)
-        
-        ;; Try extraction
-        (let ((signature (extract-function-signature fn-name)))
-          (when signature
-            (cache-signature fn-name signature :library lib-name)
-            signature))
-        
-        ;; Interactive fallback could go here
-        (warn "Could not auto-discover signature for ~A" fn-name))))
 
 ;;;; Complete Pipeline
 

@@ -3,7 +3,9 @@
 ;;;; Tests to verify RFC 7540 compliance
 
 (defpackage :epsilon.http2.conformance-tests
-  (:use :cl :epsilon.test))
+  (:use :cl :epsilon.test)
+  (:local-nicknames
+   (#:flow #:epsilon.http2.flow-control)))
 
 (in-package :epsilon.http2.conformance-tests)
 
@@ -195,9 +197,7 @@
 
 (deftest test-stream-states
   "Test stream state transitions"
-  (let* ((conn (make-instance 'epsilon.http2::http2-connection
-                              :socket nil
-                              :client-p t))
+  (let* ((conn (epsilon.http2::make-http2-connection nil :client-p t))
          (stream (epsilon.http2::create-stream conn)))
     
     ;; Initial state - use numeric constants
@@ -222,18 +222,14 @@
 
 (deftest test-stream-id-assignment
   "Test proper stream ID assignment"
-  (let ((client-conn (make-instance 'epsilon.http2::http2-connection
-                                    :socket nil
-                                    :client-p t))
-        (server-conn (make-instance 'epsilon.http2::http2-connection
-                                    :socket nil
-                                    :client-p nil)))
+  (let ((client-conn (epsilon.http2::make-http2-connection nil :client-p t))
+        (server-conn (epsilon.http2::make-http2-connection nil :client-p nil)))
     
     ;; Client uses odd stream IDs
     (let ((stream1 (epsilon.http2::create-stream client-conn))
           (stream2 (epsilon.http2::create-stream client-conn)))
-      (is-= 1 (epsilon.http2::stream-id stream1))
-      (is-= 3 (epsilon.http2::stream-id stream2)))
+      (is-= 1 (epsilon.http2.stream:http2-stream-id stream1))
+      (is-= 3 (epsilon.http2.stream:http2-stream-id stream2)))
     
     ;; Server would use even stream IDs (for push)
     ;; Note: Current implementation doesn't differentiate
@@ -243,15 +239,13 @@
 
 (deftest test-connection-creation
   "Test HTTP/2 connection creation"
-  (let ((conn (make-instance 'epsilon.http2::http2-connection
-                            :socket :mock-socket
-                            :client-p t)))
+  (let ((conn (epsilon.http2::make-http2-connection nil :client-p t)))
     (is-not-null conn)
     (is-true (epsilon.http2::http2-connection-p conn))
     (is-true (epsilon.http2::connection-client-p conn))
     (is-not-null (epsilon.http2::connection-streams conn))
-    (is-= 65535 (epsilon.http2::connection-send-window conn))
-    (is-= 65535 (epsilon.http2::connection-recv-window conn))))
+    (is-= 65535 (flow:flow-controller-send-window (epsilon.http2::http2-connection-flow-controller conn)))
+    (is-= 65535 (flow:flow-controller-recv-window (epsilon.http2::http2-connection-flow-controller conn)))))
 
 ;;;; Frame Serialization Tests
 

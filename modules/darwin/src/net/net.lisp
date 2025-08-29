@@ -13,12 +13,11 @@
    make-socket-address resolve-address parse-address)
   (:import-from epsilon.net.socket-options
    set-socket-option get-socket-option)
-  (:import-from epsilon.net.tcp
+  (:import-from epsilon.net.sockets
    tcp-bind tcp-accept tcp-incoming tcp-try-accept tcp-poll-accept tcp-local-addr
    tcp-connect tcp-read tcp-write tcp-write-all tcp-flush
    tcp-try-read tcp-try-write tcp-poll-read tcp-poll-write
-   tcp-peer-addr tcp-shutdown tcp-stream-reader tcp-stream-writer tcp-connected-p)
-  (:import-from epsilon.net.udp
+   tcp-peer-addr tcp-shutdown tcp-stream-reader tcp-stream-writer tcp-connected-p
    udp-bind udp-connect udp-send udp-recv udp-send-to udp-recv-from
    udp-local-addr udp-try-send udp-try-recv udp-poll-send udp-poll-recv)
   (:export

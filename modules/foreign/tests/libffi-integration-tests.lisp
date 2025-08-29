@@ -29,7 +29,7 @@
   ;; Public API functions
   (is (fboundp 'foreign:ffi-call) "ffi-call should be available")
   (is (fboundp 'foreign:shared-call-unified) "shared-call-unified should be available")
-  (is (fboundp 'foreign:auto-discover-signature) "auto-discover-signature should be available")
+  ;; auto-discover-signature removed
   
   ;; Configuration variables
   (is (boundp 'foreign:*use-libffi-calls*) "libffi configuration should exist")
@@ -52,23 +52,7 @@
 	   (format t "Basic FFI call test failed: ~A~%" e)
 	   (is nil "Basic FFI calls should work"))))
 
-(deftest test-auto-discovery-calls
-  "Test automatic signature discovery"
-  (if (find-package :epsilon.clang.signatures)
-      (handler-case
-          (progn
-            ;; Test auto-discovery function
-            (let ((signature (foreign:auto-discover-signature "strlen")))
-              (if signature
-                  (is t "Should auto-discover strlen signature")
-                (format t "Could not auto-discover strlen signature~%")))
-            
-            ;; Test ffi-call with auto-discovery
-            (let ((len (foreign:ffi-call "strlen" "test")))
-              (is-= len 4 "ffi-call with auto-discovery should work")))
-        (error (e)
-               (format t "Auto-discovery test failed: ~A~%" e)))
-    (format t "Skipping auto-discovery test - clang signatures not available~%")))
+;; Auto-discovery tests removed - functionality no longer available
 
 ;;;; API Compatibility Tests
 
@@ -162,22 +146,13 @@
   (handler-case
       (foreign:shared-call-unified "nonexistent_function_xyz" :int '())
     (error (e)
-	   (is t "Should handle nonexistent functions gracefully")))
+      (is t "Should handle nonexistent functions gracefully")))
   
   ;; Test with invalid arguments
   (handler-case
       (foreign:shared-call-unified "strlen" :unsigned-long '(:string) 123)
     (error (e)
-	   (is t "Should handle type mismatches gracefully")))
-  
-  ;; Test auto-discovery with invalid function
-  (if (find-package :epsilon.clang.signatures)
-      (handler-case
-          (let ((sig (foreign:auto-discover-signature "nonexistent_function_xyz")))
-            (is (null sig) "Should return nil for nonexistent functions"))
-        (error (e)
-               (is t "Should handle auto-discovery errors gracefully")))
-    (format t "Skipping auto-discovery error test - clang signatures not available~%")))
+      (is t "Should handle type mismatches gracefully"))))
 
 ;;;; Configuration Tests
 

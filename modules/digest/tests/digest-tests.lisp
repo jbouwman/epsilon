@@ -85,11 +85,11 @@
          (string-downcase (digest:bytes-to-hex (digest:sha1 data)))))))
 
 (deftest sha-1-compatibility
-  "Test SHA-1 legacy compatibility function"
+  "Test SHA-1 function"
   (let ((data (map 'vector #'char-code "abc")))
     (is (string=
          "a9993e364706816aba3e25717850c26c9cd0d89d"
-         (string-downcase (digest:bytes-to-hex (digest:sha1-digest data)))))))
+         (string-downcase (digest:bytes-to-hex (digest:sha1 data)))))))
 
 (deftest md5-basic
   "Test MD5 with known test vectors"

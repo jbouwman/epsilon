@@ -449,7 +449,7 @@
 ;;;; ==========================================================================
 
 (defun path-from-uri (uri-obj)
-  "Extract path string from a URI/URL object (for migration compatibility)"
+  "Extract path string from a URI/URL object"
   (cond
     ;; Handle string paths directly
     ((stringp uri-obj) uri-obj)

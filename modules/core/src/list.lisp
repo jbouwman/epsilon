@@ -362,10 +362,7 @@ provided PLIST."
 (define-modify-macro delete-from-plistf (&rest keys) delete-from-plist
                      "Modify macro for DELETE-FROM-PLIST.")
 
-(declaim (inline sans))
-(defun sans (plist &rest keys)
-  "Alias of REMOVE-FROM-PLIST for backward compatibility."
-  (apply #'remove-from-plist plist keys))
+;; Use remove-from-plist directly
 
 (defun mappend (function &rest lists)
   "Applies FUNCTION to respective element(s) of each LIST, appending all the

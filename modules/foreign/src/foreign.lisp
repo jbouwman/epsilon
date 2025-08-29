@@ -1013,29 +1013,11 @@
      (error "Function signature ~A ~A not yet implemented in call-with-signature" 
             return-type arg-types))))
 
-(defun shared-call-unified (function-designator return-type arg-types &rest args)
-  "Unified FFI call implementation using optimized paths based on signature"
-  (let ((function-address
-          (etypecase function-designator
-            (symbol (lib:lib-function 
-                     (lib:lib-open "libc") 
-                     (string function-designator)))
-            (list (destructuring-bind (fn-name lib-name) function-designator
-                    (lib:lib-function 
-                     (lib:lib-open (if (symbolp lib-name)
-                                       (string-downcase (symbol-name lib-name))
-                                       lib-name)) 
-                     (string fn-name)))))))
-    (unless function-address
-      (error "Could not find function ~A" function-designator))
-    ;; Call the optimized signature implementation
-    (call-with-signature function-address return-type arg-types args)))
+;; shared-call-unified is defined in libffi-calls.lisp
 
 ;; Removed duplicate libffi-call definition to avoid conflicts
 
-(defun shared-call (function-designator return-type arg-types &rest args)
-  "Main entry point for FFI calls"
-  (apply #'shared-call-unified function-designator return-type arg-types args))
+;; shared-call is defined above - use shared-call-unified directly
 
 ;; Missing stub functions
 (defvar *libffi-library* nil
@@ -1058,13 +1040,8 @@
 
 (defun ffi-call-auto (function-designator &rest args)
   "Auto-discovering FFI call"
-  ;; Try to auto-discover signature, for now just fail gracefully
-  (error "Auto-discovery not yet implemented for ~A" function-designator))
-
-(defun auto-discover-signature (function-name library-name)
-  "Attempt to auto-discover function signature"
-  (warn "Could not auto-discover signature for ~A" function-name)
-  nil)
+  ;; Auto-discovery not implemented
+  (error "ffi-call-auto not yet implemented for ~A" function-designator))
 
 (defvar *primitive-type-map*)
 

@@ -6,7 +6,8 @@
   (:use :cl :epsilon.test)
   (:local-nicknames
    (#:http2 #:epsilon.http2)
-   (#:crypto #:epsilon.crypto)))
+   (#:crypto #:epsilon.crypto)
+   (#:flow #:epsilon.http2.flow-control)))
 
 (in-package :epsilon.http2.tests)
 
@@ -98,18 +99,14 @@
 
 (deftest test-http2-connection-creation
   "Test creating HTTP/2 connection object"
-  ;; Create a mock socket for testing
-  (let ((mock-socket :mock-socket))
-    (let ((conn (make-instance 'http2::http2-connection
-                              :socket mock-socket
-                              :client-p t)))
-      (is-not-null conn)
-      (is-eq mock-socket (http2::connection-socket conn))
-      (is-true (http2::connection-client-p conn))
-      (is-not-null (http2::connection-streams conn))
-      (is-= 1 (http2::connection-next-stream-id conn))
-      (is-= 65535 (http2::connection-send-window conn))
-      (is-= 65535 (http2::connection-recv-window conn)))))
+  (let ((conn (http2::make-http2-connection nil :client-p t)))
+    (is-not-null conn)
+    (is-eq nil (http2::connection-socket conn))
+    (is-true (http2::connection-client-p conn))
+    (is-not-null (http2::connection-streams conn))
+    (is-= 1 (http2::connection-next-stream-id conn))
+    (is-= 65535 (flow:flow-controller-send-window (http2::http2-connection-flow-controller conn)))
+    (is-= 65535 (flow:flow-controller-recv-window (http2::http2-connection-flow-controller conn)))))
 
 (deftest test-client-stream-ids
   "Test that client uses odd stream IDs"

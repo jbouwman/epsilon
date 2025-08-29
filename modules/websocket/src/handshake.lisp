@@ -76,7 +76,7 @@
 (defun generate-accept-key (websocket-key)
   "Generate Sec-WebSocket-Accept value from Sec-WebSocket-Key"
   (let* ((concatenated (str:concat websocket-key +websocket-magic-string+))
-         (sha1-hash (digest:sha1-digest (str:string-to-octets concatenated))))
+         (sha1-hash (digest:sha1 (str:string-to-octets concatenated))))
     (base64:octets-to-base64 sha1-hash)))
 
 ;;; Request validation

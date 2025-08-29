@@ -65,7 +65,7 @@
   "Statistics for function call frequency and performance")
 
 (defvar *use-libffi-calls* t
-  "Always use libffi for FFI calls (compatibility variable)")
+  "Always use libffi for FFI calls")
 
 (defvar *libffi-function-whitelist* nil
   "List of function names to use with libffi (nil = all)")
@@ -105,24 +105,8 @@
 ;;; Smart FFI with automatic signature detection
 
 (defun ffi-call-auto (function-designator &rest args)
-  "Smart FFI call with automatic signature detection"
-  (let ((signature (auto-discover-signature function-designator)))
-    (if signature
-        (apply #'shared-call-unified function-designator 
-               (getf signature :return-type)
-               (getf signature :arg-types)
-               args)
-        (error "Could not determine signature for function ~A" function-designator))))
-
-(defun auto-discover-signature (function-designator)
-  "Attempt to automatically discover function signature"
-  ;; Try to get from clang signatures module
-  (handler-case
-      (let ((sig (clang-sigs:auto-discover-signature function-designator)))
-        (when sig
-          (list :return-type (clang-sigs:function-signature-return-type sig)
-                :arg-types (clang-sigs:function-signature-arg-types sig))))
-    (error () nil)))
+  "Smart FFI call - automatic signature detection not implemented"
+  (error "ffi-call-auto not yet implemented for ~A" function-designator))
 
 ;;; Debugging and diagnostics
 

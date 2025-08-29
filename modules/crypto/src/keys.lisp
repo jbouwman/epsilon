@@ -504,12 +504,7 @@
       (ffi:%evp-md-ctx-free md-ctx))
     valid))
 
-;; Aliases for compatibility
-(defun sign (key data &rest args)
-  (apply #'sign-message key data args))
-
-(defun verify (key data signature &rest args)
-  (apply #'verify-message key data signature args))
+;; Use sign-message and verify-message directly
 
 ;;;; Public Key Encryption
 
