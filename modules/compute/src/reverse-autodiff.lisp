@@ -781,9 +781,7 @@
   "Number of non-zero entries in sparse gradient"
   (length (sparse-gradient-indices grad)))
 
-(defun sparse-gradient-p (obj)
-  "Test if object is a sparse gradient"
-  (typep obj 'sparse-gradient))
+; sparse-gradient-p is automatically created by defstruct
 
 ;;; Memory management
 
@@ -812,8 +810,9 @@
 
 (defun reverse-diff-symbolic (expr var)
   "Get symbolic derivative using reverse mode"
-  ;; TODO: Return symbolic expression instead of numeric gradient
-  (error "Symbolic reverse diff not yet implemented"))
+  ;; For now, use symbolic differentiation from the compute module
+  ;; This should return a symbolic expression, not a numeric value
+  (funcall (find-symbol "DIFF" "EPSILON.COMPUTE") expr var))
 
 (defun hessian-mixed-mode (expr var-names bindings)
   "Compute Hessian using mixed forward-reverse mode"
@@ -831,23 +830,9 @@
   "Get output value from tape"
   (tape-node-value (tape-output-node tape)))
 
-(defun gradient (expr var-names bindings)
-  "Compute gradient - alias for reverse-diff"
-  (reverse-diff expr var-names bindings))
+; gradient function defined at line 677
 
-(defun tape-memory-usage (tape)
-  "Get tape memory usage"
-  (if tape
-      (* (length (tape-nodes tape)) 100)  ; Rough estimate
-      0))
+; tape-memory-usage and tape-peak-memory accessors are created by defstruct
 
-(defun tape-peak-memory (tape)
-  "Get peak tape memory usage"
-  (if tape
-      (* (length (tape-nodes tape)) 150)  ; Rough estimate
-      0))
-
-(defun checkpoints-used-p ()
-  "Check if checkpoints were used"
-  *checkpoints-used*)
+; checkpoints-used-p defined at line 714
 

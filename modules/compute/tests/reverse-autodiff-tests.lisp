@@ -135,8 +135,6 @@
 
 (deftest test-custom-vjp-rules
   "Test custom vector-Jacobian product rules"
-  ;; Skip until matrix operations are implemented
-  (skip "Custom VJP rules and DOT operation not yet implemented")
   ;; Register custom VJP for efficient operations
   (ad:register-vjp-rule 'matrix-multiply
     (lambda (args adjoints)
@@ -163,7 +161,6 @@
 
 (deftest test-higher-order-reverse
   "Test higher-order derivatives with reverse mode"
-  (skip "Symbolic reverse diff not yet implemented")
   ;; Second derivative using reverse-over-reverse
   (let* ((x (c:var 'x))
          (f (c:* (c:* x x) x))  ; x^3

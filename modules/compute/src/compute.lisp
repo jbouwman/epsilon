@@ -249,13 +249,37 @@
 (in-package epsilon.compute)
 
 ;;; Export sym functions for convenience
-(defun var (name &optional type metadata)
-  "Create a symbolic variable"
-  (sym:sym name type metadata))
+(defun var (name &key type shape metadata)
+  "Create a symbolic variable with optional type, shape and metadata"
+  (let* ((computed-type 
+          (cond
+            ;; If shape is provided, infer type from it
+            (shape
+             (case (length shape)
+               (0 (types:scalar-type))
+               (1 (types:vector-type (first shape)))
+               (2 (types:matrix-type (first shape) (second shape)))
+               (otherwise (types:tensor-type shape))))
+            ;; Otherwise use provided type
+            (type
+             (case type
+               (:scalar (types:scalar-type))
+               (:vector (types:vector-type 0))  ; Size unknown
+               (:matrix (types:matrix-type 0 0)) ; Size unknown
+               (:tensor (types:tensor-type nil)) ; Shape unknown
+               (otherwise type)))
+            ;; Default to symbolic
+            (t nil)))
+         (final-metadata (or metadata (when shape (list :shape shape)))))
+    (sym:sym name computed-type final-metadata)))
 
-(defun const (value &optional type)
-  "Create a constant"
-  (sym:lit value type))
+(defun const (value &key type)
+  "Create a constant with optional type. Arrays are passed through for broadcasting."
+  (if (arrayp value)
+      ;; Arrays are passed through directly for broadcasting
+      value
+      ;; Other values become symbolic constants
+      (sym:lit value type)))
 
 ;;;; IMPLEMENTATION STATUS SUMMARY:
 ;;;;
@@ -448,36 +472,9 @@
 
 ;;; Reduction operations
 
-(defun sum (x &key axis keepdims)
-  "Sum reduction operation.
-   If axis is nil, sum all elements.
-   If axis is specified, sum along that dimension.
-   If keepdims is true, preserve reduced dimensions as 1."
-  (declare (ignore axis keepdims)) ; TODO: implement axis support
-  (cond
-    ;; Numeric scalar - return as is
-    ((numberp x) x)
-    ;; Array - compute sum
-    ((arrayp x)
-     (reduce #'cl:+ (make-array (array-total-size x) :displaced-to x)))
-    ;; Symbolic - create sum expression
-    (t (sym:symbolic 'sum (ensure-expr x)))))
+; sum definition moved to line 2904
 
-(defun mean (x &key axis keepdims)
-  "Mean reduction operation.
-   If axis is nil, compute mean of all elements.
-   If axis is specified, compute mean along that dimension.
-   If keepdims is true, preserve reduced dimensions as 1."
-  (declare (ignore axis keepdims)) ; TODO: implement axis support
-  (cond
-    ;; Numeric scalar - return as is
-    ((numberp x) x)
-    ;; Array - compute mean
-    ((arrayp x)
-     (/ (reduce #'cl:+ (make-array (array-total-size x) :displaced-to x))
-        (array-total-size x)))
-    ;; Symbolic - create mean expression
-    (t (sym:symbolic 'mean (ensure-expr x)))))
+; mean definition moved to line 2902
 
 (defun prod (x &key axis keepdims)
   "Product reduction operation.
@@ -526,9 +523,7 @@
 
 ;;; Matrix operations
 
-(defun transpose (matrix)
-  "Symbolic matrix transpose"
-  (sym:symbolic 'transpose (ensure-expr matrix)))
+; transpose - full implementation at line 2812
 
 (defun inverse (matrix)
   "Symbolic matrix inverse"
@@ -542,9 +537,7 @@
   "Symbolic matrix trace"
   (sym:symbolic 'trace (ensure-expr matrix)))
 
-(defun dot (v1 v2)
-  "Symbolic dot product"
-  (sym:symbolic 'dot (ensure-expr v1) (ensure-expr v2)))
+; dot - full implementation at line 2829
 
 (defun cross (v1 v2)
   "Symbolic cross product"
@@ -1011,37 +1004,7 @@
       ;; For 0-arg expressions, just return the op as a symbol
       op))
 
-(defun var (name &key type shape)
-  "Create a symbolic variable with optional type and shape"
-  (let* ((computed-type 
-          (cond
-            ;; If shape is provided, infer type from it
-            (shape
-             (case (length shape)
-               (0 (types:scalar-type))
-               (1 (types:vector-type (first shape)))
-               (2 (types:matrix-type (first shape) (second shape)))
-               (otherwise (types:tensor-type shape))))
-            ;; Otherwise use provided type
-            (type
-             (case type
-               (:scalar (types:scalar-type))
-               (:vector (types:vector-type 0))  ; Size unknown
-               (:matrix (types:matrix-type 0 0)) ; Size unknown
-               (:tensor (types:tensor-type nil)) ; Shape unknown
-               (otherwise type)))
-            ;; Default to symbolic
-            (t nil)))
-         (metadata (when shape (list :shape shape))))
-    (sym:sym name computed-type metadata)))
-
-(defun const (value &key type)
-  "Create a constant with optional type. Arrays are passed through for broadcasting."
-  (if (arrayp value)
-      ;; Arrays are passed through directly for broadcasting
-      value
-      ;; Other values become symbolic constants
-      (sym:lit value type)))
+; var and const definitions removed (duplicates)
 
 (defun simplify (expr)
   "Simplify an expression"
@@ -2432,11 +2395,7 @@
   "Create a tensor of zeros"
   (sym:symbolic 'zeros shape dtype))
 
-(defun sum (tensor &key axis)
-  "Sum tensor elements"
-  (if axis
-      (sym:symbolic 'sum tensor axis)
-      (sym:symbolic 'sum tensor)))
+; sum definition moved to line 2904
 
 (defun grad (expr &rest vars)
   "Compute gradient with respect to one or more variables.
@@ -2843,3 +2802,97 @@
     (mapcar (lambda (idx dim)
               (if (= dim 1) 0 idx))
             adjusted-indices shape)))
+
+;;; Matrix operations
+
+(defun transpose (matrix)
+  "Transpose a matrix"
+  (cond
+    ((arrayp matrix)
+     (let* ((dims (array-dimensions matrix))
+            (rows (first dims))
+            (cols (if (cdr dims) (second dims) 1))
+            (result (make-array (list cols rows))))
+       (dotimes (i rows)
+         (dotimes (j cols)
+           (setf (aref result j i) (aref matrix i j))))
+       result))
+    ((or (sym:expr-p matrix) (sym:var-p matrix))
+     (sym:symbolic 'transpose (ensure-expr matrix)))
+    (t (error "Cannot transpose ~A" matrix))))
+
+(defun dot (a b)
+  "Matrix/vector dot product"
+  (cond
+    ;; Both arrays - compute dot product
+    ((and (arrayp a) (arrayp b))
+     (let ((a-dims (array-dimensions a))
+           (b-dims (array-dimensions b)))
+       (cond
+         ;; Vector dot product
+         ((and (= (length a-dims) 1) (= (length b-dims) 1))
+          (if (= (first a-dims) (first b-dims))
+              (loop for i from 0 below (first a-dims)
+                    sum (* (aref a i) (aref b i)))
+              (error "Incompatible dimensions for dot product")))
+         ;; Matrix-vector multiplication
+         ((and (= (length a-dims) 2) (= (length b-dims) 1))
+          (if (= (second a-dims) (first b-dims))
+              (let ((result (make-array (first a-dims))))
+                (dotimes (i (first a-dims))
+                  (setf (aref result i)
+                        (loop for j from 0 below (second a-dims)
+                              sum (* (aref a i j) (aref b j)))))
+                result)
+              (error "Incompatible dimensions for matrix-vector multiplication")))
+         ;; Matrix-matrix multiplication
+         ((and (= (length a-dims) 2) (= (length b-dims) 2))
+          (if (= (second a-dims) (first b-dims))
+              (let ((result (make-array (list (first a-dims) (second b-dims)))))
+                (dotimes (i (first a-dims))
+                  (dotimes (j (second b-dims))
+                    (setf (aref result i j)
+                          (loop for k from 0 below (second a-dims)
+                                sum (* (aref a i k) (aref b k j))))))
+                result)
+              (error "Incompatible dimensions for matrix multiplication")))
+         (t (error "Unsupported dimensions for dot product")))))
+    ;; Symbolic case - handle vars and expressions
+    ((or (sym:expr-p a) (sym:expr-p b) (sym:var-p a) (sym:var-p b))
+     (sym:symbolic 'dot (ensure-expr a) (ensure-expr b)))
+    (t (error "Cannot compute dot product of ~A and ~A" a b))))
+
+(defun sum (expr &key axis)
+  "Sum reduction operation"
+  (cond
+    ((arrayp expr)
+     (if axis
+         ;; Sum along specific axis
+         (reduce-along-axis #'cl:+ expr axis 0)
+         ;; Sum all elements
+         (let ((total 0))
+           (dotimes (i (array-total-size expr))
+             (incf total (row-major-aref expr i)))
+           total)))
+    ((numberp expr) expr)
+    (t (sym:symbolic 'sum expr))))
+
+(defun mean (expr &key axis)
+  "Mean reduction operation"
+  (cond
+    ((arrayp expr)
+     (if axis
+         ;; Mean along specific axis
+         (let ((sum-result (reduce-along-axis #'cl:+ expr axis 0))
+               (count (nth axis (array-dimensions expr))))
+           (if (arrayp sum-result)
+               (let ((result (make-array (array-dimensions sum-result))))
+                 (dotimes (i (array-total-size result))
+                   (setf (row-major-aref result i)
+                         (/ (row-major-aref sum-result i) count)))
+                 result)
+               (/ sum-result count)))
+         ;; Mean of all elements
+         (/ (sum expr) (array-total-size expr))))
+    ((numberp expr) expr)
+    (t (sym:symbolic 'mean expr))))
