@@ -116,6 +116,21 @@
 (defun validate-module-metadata (metadata filepath)
   "Validate module.lisp metadata and return detailed error messages for any issues.
    Returns NIL if valid, or a list of error messages if invalid."
+  ;; Try to use the new validation system if available
+  (if (and (find-package "EPSILON.MODULE-SCHEMA")
+           (fboundp (find-symbol "VALIDATE-MODULE-METADATA" "EPSILON.MODULE-SCHEMA")))
+      ;; Use new validation system
+      (multiple-value-bind (valid-p errors)
+          (funcall (find-symbol "VALIDATE-MODULE-METADATA" "EPSILON.MODULE-SCHEMA") 
+                   metadata filepath)
+        (if valid-p
+            nil
+            errors))
+      ;; Fall back to basic validation
+      (validate-module-metadata-basic metadata filepath)))
+
+(defun validate-module-metadata-basic (metadata filepath)
+  "Basic validation for module metadata when advanced validation is not available"
   (let ((errors '())
         (valid-keys '(:name :version :description :author :platform
                      :sources :tests :benchmarks :examples :experiments
@@ -124,7 +139,7 @@
     ;; Check that metadata is a property list
     (unless (and (listp metadata) (evenp (length metadata)))
       (push (format nil "Invalid module.lisp format in ~A: must be a property list with even number of elements" filepath) errors)
-      (return-from validate-module-metadata errors))
+      (return-from validate-module-metadata-basic errors))
     
     ;; Check for required :name field
     (let ((name (getf metadata :name)))
@@ -215,6 +230,30 @@
         (validate-path-list ":experiments" (getf metadata :experiments))
         (validate-path-list ":docs" (getf metadata :docs))
         (validate-path-list ":data" (getf metadata :data))))
+    
+    ;; NEW: Validate sources and tests don't overlap
+    (let ((sources (getf metadata :sources))
+          (tests (getf metadata :tests)))
+      (when (and sources tests (listp sources) (listp tests))
+        (let ((common (intersection sources tests :test #'equal)))
+          (when common
+            (push (format nil "Invalid configuration in ~A: :sources and :tests must not overlap, found common directories: ~{~A~^, ~}"
+                         filepath common) errors)))))
+    
+    ;; NEW: Validate that source and test directories actually exist
+    (let ((base-path (path:path-parent (path:make-path filepath))))
+      (flet ((check-directories (field-name dirs)
+               (when (and dirs (listp dirs))
+                 (dolist (dir dirs)
+                   (when (stringp dir)
+                     (let* ((full-path (path:path-join base-path dir))
+                            (path-str (path:path-string full-path)))
+                       (unless (and (probe-file path-str)
+                                   (fs:dir-p path-str))
+                         (push (format nil "Invalid ~A directory '~A' in ~A: directory does not exist"
+                                      field-name dir filepath) errors))))))))
+        (check-directories ":sources" (getf metadata :sources))
+        (check-directories ":tests" (getf metadata :tests))))
     
     ;; Return errors (NIL if no errors)
     (when errors (nreverse errors))))
