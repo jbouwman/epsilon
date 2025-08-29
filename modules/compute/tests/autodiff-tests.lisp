@@ -45,7 +45,6 @@
 
 (deftest test-jacobian-computation
   "Test Jacobian matrix computation"
-  (skip "grad function with multiple variables not yet implemented")
   (let ((x (c:var 'x))
         (y (c:var 'y)))
     ;; Vector function f(x,y) = [x^2 + y, x*y]
