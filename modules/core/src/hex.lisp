@@ -58,11 +58,4 @@ hexadecimal digits into a byte array."
                         (char-to-digit (char string (1+ j)))))
          finally (return key)))))
 
-;; Convenience aliases for compatibility
-(defun encode (data)
-  "Encode byte array or vector to hexadecimal string"
-  (u8-to-hex data))
-
-(defun decode (hex-string)
-  "Decode hexadecimal string to byte array"
-  (hex-to-u8 hex-string))
+;; Use u8-to-hex and hex-to-u8 directly

@@ -2,12 +2,10 @@
 ;;;;
 ;;;;  tests for the enhanced process execution functionality
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (unless (find-package "EPSILON.TEST")
-    (require :epsilon.test)))
-
 (defpackage epsilon.process.tests
-  (:use cl epsilon.test)
+  (:use
+   cl
+   epsilon.test)
   (:local-nicknames
    (process epsilon.process)))
 
@@ -16,6 +14,8 @@
 ;;; ============================================================================
 ;;; Test Helpers
 ;;; ============================================================================
+
+;;; FIXME these should be standard library functions
 
 (defun poll-until (predicate &key (timeout-seconds 5) (poll-interval 0.01))
   "Poll until predicate returns true or timeout is reached.
@@ -83,6 +83,7 @@
   "Test basic synchronous process execution"
   (multiple-value-bind (output error-output exit-code)
       (process:run-sync "echo" :args '("hello world"))
+    (declare (ignore error-output))
     (is-equal 0 exit-code)
     (is (search "hello world" output))))
 
@@ -99,6 +100,7 @@
   "Test running with error-on-failure disabled"
   (multiple-value-bind (output error-output exit-code)
       (process:run-sync "false" :error-on-failure nil)
+    (declare (ignore output error-output))
     (is (not (zerop exit-code)))))
 
 (deftest test-command-not-found ()
@@ -136,6 +138,7 @@
                         :args '("-c" "echo stdout; echo stderr >&2")
                         :merge-error t
                         :error-on-failure nil)
+    (declare (ignore exit-code))
     (is (search "stdout" output))
     (is (or (search "stderr" output)  ; merged into output
             (search "stderr" error-output))) ; or kept separate
@@ -152,6 +155,7 @@
                         :args '("-c" "echo $HOME")
                         :shell nil
                         :error-on-failure nil)
+    (declare (ignore error-output))
     (is-equal 0 exit-code)
     ;; When run through shell, $HOME should be expanded
     (is (not (search "$HOME" output)))))
@@ -256,6 +260,7 @@
   ;; Test that we can run common Unix commands
   (multiple-value-bind (output error-output exit-code)
       (process:run-sync "uname" :error-on-failure nil)
+    (declare (ignore error-output))
     (is-equal 0 exit-code)
     (is (> (length output) 0))))
 
@@ -284,6 +289,7 @@
                                            (format t "Processing: ~A~%" line))
                           :error-on-failure nil
                           :timeout 5)
+      (declare (ignore output error-output))
       ;; Should complete without timing out
       (is (>= exit-code 0)))))
 
@@ -296,6 +302,7 @@
                           :environment test-env
                           :shell nil
                           :error-on-failure nil)
+      (declare (ignore error-output))
       (is-equal 0 exit-code)
       (is (search "test_value" output)))))
 
@@ -305,5 +312,6 @@
       (process:run-sync "pwd"
                         :working-directory "/tmp" 
                         :error-on-failure nil)
+    (declare (ignore error-output))
     (is-equal 0 exit-code)
     (is (search "/tmp" output))))

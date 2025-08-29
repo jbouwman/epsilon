@@ -20,19 +20,6 @@
    lib-function
    defshared
 
-   ;; new public API
-   defcfuns
-          
-   ;; Auto-discovery
-   preload-common-signatures
-          
-   ;; Performance and debugging
-   benchmark-ffi-approach
-   with-ffi-debugging
-          
-   ;; Migration helpers
-   shared-call-unified
-          
    ;; Utilities
    diagnose-ffi-call
    test-libffi-integration
@@ -53,9 +40,6 @@
    resolve-function-address
    ffi-call
    ffi-call-auto
-   auto-discover-signature
-   *use-libffi-calls*
-   *track-call-performance*
    
    ;; Type Management
    define-foreign-struct
@@ -69,10 +53,6 @@
    foreign-free
    with-foreign-memory
    register-finalizer
-   
-   ;; Helper functions
-   make-epoll-data
-   epoll-data-fd
    
    ;; Structure Discovery
    grovel-struct
@@ -167,17 +147,8 @@
    callback-info-signature
    callback-info-pointer
    
-   ffi-call-cached
-   auto-discover-signature
-   
    ;; Public API and configuration
    ffi-system-status
-   *use-libffi-calls*
-   *track-call-performance*
-   
-   ;; Performance and debugging
-   benchmark-ffi-approach
-   with-ffi-debugging
    get-call-statistics))
 
 (in-package epsilon.foreign)
@@ -1042,29 +1013,11 @@
      (error "Function signature ~A ~A not yet implemented in call-with-signature" 
             return-type arg-types))))
 
-(defun shared-call-unified (function-designator return-type arg-types &rest args)
-  "Unified FFI call implementation using optimized paths based on signature"
-  (let ((function-address
-          (etypecase function-designator
-            (symbol (lib:lib-function 
-                     (lib:lib-open "libc") 
-                     (string function-designator)))
-            (list (destructuring-bind (fn-name lib-name) function-designator
-                    (lib:lib-function 
-                     (lib:lib-open (if (symbolp lib-name)
-                                       (string-downcase (symbol-name lib-name))
-                                       lib-name)) 
-                     (string fn-name)))))))
-    (unless function-address
-      (error "Could not find function ~A" function-designator))
-    ;; Call the optimized signature implementation
-    (call-with-signature function-address return-type arg-types args)))
+;; shared-call-unified is defined in libffi-calls.lisp
 
 ;; Removed duplicate libffi-call definition to avoid conflicts
 
-(defun shared-call (function-designator return-type arg-types &rest args)
-  "Main entry point for FFI calls"
-  (apply #'shared-call-unified function-designator return-type arg-types args))
+;; shared-call is defined above - use shared-call-unified directly
 
 ;; Missing stub functions
 (defvar *libffi-library* nil
@@ -1087,28 +1040,8 @@
 
 (defun ffi-call-auto (function-designator &rest args)
   "Auto-discovering FFI call"
-  ;; Try to auto-discover signature, for now just fail gracefully
-  (error "Auto-discovery not yet implemented for ~A" function-designator))
-
-(defun auto-discover-signature (function-name library-name)
-  "Attempt to auto-discover function signature"
-  (warn "Could not auto-discover signature for ~A" function-name)
-  nil)
-
-;; Helper functions for epoll data handling (reused from epsilon.linux)
-
-(defun make-epoll-data (&key fd ptr u32 u64)
-  "Create epoll_data_t union value"
-  (cond
-    (fd (logand fd #xffffffff))            ; Store fd as lower 32 bits
-    (ptr ptr)                              ; Store pointer value
-    (u32 (logand u32 #xffffffff))         ; Store 32-bit value
-    (u64 (logand u64 #xffffffffffffffff)) ; Store 64-bit value
-    (t 0)))
-
-(defun epoll-data-fd (data)
-  "Extract file descriptor from epoll_data_t"
-  (logand data #xffffffff))
+  ;; Auto-discovery not implemented
+  (error "ffi-call-auto not yet implemented for ~A" function-designator))
 
 (defvar *primitive-type-map*)
 

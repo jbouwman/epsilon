@@ -26,10 +26,7 @@
    #:reset
    
    ;; Utility
-   #:bytes-to-hex
-   
-   ;; Legacy compatibility
-   #:sha1-digest))
+   #:bytes-to-hex))
 
 (in-package #:epsilon.digest)
 
@@ -145,7 +142,4 @@
     (:crc32 (setf (hasher-digest hasher) (crc-32:make-crc32-digest))))
   nil)
 
-;; Legacy compatibility function
-(defun sha1-digest (octets)
-  "Legacy SHA-1 function. Use (sha1 data) instead."
-  (sha1 octets))
+;; Use sha1 directly

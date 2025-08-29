@@ -1,8 +1,7 @@
 .PHONY: test release build smoke version clean setup
 
-# Run all tests (smoke + module tests)
+# Run all tests in all modules
 test:
-	./epsilon --exec epsilon.release:run-smoke-tests
 	./epsilon --exec epsilon.release:test
 
 # Run only smoke tests

@@ -111,6 +111,114 @@
 
 ;;; Module Discovery and Registration
 
+;;; Module metadata validation
+
+(defun validate-module-metadata (metadata filepath)
+  "Validate module.lisp metadata and return detailed error messages for any issues.
+   Returns NIL if valid, or a list of error messages if invalid."
+  (let ((errors '())
+        (valid-keys '(:name :version :description :author :platform
+                     :sources :tests :benchmarks :examples :experiments
+                     :docs :data :requires :provides)))
+    
+    ;; Check that metadata is a property list
+    (unless (and (listp metadata) (evenp (length metadata)))
+      (push (format nil "Invalid module.lisp format in ~A: must be a property list with even number of elements" filepath) errors)
+      (return-from validate-module-metadata errors))
+    
+    ;; Check for required :name field
+    (let ((name (getf metadata :name)))
+      (cond
+        ((null name)
+         (push (format nil "Missing required field :name in ~A" filepath) errors))
+        ((not (stringp name))
+         (push (format nil "Invalid :name field in ~A: must be a string, got ~A" filepath (type-of name)) errors))
+        ((string= name "")
+         (push (format nil "Invalid :name field in ~A: cannot be empty string" filepath) errors))))
+    
+    ;; Check for unknown keys
+    (loop for key in metadata by #'cddr
+          unless (member key valid-keys)
+            do (push (format nil "Unknown key ~A in ~A. Valid keys are: ~{~A~^, ~}" 
+                           key filepath valid-keys) errors))
+    
+    ;; Validate optional fields if present
+    (let ((version (getf metadata :version))
+          (description (getf metadata :description))
+          (author (getf metadata :author))
+          (platform (getf metadata :platform))
+          (requires (getf metadata :requires))
+          (provides (getf metadata :provides)))
+      
+      ;; Version validation
+      (when (and version (not (stringp version)))
+        (push (format nil "Invalid :version field in ~A: must be a string, got ~A" 
+                     filepath (type-of version)) errors))
+      
+      ;; Description validation
+      (when (and description (not (stringp description)))
+        (push (format nil "Invalid :description field in ~A: must be a string, got ~A" 
+                     filepath (type-of description)) errors))
+      
+      ;; Author validation
+      (when (and author (not (stringp author)))
+        (push (format nil "Invalid :author field in ~A: must be a string, got ~A" 
+                     filepath (type-of author)) errors))
+      
+      ;; Platform validation
+      (when (and platform (not (stringp platform)))
+        (push (format nil "Invalid :platform field in ~A: must be a string, got ~A" 
+                     filepath (type-of platform)) errors))
+      
+      ;; Requires validation - must be list of strings
+      (when requires
+        (unless (listp requires)
+          (push (format nil "Invalid :requires field in ~A: must be a list, got ~A" 
+                       filepath (type-of requires)) errors))
+        (when (listp requires)
+          (loop for req in requires
+                for index from 0
+                unless (stringp req)
+                  do (push (format nil "Invalid :requires entry at position ~D in ~A: must be a string, got ~A" 
+                                 index filepath (type-of req)) errors))))
+      
+      ;; Provides validation - must be list of strings
+      (when provides
+        (unless (listp provides)
+          (push (format nil "Invalid :provides field in ~A: must be a list, got ~A" 
+                       filepath (type-of provides)) errors))
+        (when (listp provides)
+          (loop for prov in provides
+                for index from 0
+                unless (stringp prov)
+                  do (push (format nil "Invalid :provides entry at position ~D in ~A: must be a string, got ~A" 
+                                 index filepath (type-of prov)) errors))))
+      
+      ;; Path list validation helper
+      (flet ((validate-path-list (field-name value)
+               (when value
+                 (unless (listp value)
+                   (push (format nil "Invalid ~A field in ~A: must be a list, got ~A" 
+                               field-name filepath (type-of value)) errors))
+                 (when (listp value)
+                   (loop for path in value
+                         for index from 0
+                         unless (stringp path)
+                           do (push (format nil "Invalid ~A entry at position ~D in ~A: must be a string, got ~A" 
+                                          field-name index filepath (type-of path)) errors))))))
+        
+        ;; Validate path lists
+        (validate-path-list ":sources" (getf metadata :sources))
+        (validate-path-list ":tests" (getf metadata :tests))
+        (validate-path-list ":benchmarks" (getf metadata :benchmarks))
+        (validate-path-list ":examples" (getf metadata :examples))
+        (validate-path-list ":experiments" (getf metadata :experiments))
+        (validate-path-list ":docs" (getf metadata :docs))
+        (validate-path-list ":data" (getf metadata :data))))
+    
+    ;; Return errors (NIL if no errors)
+    (when errors (nreverse errors))))
+
 (defun register-module (environment path)
   "Register a single module directory (contains module.lisp)"
   (let* ((module-path (path:ensure-path path))
@@ -118,19 +226,34 @@
          (file-string (path:path-string module-file)))
     (log:debug "Checking for module.lisp at: ~A" file-string)
     (if (probe-file file-string)
-        (let* ((info (with-open-file (stream file-string :if-does-not-exist nil)
-                       (when stream (read stream))))
-               (module-name (getf info :name)))
-          (if module-name
-              (let ((pkg-info (make-instance 'module-info
-                                             :name module-name
-                                             :location module-path
-                                             :metadata info
-                                             :loaded-p nil)))
-                (log:debug "Registering module: ~A from ~A" module-name path)
-                (map:assoc! (modules environment)
-                            module-name pkg-info))
-              (log:debug "No module name found in ~A" file-string)))
+        (handler-case
+            (let* ((info (with-open-file (stream file-string :if-does-not-exist nil)
+                           (when stream (read stream))))
+                   (validation-errors (validate-module-metadata info file-string)))
+              (cond
+                ;; Validation failed - report all errors
+                (validation-errors
+                 (log:error "Invalid module.lisp at ~A:" file-string)
+                 (dolist (error validation-errors)
+                   (log:error "  ~A" error))
+                 (error "Module validation failed: ~A~%~{  ~A~%~}" 
+                        file-string validation-errors))
+                ;; Validation passed - register the module
+                (t
+                 (let ((module-name (getf info :name)))
+                   (let ((pkg-info (make-instance 'module-info
+                                                  :name module-name
+                                                  :location module-path
+                                                  :metadata info
+                                                  :loaded-p nil)))
+                     (log:debug "Registering module: ~A from ~A" module-name path)
+                     (map:assoc! (modules environment)
+                                 module-name pkg-info))))))
+          (error (e)
+            (log:error "Failed to parse module.lisp at ~A: ~A" file-string e)
+            (error "Invalid module.lisp format at ~A: ~A~%~
+                    Make sure the file contains a valid property list starting with (:name \"module-name\" ...)" 
+                   file-string e)))
         (log:debug "No module.lisp found at: ~A" file-string))))
 
 (defun scan-module-directory (environment path)

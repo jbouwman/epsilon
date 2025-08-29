@@ -568,11 +568,11 @@
       (error 'network-error :message (format nil "UDP recv failed: ~A" e)))))
 
 (defun udp-send-to (socket data address)
-  "Alias for udp-send for compatibility"
+  "Send data to address via UDP socket"
   (udp-send socket data address))
 
 (defun udp-recv-from (socket buffer)
-  "Alias for udp-recv for compatibility"
+  "Receive data from UDP socket"
   (udp-recv socket buffer))
 
 (defun udp-local-addr (socket)

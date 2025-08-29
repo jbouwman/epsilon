@@ -319,41 +319,4 @@
   "Validate that a frame type can be sent/received in current state"
   (can-receive-frame-p stream frame-type))
 
-;;;; Compatibility aliases
-;; These provide shorter names without the http2-stream- prefix
-
-(defun stream-id (stream)
-  "Get stream ID (alias)"
-  (http2-stream-id stream))
-
-(defun stream-state (stream)
-  "Get stream state (alias)"
-  (http2-stream-state stream))
-
-(defun stream-connection (stream)
-  "Get stream connection (alias)"
-  (http2-stream-connection stream))
-
-(defun stream-flow-controller (stream)
-  "Get stream flow controller (alias)"
-  (http2-stream-flow-controller stream))
-
-(defun stream-dependency (stream)
-  "Get stream dependency (alias)"
-  (http2-stream-dependency stream))
-
-(defun stream-weight (stream)
-  "Get stream weight (alias)"
-  (http2-stream-weight stream))
-
-(defun stream-headers-buffer (stream)
-  "Get stream headers buffer (alias)"
-  (http2-stream-headers-buffer stream))
-
-(defun stream-data-buffer (stream)
-  "Get stream data buffer (alias)"
-  (http2-stream-data-buffer stream))
-
-(defun stream-priority (stream)
-  "Get stream priority (alias)"
-  (http2-stream-priority stream))
+;; Use http2-stream- accessor functions directly

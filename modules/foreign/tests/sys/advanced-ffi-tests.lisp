@@ -134,14 +134,6 @@
   ;; This would test _Complex types if we add support
   (skip "Complex number support not yet implemented"))
 
-;; Union tests
-(deftest test-union-handling
-  "Test union type handling"
-  ;; epoll_data_t is a union - we already handle it as a 64-bit value
-  ;; This is effectively tested in the memory allocation tests
-  (let ((data (lib:make-epoll-data :fd 42)))
-    (is (= (lib:epoll-data-fd data) 42))))
-
 ;; Bitfield tests
 (deftest test-bitfield-operations
   "Test bitfield handling"

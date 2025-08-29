@@ -83,13 +83,7 @@
     (log:debug "make-sockaddr-in-into: Zeroed sin_zero fields~%")
     (finish-output)))
 
-(defun make-sockaddr-in (ip-address port)
-  "Create sockaddr_in structure for IPv4 (Darwin version) - deprecated, use make-sockaddr-in-into"
-  (lib:with-foreign-memory ((addr :char :count 16))
-    (make-sockaddr-in-into addr ip-address port)
-    ;; This is still problematic - returning pointer to freed memory
-    ;; Only kept for compatibility, should be removed
-    addr))
+;; make-sockaddr-in removed - use make-sockaddr-in-into instead
 
 (defun parse-sockaddr-in (addr)
   "Parse sockaddr_in structure to extract IP and port"

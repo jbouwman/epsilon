@@ -315,13 +315,13 @@
     (let ((stream (http2:create-stream conn)))
       (is-not-null stream)
       ;; Stream IDs for clients should be odd
-      (is-true (oddp (epsilon.http2::http2-stream-id stream))))
+      (is-true (oddp (epsilon.http2.stream:http2-stream-id stream))))
     
     ;; Create another stream
     (let ((stream2 (http2:create-stream conn)))
       (is-not-null stream2)
       ;; Stream ID should increment by 2
-      (is-equal 3 (epsilon.http2::http2-stream-id stream2)))
+      (is-equal 3 (epsilon.http2.stream:http2-stream-id stream2)))
     
     (http2:connection-close conn)))
 

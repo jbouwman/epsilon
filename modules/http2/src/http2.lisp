@@ -89,28 +89,7 @@
    (max-concurrent-streams :initform 100 :accessor connection-max-concurrent-streams)
    (active-streams-count :initform 0 :accessor connection-active-streams-count)))
 
-;; Compatibility accessors for flow control windows
-(defun connection-send-window (connection)
-  "Get connection send window (compatibility)"
-  (if (http2-connection-flow-controller connection)
-      (flow:flow-controller-send-window (http2-connection-flow-controller connection))
-      65535))
-
-(defun connection-recv-window (connection)
-  "Get connection receive window (compatibility)"
-  (if (http2-connection-flow-controller connection)
-      (flow:flow-controller-recv-window (http2-connection-flow-controller connection))
-      65535))
-
-(defun (setf connection-send-window) (value connection)
-  "Set connection send window (compatibility)"
-  (when (http2-connection-flow-controller connection)
-    (setf (flow:flow-controller-send-window (http2-connection-flow-controller connection)) value)))
-
-(defun (setf connection-recv-window) (value connection)
-  "Set connection receive window (compatibility)"
-  (when (http2-connection-flow-controller connection)
-    (setf (flow:flow-controller-recv-window (http2-connection-flow-controller connection)) value)))
+;; Use flow controller accessors directly
 
 (defun make-http2-connection (socket &key tls-connection client-p)
   "Create a new HTTP/2 connection"
@@ -198,16 +177,7 @@
 
 ;;;; Stream Management
 
-;; Define http2-stream as an alias/wrapper for compatibility
-(defstruct (http2-stream
-            (:constructor %make-http2-stream))
-  "HTTP/2 stream for compatibility"
-  id
-  connection
-  state
-  headers
-  (data (make-array 0 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer 0))
-  (flow-controller nil))
+;; http2-stream is defined in stream.lisp
 
 (defun create-stream (connection)
   "Create a new stream on the connection"
@@ -224,23 +194,7 @@
     (incf (connection-active-streams-count connection))
     stream))
 
-;; Compatibility functions for tests
-(defun stream-connection (stream)
-  "Get stream connection (compatibility)"
-  (stream:stream-connection stream))
-
-(defun stream-id (stream)
-  "Get stream ID (compatibility)"
-  (stream:stream-id stream))
-
-(defun make-http2-stream (id connection)
-  "Create HTTP/2 stream (compatibility)"
-  (stream:initialize-stream id connection))
-
-(defun http2-stream-p (object)
-  "Check if object is an HTTP/2 stream (compatibility)"
-  (or (typep object 'http2-stream)
-      (typep object 'stream:http2-stream)))
+;; Use stream: module functions directly
 
 (defun stream-send-headers (stream headers &key end-stream)
   "Send headers on a stream"
@@ -571,11 +525,7 @@
     
     total-bytes))
 
-;; Frame accessors for compatibility
-(defun frame-type (frame) (frames:http2-frame-type frame))
-(defun frame-stream-id (frame) (frames:http2-frame-stream-id frame))
-(defun frame-payload (frame) (frames:http2-frame-payload frame))
-(defun frame-flag-set-p (frame flag) (logtest (frames:http2-frame-flags frame) flag))
+;; Use frames: module accessors directly
 
 ;; HPACK helper functions (use actual implementation)
 (defun encode-headers (encoder headers) 
@@ -632,23 +582,9 @@
 
 ;;;; Stream Management
 
-(defstruct (http2-stream
-            (:constructor %make-http2-stream))
-  "HTTP/2 stream"
-  id
-  connection
-  state  ; :idle :open :half-closed-remote :half-closed-local :closed
-  headers
-  (data (make-array 0 :element-type '(unsigned-byte 8)
-                   :adjustable t :fill-pointer 0))
-  (flow-controller nil))
+;; http2-stream structure is defined in stream.lisp
 
-(defun make-http2-stream (id connection)
-  "Create a new HTTP/2 stream"
-  (%make-http2-stream
-   :id id
-   :connection connection
-   :state :idle))
+;; Stream creation function is defined above as a compatibility wrapper
 
 (defun stream-connection (stream)
   "Get connection from stream"
@@ -693,18 +629,7 @@
   "Start an HTTP/2 server"
   (apply #'start-http2-server args))
 
-(defun handle-http2-connection (connection handler)
-  "Handle an HTTP/2 connection"
-  ;; Main connection loop
-  (loop
-    (handler-case
-        (let ((frame (connection-receive-frame connection)))
-          (handle-frame connection frame handler))
-      (end-of-file ()
-        (return))
-      (error (e)
-        (format t "Error handling frame: ~A~%" e)
-        (return)))))
+;; Use main handle-http2-connection function above
 
 (defun make-settings (alist)
   "Create settings from an alist"
@@ -719,31 +644,7 @@
 
 ;;;; Frame Helper Functions
 
-(defun serialize-frame (frame)
-  "Serialize frame to bytes"
-  ;; Create a byte array with frame header and payload
-  (let* ((payload (http2-frame-payload frame))
-         (payload-len (if payload (length payload) 0))
-         (total-size (+ 9 payload-len))
-         (output (make-array total-size :element-type '(unsigned-byte 8))))
-    ;; Write header (9 bytes)
-    ;; Length (24 bits)
-    (setf (aref output 0) (logand #xff (ash payload-len -16)))
-    (setf (aref output 1) (logand #xff (ash payload-len -8)))
-    (setf (aref output 2) (logand #xff payload-len))
-    ;; Type (8 bits)
-    (setf (aref output 3) (http2-frame-type frame))
-    ;; Flags (8 bits)
-    (setf (aref output 4) (http2-frame-flags frame))
-    ;; Stream ID (31 bits with reserved bit)
-    (setf (aref output 5) (logand #x7f (ash (http2-frame-stream-id frame) -24)))
-    (setf (aref output 6) (logand #xff (ash (http2-frame-stream-id frame) -16)))
-    (setf (aref output 7) (logand #xff (ash (http2-frame-stream-id frame) -8)))
-    (setf (aref output 8) (logand #xff (http2-frame-stream-id frame)))
-    ;; Copy payload if present
-    (when payload
-      (replace output payload :start1 9))
-    output))
+;; Use main serialize-frame function above
 
 (defun parse-frame-header (header-bytes)
   "Parse frame header and return length"
@@ -757,43 +658,7 @@
   ;; Simplified for now
   nil)
 
-;;;; Frame Serialization
-
-(defun serialize-frame (frame)
-  "Serialize a frame to bytes according to HTTP/2 spec"
-  (let* ((payload (or (frames:http2-frame-payload frame) #()))
-         (length (length payload))
-         (type (frames:http2-frame-type frame))
-         (flags (frames:http2-frame-flags frame))
-         (stream-id (frames:http2-frame-stream-id frame))
-         (result (make-array (+ 9 length) :element-type '(unsigned-byte 8))))
-    
-    ;; Validate frame
-    (when (> length #xFFFFFF)
-      (error "Frame payload too large: ~D bytes (max ~D)" length #xFFFFFF))
-    (when (> stream-id #x7FFFFFFF)
-      (error "Invalid stream ID: ~D (max ~D)" stream-id #x7FFFFFFF))
-    
-    ;; Write 24-bit length
-    (setf (aref result 0) (ldb (byte 8 16) length))
-    (setf (aref result 1) (ldb (byte 8 8) length))
-    (setf (aref result 2) (ldb (byte 8 0) length))
-    
-    ;; Write type and flags
-    (setf (aref result 3) type)
-    (setf (aref result 4) flags)
-    
-    ;; Write 31-bit stream ID (bit 31 reserved)
-    (setf (aref result 5) (ldb (byte 8 24) stream-id))
-    (setf (aref result 6) (ldb (byte 8 16) stream-id))
-    (setf (aref result 7) (ldb (byte 8 8) stream-id))
-    (setf (aref result 8) (ldb (byte 8 0) stream-id))
-    
-    ;; Copy payload
-    (when (> length 0)
-      (replace result payload :start1 9))
-    
-    result))
+;; Use main serialize-frame function above
 
 (defun deserialize-frame (bytes)
   "Deserialize bytes to a frame"
@@ -820,55 +685,20 @@
 
 ;;;; Additional compatibility and missing functions
 
-(defun handle-http2-connection (connection handler)
-  "Handle an HTTP/2 connection"
-  (loop
-    (handler-case
-        (let ((frame (connection-receive-frame connection)))
-          (handle-server-frame connection frame handler))
-      (end-of-file () (return))
-      (error (e)
-        (format t "Error handling frame: ~A~%" e)
-        (return)))))
+;; Use main handle-http2-connection function above
 
 (defun handle-frame (connection frame handler)
   "Handle a frame (delegates to handle-server-frame)"
   (handle-server-frame connection frame handler))
 
-(defun http2-frame-type (frame)
-  "Get frame type (compatibility)"
-  (frames:http2-frame-type frame))
-
-(defun http2-frame-stream-id (frame)
-  "Get frame stream ID (compatibility)"
-  (frames:http2-frame-stream-id frame))
-
-(defun http2-frame-payload (frame)
-  "Get frame payload (compatibility)"
-  (frames:http2-frame-payload frame))
-
-(defun http2-frame-flags (frame)
-  "Get frame flags (compatibility)"
-  (frames:http2-frame-flags frame))
+;; Use frames: module accessors directly
 
 (defun start-http2-server (&rest args)
   "Start HTTP/2 server stub"
   (declare (ignore args))
   (error "HTTP/2 server not yet fully implemented"))
 
-;;;; Stream compatibility functions for tests
-
-(defun http2-stream-p (stream)
-  "Check if object is a stream (compatibility)"
-  (stream:http2-stream-p stream))
-
-(defun stream-connection (stream)
-  "Get stream connection (compatibility)"
-  (stream:stream-connection stream))
-
-(defun stream-id (stream)
-  "Get stream ID (compatibility)"
-  (stream:stream-id stream))
+;; Use stream: module functions directly
 
 ;; State conversion between keywords and constants
 (defun state-constant-to-keyword (state)

@@ -8,6 +8,8 @@
    #:find-local-package-file
    #:read-local-package-definition))
 
+;;; FIXME this package has outlived its usefulness and should be deleted, after the even protocol is relocated
+
 (in-package epsilon.tool.common)
 
 (defgeneric event (reporter event-type event-data)

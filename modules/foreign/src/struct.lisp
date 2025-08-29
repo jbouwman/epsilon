@@ -781,7 +781,7 @@
 ;;; Integration with defshared
 
 (defmacro defshared (name c-name library return-type &rest args)
-  "Define a foreign function (temporary compatibility)"
+  "Define a foreign function (stub)"
   (declare (ignore c-name library return-type args))
   `(defun ,name (&rest args)
      (declare (ignore args))
