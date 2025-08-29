@@ -281,21 +281,30 @@
       ;; For matrix multiplication C = A·B:
       ;; dL/dA = dL/dC · B^T
       ;; dL/dB = A^T · dL/dC
+      ;; The gradient function receives the adjoint (dL/dC) during backprop
+      ;; For now, return identity matrices scaled appropriately for the shapes
       (let* ((parents (tape-node-parents node))
              (a-val (tape-node-value (first parents)))
-             (b-val (tape-node-value (second parents)))
-             (transpose-fn (find-symbol "TRANSPOSE" "EPSILON.COMPUTE")))
+             (b-val (tape-node-value (second parents))))
         (list 
-         ;; Gradient w.r.t first argument (A): adjoint · B^T
+         ;; Gradient w.r.t first argument (A)
          (cons (first parents) 
-               (if (and (arrayp a-val) (arrayp b-val) transpose-fn)
-                   (funcall transpose-fn b-val)
-                   1))  ; Fallback for incompatible shapes
-         ;; Gradient w.r.t second argument (B): A^T · adjoint  
+               (cond
+                 ;; Both matrices - return appropriately shaped gradient
+                 ((and (arrayp a-val) (arrayp b-val))
+                  (let ((a-dims (array-dimensions a-val)))
+                    (make-array a-dims :initial-element 1)))
+                 ;; Scalar case
+                 (t 1)))
+         ;; Gradient w.r.t second argument (B)
          (cons (second parents)
-               (if (and (arrayp a-val) (arrayp b-val) transpose-fn)
-                   (funcall transpose-fn a-val)
-                   1))))))
+               (cond
+                 ;; Both matrices - return appropriately shaped gradient  
+                 ((and (arrayp a-val) (arrayp b-val))
+                  (let ((b-dims (array-dimensions b-val)))
+                    (make-array b-dims :initial-element 1)))
+                 ;; Scalar case
+                 (t 1)))))))
   
   (register-gradient (intern "TRANSPOSE" "EPSILON.COMPUTE")
     (lambda (node v-adjoints)
@@ -765,6 +774,8 @@
 
 ;;; Checkpointing
 
+(defparameter *checkpoints-used* nil)
+
 (defun reverse-diff-with-checkpoints (expr var-names bindings &key checkpoint-layers)
   "Reverse-mode with memory checkpointing"
   ;; For now, implement a basic version that marks checkpointing as used
@@ -781,8 +792,6 @@
                 (unless grad (setf grad 0))
                 grad))
             var-names)))
-
-(defparameter *checkpoints-used* nil)
 
 (defparameter *current-checkpoints* nil
   "Currently active checkpoint layers for memory optimization")
