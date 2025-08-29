@@ -7,6 +7,7 @@
   (:use #:cl)
   (:local-nicknames
    (#:epoll #:epsilon.sys.epoll)
+   (#:epoll-mgr #:epsilon.net.epoll-manager)
    (#:lib #:epsilon.foreign))
   (:export
    ;; Async operation types
@@ -71,8 +72,7 @@
 ;;; Linux Epoll-based Async System
 ;;; ============================================================================
 
-(defvar *global-epfd* nil
-  "Global epoll file descriptor for async operations")
+;; Now using centralized epoll manager instead of global epfd
 
 (defvar *pending-operations* (make-hash-table :test 'equal)
   "Hash table mapping (fd . operation-type) to async-operation")
@@ -101,15 +101,14 @@
 
 (defun ensure-async-system ()
   "Ensure the async system is initialized"
-  (unless (and *global-epfd* (>= *global-epfd* 0))
-    (handler-case
-        (progn
-          (setf *global-epfd* (epoll:epoll-create1 epoll:+epoll-cloexec+))
-          (start-async-thread))
-      (error (e)
-        (warn "Failed to initialize async system: ~A" e)
-        (setf *global-epfd* nil)
-        (error e)))))
+  (handler-case
+      (progn
+        ;; Ensure epoll manager is available
+        (epoll-mgr:get-epoll-manager)
+        (start-async-thread))
+    (error (e)
+      (warn "Failed to initialize async system: ~A" e)
+      (error e))))
 
 (defun start-async-thread ()
   "Start the background async event processing thread"
@@ -127,12 +126,8 @@
       (error (e)
         (warn "Error joining async thread: ~A" e))))
   (setf *async-thread* nil)
-  (when (and *global-epfd* (>= *global-epfd* 0))
-    (handler-case
-        (epoll:epoll-close *global-epfd*)
-      (error (e)
-        (warn "Error closing epoll fd: ~A" e)))
-    (setf *global-epfd* nil))
+  ;; Epoll manager will handle its own cleanup
+  (epoll-mgr:shutdown-epoll-manager)
   (clrhash *pending-operations*)
   (setf *completion-queue* '()))
 
@@ -140,7 +135,7 @@
   "Main async event processing loop"
   (loop while *async-running* do
     (handler-case
-        (let ((events (epoll:epoll-wait *global-epfd* 64 100))) ; 100ms timeout
+        (let ((events (epoll-mgr:wait-for-any-socket 100))) ; 100ms timeout
           (dolist (event events)
             (process-epoll-event event))
           ;; If no events, short sleep to prevent busy waiting
@@ -268,16 +263,21 @@
       ;; Store operation for completion lookup
       (setf (gethash key *pending-operations*) operation)
       
-      ;; Add to epoll
+      ;; Register with epoll manager
       (handler-case
-          (epoll:epoll-ctl *global-epfd*
-                           epoll:+epoll-ctl-add+
-                           fd
-                           (epoll:make-epoll-event :events epoll-events :data fd))
+          (epoll-mgr:register-socket
+           fd
+           (case op-type
+             (:read '(:in))
+             (:write '(:out))
+             (:accept '(:in))
+             (:connect '(:out))
+             (t (error "Unknown operation type: ~A" op-type)))
+           :data fd)
         (error (e)
           ;; For testing purposes, just complete immediately if epoll fails
           ;; This allows tests to work with stdin/stdout
-          (warn "epoll_ctl failed for fd ~A: ~A" fd e)
+          (warn "Socket registration failed for fd ~A: ~A" fd e)
           (sb-thread:with-mutex (*completion-lock*)
             (push operation *completion-queue*)))))))
 
@@ -358,10 +358,9 @@
     (dolist (key operations-to-remove)
       (remhash key *pending-operations*))
     
-    ;; Try to remove fd from epoll (ignore errors)
+    ;; Unregister from epoll manager (ignore errors)
     (handler-case
-        (when *global-epfd*
-          (epoll:epoll-ctl *global-epfd* epoll:+epoll-ctl-del+ fd nil))
+        (epoll-mgr:unregister-socket fd)
       (error ()
         ;; Ignore errors - fd might already be closed
         nil))
