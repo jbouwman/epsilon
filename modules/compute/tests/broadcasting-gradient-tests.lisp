@@ -119,7 +119,7 @@
     ;; df/dy = sum(z) along appropriate dimensions
     (is (equalp (second grads) #(11 15)))  ; [5+6, 7+8]
     ;; df/dz = x + y broadcast to shape of z
-    (is (equalp (third grads) #2A((5 6) (6 7))))))  ; [[2+3, 2+4], [2+4, 2+4]]
+    (is (equalp (third grads) #2A((5 6) (5 6))))))  ; [[2+3, 2+4], [2+3, 2+4]]
 
 (deftest test-gradient-reduction-with-broadcasting
   "Test gradients of reduction operations on broadcast results"

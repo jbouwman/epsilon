@@ -1,6 +1,6 @@
 (defpackage epsilon.compute
   (:use :cl)
-  (:shadow #:+ #:- #:* #:/ #:sin #:cos #:tan #:exp #:log #:sqrt #:abs #:trace #:measure)
+  (:shadow #:+ #:- #:* #:/ #:sin #:cos #:tan #:exp #:log #:sqrt #:abs #:max #:min #:trace #:measure)
   (:local-nicknames
    (types epsilon.compute.types)
    (sym epsilon.compute.symbolic)
@@ -32,6 +32,13 @@
    :log
    :sqrt
    :abs
+   
+   ;; Reduction operations
+   :sum
+   :mean
+   :prod
+   :max
+   :min
    
    ;; Matrix operations
    :transpose
@@ -438,6 +445,84 @@
   (if (numberp x)
       (cl:abs x)
       (sym:symbolic 'abs (ensure-expr x))))
+
+;;; Reduction operations
+
+(defun sum (x &key axis keepdims)
+  "Sum reduction operation.
+   If axis is nil, sum all elements.
+   If axis is specified, sum along that dimension.
+   If keepdims is true, preserve reduced dimensions as 1."
+  (declare (ignore axis keepdims)) ; TODO: implement axis support
+  (cond
+    ;; Numeric scalar - return as is
+    ((numberp x) x)
+    ;; Array - compute sum
+    ((arrayp x)
+     (reduce #'cl:+ (make-array (array-total-size x) :displaced-to x)))
+    ;; Symbolic - create sum expression
+    (t (sym:symbolic 'sum (ensure-expr x)))))
+
+(defun mean (x &key axis keepdims)
+  "Mean reduction operation.
+   If axis is nil, compute mean of all elements.
+   If axis is specified, compute mean along that dimension.
+   If keepdims is true, preserve reduced dimensions as 1."
+  (declare (ignore axis keepdims)) ; TODO: implement axis support
+  (cond
+    ;; Numeric scalar - return as is
+    ((numberp x) x)
+    ;; Array - compute mean
+    ((arrayp x)
+     (/ (reduce #'cl:+ (make-array (array-total-size x) :displaced-to x))
+        (array-total-size x)))
+    ;; Symbolic - create mean expression
+    (t (sym:symbolic 'mean (ensure-expr x)))))
+
+(defun prod (x &key axis keepdims)
+  "Product reduction operation.
+   If axis is nil, compute product of all elements.
+   If axis is specified, compute product along that dimension.
+   If keepdims is true, preserve reduced dimensions as 1."
+  (declare (ignore axis keepdims)) ; TODO: implement axis support
+  (cond
+    ;; Numeric scalar - return as is
+    ((numberp x) x)
+    ;; Array - compute product
+    ((arrayp x)
+     (reduce #'cl:* (make-array (array-total-size x) :displaced-to x)))
+    ;; Symbolic - create prod expression
+    (t (sym:symbolic 'prod (ensure-expr x)))))
+
+(defun max (x &key axis keepdims)
+  "Maximum reduction operation.
+   If axis is nil, find maximum of all elements.
+   If axis is specified, find maximum along that dimension.
+   If keepdims is true, preserve reduced dimensions as 1."
+  (declare (ignore axis keepdims)) ; TODO: implement axis support
+  (cond
+    ;; Numeric scalar - return as is
+    ((numberp x) x)
+    ;; Array - compute max
+    ((arrayp x)
+     (reduce #'cl:max (make-array (array-total-size x) :displaced-to x)))
+    ;; Symbolic - create max expression
+    (t (sym:symbolic 'max (ensure-expr x)))))
+
+(defun min (x &key axis keepdims)
+  "Minimum reduction operation.
+   If axis is nil, find minimum of all elements.
+   If axis is specified, find minimum along that dimension.
+   If keepdims is true, preserve reduced dimensions as 1."
+  (declare (ignore axis keepdims)) ; TODO: implement axis support
+  (cond
+    ;; Numeric scalar - return as is
+    ((numberp x) x)
+    ;; Array - compute min
+    ((arrayp x)
+     (reduce #'cl:min (make-array (array-total-size x) :displaced-to x)))
+    ;; Symbolic - create min expression
+    (t (sym:symbolic 'min (ensure-expr x)))))
 
 ;;; Matrix operations
 
