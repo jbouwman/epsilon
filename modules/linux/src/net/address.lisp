@@ -8,6 +8,7 @@
    (const epsilon.net.constants)
    (errors epsilon.net.errors)
    (types epsilon.net.types)
+   (str epsilon.string)
    (lib epsilon.foreign))
   (:export
    ;; Address creation
@@ -17,27 +18,9 @@
    
    ;; Sockaddr utilities
    #:make-sockaddr-in-into
-   #:parse-sockaddr-in
-   
-   ;; Utilities
-   #:split-string))
+   #:parse-sockaddr-in))
 
 (in-package epsilon.net.address)
-
-;;; ============================================================================
-;;; Utilities
-;;; ============================================================================
-
-(defun split-string (string delimiter)
-  "Split string by delimiter"
-  (let ((parts '())
-        (start 0))
-    (loop for pos = (position delimiter string :start start)
-          while pos
-          do (push (subseq string start pos) parts)
-             (setf start (1+ pos))
-          finally (push (subseq string start) parts))
-    (nreverse parts)))
 
 ;;; ============================================================================
 ;;; Sockaddr Utilities
@@ -57,7 +40,7 @@
                   (ash (logand port #xff00) -8)))
     ;; sin_addr (convert IP string to network byte order)
     (let ((ip-parts (mapcar #'parse-integer 
-                            (split-string ip-address #\.))))
+                            (str:split ip-address #\.))))
       ;; Store in network byte order (big-endian)
       (setf (sb-sys:sap-ref-8 sap 4) (first ip-parts))
       (setf (sb-sys:sap-ref-8 sap 5) (second ip-parts))

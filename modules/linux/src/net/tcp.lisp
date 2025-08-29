@@ -7,22 +7,40 @@
   (:local-nicknames
    (sockets epsilon.net.sockets)
    (types epsilon.net.types))
-  (:export
-   ;; TCP Listener operations
+  ;; Re-export most functions directly from sockets module
+  (:import-from epsilon.net.sockets
    #:tcp-bind
    #:tcp-accept
    #:tcp-incoming
    #:tcp-try-accept
    #:tcp-poll-accept
    #:tcp-local-addr
-   
-   ;; TCP Stream operations
    #:tcp-connect
    #:tcp-read
    #:tcp-write
    #:tcp-write-all
-   #:tcp-write-line
-   #:tcp-read-line
+   #:tcp-flush
+   #:tcp-try-read
+   #:tcp-try-write
+   #:tcp-poll-read
+   #:tcp-poll-write
+   #:tcp-peer-addr
+   #:tcp-shutdown
+   #:tcp-stream-reader
+   #:tcp-stream-writer
+   #:tcp-connected-p)
+  (:export
+   ;; Re-exported from sockets
+   #:tcp-bind
+   #:tcp-accept
+   #:tcp-incoming
+   #:tcp-try-accept
+   #:tcp-poll-accept
+   #:tcp-local-addr
+   #:tcp-connect
+   #:tcp-read
+   #:tcp-write
+   #:tcp-write-all
    #:tcp-flush
    #:tcp-try-read
    #:tcp-try-write
@@ -34,6 +52,10 @@
    #:tcp-stream-writer
    #:tcp-connected-p
    
+   ;; Value-added functions defined here
+   #:tcp-write-line
+   #:tcp-read-line
+   
    ;; Macros
    #:with-tcp-server
    #:with-tcp-connection))
@@ -41,52 +63,8 @@
 (in-package epsilon.net.tcp)
 
 ;;; ============================================================================
-;;; TCP Listener Operations
+;;; Value-Added TCP Operations
 ;;; ============================================================================
-
-(defun tcp-bind (address &key (backlog 128) (reuse-addr t))
-  "Create a TCP listener bound to the specified address"
-  (sockets:tcp-bind address :backlog backlog :reuse-addr reuse-addr))
-
-(defun tcp-accept (listener &key (timeout nil))
-  "Accept a connection, with optional timeout in seconds"
-  (sockets:tcp-accept listener :timeout timeout))
-
-(defun tcp-try-accept (listener)
-  "Try to accept a connection without blocking"
-  (sockets:tcp-try-accept listener))
-
-(defun tcp-poll-accept (listener timeout-ms)
-  "Poll for incoming connections with timeout"
-  (sockets:tcp-poll-accept listener timeout-ms))
-
-(defun tcp-local-addr (listener)
-  "Get the local address of a TCP listener"
-  (sockets:tcp-local-addr listener))
-
-(defun tcp-incoming (listener)
-  "Return a list of incoming connections"
-  (sockets:tcp-incoming listener))
-
-;;; ============================================================================
-;;; TCP Stream Operations
-;;; ============================================================================
-
-(defun tcp-connect (address &key (timeout nil))
-  "Connect to a TCP server with optional timeout"
-  (sockets:tcp-connect address :timeout timeout))
-
-(defun tcp-read (stream buffer &key (start 0) (end nil) (timeout nil))
-  "Read data from TCP stream into buffer with optional timeout"
-  (sockets:tcp-read stream buffer :start start :end end :timeout timeout))
-
-(defun tcp-write (stream data &key (start 0) (end nil) (timeout nil))
-  "Write data to TCP stream with optional timeout"
-  (sockets:tcp-write stream data :start start :end end :timeout timeout))
-
-(defun tcp-write-all (stream data &key (start 0) (end nil))
-  "Write all data to TCP stream"
-  (sockets:tcp-write-all stream data :start start :end end))
 
 (defun tcp-write-line (stream line &key (timeout nil))
   "Write a line to TCP stream"
@@ -120,45 +98,6 @@
                        (sb-ext:octets-to-string line-buffer))
                      (vector-push-extend byte line-buffer)))))))
 
-(defun tcp-flush (stream)
-  "Flush any buffered output"
-  (sockets:tcp-flush stream))
-
-(defun tcp-try-read (stream buffer &key (start 0) (end nil))
-  "Try to read without blocking"
-  (sockets:tcp-try-read stream buffer :start start :end end))
-
-(defun tcp-try-write (stream data &key (start 0) (end nil))
-  "Try to write without blocking"
-  (sockets:tcp-try-write stream data :start start :end end))
-
-(defun tcp-poll-read (stream timeout-ms)
-  "Poll for readable data with timeout"
-  (sockets:tcp-poll-read stream timeout-ms))
-
-(defun tcp-poll-write (stream timeout-ms)
-  "Poll for writability with timeout"
-  (sockets:tcp-poll-write stream timeout-ms))
-
-(defun tcp-peer-addr (stream)
-  "Get peer address of TCP stream"
-  (sockets:tcp-peer-addr stream))
-
-(defun tcp-shutdown (stream &key (how :both))
-  "Shutdown TCP stream"
-  (sockets:tcp-shutdown stream :how how))
-
-(defun tcp-stream-reader (stream)
-  "Get input stream for TCP stream"
-  (sockets:tcp-stream-reader stream))
-
-(defun tcp-stream-writer (stream)
-  "Get output stream for TCP stream"
-  (sockets:tcp-stream-writer stream))
-
-(defun tcp-connected-p (stream)
-  "Check if TCP stream is connected"
-  (sockets:tcp-connected-p stream))
 
 ;;; ============================================================================
 ;;; Convenience Macros
