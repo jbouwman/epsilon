@@ -226,7 +226,38 @@
     (lambda (node v-adjoints)
       ;; d/dx(sqrt(x)) = 1/(2*sqrt(x))
       (list (cons (first (tape-node-parents node))
-                 (/ 1 (* 2 (tape-node-value node))))))))
+                 (/ 1 (* 2 (tape-node-value node)))))))
+
+  ;; Special operations
+  (register-gradient 'stop-gradient
+    (lambda (node v-adjoints)
+      ;; Stop gradient - return zero gradient for all parents
+      (mapcar (lambda (parent) (cons parent 0))
+              (tape-node-parents node))))
+
+  ;; Reduction operations
+  (register-gradient (intern "SUM" "EPSILON.COMPUTE")
+    (lambda (node v-adjoints)
+      ;; d/dx(sum(x)) = 1 for each element of x
+      (let ((parent (first (tape-node-parents node)))
+            (parent-val (tape-node-value (first (tape-node-parents node)))))
+        (list (cons parent 
+                    (if (arrayp parent-val)
+                        (make-array (array-dimensions parent-val) 
+                                   :initial-element 1)
+                        1))))))
+
+  (register-gradient (intern "MEAN" "EPSILON.COMPUTE")
+    (lambda (node v-adjoints)
+      ;; d/dx(mean(x)) = 1/n for each element of x
+      (let ((parent (first (tape-node-parents node)))
+            (parent-val (tape-node-value (first (tape-node-parents node)))))
+        (list (cons parent 
+                    (if (arrayp parent-val)
+                        (let ((n (array-total-size parent-val)))
+                          (make-array (array-dimensions parent-val) 
+                                     :initial-element (/ 1.0 n)))
+                        1)))))))
 
 ;; Defer initialization until epsilon.compute exists
 (defparameter *gradient-rules-initialized* nil)
@@ -390,6 +421,10 @@
                (reduce #'min (make-array (array-total-size (first values))
                                         :displaced-to (first values)))
                (first values)))
+          ;; Special operations
+          ((string= op-name "STOP-GRADIENT")
+           ;; Stop-gradient passes through the value unchanged
+           (first values))
           (t (error "Unknown operation for arrays: ~A" op)))
         ;; All scalars - use regular operations
         (apply (get-numeric-op op) values))))
@@ -417,6 +452,7 @@
       ((string= op-name "PROD") (lambda (x) x)) ; For scalar case
       ((string= op-name "MAX") (lambda (x) x))  ; For scalar case
       ((string= op-name "MIN") (lambda (x) x))  ; For scalar case
+      ((string= op-name "STOP-GRADIENT") (lambda (x) x))  ; Pass through value
       (t (error "Unknown operation: ~A" op)))))
 
 ;;; Backward pass
@@ -579,8 +615,13 @@
                 ;; Default to 0 if no gradient found
                 (unless grad
                   (setf grad 0))
-                ;; Handle NaN
-                (when (and (not (numberp grad)) handle-nan)
+                ;; Handle NaN - check for actual NaN values, not just non-numbers
+                (when (and handle-nan
+                           (or (and (numberp grad) (not (= grad grad)))  ; NaN check for scalars
+                               (and (arrayp grad) 
+                                    (some (lambda (x) (and (numberp x) (not (= x x))))
+                                          (make-array (array-total-size grad) 
+                                                     :displaced-to grad)))))
                   (setf grad (case handle-nan
                               (:zero 0)
                               (:warn (warn "NaN gradient for ~A" var) 0)
@@ -647,6 +688,22 @@
   (values nil :type list)
   (size 0 :type fixnum))
 
+(defun sparse-gradient (expr var-names bindings)
+  "Compute sparse gradient representation"
+  (let ((grad-map (reverse-diff expr var-names bindings)))
+    (let ((indices '())
+          (values '()))
+      (loop for i from 0
+            for var in var-names
+            for grad-val = (first grad-map)
+            do (when (and (numberp grad-val) (not (zerop grad-val)))
+                 (push i indices)
+                 (push grad-val values))
+               (setf grad-map (rest grad-map)))
+      (make-sparse-gradient :indices (nreverse indices)
+                           :values (nreverse values)
+                           :size (length var-names)))))
+
 (defun sparse-gradient-get (grad index)
   "Get value from sparse gradient"
   (let ((pos (position index (sparse-gradient-indices grad))))
@@ -657,6 +714,10 @@
 (defun sparse-gradient-nnz (grad)
   "Number of non-zero entries in sparse gradient"
   (length (sparse-gradient-indices grad)))
+
+(defun sparse-gradient-p (obj)
+  "Test if object is a sparse gradient"
+  (typep obj 'sparse-gradient))
 
 ;;; Memory management
 
@@ -703,4 +764,24 @@
 (defun tape-output-value (tape)
   "Get output value from tape"
   (tape-node-value (tape-output-node tape)))
+
+(defun gradient (expr var-names bindings)
+  "Compute gradient - alias for reverse-diff"
+  (reverse-diff expr var-names bindings))
+
+(defun tape-memory-usage (tape)
+  "Get tape memory usage"
+  (if tape
+      (* (length (tape-nodes tape)) 100)  ; Rough estimate
+      0))
+
+(defun tape-peak-memory (tape)
+  "Get peak tape memory usage"
+  (if tape
+      (* (length (tape-nodes tape)) 150)  ; Rough estimate
+      0))
+
+(defun checkpoints-used-p ()
+  "Check if checkpoints were used"
+  *checkpoints-used*)
 
