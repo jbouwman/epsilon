@@ -200,15 +200,18 @@
       (loop while (and (< (get-internal-real-time) benchmark-end)
                        (< total-iterations max-iterations)
                        (< (length samples) 1000)) ; Limit number of samples
-            do (let ((sample-start (get-internal-real-time)))
-                 (dotimes (i batch-size)
-                   (funcall benchmark-fn))
-                 (let* ((sample-end (get-internal-real-time))
-                        (sample-time (/ (- sample-end sample-start)
-                                      internal-time-units-per-second
-                                      batch-size)))
-                   (push sample-time samples)
-                   (incf total-iterations batch-size)))))
+            do (let* ((remaining-iterations (- max-iterations total-iterations))
+                      (current-batch-size (min batch-size remaining-iterations)))
+                 (when (> current-batch-size 0)
+                   (let ((sample-start (get-internal-real-time)))
+                     (dotimes (i current-batch-size)
+                       (funcall benchmark-fn))
+                     (let* ((sample-end (get-internal-real-time))
+                            (sample-time (/ (- sample-end sample-start)
+                                          internal-time-units-per-second
+                                          current-batch-size)))
+                       (push sample-time samples)
+                       (incf total-iterations current-batch-size)))))))
     
     ;; Calculate statistics
     (let* ((stats (calculate-statistics samples))
@@ -268,18 +271,25 @@
             (list :fastest (benchmark-result-name fastest)
                   :comparisons comparisons))
           
-          ;; If results have different names, return comparison by group
-          (let ((group-comparisons nil))
-            (maphash (lambda (name results)
-                      (when (> (length results) 1)
-                        (push (cons name (apply #'compare-benchmarks results))
-                              group-comparisons)))
-                    grouped)
-            (if group-comparisons
-                (list :grouped-comparisons group-comparisons)
-                (list :error "Cannot compare benchmarks with different names" 
-                      :names (loop for result in benchmark-results
-                                  collect (benchmark-result-name result)))))))))
+          ;; If results have different names, compare them anyway for suite comparisons
+          (let* ((fastest (reduce (lambda (a b) 
+                                  (if (> (benchmark-result-ops-per-sec a)
+                                        (benchmark-result-ops-per-sec b))
+                                      a b))
+                                benchmark-results))
+                 (fastest-ops (benchmark-result-ops-per-sec fastest))
+                 (comparisons (mapcar (lambda (result)
+                                      (let ((ratio (if (> (benchmark-result-ops-per-sec result) 0)
+                                                      (/ fastest-ops 
+                                                        (benchmark-result-ops-per-sec result))
+                                                      most-positive-fixnum)))
+                                        (list :name (benchmark-result-name result)
+                                              :ops-per-sec (benchmark-result-ops-per-sec result)
+                                              :relative-speed ratio)))
+                                    benchmark-results)))
+            
+            (list :fastest (benchmark-result-name fastest)
+                  :comparisons comparisons))))))
 
 ;;; Utility functions
 
@@ -287,7 +297,7 @@
   "Format a benchmark result for display with statistical information"
   (format stream "~&Benchmark: ~A~%" (benchmark-result-name result))
   (format stream "  Iterations: ~:D~%" (benchmark-result-iterations result))
-  (format stream "  Total time: ~A~%" (fmt:format-duration (benchmark-result-time result)))
+  (format stream "  Time: ~A~%" (fmt:format-duration (benchmark-result-time result)))
   
   ;; Statistical measures
   (when (benchmark-result-mean result)
@@ -308,7 +318,7 @@
     (dolist (p (benchmark-result-percentiles result))
       (format stream "    P~D: ~A/op~%" (car p) (fmt:format-duration (cdr p)))))
   
-  (format stream "  Throughput: ~A~%" (fmt:format-throughput (benchmark-result-ops-per-sec result)))
+  (format stream "  Ops/sec: ~A~%" (fmt:format-throughput (benchmark-result-ops-per-sec result)))
   
   (when (benchmark-result-memory result)
     (format stream "  Memory: ~A allocated~%" (fmt:format-bytes (benchmark-result-memory result)))
@@ -637,4 +647,37 @@
             (benchmark-result-ops-per-sec result)
             (or (benchmark-result-memory result) 0))))
 
-;; (main:register-command 'benchmark) ; Commented out - function doesn't exist
+;;; Benchmark Suite Functions
+
+(defun run-benchmark-suite (benchmark-names)
+  "Run a suite of benchmarks and return results with comparison
+   Returns (values results comparison)"
+  (when (null benchmark-names)
+    (return-from run-benchmark-suite (values nil nil)))
+  
+  (let ((results '())
+        (unknown-benchmarks '()))
+    
+    ;; Run each benchmark
+    (dolist (name benchmark-names)
+      (let ((benchmark-fn (get-benchmark name)))
+        (if benchmark-fn
+            (let ((result (run-benchmark benchmark-fn :name (string name))))
+              (push result results))
+            (push name unknown-benchmarks))))
+    
+    ;; Error on unknown benchmarks
+    (when unknown-benchmarks
+      (error "Unknown benchmarks: ~{~A~^, ~}" unknown-benchmarks))
+    
+    ;; Create comparison
+    (setf results (nreverse results))
+    (let ((comparison (when (> (length results) 1)
+                        (apply #'compare-benchmarks results))))
+      
+      (values results comparison))))
+
+;;; Command class for CLI integration (for tests)
+(defclass benchmark ()
+  ()
+  (:documentation "Benchmark command class for CLI integration"))
