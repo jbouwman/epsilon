@@ -19,10 +19,6 @@
    #:enum-value
    #:enum-keyword
    
-   
-   ;; Smart marshalling
-   #:defshared-auto
-   
    ;; Type definitions
    #:define-c-type
    
@@ -616,39 +612,3 @@
 			      :alignment size
 			      :converter-to converter-to
 			      :converter-from converter-from))
-
-;;; Smart defshared macros
-
-(defmacro defshared-auto (name c-name library &rest options)
-  "Define a foreign function with automatic type marshalling"
-  (declare (ignore options))
-  ;; Create a function that looks up the signature at runtime
-  `(defun ,name (&rest args)
-     ,(format nil "Auto-marshalled function ~A" c-name)
-     ;; Try to ensure signatures are initialized
-     (ensure-signatures-initialized)
-     ;; Look up or extract signature
-     (let ((signature (or (map:get *known-signatures* ,c-name)
-                          (extract-and-register-signature ,c-name ,library))))
-       (if signature
-           (let ((return-type (trampoline:ffi-signature-return-type signature))
-                 (arg-types (trampoline:ffi-signature-arg-types signature)))
-             ;; Handle variadic functions
-             (if (member '&rest arg-types)
-                 ;; For variadic functions, pass all args
-                 (apply (find-symbol "SHARED-CALL-FAST" "EPSILON.FOREIGN")
-                        (list ,c-name ,library)
-                        return-type
-                        (remove '&rest arg-types)
-                        args)
-               ;; Non-variadic - check arg count and call
-               (if (= (length args) (length arg-types))
-                   (apply (find-symbol "SHARED-CALL-FAST" "EPSILON.FOREIGN")
-                          (list ,c-name ,library)
-                          return-type
-                          arg-types
-                          args)
-                 (error "Wrong number of arguments for ~A: expected ~D, got ~D"
-                        ,c-name (length arg-types) (length args)))))
-         (error "Could not determine signature for function ~A" ,c-name)))))
-

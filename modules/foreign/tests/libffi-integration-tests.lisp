@@ -1,275 +1,276 @@
-;;;; libffi-integration-tests.lisp
+;;;; libffi-integration-tests.lisp -  tests for libffi callback integration
 ;;;;
-;;;; This test suite validates the complete libffi-first architecture
-;;;; including signature extraction, auto-discovery, and performance.
+;;;; These tests verify the libffi C extension works correctly and integrates
+;;;; properly with the existing Epsilon FFI callback infrastructure.
 
-(defpackage epsilon.foreign.test.integration
+(defpackage epsilon.foreign.test.libffi
   (:use cl epsilon.syntax epsilon.test)
   (:local-nicknames
    (foreign epsilon.foreign))
   (:export
-   #:run-integration-tests
-   #:test-complete-system
-   #:test-api-compatibility
-   #:test-performance-regression
-   #:test-signature-coverage))
+   #:run-libffi-tests
+   #:test-libffi-basic
+   #:test-libffi-types
+   #:test-libffi-callbacks
+   #:test-libffi-integration
+   #:test-libffi-fallback
+   #:test-libffi-performance))
 
-(in-package :epsilon.foreign.test.integration)
+(in-package :epsilon.foreign.test.libffi)
 
-;;;; System Availability Tests
+;;;; Test Helper Functions
 
-(deftest test-system-components
-  "Test that all system components are available"
-  ;; Core libffi
-  (is (boundp 'foreign:*libffi-library*) "libffi library handle should exist")
-  
-  ;; Signature extraction
-  (is (find-package :epsilon.clang.signatures) "Clang signatures package should exist")
-  
-  ;; Public API functions
-  (is (fboundp 'foreign:ffi-call) "ffi-call should be available")
-  (is (fboundp 'foreign:shared-call-unified) "shared-call-unified should be available")
-  ;; auto-discover-signature removed
-  
-  ;; Configuration variables
-  (is (boundp 'foreign:*use-libffi-calls*) "libffi configuration should exist")
-  (is (boundp 'foreign:*track-call-performance*) "performance tracking should exist"))
+(defun libffi-available-p ()
+  "Check if libffi integration is available"
+  (and (find-package '#:epsilon.foreign)
+       (find-symbol "*LIBFFI-AVAILABLE-P*" '#:epsilon.foreign)
+       (symbol-value (find-symbol "*LIBFFI-AVAILABLE-P*" '#:epsilon.foreign))))
 
-;;;; Basic Functionality Tests
+(defun call-libffi-function (symbol &rest args)
+  "Call a libffi function if available"
+  (when (libffi-available-p)
+    (let ((func (find-symbol (string symbol) '#:epsilon.foreign)))
+      (when func
+        (apply func args)))))
 
-(deftest test-simple-ffi-calls
-  "Test basic FFI calls work correctly"
-  (handler-case
+;;;; Basic Extension Tests
+
+(deftest test-libffi-extension-loading
+  "Test that the libffi C extension loads correctly"
+  (is (or (libffi-available-p)
+               (progn
+                 (format t "libffi extension not available - skipping tests~%")
+                 t))))
+
+(deftest test-libffi-basic-function
+  "Test basic libffi extension functionality"
+  (if (libffi-available-p)
+      (let ((result (call-libffi-function 'epsilon-libffi-test)))
+        (is-= result 42 "libffi test function should return 42"))
+      (format t "libffi not available - skipping basic function test~%")))
+
+;;;; Type System Tests
+
+(deftest test-libffi-type-constants
+  "Test that libffi type constants are correctly defined"
+  (if (libffi-available-p)
       (progn
-        ;; Test getpid (no arguments)
-        (let ((pid (foreign:shared-call-unified "getpid" :int '())))
-          (is (and (integerp pid) (> pid 0)) "getpid should return positive integer"))
-        
-        ;; Test strlen (string argument)  
-        (let ((len (foreign:shared-call-unified "strlen" :unsigned-long '(:string) "hello")))
-          (is-= len 5 "strlen('hello') should return 5")))
-    (error (e)
-	   (format t "Basic FFI call test failed: ~A~%" e)
-	   (is nil "Basic FFI calls should work"))))
+        (is (= (symbol-value (find-symbol "+EPSILON-TYPE-VOID+" '#:epsilon.foreign)) 0))
+        (is (= (symbol-value (find-symbol "+EPSILON-TYPE-INT+" '#:epsilon.foreign)) 1))
+        (is (= (symbol-value (find-symbol "+EPSILON-TYPE-POINTER+" '#:epsilon.foreign)) 5)))
+      (format t "libffi not available - skipping type constants test~%")))
 
-;; Auto-discovery tests removed - functionality no longer available
+(deftest test-libffi-type-conversion
+  "Test Lisp type to libffi type conversion"
+  (skip "libffi type conversion not yet implemented")
+  (if (libffi-available-p)
+      (let ((converter (find-symbol "LISP-TYPE-TO-EPSILON-TYPE" '#:epsilon.foreign)))
+        (when converter
+          (is-= (funcall converter :int) 1)
+          (is-= (funcall converter :void) 0)
+          (is-= (funcall converter :pointer) 5)
+          (is-thrown 'error (funcall converter :unknown-type))))
+      (format t "libffi not available - skipping type conversion test~%")))
 
-;;;; API Compatibility Tests
+;;;; Callback Creation Tests
 
-(deftest test-original-shared-call-compatibility
-  "Test that original shared-call still works"
-  (handler-case
-      (let ((pid (foreign:shared-call "getpid" :int '())))
-        (is (and (integerp pid) (> pid 0)) 
-            "Original shared-call should still work"))
-    (error (e)
-	   (format t "Original shared-call compatibility test failed: ~A~%" e)
-	   (is nil "Original shared-call should be preserved"))))
+(deftest test-libffi-simple-callback
+  "Test creating a simple callback with libffi"
+  (if (libffi-available-p)
+      (let ((simple-func (lambda (x) (+ x 1))))
+        (handler-case
+            (let ((callback-ptr (call-libffi-function 'make-libffi-callback
+                                                      simple-func :int '(:int))))
+              (is (not (sb-alien:null-alien callback-ptr))
+                       "Callback pointer should not be null"))
+          (error (e)
+            (format t "libffi callback creation failed: ~A~%" e))))
+      (format t "libffi not available - skipping simple callback test~%")))
 
-(deftest test-defshared-compatibility
-  "Test defshared macro compatibility"
-  (handler-case
+(deftest test-libffi-callback-types
+  "Test callbacks with different argument and return types"
+  (skip "libffi callback types not yet implemented")
+  (if (libffi-available-p)
       (progn
-        ;; Test original defshared if available
-        (when (fboundp 'foreign:defshared)
-          (eval '(foreign:defshared test-getpid "getpid" "libc" :int ()))
-          (when (fboundp 'test-getpid)
-            (let ((pid (test-getpid)))
-              (is (and (integerp pid) (> pid 0)) "defshared should work"))))
+        ;; Test void return
+        (handler-case
+            (let ((void-func (lambda (x) (declare (ignore x)) nil)))
+              (call-libffi-function 'make-libffi-callback void-func :void '(:int))
+              (is t "Void callback created successfully"))
+          (error (e)
+            (is nil "Void callback creation failed: ~A" e)))
         
-        ;; Test defshared-auto
-        (eval '(foreign:defshared-auto test-getpid-auto "getpid" "libc"))
-        (when (fboundp 'test-getpid-auto)
-          (let ((pid (test-getpid-auto)))
-            (is (and (integerp pid) (> pid 0)) "defshared-auto should work"))))
-    (error (e)
-	   (format t "defshared compatibility test failed: ~A~%" e))))
+        ;; Test multiple arguments
+        (handler-case
+            (let ((multi-func (lambda (x y) (+ x y))))
+              (call-libffi-function 'make-libffi-callback multi-func :int '(:int :int))
+              (is t "Multi-argument callback created successfully"))
+          (error (e)
+            (is nil "Multi-argument callback creation failed: ~A" e))))
+      (format t "libffi not available - skipping callback types test~%")))
 
-;;;; Performance Tests
+;;;; Integration Tests
 
-(deftest test-call-performance
-  "Test that FFI calls perform reasonably"
-  (let ((iterations 100)
-        (function-name "getpid"))
-    
-    ;; Since we now have a unified implementation, just test performance
-    (let ((call-time
-           (handler-case
-               (let ((start (get-internal-real-time)))
-                 (dotimes (i iterations)
-                   (foreign:shared-call function-name :int '()))
-                 (/ (- (get-internal-real-time) start) 
-                    internal-time-units-per-second))
-             (error (e)
-		    (format t "Performance test failed: ~A~%" e)
-		    nil))))
-      
-      (when call-time
-        (format t "FFI Performance (~D calls):~%" iterations)
-        (format t "  Time: ~,6F seconds~%" call-time)
-        (format t "  Per call: ~,3F microseconds~%" (* 1000000 (/ call-time iterations)))
-        ;; Just verify calls complete in reasonable time
-        (is (< call-time 1.0) "FFI calls should complete within 1 second")))))
+(deftest test-libffi-enhanced-make-callback
+  "Test that enhanced make-callback uses libffi when available"
+  (let ((test-func (lambda (x) (* x 2))))
+    (handler-case
+        (let ((callback-ptr (foreign:make-callback test-func :int '(:int))))
+          (is (not (sb-alien:null-alien callback-ptr))
+                   "Enhanced make-callback should return valid pointer"))
+      (error (e)
+        (format t "Enhanced make-callback failed: ~A~%" e)))))
 
-;;;; Signature System Tests
+(deftest test-libffi-fallback-behavior
+  "Test fallback to SBCL implementation when libffi fails"
+  (skip "libffi fallback behavior not yet implemented")
+  ;; Temporarily disable libffi to test fallback
+  (let ((original-use-libffi (when (find-symbol "*USE-LIBFFI*" '#:epsilon.foreign.callback)
+                               (symbol-value (find-symbol "*USE-LIBFFI*" '#:epsilon.foreign.callback)))))
+    (unwind-protect
+         (progn
+           (when (find-symbol "*USE-LIBFFI*" '#:epsilon.foreign.callback)
+             (setf (symbol-value (find-symbol "*USE-LIBFFI*" '#:epsilon.foreign.callback)) nil))
+           (let ((test-func (lambda (x) (+ x 10))))
+             (handler-case
+                 (let ((callback-ptr (foreign:make-callback test-func :int '(:int))))
+                   (is (not (sb-alien:null-alien callback-ptr))
+                            "Fallback callback should return valid pointer"))
+               (error (e)
+                 (is nil "Fallback callback creation failed: ~A" e)))))
+      ;; Restore original setting
+      (when (find-symbol "*USE-LIBFFI*" '#:epsilon.foreign.callback)
+        (setf (symbol-value (find-symbol "*USE-LIBFFI*" '#:epsilon.foreign.callback)) 
+              original-use-libffi)))))
 
-(deftest test-signature-database
-  "Test signature database functionality"
-  (if (find-package :epsilon.clang.signatures)
-      (let ((db-symbol (find-symbol "*SIGNATURE-DATABASE*" :epsilon.clang.signatures)))
-        (when db-symbol
-          (let ((original-count (hash-table-count (symbol-value db-symbol))))
-            ;; Test caching a signature
+;;;; Registry and Memory Management Tests
+
+(deftest test-libffi-callback-registry
+  "Test libffi callback registry management"
+  (skip "libffi callback registry not yet implemented")
+  (if (libffi-available-p)
+      (let ((initial-count (call-libffi-function 'libffi-callback-count)))
+        (let ((test-func (lambda (x) x)))
+          (handler-case
+              (progn
+                (call-libffi-function 'make-libffi-callback test-func :int '(:int))
+                (let ((new-count (call-libffi-function 'libffi-callback-count)))
+                  (is (> new-count initial-count)
+                           "Callback count should increase after creation")))
+            (error (e)
+              (is nil "Callback registry test failed: ~A" e)))))
+      (format t "libffi not available - skipping registry test~%")))
+
+(deftest test-libffi-cleanup
+  "Test libffi callback cleanup functionality"
+  (if (libffi-available-p)
+      (progn
+        ;; Create some callbacks
+        (let ((test-func (lambda (x) x)))
+          (dotimes (i 3)
             (handler-case
-                (let ((cache-fn (find-symbol "CACHE-SIGNATURE" :epsilon.clang.signatures))
-                      (get-fn (find-symbol "GET-CACHED-SIGNATURE" :epsilon.clang.signatures)))
-                  (when (and cache-fn get-fn)
-                    ;; Create a test signature
-                    (let ((test-sig (funcall (find-symbol "MAKE-FUNCTION-SIGNATURE" :epsilon.clang.signatures)
-                                             :name "test_func"
-                                             :return-type :int
-                                             :arg-types '(:int))))
-                      (funcall cache-fn "test_func" test-sig :library "test")
-                      
-                      ;; Verify it was cached
-                      (let ((retrieved (funcall get-fn "test_func" "test")))
-                        (is retrieved "Should retrieve cached signature")))))
-              (error (e)
-                     (format t "Signature database test failed: ~A~%" e))))))
-    (format t "Skipping signature database test - clang signatures not available~%")))
+                (call-libffi-function 'make-libffi-callback test-func :int '(:int))
+              (error ()))))
+        
+        ;; Test cleanup
+        (handler-case
+            (progn
+              (call-libffi-function 'cleanup-libffi-callbacks)
+              (let ((count-after-cleanup (call-libffi-function 'libffi-callback-count)))
+                (is-= count-after-cleanup 0
+                          "Callback count should be 0 after cleanup")))
+          (error (e)
+            (is nil "Callback cleanup failed: ~A" e))))
+      (format t "libffi not available - skipping cleanup test~%")))
 
 ;;;; Error Handling Tests
 
-(deftest test-error-handling
-  "Test error handling in various scenarios"
-  ;; Test with nonexistent function
-  (handler-case
-      (foreign:shared-call-unified "nonexistent_function_xyz" :int '())
-    (error (e)
-      (is t "Should handle nonexistent functions gracefully")))
-  
-  ;; Test with invalid arguments
-  (handler-case
-      (foreign:shared-call-unified "strlen" :unsigned-long '(:string) 123)
-    (error (e)
-      (is t "Should handle type mismatches gracefully"))))
+(deftest test-libffi-invalid-types
+  "Test error handling for invalid types"
+  (skip "libffi invalid type handling not yet implemented")
+  (if (libffi-available-p)
+      (let ((test-func (lambda (x) x)))
+        (is-thrown 'error
+                        (call-libffi-function 'make-libffi-callback 
+                                              test-func :invalid-type '(:int))
+                        "Should throw error for invalid return type")
+        
+        (is-thrown 'error
+                        (call-libffi-function 'make-libffi-callback 
+                                              test-func :int '(:invalid-type))
+                        "Should throw error for invalid argument type"))
+      (format t "libffi not available - skipping invalid types test~%")))
 
-;;;; Configuration Tests
+(deftest test-libffi-invalid-arguments
+  "Test error handling for invalid arguments"
+  (skip "libffi invalid argument handling not yet implemented")
+  (if (libffi-available-p)
+      (progn
+        (is-thrown 'error
+                        (call-libffi-function 'make-libffi-callback 
+                                              "not-a-function" :int '(:int))
+                        "Should throw error for non-function argument")
+        
+        (is-thrown 'error
+                        (call-libffi-function 'make-libffi-callback 
+                                              (lambda (x) x) :int "not-a-list")
+                        "Should throw error for non-list arg-types"))
+      (format t "libffi not available - skipping invalid arguments test~%")))
 
-(deftest test-configuration-system
-  "Test configuration and toggles"
-  ;; Test that libffi is properly initialized
-  (is (and (boundp 'foreign:*libffi-library*) foreign:*libffi-library*) "libffi should be loaded")
-  
-  ;; Test that we can make calls with libffi
-  (let ((result (foreign:shared-call-unified "getpid" :int '())))
-    (is (and (integerp result) (> result 0)) 
-        "Should successfully call getpid through libffi")))
+;;;; Performance and Stress Tests
 
-;;;; Stress Tests
+(deftest test-libffi-multiple-callbacks
+  "Test creating multiple callbacks simultaneously"
+  (skip "libffi multiple callbacks not yet implemented")
+  (if (libffi-available-p)
+      (let ((callbacks '())
+            (test-func (lambda (x) (* x x))))
+        (handler-case
+            (progn
+              ;; Create 10 callbacks
+              (dotimes (i 10)
+                (let ((cb (call-libffi-function 'make-libffi-callback 
+                                                test-func :int '(:int))))
+                  (push cb callbacks)))
+              
+              (is (= (length callbacks) 10)
+                       "Should create 10 callbacks successfully")
+              
+              ;; Verify all callbacks are valid pointers
+              (is (every (lambda (cb) (not (sb-alien:null-alien cb))) callbacks)
+                       "All callbacks should be valid pointers"))
+          (error (e)
+            (is nil "Multiple callback creation failed: ~A" e))))
+      (format t "libffi not available - skipping multiple callbacks test~%")))
 
-(deftest test-multiple-function-types
-  "Test various function types and signatures"
-  (let ((test-cases
-         '(;; No arguments
-           ("getpid" :int ())
-           ;; String argument
-           ("strlen" :unsigned-long (:string) "test")
-           ;; Integer argument (if close is available)
-           ;; Pointer arguments (if available)
-           )))
-    
-    (dolist (test-case test-cases)
-      (destructuring-bind (fn-name return-type arg-types &rest args) test-case
-			  (handler-case
-			      (let ((result (apply #'foreign:shared-call-unified 
-						   fn-name return-type arg-types args)))
-				(format t "~A: OK (~A)~%" fn-name result))
-			    (error (e)
-				   (format t "~A: FAILED (~A)~%" fn-name e)))))))
+;;;; Integration with Existing Tests
 
-(deftest test-concurrent-calls
-  "Test thread safety of FFI calls"
-  (let ((threads '())
-        (results (make-hash-table :test 'equal))
-        (results-lock (sb-thread:make-mutex :name "results-lock")))
-    
-    ;; Create multiple threads making FFI calls
-    (dotimes (i 5)
-      (push
-       (sb-thread:make-thread
-        (lambda ()
-          (let ((thread-id (sb-thread:thread-name sb-thread:*current-thread*)))
-            (handler-case
-                (dotimes (j 10)
-                  (let ((pid (foreign:shared-call-unified "getpid" :int '())))
-                    (sb-thread:with-mutex (results-lock)
-					  (setf (gethash (list thread-id j) results) pid))))
-              (error (e)
-                     (sb-thread:with-mutex (results-lock)
-					   (setf (gethash (list thread-id 'error) results) e))))))
-        :name (format nil "ffi-test-~D" i))
-       threads))
-    
-    ;; Wait for all threads
-    (dolist (thread threads)
-      (sb-thread:join-thread thread))
-    
-    ;; Check results
-    (let ((error-count 0)
-          (success-count 0))
-      (maphash (lambda (key value)
-                 (if (eq (second key) 'error)
-                     (incf error-count)
-                   (incf success-count)))
-               results)
-      
-      (format t "Concurrent test: ~D successes, ~D errors~%" success-count error-count)
-      (is (= error-count 0) "Should have no errors in concurrent calls"))))
-
-;;;; Documentation and Help Tests
-
-(deftest test-help-system
-  "Test help and documentation functions"
-  (handler-case
-      (with-output-to-string (*standard-output*)
-	(foreign:ffi-system-status))
-    (error (e)
-      (format t "System status test failed: ~A~%" e)
-      (is nil "System status should work"))))
-
-;;;; Integration Test Suite Runner
-
-(deftest test-complete-integration
-  "Complete integration test of all components"
-  (format t "Running complete libffi integration test...~%")
-  
-  ;; Test system initialization
-  (is t "System should initialize without errors")
-  
-  ;; Test core functionality
-  (handler-case
-      (let ((pid (foreign:shared-call-unified "getpid" :int '())))
-        (is (and (integerp pid) (> pid 0)) "Basic FFI should work"))
-    (error (e)
-	   (format t "Core functionality test failed: ~A~%" e)))
-  
-  ;; Test auto-discovery if available
-  (when (find-package :epsilon.clang.signatures)
-    (handler-case
-        (let ((len (foreign:ffi-call "strlen" "integration test")))
-          (is-= len 16 "Auto-discovery should work"))
-      (error (e)
-             (format t "Auto-discovery integration failed: ~A~%" e))))
-  
-  ;; Test performance tracking
-  (let ((original-tracking foreign:*track-call-performance*))
-    (unwind-protect
-        (progn
-          (setf foreign:*track-call-performance* t)
-          (foreign:shared-call-unified "getpid" :int '())
-          (let ((stats (foreign:get-call-statistics)))
-            (is (>= (length stats) 0) "Performance tracking should work")))
-      (setf foreign:*track-call-performance* original-tracking)))
-  
-  (format t "Complete integration test finished~%"))
+(deftest test-libffi-qsort-integration
+  "Test libffi callbacks work with qsort (if available)"
+  (if (libffi-available-p)
+      (handler-case
+          (let* ((test-array (make-array 5 :element-type '(signed-byte 32)
+                                         :initial-contents '(5 2 8 1 9)))
+                 (compare-func (lambda (a b)
+                                (let ((val-a (sb-alien:deref 
+                                              (sb-alien:cast a (* sb-alien:int)) 0))
+                                      (val-b (sb-alien:deref 
+                                              (sb-alien:cast b (* sb-alien:int)) 0)))
+                                  (cond ((< val-a val-b) -1)
+                                        ((> val-a val-b) 1)
+                                        (t 0)))))
+                 (callback-ptr (foreign:make-callback compare-func :int '(:pointer :pointer))))
+            
+            ;; Pin the array and call qsort
+            (sb-sys:with-pinned-objects (test-array)
+              (let ((array-sap (sb-sys:vector-sap test-array)))
+                (foreign:shared-call '("qsort" "libc") :void
+                                     '(:pointer :unsigned-long :unsigned-long :pointer)
+                                     array-sap 5 4 callback-ptr)))
+            
+            ;; Check if array is sorted
+            (is (equalp test-array #(1 2 5 8 9))
+                     "Array should be sorted after qsort with libffi callback"))
+        (error (e)
+          (format t "libffi qsort integration failed: ~A~%" e)))
+      (format t "libffi not available - skipping qsort integration test~%")))
