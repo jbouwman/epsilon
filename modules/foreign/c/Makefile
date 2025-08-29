@@ -15,6 +15,25 @@ ifeq ($(UNAME_S),Darwin)
     EXT = dylib
     LDFLAGS = -dynamiclib -undefined dynamic_lookup
 endif
+ifneq (,$(findstring Windows,$(OS)))
+    PLATFORM = windows
+    EXT = dll
+    LDFLAGS = -shared -Wl,--out-implib,libepsilon-libffi.dll.a
+    UNAME_S = Windows_NT
+    UNAME_M = x86_64
+endif
+ifneq (,$(findstring MINGW,$(UNAME_S)))
+    PLATFORM = windows
+    EXT = dll
+    LDFLAGS = -shared -Wl,--out-implib,libepsilon-libffi.dll.a
+    UNAME_M = x86_64
+endif
+ifneq (,$(findstring MSYS,$(UNAME_S)))
+    PLATFORM = windows
+    EXT = dll
+    LDFLAGS = -shared -Wl,--out-implib,libepsilon-libffi.dll.a
+    UNAME_M = x86_64
+endif
 
 # Compiler selection
 ifdef NIX_CC
@@ -73,6 +92,30 @@ else ifeq ($(UNAME_S),Darwin)
             LIBS = -lffi
         endif
     endif
+else ifeq ($(PLATFORM),windows)
+    # Windows-specific libffi configuration
+    # Try to find libffi via pkg-config first
+    LIBFFI_CFLAGS := $(shell pkg-config --cflags libffi 2>/dev/null)
+    LIBFFI_LIBS := $(shell pkg-config --libs libffi 2>/dev/null)
+    
+    ifneq ($(LIBFFI_CFLAGS),)
+        CFLAGS += $(LIBFFI_CFLAGS)
+        LIBS = $(LIBFFI_LIBS)
+    else
+        # Try common Windows locations
+        ifneq ($(wildcard C:/msys64/mingw64/include/ffi.h),)
+            # MSYS2 MINGW64
+            CFLAGS += -IC:/msys64/mingw64/include
+            LIBS = -LC:/msys64/mingw64/lib -lffi
+        else ifneq ($(wildcard /mingw64/include/ffi.h),)
+            # MINGW64 in PATH
+            CFLAGS += -I/mingw64/include
+            LIBS = -L/mingw64/lib -lffi
+        else
+            # Fall back to system
+            LIBS = -lffi
+        endif
+    endif
 else
     # Other platforms, assume standard locations
     LIBS = -lffi
@@ -93,6 +136,8 @@ $(TARGET): epsilon-libffi.c epsilon-libffi.h
 clean:
 	rm -f ../lib/libepsilon-libffi-*.so
 	rm -f ../lib/libepsilon-libffi-*.dylib
+	rm -f ../lib/libepsilon-libffi-*.dll
+	rm -f ../lib/libepsilon-libffi.dll.a
 
 # Show configuration
 info:

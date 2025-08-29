@@ -527,9 +527,58 @@
 (defun symbolic-link-p (file)
   (eql :symlink (sb-impl::native-file-kind file)))
 
+#+win32
+(progn
+  ;; Windows API constants for CreateSymbolicLink
+  (defconstant +symbolic-link-flag-file+ 0)
+  (defconstant +symbolic-link-flag-directory+ 1)
+  (defconstant +symbolic-link-flag-allow-unprivileged-create+ 2)
+  
+  ;; Windows API function binding
+  (let ((lib-loaded nil))
+    (defun ensure-win32-lib ()
+      (unless lib-loaded
+        (when (find-package :epsilon.foreign)
+          (funcall (intern "DEFSHARED" :epsilon.foreign)
+                   '%create-symbolic-link-w "CreateSymbolicLinkW" "kernel32" :boolean
+                   '(symbolic-link-file-name :pointer)
+                   '(target-file-name :pointer) 
+                   '(flags :unsigned-long)
+                   :documentation "Create symbolic link on Windows"))
+        (setf lib-loaded t))))
+  
+  (defun %create-windows-symbolic-link (link-path target-path is-directory)
+    "Create symbolic link using Windows API"
+    (ensure-win32-lib)
+    (when (find-package :epsilon.foreign)
+      (let* ((foreign-pkg (find-package :epsilon.foreign))
+             (with-wide-string (intern "WITH-WIDE-STRING" foreign-pkg))
+             (create-fn (intern "%CREATE-SYMBOLIC-LINK-W" foreign-pkg))
+             (flags (logior +symbolic-link-flag-allow-unprivileged-create+
+                           (if is-directory 
+                               +symbolic-link-flag-directory+
+                               +symbolic-link-flag-file+))))
+        (funcall with-wide-string (list target-path 'target-wide)
+          (funcall with-wide-string (list link-path 'link-wide)
+            (funcall create-fn 'link-wide 'target-wide flags)))))))
+
 (defun create-symbolic-link (link-file destination-file)
   #-win32 (sb-posix:symlink destination-file link-file)
-  #+win32 (error "Symbolic links not supported on Windows in this implementation"))
+  #+win32 
+  (let* ((link-path (namestring (pathname link-file)))
+         (target-path (namestring (pathname destination-file)))
+         (is-directory (directory-exists-p destination-file)))
+    (handler-case
+        (progn
+          (%create-windows-symbolic-link link-path target-path is-directory)
+          t)
+      (error (e)
+        ;; Fall back to copying if symbolic link creation fails (common on Windows without admin rights)
+        (warn "Could not create symbolic link (~A), falling back to copy: ~A" 
+              (type-of e) e)
+        (if is-directory
+            (copy-directory destination-file link-file)
+            (copy-file destination-file link-file))))))
 
 (defun delete-directory (file)
   (sb-ext:delete-directory file :recursive T))

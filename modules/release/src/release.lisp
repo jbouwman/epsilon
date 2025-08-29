@@ -692,7 +692,7 @@ exec \"$SBCL\" --script \"$EPSILON_BOOT\" \"$@\"
 (defun run-smoke-tests ()
   "Run basic CLI smoke tests. These check that epsilon can start up, and load modules."
   (let ((failed 0)
-        (epsilon-path "./epsilon"))
+        (epsilon-path #+win32 ".\\epsilon.cmd" #-win32 "./epsilon"))
     
     (log:info "Running CLI smoke tests...")
     
