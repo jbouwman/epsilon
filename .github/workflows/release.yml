@@ -24,10 +24,9 @@ jobs:
           - os: macos-13
             platform: darwin
             arch: x86_64
-          # Windows can be added when ready
-          # - os: windows-latest
-          #   platform: windows
-          #   arch: x86_64
+          - os: windows-latest
+            platform: windows
+            arch: x86_64
             
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
@@ -36,33 +35,78 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       
-    - name: Setup CI environment
+    - name: Setup SBCL (Windows)
+      if: matrix.platform == 'windows'
+      run: |
+        winget install --id SteelBankCommonLisp.SBCL --silent --accept-package-agreements --accept-source-agreements
+        echo "C:\Program Files\Steel Bank Common Lisp" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      shell: powershell
+      
+    - name: Setup CI environment (Unix)
+      if: matrix.platform != 'windows'
       shell: bash
       run: ./scripts/ci-setup.sh
+      
+    - name: Setup CI environment (Windows)
+      if: matrix.platform == 'windows'
+      shell: powershell
+      run: .\scripts\ci-setup.ps1
         
-    - name: Extract version
-      id: version
+    - name: Extract version (Unix)
+      if: matrix.platform != 'windows'
+      id: version-unix
       shell: bash
       run: |
         VERSION=$(./epsilon --exec epsilon.release:version)
         echo "version=${VERSION}" >> $GITHUB_OUTPUT
         echo "Building version: ${VERSION}"
         
-    - name: Run tests
+    - name: Extract version (Windows)
+      if: matrix.platform == 'windows'
+      id: version-windows
+      shell: powershell
+      run: |
+        $VERSION = & ".\epsilon.ps1" --exec "epsilon.release:version"
+        echo "version=$VERSION" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+        Write-Host "Building version: $VERSION"
+        
+    - name: Run tests (Unix)
+      if: matrix.platform != 'windows'
       shell: bash
       run: |
         ./epsilon --exec epsilon.release:run-smoke-tests
         ./epsilon --exec epsilon.release:test
         
-    - name: Build release package
+    - name: Run tests (Windows)
+      if: matrix.platform == 'windows'
+      shell: powershell
+      run: |
+        .\epsilon.ps1 --exec "epsilon.release:run-smoke-tests"
+        .\epsilon.ps1 --exec "epsilon.release:test"
+        
+    - name: Build release package (Unix)
+      if: matrix.platform != 'windows'
       shell: bash
       run: |
-        VERSION="${{ steps.version.outputs.version }}"
+        VERSION="${{ steps.version-unix.outputs.version }}"
         ./epsilon --exec epsilon.release:create-package --version "${VERSION}"
         
-    - name: Verify release
+    - name: Build release package (Windows)
+      if: matrix.platform == 'windows'
+      shell: powershell
+      run: |
+        $VERSION = "${{ steps.version-windows.outputs.version }}"
+        .\epsilon.ps1 --exec "epsilon.release:create-package" --version "$VERSION"
+        
+    - name: Verify release (Unix)
+      if: matrix.platform != 'windows'
       shell: bash
       run: ./epsilon --exec epsilon.release:verify
+      
+    - name: Verify release (Windows)
+      if: matrix.platform == 'windows'
+      shell: powershell
+      run: .\epsilon.ps1 --exec "epsilon.release:verify"
         
     - name: Upload release artifacts
       uses: actions/upload-artifact@v4
