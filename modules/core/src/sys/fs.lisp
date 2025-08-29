@@ -265,7 +265,9 @@
   (sb-unix:uid-homedir (sb-unix:unix-getuid))
   #+(or windows win32)
   (or (env:getenv "USERPROFILE") 
-      (str:concat (env:getenv "HOMEDRIVE") (env:getenv "HOMEPATH"))))
+      (str:concat (env:getenv "HOMEDRIVE") (env:getenv "HOMEPATH"))
+      (env:getenv "HOME")
+      "C:\\"))
 
 (defmacro with-temp-file ((name) &body body)
   `(let ((,name (join-paths

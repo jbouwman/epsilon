@@ -39,7 +39,7 @@ jobs:
       if: matrix.platform == 'windows'
       run: |
         # Download and install SBCL for Windows
-        $sbclVersion = "2.4.0"
+        $sbclVersion = "2.4.11"
         $url = "https://github.com/sbcl/sbcl/releases/download/sbcl-$sbclVersion/sbcl-$sbclVersion-x86-64-windows-binary.msi"
         $installerPath = "$env:TEMP\sbcl-installer.msi"
         
