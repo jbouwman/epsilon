@@ -767,7 +767,12 @@
                                            (stderr-output result) (get-output-stream-string stderr-stream)
                                            (stack-trace result) (sb-debug:list-backtrace))
                                      (handle-error e result))))
-               ;; Try to run with timeout
+               ;; Try to run with timeout - disable on Windows due to threading issues
+               #+win32
+               (progn
+                 (funcall fn)
+                 (setf completed t))
+               #-win32
                (let ((thread (sb-thread:make-thread 
                              (lambda () 
                                (funcall fn)
@@ -787,7 +792,7 @@
                      (sb-thread:terminate-thread thread)
                      (error "Build operation timed out after ~D seconds" 
                             (map:get (environment-config environment) :timeout 60)))
-                   (sb-thread:join-thread thread))))))
+                   (sb-thread:join-thread thread)))))
       (setf (end-time result) (get-internal-real-time))
       ;; Always capture final output
       (unless (stdout-output result)
