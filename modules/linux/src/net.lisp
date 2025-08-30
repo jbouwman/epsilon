@@ -339,11 +339,11 @@
     ;; sin_addr (convert IP string to network byte order)
     (let ((ip-parts (mapcar #'parse-integer 
                             (split-string ip-address #\.))))
-      (setf (sb-sys:sap-ref-32 sap 4)
-            (logior (ash (first ip-parts) 24)
-                    (ash (second ip-parts) 16)
-                    (ash (third ip-parts) 8)
-                    (fourth ip-parts))))
+      ;; Store in network byte order (big-endian) as individual bytes
+      (setf (sb-sys:sap-ref-8 sap 4) (first ip-parts))
+      (setf (sb-sys:sap-ref-8 sap 5) (second ip-parts))
+      (setf (sb-sys:sap-ref-8 sap 6) (third ip-parts))
+      (setf (sb-sys:sap-ref-8 sap 7) (fourth ip-parts)))
     ;; sin_zero (8 bytes of zeros)
     (loop for i from 8 to 15
           do (setf (sb-sys:sap-ref-8 sap i) 0))))
@@ -357,12 +357,11 @@
          (port-bytes (sb-sys:sap-ref-16 sap 2))
          (port (logior (ash (logand port-bytes #xff) 8)
                        (ash (logand port-bytes #xff00) -8)))
-         (ip-bytes (sb-sys:sap-ref-32 sap 4))
          (ip (format nil "~D.~D.~D.~D"
-                     (ldb (byte 8 24) ip-bytes)
-                     (ldb (byte 8 16) ip-bytes)
-                     (ldb (byte 8 8) ip-bytes)
-                     (ldb (byte 8 0) ip-bytes))))
+                     (sb-sys:sap-ref-8 sap 4)
+                     (sb-sys:sap-ref-8 sap 5)
+                     (sb-sys:sap-ref-8 sap 6)
+                     (sb-sys:sap-ref-8 sap 7))))
     (make-instance 'socket-address :ip ip :port port)))
 
 (defun split-string (string delimiter)
@@ -710,7 +709,8 @@
 				     (when (< result 0)
 				       ;; Check if it's a would-block error (async connection in progress)
 				       (let ((errno (get-errno)))
-					 (if (= errno 115) ; EINPROGRESS - connection in progress
+					 (if (or (= errno 115) ; EINPROGRESS - connection in progress
+						 (= errno 11))  ; EWOULDBLOCK/EAGAIN - would block
 					     (when timeout
 					       ;; Wait for connection to complete with timeout
 					       (let ((epoll-instance (epoll:epoll-create1))

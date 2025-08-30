@@ -54,44 +54,36 @@
 
 (deftest test-tcp-bind-basic ()
   "Test basic TCP bind functionality"
-  ;; Skip if tcp-local-addr is not available
-  (if (not (fboundp 'net:tcp-local-addr))
-      (progn
-        (is t "Skipping test - tcp-local-addr not available")
+  (handler-case
+      (let* ((addr (net:make-socket-address "0.0.0.0" 0))
+             (listener (net:tcp-bind addr)))
+        (is (typep listener 'net:tcp-listener))
+        (is (typep (net:tcp-local-addr listener) 'net:socket-address))
+        (is-equal "0.0.0.0" (net:socket-address-ip (net:tcp-local-addr listener)))
+        (is (> (net:socket-address-port (net:tcp-local-addr listener)) 0))
+        ;; Note: We can't access internal handles, so cleanup relies on GC
         t)
-      (handler-case
-          (let* ((addr (net:make-socket-address "0.0.0.0" 0))
-                 (listener (net:tcp-bind addr)))
-            (is (typep listener 'net:tcp-listener))
-            (is (typep (net:tcp-local-addr listener) 'net:socket-address))
-            (is-equal "0.0.0.0" (net:socket-address-ip (net:tcp-local-addr listener)))
-            (is (> (net:socket-address-port (net:tcp-local-addr listener)) 0))
-            ;; Note: We can't access internal handles, so cleanup relies on GC
-            t)
-        (net:network-error (e)
-                           (is nil (format nil "TCP bind failed with network error. Message: ~A" 
-                                           (if (slot-boundp e 'net::message)
-                                               (slot-value e 'net::message)
-                                             "No message available"))))
-        (error (e)
-               (is nil (format nil "TCP bind failed with unexpected error: ~A (~A)" e (type-of e)))))))
+    (net:network-error (e)
+      (is nil (format nil "TCP bind failed with network error. Message: ~A" 
+                      (if (slot-boundp e 'net::message)
+                          (slot-value e 'net::message)
+                          "No message available"))))
+    (error (e)
+      (is nil (format nil "TCP bind failed with unexpected error: ~A (~A)"
+		      e (type-of e))))))
 
 (deftest test-tcp-bind-specific-port ()
   "Test TCP bind to a specific port"
   ;; Skip if tcp-local-addr is not available
-  (if (not (fboundp 'net:tcp-local-addr))
-      (progn
-        (is t "Skipping test - tcp-local-addr not available")
+  (handler-case
+      (let* ((addr (net:make-socket-address "0.0.0.0" 9999))
+             (listener (net:tcp-bind addr)))
+        (is (typep listener 'net:tcp-listener))
+        (is-equal 9999 (net:socket-address-port (net:tcp-local-addr listener)))
         t)
-      (handler-case
-          (let* ((addr (net:make-socket-address "0.0.0.0" 9999))
-                 (listener (net:tcp-bind addr)))
-            (is (typep listener 'net:tcp-listener))
-            (is-equal 9999 (net:socket-address-port (net:tcp-local-addr listener)))
-            t)
-        (error (e)
-               ;; Port might be in use, that's okay for this test
-               (is (typep e 'net:network-error))))))
+    (error (e)
+      ;; Port might be in use, that's okay for this test
+      (is (typep e 'net:network-error)))))
 
 (deftest test-tcp-try-accept ()
   "Test non-blocking accept"
@@ -335,7 +327,6 @@
 
 (deftest test-tcp-async-operations ()
   "Test async TCP read/write with timeouts"
-  (skip)
   (let* ((addr (net:make-socket-address "0.0.0.0" 0))
 	 (listener (net:tcp-bind addr))
 	 (port (net:socket-address-port (net:tcp-local-addr listener)))
@@ -419,3 +410,306 @@
      (when (> (- (get-internal-real-time) start-time) timeout-ticks)
        (return nil))
      (sleep 0.01))))
+
+;;; ============================================================================
+;;; Comprehensive Tests
+;;; ============================================================================
+
+(deftest test-tcp-echo-server-basic ()
+  "Test basic TCP echo server with single client"
+  (let* ((server-addr (net:make-socket-address "127.0.0.1" 0))
+         (listener (net:tcp-bind server-addr))
+         (port (net:socket-address-port (net:tcp-local-addr listener)))
+         (test-message "Hello TCP Echo!")
+         (server-error nil)
+         (server-thread nil))
+    
+    (unwind-protect
+        (progn
+          ;; Start echo server thread  
+          (setf server-thread
+                (sb-thread:make-thread
+                 (lambda ()
+                   (handler-case
+                       (let ((server-stream (net:tcp-accept listener :timeout 3.0)))
+                         (when server-stream
+                           (unwind-protect
+                               (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
+                                 (let ((bytes-read (net:tcp-read server-stream buffer :timeout 3.0)))
+                                   (when (> bytes-read 0)
+                                     (net:tcp-write-all server-stream buffer :end bytes-read))))
+                             (ignore-errors (net:tcp-shutdown server-stream :how :both)))))
+                     (error (e)
+                       (setf server-error e))))
+                 :name "tcp-echo-server"))
+          
+          ;; Give server time to start
+          (sleep 0.2)
+          
+          ;; Connect client
+          (let ((client-stream (net:tcp-connect (net:make-socket-address "127.0.0.1" port) :timeout 3.0)))
+            (unwind-protect
+                (progn
+                  ;; Send test message
+                  (net:tcp-write-all client-stream test-message)
+                  
+                  ;; Read echo response
+                  (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
+                    (let ((bytes-read (net:tcp-read client-stream buffer :timeout 3.0)))
+                      (when (> bytes-read 0)
+                        (let ((response (sb-ext:octets-to-string (subseq buffer 0 bytes-read))))
+                          (is (string= test-message response) "Echo mismatch"))))))
+              (ignore-errors (net:tcp-shutdown client-stream :how :both))))
+          
+          ;; Wait for server thread
+          (when server-thread
+            (sb-thread:join-thread server-thread :timeout 5.0))
+          
+          ;; Check for server errors
+          (when server-error
+            (is nil (format nil "Server error: ~A" server-error))))
+      
+      ;; Cleanup
+      (when server-thread
+        (ignore-errors (sb-thread:terminate-thread server-thread))))))
+
+(deftest test-udp-echo-server ()
+  "Test UDP echo server with retry logic for non-blocking sockets"
+  (let* ((server-addr (net:make-socket-address "127.0.0.1" 0))
+         (server-socket (net:udp-bind server-addr))
+         (server-port (net:socket-address-port (net:udp-local-addr server-socket)))
+         (client-socket (net:udp-bind (net:make-socket-address "127.0.0.1" 0)))
+         (test-message "Hello UDP!")
+         (server-thread nil))
+    
+    (unwind-protect
+        (progn
+          ;; Start UDP echo server with retry logic
+          (setf server-thread
+                (sb-thread:make-thread
+                 (lambda ()
+                   (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8)))
+                         (bytes-received 0)
+                         (sender-addr nil)
+                         (attempts 0))
+                     ;; Poll for message with retries
+                     (loop while (and (= bytes-received 0) (< attempts 50))
+                           do (progn
+                                (incf attempts)
+                                (multiple-value-bind (received addr)
+                                    (net:udp-recv-from server-socket buffer)
+                                  (setf bytes-received received)
+                                  (setf sender-addr addr))
+                                (when (= bytes-received 0)
+                                  (sleep 0.1))))
+                     ;; Echo back if we got data
+                     (when (> bytes-received 0)
+                       (net:udp-send-to server-socket buffer sender-addr :end bytes-received))))
+                 :name "udp-echo-server"))
+          
+          ;; Give server time to start
+          (sleep 0.1)
+          
+          ;; Send message
+          (net:udp-send-to client-socket test-message
+                          (net:make-socket-address "127.0.0.1" server-port))
+          
+          ;; Receive echo with retry logic
+          (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8)))
+                (bytes-received 0)
+                (attempts 0))
+            ;; Poll for response
+            (loop while (and (= bytes-received 0) (< attempts 50))
+                  do (progn
+                       (incf attempts)
+                       (multiple-value-bind (received addr)
+                           (net:udp-recv-from client-socket buffer)
+                         (declare (ignore addr))
+                         (setf bytes-received received))
+                       (when (= bytes-received 0)
+                         (sleep 0.1))))
+            
+            (when (> bytes-received 0)
+              (let ((response (sb-ext:octets-to-string (subseq buffer 0 bytes-received))))
+                (is (string= test-message response) "UDP echo mismatch"))))
+          
+          ;; Wait for server thread
+          (when server-thread
+            (sb-thread:join-thread server-thread :timeout 5.0)))
+      
+      ;; Cleanup
+      (when server-thread
+        (ignore-errors (sb-thread:terminate-thread server-thread))))))
+
+(deftest test-tcp-concurrent-clients ()
+  "Test TCP server handling multiple concurrent clients"
+  (let* ((server-addr (net:make-socket-address "127.0.0.1" 0))
+         (listener (net:tcp-bind server-addr))
+         (port (net:socket-address-port (net:tcp-local-addr listener)))
+         (num-clients 5)
+         (server-thread nil)
+         (client-threads '())
+         (results (make-array num-clients :initial-element nil)))
+    
+    (unwind-protect
+        (progn
+          ;; Start multi-client server
+          (setf server-thread
+                (sb-thread:make-thread
+                 (lambda ()
+                   (loop repeat num-clients
+                         do (let ((client-stream (net:tcp-accept listener :timeout 5.0)))
+                              (when client-stream
+                                (sb-thread:make-thread
+                                 (lambda ()
+                                   (unwind-protect
+                                       (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
+                                         (let ((bytes-read (net:tcp-read client-stream buffer :timeout 5.0)))
+                                           (when (> bytes-read 0)
+                                             (net:tcp-write-all client-stream buffer :end bytes-read))))
+                                     (ignore-errors (net:tcp-shutdown client-stream :how :both))))
+                                 :name "client-handler")))))
+                 :name "multi-client-server"))
+          
+          ;; Give server time to start
+          (sleep 0.2)
+          
+          ;; Create multiple client threads with proper closure capture
+          (dotimes (i num-clients)
+            (let ((client-id i)
+                  (test-message (format nil "Client-~D-Message" i)))
+              (push
+               (sb-thread:make-thread
+                (lambda ()
+                  (handler-case
+                      (let ((client-stream (net:tcp-connect 
+                                          (net:make-socket-address "127.0.0.1" port) 
+                                          :timeout 5.0)))
+                        (unwind-protect
+                            (progn
+                              (net:tcp-write-all client-stream test-message)
+                              (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
+                                (let ((bytes-read (net:tcp-read client-stream buffer :timeout 5.0)))
+                                  (when (> bytes-read 0)
+                                    (let ((response (sb-ext:octets-to-string 
+                                                   (subseq buffer 0 bytes-read))))
+                                      (setf (aref results client-id) 
+                                            (string= test-message response)))))))
+                          (ignore-errors (net:tcp-shutdown client-stream :how :both))))
+                    (error (e)
+                      (setf (aref results client-id) (format nil "Error: ~A" e)))))
+                :name (format nil "test-client-~D" client-id))
+               client-threads)))
+          
+          ;; Wait for all client threads
+          (dolist (thread client-threads)
+            (sb-thread:join-thread thread :timeout 10.0))
+          
+          ;; Wait for server thread
+          (when server-thread
+            (sb-thread:join-thread server-thread :timeout 10.0))
+          
+          ;; Check results
+          (dotimes (i num-clients)
+            (is (eq (aref results i) t) 
+                (format nil "Client ~D failed: ~A" i (aref results i)))))
+      
+      ;; Cleanup
+      (dolist (thread client-threads)
+        (ignore-errors (sb-thread:terminate-thread thread)))
+      (when server-thread
+        (ignore-errors (sb-thread:terminate-thread server-thread))))))
+
+(deftest test-mixed-tcp-udp-concurrent ()
+  "Test concurrent TCP and UDP operations"
+  (let* ((tcp-listener (net:tcp-bind (net:make-socket-address "127.0.0.1" 0)))
+         (tcp-port (net:socket-address-port (net:tcp-local-addr tcp-listener)))
+         (udp-socket (net:udp-bind (net:make-socket-address "127.0.0.1" 0)))
+         (udp-port (net:socket-address-port (net:udp-local-addr udp-socket)))
+         (tcp-success nil)
+         (udp-success nil))
+    
+    (unwind-protect
+        (let ((tcp-server-thread
+               (sb-thread:make-thread
+                (lambda ()
+                  (handler-case
+                      (let ((stream (net:tcp-accept tcp-listener :timeout 5.0)))
+                        (when stream
+                          (unwind-protect
+                              (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
+                                (let ((bytes (net:tcp-read stream buffer :timeout 5.0)))
+                                  (when (> bytes 0)
+                                    (net:tcp-write-all stream buffer :end bytes))))
+                            (ignore-errors (net:tcp-shutdown stream :how :both)))))
+                    (error () nil)))
+                :name "tcp-server"))
+              
+              (udp-server-thread
+               (sb-thread:make-thread
+                (lambda ()
+                  (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8)))
+                        (bytes 0)
+                        (addr nil))
+                    ;; Poll for UDP message
+                    (loop repeat 50
+                          do (multiple-value-bind (b a) (net:udp-recv-from udp-socket buffer)
+                               (setf bytes b addr a)
+                               (when (> bytes 0) (return))
+                               (sleep 0.1)))
+                    (when (> bytes 0)
+                      (net:udp-send-to udp-socket buffer addr :end bytes))))
+                :name "udp-server")))
+          
+          ;; Give servers time to start
+          (sleep 0.2)
+          
+          ;; Test TCP
+          (handler-case
+              (let ((tcp-client (net:tcp-connect 
+                               (net:make-socket-address "127.0.0.1" tcp-port) 
+                               :timeout 5.0)))
+                (unwind-protect
+                    (progn
+                      (net:tcp-write-all tcp-client "TCP-Test")
+                      (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
+                        (let ((bytes (net:tcp-read tcp-client buffer :timeout 5.0)))
+                          (when (> bytes 0)
+                            (setf tcp-success 
+                                  (string= "TCP-Test" 
+                                          (sb-ext:octets-to-string 
+                                           (subseq buffer 0 bytes))))))))
+                  (ignore-errors (net:tcp-shutdown tcp-client :how :both))))
+            (error (e)
+              (is nil (format nil "TCP Error: ~A" e))))
+          
+          ;; Test UDP
+          (let ((udp-client (net:udp-bind (net:make-socket-address "127.0.0.1" 0))))
+            (net:udp-send-to udp-client "UDP-Test"
+                            (net:make-socket-address "127.0.0.1" udp-port))
+            
+            (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8)))
+                  (bytes 0))
+              ;; Poll for response
+              (loop repeat 50
+                    do (multiple-value-bind (b a) (net:udp-recv-from udp-client buffer)
+                         (declare (ignore a))
+                         (setf bytes b)
+                         (when (> bytes 0) (return))
+                         (sleep 0.1)))
+              
+              (when (> bytes 0)
+                (setf udp-success 
+                      (string= "UDP-Test" 
+                              (sb-ext:octets-to-string (subseq buffer 0 bytes)))))))
+          
+          ;; Wait for threads
+          (sb-thread:join-thread tcp-server-thread :timeout 10.0)
+          (sb-thread:join-thread udp-server-thread :timeout 10.0)
+          
+          ;; Check results
+          (is tcp-success "TCP operation failed")
+          (is udp-success "UDP operation failed"))
+      
+      ;; Cleanup happens automatically
+      nil)))

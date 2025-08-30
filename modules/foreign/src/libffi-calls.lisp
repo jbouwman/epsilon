@@ -64,6 +64,9 @@
 (defvar *call-statistics* (make-hash-table :test 'equal)
   "Statistics for function call frequency and performance")
 
+(defvar *call-statistics-mutex* (sb-thread:make-mutex :name "call-statistics")
+  "Mutex for thread-safe access to *call-statistics*")
+
 (defvar *use-libffi-calls* t
   "Always use libffi for FFI calls")
 
@@ -84,23 +87,25 @@
 (defun track-function-call (function-designator elapsed-time)
   "Track function call for performance optimization"
   (when *track-call-performance*
-    (let* ((key (if (listp function-designator)
-                    function-designator
-                    (list function-designator "libc")))
-           (stats (or (gethash key *call-statistics*)
-                      (setf (gethash key *call-statistics*)
-                            (make-call-stats :count 0 :total-time 0)))))
-      (incf (call-stats-count stats))
-      (incf (call-stats-total-time stats) elapsed-time)
-      (setf (call-stats-last-called stats) (get-universal-time)))))
+    (sb-thread:with-mutex (*call-statistics-mutex*)
+      (let* ((key (if (listp function-designator)
+                      function-designator
+                      (list function-designator "libc")))
+             (stats (or (gethash key *call-statistics*)
+                        (setf (gethash key *call-statistics*)
+                              (make-call-stats :count 0 :total-time 0)))))
+        (incf (call-stats-count stats))
+        (incf (call-stats-total-time stats) elapsed-time)
+        (setf (call-stats-last-called stats) (get-universal-time))))))
 
 (defun get-call-statistics (&optional function-designator)
   "Get call statistics for analysis"
-  (if function-designator
-      (gethash function-designator *call-statistics*)
-      (loop for key being the hash-keys of *call-statistics*
-            using (hash-value value)
-            collect (cons key value))))
+  (sb-thread:with-mutex (*call-statistics-mutex*)
+    (if function-designator
+        (gethash function-designator *call-statistics*)
+        (loop for key being the hash-keys of *call-statistics*
+              using (hash-value value)
+              collect (cons key value)))))
 
 ;;; Smart FFI with automatic signature detection
 
