@@ -94,7 +94,16 @@
     (setf (sb-sys:sap-ref-32 addrlen 0) 16)
     (let ((result (const:%getsockname socket-fd sockaddr addrlen)))
       (errors:check-error result "getsockname")
-      (address:parse-sockaddr-in sockaddr))))
+      ;; Parse the sockaddr directly and create the correct type
+      (let* ((port-bytes (sb-sys:sap-ref-16 sockaddr 2))
+             (port (logior (ash (logand port-bytes #xff) 8)
+                           (ash (logand port-bytes #xff00) -8)))
+             (ip (format nil "~D.~D.~D.~D"
+                        (sb-sys:sap-ref-8 sockaddr 4)
+                        (sb-sys:sap-ref-8 sockaddr 5)
+                        (sb-sys:sap-ref-8 sockaddr 6)
+                        (sb-sys:sap-ref-8 sockaddr 7))))
+        (types:make-socket-address ip port)))))
 
 (defun get-peer-address (socket-fd)
   "Get the peer address of a socket"

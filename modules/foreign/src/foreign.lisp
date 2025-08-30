@@ -787,6 +787,9 @@
 (defvar *allocated-memory* (make-hash-table :test 'eql)
   "Maps SAPs to their underlying alien pointers for proper cleanup")
 
+(defvar *allocated-memory-mutex* (sb-thread:make-mutex :name "allocated-memory")
+  "Mutex for thread-safe access to *allocated-memory*")
+
 (defun foreign-alloc (type-or-size &key count initial-element initial-contents finalize)
   "Allocates foreign memory and returns a system area pointer"
   (let* ((element-size (if (keywordp type-or-size)
@@ -797,7 +800,8 @@
          (sap (sb-alien:alien-sap alien-ptr)))
     
     ;; Store the alien pointer for later cleanup
-    (setf (gethash (sb-sys:sap-int sap) *allocated-memory*) alien-ptr)
+    (sb-thread:with-mutex (*allocated-memory-mutex*)
+      (setf (gethash (sb-sys:sap-int sap) *allocated-memory*) alien-ptr))
     
     ;; Initialize memory if requested
     (cond
@@ -817,10 +821,11 @@
     (when finalize
       (let ((sap-int (sb-sys:sap-int sap)))
         (sb-ext:finalize sap (lambda () 
-                               (let ((ptr (gethash sap-int *allocated-memory*)))
-                                 (when ptr
-                                   (sb-alien:free-alien ptr)
-                                   (remhash sap-int *allocated-memory*)))))))
+                               (sb-thread:with-mutex (*allocated-memory-mutex*)
+                                 (let ((ptr (gethash sap-int *allocated-memory*)))
+                                   (when ptr
+                                     (sb-alien:free-alien ptr)
+                                     (remhash sap-int *allocated-memory*))))))))
     
     ;; Return the system area pointer
     sap))
@@ -830,14 +835,15 @@
   (when pointer
     (let* ((sap-int (if (sb-sys:system-area-pointer-p pointer)
                         (sb-sys:sap-int pointer)
-                        pointer))
-           (alien-ptr (gethash sap-int *allocated-memory*)))
-      (when alien-ptr
-        ;; Free the alien memory
-        (sb-alien:free-alien alien-ptr)
-        ;; Remove from tracking table
-        (remhash sap-int *allocated-memory*)
-        t))))
+                        pointer)))
+      (sb-thread:with-mutex (*allocated-memory-mutex*)
+        (let ((alien-ptr (gethash sap-int *allocated-memory*)))
+          (when alien-ptr
+            ;; Free the alien memory
+            (sb-alien:free-alien alien-ptr)
+            ;; Remove from tracking table
+            (remhash sap-int *allocated-memory*)
+            t))))))
 
 (defun alien-type-size (type)
   "Get size in bytes of alien type"

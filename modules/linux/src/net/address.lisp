@@ -9,6 +9,7 @@
    (errors epsilon.net.errors)
    (types epsilon.net.types)
    (str epsilon.string)
+   (seq epsilon.sequence)
    (lib epsilon.foreign))
   (:export
    ;; Address creation
@@ -40,7 +41,7 @@
                   (ash (logand port #xff00) -8)))
     ;; sin_addr (convert IP string to network byte order)
     (let ((ip-parts (mapcar #'parse-integer 
-                            (str:split ip-address #\.))))
+                            (seq:realize (str:split #\. ip-address)))))
       ;; Store in network byte order (big-endian)
       (setf (sb-sys:sap-ref-8 sap 4) (first ip-parts))
       (setf (sb-sys:sap-ref-8 sap 5) (second ip-parts))
@@ -65,7 +66,7 @@
                      (sb-sys:sap-ref-8 sap 5)
                      (sb-sys:sap-ref-8 sap 6)
                      (sb-sys:sap-ref-8 sap 7))))
-    (types:make-socket-address ip port)))
+    (make-instance 'socket-address :ip ip :port port)))
 
 ;;; ============================================================================
 ;;; Address Creation and Resolution
