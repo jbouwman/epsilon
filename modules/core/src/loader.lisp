@@ -766,10 +766,10 @@
                                      (setf (stdout-output result) (get-output-stream-string stdout-stream)
                                            (stderr-output result) (get-output-stream-string stderr-stream)
                                            (stack-trace result) (sb-debug:list-backtrace))
-                                     (handle-error e result))))
+                                     (handle-error e result)))
                ;; Run without timeout to avoid Windows threading issues
                (funcall fn)
-               (setf completed t))
+               (setf completed t)))
       (setf (end-time result) (get-internal-real-time))
       ;; Always capture final output
       (unless (stdout-output result)
