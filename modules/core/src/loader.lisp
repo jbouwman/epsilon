@@ -805,28 +805,10 @@
                                      (setf (stdout-output result) (get-output-stream-string stdout-stream)
                                            (stderr-output result) (get-output-stream-string stderr-stream)
                                            (stack-trace result) (sb-debug:list-backtrace))
-                                     (handle-error e result))))
-               ;; Try to run with timeout
-               (let ((thread (sb-thread:make-thread 
-                             (lambda () 
-                               (funcall fn)
-                               (setf completed t))
-                             :name "build-operation")))
-                 (sleep 0.1) ; Give thread a moment to start
-                 (let ((timeout-count 0)
-                       (timeout-secs (map:get (environment-config environment) :timeout 60)))
-                   (loop while (and (sb-thread:thread-alive-p thread) 
-                                    (< timeout-count (* timeout-secs 10)))
-                         do (sleep 0.1)
-                            (incf timeout-count))
-                   (when (sb-thread:thread-alive-p thread)
-                     ;; Timeout occurred - capture output and terminate
-                     (setf (stdout-output result) (get-output-stream-string stdout-stream)
-                           (stderr-output result) (get-output-stream-string stderr-stream))
-                     (sb-thread:terminate-thread thread)
-                     (error "Build operation timed out after ~D seconds" 
-                            (map:get (environment-config environment) :timeout 60)))
-                   (sb-thread:join-thread thread))))))
+                                     (handle-error e result)))
+               ;; Run without timeout to avoid Windows threading issues
+               (funcall fn)
+               (setf completed t)))
       (setf (end-time result) (get-internal-real-time))
       ;; Always capture final output
       (unless (stdout-output result)
