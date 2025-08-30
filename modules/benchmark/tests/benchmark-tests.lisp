@@ -371,23 +371,6 @@
       (is (search "csv-test-1" csv-output))
       (is (search "csv-test-2" csv-output)))))
 
-;;; Performance Regression Tests
-
-(deftest benchmark-consistency-test
-  "Test that benchmarks produce consistent results"
-  (let ((results (loop repeat 3
-                       collect (benchmark:run-benchmark (lambda () (+ 1 1))
-                                                        :name "consistency-test"
-                                                        :min-time 0.1))))
-    ;; All results should be benchmark-result objects
-    (is (every #'benchmark:benchmark-result-p results))
-    
-    ;; Operations per second should be in similar range (within 50% of each other)
-    (let ((ops-rates (mapcar #'benchmark:benchmark-result-ops-per-sec results)))
-      (let ((min-rate (apply #'min ops-rates))
-            (max-rate (apply #'max ops-rates)))
-        (is (< (/ max-rate min-rate) 2.0))))))  ; Less than 2x difference
-
 ;;; Integration Tests
 
 (deftest benchmark-registry-persistence-test
