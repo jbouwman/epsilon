@@ -26,27 +26,8 @@
 
 ;;; Native operations (using Lisp fallbacks for now)
 
-(defun native-matrix-multiply (a b)
-  "Matrix multiplication with potential native acceleration"
-  (let* ((m (array-dimension a 0))
-         (n (array-dimension b 1))
-         (k (array-dimension a 1))
-         (c (make-array (list m n) :element-type 'double-float :initial-element 0.0d0)))
-    ;; Simple matrix multiplication
-    (dotimes (i m)
-      (dotimes (j n)
-        (let ((sum 0.0d0))
-          (dotimes (l k)
-            (incf sum (* (coerce (aref a i l) 'double-float)
-                        (coerce (aref b l j) 'double-float))))
-          (setf (aref c i j) sum))))
-    c))
-
-(defun native-dot-product (x y)
-  "Vector dot product with potential native acceleration"
-  (loop for i from 0 below (length x)
-        sum (* (coerce (elt x i) 'double-float)
-               (coerce (elt y i) 'double-float))))
+;; Note: native-matrix-multiply and native-dot-product are defined in blas-stub.lisp
+;; to avoid redefinition warnings. This file focuses on compilation and optimization.
 
 (defun native-matrix-vector-multiply (a x)
   "Matrix-vector multiplication with potential native acceleration"

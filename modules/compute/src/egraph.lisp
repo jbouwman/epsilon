@@ -216,6 +216,11 @@
         (let* ((new-canon (uf-union (egraph-unionfind egraph) canon1 canon2))
                (class1 (gethash canon1 (egraph-classes egraph)))
                (class2 (gethash canon2 (egraph-classes egraph))))
+          ;; Debug check
+          (unless class1
+            (warn "merge-eclasses: No class found for ID ~A" canon1))
+          (unless class2
+            (warn "merge-eclasses: No class found for ID ~A" canon2))
           ;; Merge e-nodes from both classes
           (when (and class1 class2)
             (let ((merged-nodes (append (eclass-nodes class1) (eclass-nodes class2)))
@@ -640,12 +645,12 @@
                           (warn "Error applying rule ~S with bindings ~S: ~A" 
                                 (rewrite-rule-name rule) bindings e)
                           ;; Return dummy ID to continue
-                          0)))))))
+                          0))))))
               ;; Merge the matched e-class with the RHS e-class
-              ;; Skip if rhs-id is 0 (dummy ID from error handling)
-              (unless (or (= matched-id rhs-id) (= rhs-id 0))
+              ;; Skip if either ID is 0 (dummy ID from error handling)
+              (unless (or (= matched-id rhs-id) (= rhs-id 0) (= matched-id 0))
                 (merge-eclasses egraph matched-id rhs-id)
-                (incf new-facts))))))
+                (incf new-facts)))))))
     new-facts))
 
 (defun find-matches (egraph pattern)
@@ -795,36 +800,65 @@
 (defun apply-rewrites (egraph rules)
   "Apply rewrite rules to e-graph, return number of new facts added"
   (let ((new-facts 0)
-        (classes-snapshot (make-hash-table :test 'eql))
-        (max-iterations 1000)
-        (iteration-count 0))
+        (rule-index (index-rules-by-operation rules))
+        (applied-rules (make-hash-table :test 'equal)) ; Track applied rules to avoid duplicates
+        (classes-snapshot (make-hash-table :test 'eql))) ; Snapshot to avoid modification during iteration
+    
     ;; Take a snapshot of current e-classes to avoid modification during iteration
-    (maphash (lambda (k v) (setf (gethash k classes-snapshot) v))
+    (maphash (lambda (k v) 
+               (setf (gethash k classes-snapshot) v))
              (egraph-classes egraph))
-    ;; For each e-class in the snapshot
+    
+    ;; Iterate over the snapshot
     (maphash (lambda (eclass-id eclass)
                (declare (ignore eclass-id))
+               ;; Safety check - ensure eclass is actually an eclass structure
+               (unless (typep eclass 'eclass)
+                 (error "Invalid eclass in egraph-classes: ~S (type: ~A)" eclass (type-of eclass)))
                ;; For each e-node in the e-class
                (dolist (enode (eclass-nodes eclass))
-                 ;; Safety check for runaway loops
-                 (incf iteration-count)
-                 (when (> iteration-count max-iterations)
-                   (error "apply-rewrites exceeded ~A iterations" max-iterations))
-                 ;; Try each rule
-                 (dolist (rule rules)
-                   (handler-case
-                       (let ((matches (match-enode-with-rule egraph enode rule)))
-                         (when matches
-                           ;; Apply the rewrite
-                           (dolist (match matches)
-                             (let ((new-id (apply-single-rewrite egraph match rule)))
-                               (when new-id
-                                 (incf new-facts))))))
-                     (error (e)
-                       (format t "~%Error applying rule ~A: ~A~%" 
-                               (rewrite-rule-name rule) e))))))
-             classes-snapshot)
+                 ;; Only try rules that match this e-node's operation
+                 (let ((relevant-rules (get-rules-for-operation rule-index (enode-op enode))))
+                   (dolist (rule relevant-rules)
+                     (when rule  ; Safety check for nil rules
+                       (let ((rule-key (list (enode-op enode) (enode-args enode) (rewrite-rule-name rule))))
+                       ;; Skip if we've already applied this exact rule to this exact e-node
+                       (unless (gethash rule-key applied-rules)
+                         (setf (gethash rule-key applied-rules) t)
+                         (handler-case
+                             (let ((matches (match-enode-with-rule egraph enode rule)))
+                               (when matches
+                                 ;; Apply the rewrite
+                                 (dolist (match matches)
+                                   (let ((new-id (apply-single-rewrite egraph match rule)))
+                                     (when new-id
+                                       (incf new-facts))))))
+                           (error (e)
+                             (format t "~%Error applying rule ~A: ~A~%" 
+                                     (rewrite-rule-name rule) e))))))))))
+             classes-snapshot)  ; Iterate over snapshot, not original
     new-facts))
+
+;; Helper functions for rule indexing
+(defun index-rules-by-operation (rules)
+  "Create an index of rules by their root operation for faster lookup"
+  (let ((index (make-hash-table :test 'equal)))
+    (dolist (rule rules)
+      (when rule  ; Safety check for nil rules
+        (let ((pattern (rewrite-rule-lhs rule)))
+          (cond
+            ((listp pattern)
+             (let ((op (first pattern)))
+               (push rule (gethash op index nil))))
+            ((atom pattern)
+             ;; For atomic patterns, index under a special key
+             (push rule (gethash :atomic index nil)))))))
+    index))
+
+(defun get-rules-for-operation (rule-index operation)
+  "Get all rules that might apply to an operation"
+  (append (gethash operation rule-index)
+          (gethash :all rule-index))) ; Include universal rules if any
 
 (defun find-enode-eclass (egraph enode)
   "Find which e-class an e-node belongs to"
@@ -1085,8 +1119,8 @@
       (let ((new-facts (apply-rewrites egraph rules)))
         (when debug
           (format t "~%DEBUG: Iteration ~A, new facts: ~A~%" iteration new-facts))
-        ;; Bail out if too many facts are being created
-        (when (> new-facts 1000)
+        ;; Bail out if too many facts are being created (increased limit due to optimization)
+        (when (> new-facts 5000)
           (format t "~%WARNING: Too many facts (~S), stopping saturation~%" new-facts)
           (return :too-many-facts))
         (rebuild egraph)
@@ -1119,7 +1153,7 @@
           ;; Return result, or original if nil
           (or result expr))))))
 
-(defun saturate-rules (egraph rules &key (limit 10))
+(defun saturate-rules (egraph rules &key (limit 20))
   "Apply rewrite rules to an e-graph until saturation - interface for tests"
   (saturate egraph rules :limit limit))
 

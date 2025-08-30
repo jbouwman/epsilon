@@ -37,7 +37,7 @@
 
 (deftest test-associativity
   "Test associativity rewriting"
-  (skip "egraph saturation and rule application not yet implemented")
+  (skip)
   (let* ((x (sym:sym 'x))
          (y (sym:sym 'y))
          (z (sym:sym 'z))
