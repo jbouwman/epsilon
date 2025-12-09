@@ -7,11 +7,39 @@
    (map epsilon.map)
    (seq epsilon.sequence)
    (str epsilon.string)
-   (xml epsilon.xml))
+   (log epsilon.log))
   (:export
    make))
 
 (in-package epsilon.test.report)
+
+;;; Optional module support
+;;; epsilon.xml is optional - JUnit output only works when xml module is loaded
+
+(defun xml-available-p ()
+  "Check if the epsilon.xml module is loaded and available."
+  (find-package "EPSILON.XML"))
+
+(defun xml-element (name &key attributes children)
+  "Create an XML element if epsilon.xml is available."
+  (when (xml-available-p)
+    (let ((element-fn (find-symbol "ELEMENT" "EPSILON.XML")))
+      (when element-fn
+        (funcall element-fn name :attributes attributes :children children)))))
+
+(defun xml-text (content)
+  "Create an XML text node if epsilon.xml is available."
+  (when (xml-available-p)
+    (let ((text-fn (find-symbol "TEXT" "EPSILON.XML")))
+      (when text-fn
+        (funcall text-fn content)))))
+
+(defun xml-emit (element stream)
+  "Emit XML to stream if epsilon.xml is available."
+  (when (xml-available-p)
+    (let ((emit-fn (find-symbol "EMIT" "EPSILON.XML")))
+      (when emit-fn
+        (funcall emit-fn element stream)))))
 
 ;;; Import helper from suite package
 (defun symbol-package-name (symbol)
@@ -180,16 +208,20 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
 
 (defun emit-junit-xml (report run)
   "Emit JUnit XML format test results to file"
+  (unless (xml-available-p)
+    (log:warn "JUnit XML output requested but epsilon.xml module is not loaded")
+    (log:warn "Skipping XML output - load epsilon.xml for JUnit report support")
+    (return-from emit-junit-xml nil))
   (let ((output-path (output-file report)))
     ;; Ensure target directory exists
     (ensure-directories-exist output-path)
     (with-open-file (stream output-path
-                            :direction :output 
+                            :direction :output
                             :if-exists :supersede
                             :if-does-not-exist :create)
 		    ;; This XML declaration should be handled by the xml package.
 		    (format stream "<?xml version=\"1.0\" encoding=\"UTF-8\"?>~%")
-		    (xml:emit (make-junit-testsuites run) stream))))
+		    (xml-emit (make-junit-testsuites run) stream))))
 
 (defun format-timestamp ()
   "Format current timestamp in ISO 8601 format"
@@ -225,9 +257,9 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
          (total-failures (length (suite:failures run)))
          (total-errors (length (suite:errors run)))
          (total-skipped (length (suite:skipped run)))
-         (total-time (/ (- (suite::end-time run) (suite::start-time run)) 
+         (total-time (/ (- (suite::end-time run) (suite::start-time run))
                         internal-time-units-per-second)))
-    (xml:element "testsuites"
+    (xml-element "testsuites"
                  :attributes (list "tests" total-tests
                                    "failures" total-failures
                                    "errors" total-errors
@@ -248,12 +280,12 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
          (errors (count-if (lambda (r) (eq :error (suite:status r))) tests))
          (skipped (count-if (lambda (r) (eq :skip (suite:status r))) tests))
          (suite-time (reduce #'+ tests :key #'suite::elapsed-time :initial-value 0))
-         (properties (list (xml:element "properties"
-					:children (list (xml:element "property"
+         (properties (list (xml-element "properties"
+					:children (list (xml-element "property"
 								     :attributes (list "name" "epsilon.module"
 										       "value" suite-name))))))
          (testcases (mapcar #'make-junit-testcase (reverse tests))))
-    (xml:element "testsuite"
+    (xml-element "testsuite"
                  :attributes (list "name" suite-name
                                    "tests" test-count
                                    "failures" failures
@@ -270,7 +302,7 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
          (class-name (symbol-package-name test-symbol))
          (test-time (suite::elapsed-time result))
          (children '()))
-    
+
     (case (suite:status result)
 	  (:failure
 	   (let* ((condition (suite:condition result))
@@ -282,10 +314,10 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
 				   (if form (format nil "~S" form) "N/A")
 				   (length assertions)
 				   (format-assertion-history assertions))))
-	     (push (xml:element "failure"
+	     (push (xml-element "failure"
 				:attributes (list "message" message
 						  "type" "AssertionFailure")
-				:children (list (xml:text details)))
+				:children (list (xml-text details)))
 		   children)))
 	  (:error
 	   (let* ((error-condition (suite::original-error (suite:condition result)))
@@ -299,27 +331,27 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
 				   stack-trace
 				   (length assertions)
 				   (format-assertion-history assertions))))
-	     (push (xml:element "error"
+	     (push (xml-element "error"
 				:attributes (list "message" error-message
 						  "type" error-type)
-				:children (list (xml:text details)))
+				:children (list (xml-text details)))
 		   children)))
 	  (:skip
-	   (push (xml:element "skipped"
+	   (push (xml-element "skipped"
                               :attributes (list "message" (suite::skip-message (suite:condition result))))
 		 children)))
-    
+
     (when (and (suite::stdout-output result) (not (string= (suite::stdout-output result) "")))
-      (push (xml:element "system-out" 
-                         :children (list (xml:text (suite::stdout-output result))))
+      (push (xml-element "system-out"
+                         :children (list (xml-text (suite::stdout-output result))))
             children))
-    
+
     (when (and (suite::stderr-output result) (not (string= (suite::stderr-output result) "")))
-      (push (xml:element "system-err"
-                         :children (list (xml:text (suite::stderr-output result))))
+      (push (xml-element "system-err"
+                         :children (list (xml-text (suite::stderr-output result))))
             children))
-    
-    (xml:element "testcase"
+
+    (xml-element "testcase"
                  :attributes (list "name" test-name
                                    "classname" class-name
                                    "time" (format nil "~,3F" test-time))

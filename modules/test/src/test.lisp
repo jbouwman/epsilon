@@ -13,7 +13,6 @@
    (loader epsilon.loader)
    (map epsilon.map)
    (pkg epsilon.sys.pkg)
-   (re epsilon.regex)
    (report epsilon.test.report)
    (suite epsilon.test.suite)
    (fixture epsilon.test.fixture)
@@ -54,6 +53,25 @@
    is-thrown))
 
 (in-package epsilon.test)
+
+;;; Optional module support
+;;; epsilon.regex is optional - we fall back to substring matching if unavailable
+
+(defun regex-available-p ()
+  "Check if the epsilon.regex module is loaded and available."
+  (find-package "EPSILON.REGEX"))
+
+(defun pattern-match-string (pattern string)
+  "Match PATTERN against STRING.
+   If epsilon.regex is available, treats PATTERN as a regex.
+   Otherwise, uses simple substring matching."
+  (if (regex-available-p)
+      ;; Use regex if available
+      (let ((match-fn (find-symbol "MATCH" "EPSILON.REGEX")))
+        (when match-fn
+          (funcall match-fn pattern string)))
+      ;; Fall back to substring matching
+      (search pattern string)))
 
 ;; TODO module-file is here in order to load package-relative resources: non-source files that contain test data, metadata, configuration and so on. Ideally there should be a generic scheme for this that uses the package's load time or runtime environment.
 
@@ -282,41 +300,43 @@
   "Test that form does not evaluate to NIL"
   `(is-p (lambda (x y) (declare (ignore y)) (not (null x))) ,form t ,@optargs))
 
-(defmacro is-thrown ((condition-class &optional regex) &body body)
+(defmacro is-thrown ((condition-class &optional pattern) &body body)
   "Test that BODY throws a condition of type CONDITION-CLASS.
-If REGEX is provided, the condition's printed representation must match it."
+If PATTERN is provided, the condition's printed representation must match it.
+When epsilon.regex is loaded, PATTERN is treated as a regex.
+Otherwise, PATTERN is used for simple substring matching."
   (with-gensyms (condition-var caught-var)
 		`(let ((,caught-var nil))
 		   (declare (ignorable ,caught-var))
 		   (handler-case
 		       (progn
 			 ,@body
-			 (suite:fail '(is-thrown ,condition-class ,@(when regex `(,regex)) ,@body)
-				     ,(if regex
-					  `(format nil "Expected ~S matching ~S but no condition was thrown" 
-						   ',condition-class ,regex)
-					`(format nil "Expected ~S but no condition was thrown" 
+			 (suite:fail '(is-thrown ,condition-class ,@(when pattern `(,pattern)) ,@body)
+				     ,(if pattern
+					  `(format nil "Expected ~S matching ~S but no condition was thrown"
+						   ',condition-class ,pattern)
+					`(format nil "Expected ~S but no condition was thrown"
 						 ',condition-class))))
 		     (,condition-class (,condition-var)
 				       (declare (ignorable ,condition-var))
 				       (setf ,caught-var t)
-				       ,(if regex
+				       ,(if pattern
 					    `(let ((condition-string (format nil "~A" ,condition-var)))
-					       (if (re:match ,regex condition-string)
+					       (if (pattern-match-string ,pattern condition-string)
 						   (suite:pass)
-						 (suite:fail '(is-thrown ,condition-class ,regex ,@body)
-							     (format nil "Expected ~S matching ~S but got: ~A" 
-								     ',condition-class ,regex condition-string))))
+						 (suite:fail '(is-thrown ,condition-class ,pattern ,@body)
+							     (format nil "Expected ~S matching ~S but got: ~A"
+								     ',condition-class ,pattern condition-string))))
 					  `(suite:pass)))
 		     (condition (,condition-var)
 				(when ,caught-var
-				  (suite:fail '(is-thrown ,condition-class ,@(when regex `(,regex)) ,@body)
-					      ,(if regex
-						   `(format nil "Expected ~S matching ~S but got ~S: ~A" 
-							    ',condition-class ,regex 
+				  (suite:fail '(is-thrown ,condition-class ,@(when pattern `(,pattern)) ,@body)
+					      ,(if pattern
+						   `(format nil "Expected ~S matching ~S but got ~S: ~A"
+							    ',condition-class ,pattern
 							    (type-of ,condition-var) ,condition-var)
-						 `(format nil "Expected ~S but got ~S: ~A" 
-							  ',condition-class 
+						 `(format nil "Expected ~S but got ~S: ~A"
+							  ',condition-class
 							  (type-of ,condition-var) ,condition-var)))))))))
 
 ;; Re-export fixture functionality

@@ -20,8 +20,11 @@
    ;; Core functions
    get-module
    load-module
+   ensure-module
+   module-not-found
+   module-not-found-name
    environment
-   
+
    ;; Generic resource handling
    load-module-resources
    sort-sources
@@ -134,7 +137,7 @@
   (let ((errors '())
         (valid-keys '(:name :version :description :author :platform
                      :sources :tests :benchmarks :examples :experiments
-                     :docs :data :requires :provides)))
+                     :docs :data :requires :optional :provides)))
     
     ;; Check that metadata is a property list
     (unless (and (listp metadata) (evenp (length metadata)))
@@ -188,15 +191,28 @@
       ;; Requires validation - must be list of strings
       (when requires
         (unless (listp requires)
-          (push (format nil "Invalid :requires field in ~A: must be a list, got ~A" 
+          (push (format nil "Invalid :requires field in ~A: must be a list, got ~A"
                        filepath (type-of requires)) errors))
         (when (listp requires)
           (loop for req in requires
                 for index from 0
                 unless (stringp req)
-                  do (push (format nil "Invalid :requires entry at position ~D in ~A: must be a string, got ~A" 
+                  do (push (format nil "Invalid :requires entry at position ~D in ~A: must be a string, got ~A"
                                  index filepath (type-of req)) errors))))
-      
+
+      ;; Optional validation - must be list of strings (same format as requires)
+      (let ((optional-deps (getf metadata :optional)))
+        (when optional-deps
+          (unless (listp optional-deps)
+            (push (format nil "Invalid :optional field in ~A: must be a list, got ~A"
+                         filepath (type-of optional-deps)) errors))
+          (when (listp optional-deps)
+            (loop for opt in optional-deps
+                  for index from 0
+                  unless (stringp opt)
+                    do (push (format nil "Invalid :optional entry at position ~D in ~A: must be a string, got ~A"
+                                   index filepath (type-of opt)) errors)))))
+
       ;; Provides validation - must be list of strings
       (when provides
         (unless (listp provides)
@@ -1006,6 +1022,41 @@
         (unless compile-only
           (mark-module-loaded environment package)))
       build-result)))
+
+(define-condition module-not-found (error)
+  ((module-name :initarg :module-name :reader module-not-found-name))
+  (:report (lambda (condition stream)
+             (format stream "Module not found: ~A" (module-not-found-name condition)))))
+
+(defun ensure-module (environment name &key optional)
+  "Load a module, optionally failing gracefully.
+
+   ENVIRONMENT - The loader environment with repositories configured
+   NAME - Module name to load (e.g., \"epsilon.xml\")
+   OPTIONAL - If true, warn instead of error when module not found
+
+   Returns T if module loaded successfully, NIL if optional and not found.
+   Signals MODULE-NOT-FOUND error if not optional and module doesn't exist."
+  (let ((module-info (get-module environment name)))
+    (cond
+      ;; Module found - try to load it
+      (module-info
+       (handler-case
+           (progn
+             (load-module environment name)
+             t)
+         (error (e)
+           (if optional
+               (progn
+                 (log:warn "Optional module ~A failed to load: ~A" name e)
+                 nil)
+               (error e)))))
+      ;; Module not found
+      (optional
+       (log:info "Optional module ~A not available" name)
+       nil)
+      (t
+       (error 'module-not-found :module-name name)))))
 
 (defgeneric project-resources (project resource-type)
   (:documentation "Get resources of the specified type from the project.
