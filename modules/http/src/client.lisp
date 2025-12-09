@@ -9,7 +9,8 @@
    (#:str #:epsilon.string)
    (#:seq #:epsilon.sequence)
    (#:map #:epsilon.map)
-   (#:tls #:epsilon.crypto))
+   (#:tls #:epsilon.crypto)
+   (#:response #:epsilon.http.response))
   (:export
    #:request
    #:http-get
@@ -46,7 +47,8 @@
    Example: (make-http-connection \"example.com\" 443 :ssl-p t 
                                   :cert-file \"client.pem\" :key-file \"key.pem\"
                                   :alpn-protocols '(\"h2\" \"http/1.1\"))"
-  (let* ((addresses (net:resolve-address host port))
+  (let* ((address-spec (net:make-socket-address host port))
+         (addresses (net:resolve-address address-spec))
          (address (first addresses))
          (socket (net:tcp-connect address))
          (tls-conn nil)
@@ -54,7 +56,7 @@
          (effective-alpn-protocols (or alpn-protocols '("h2" "http/1.1"))))
     (when ssl-p
       (setf tls-ctx (or tls-context
-                        (tls:create-openssl-context 
+                        (tls:create-openssl-context
                          :server-p nil
                          :cert-file cert-file
                          :key-file key-file
@@ -65,9 +67,15 @@
                          :verify-depth verify-depth
                          :alpn-protocols effective-alpn-protocols
                          :session-cache-p session-cache-p)))
-      (setf tls-conn (tls:openssl-connect socket tls-ctx 
-                                          :hostname host
-                                          :alpn-protocols effective-alpn-protocols)))
+      ;; Only set SNI hostname for actual hostnames, not IP addresses
+      ;; RFC 6066 specifies SNI is for DNS hostnames only
+      (let ((sni-hostname (unless (every (lambda (c)
+                                           (or (digit-char-p c) (char= c #\.)))
+                                         host)
+                            host)))
+        (setf tls-conn (tls:openssl-connect socket tls-ctx
+                                            :hostname sni-hostname
+                                            :alpn-protocols effective-alpn-protocols))))
     (make-instance 'http-connection
                    :socket socket
                    :host host
@@ -95,7 +103,7 @@
            (tls:tls-close (connection-tls-connection ,conn)))
          (when (and (connection-socket ,conn)
                     (not (connection-ssl-p ,conn)))
-           (net:tcp-shutdown (connection-socket ,conn) :how :both))))))
+           (net:tcp-shutdown (connection-socket ,conn) :both))))))
 
 (defun parse-url (url-string)
   "Parse URL-STRING into scheme, host, port, path, and query components.
@@ -223,14 +231,14 @@
     
     ;; Read headers first
     (loop until headers-complete
-          do (let ((bytes-read (tls:tls-read tls-conn buffer 0 buffer-size)))
+          do (let ((bytes-read (tls:tls-read tls-conn buffer :start 0 :end buffer-size)))
                (when (and bytes-read (> bytes-read 0))
                  (loop for i from 0 below bytes-read
                        do (vector-push-extend (char buffer i) response-data))
                  ;; Check if headers are complete
                  (let ((current-data (coerce response-data 'string)))
-                   (when (search (format nil "~C~C~C~C" 
-                                         #\Return #\Linefeed #\Return #\Linefeed) 
+                   (when (search (format nil "~C~C~C~C"
+                                         #\Return #\Linefeed #\Return #\Linefeed)
                                  current-data)
                      (setf headers-complete t)
                      (setf content-length (extract-content-length current-data)))))))
@@ -246,7 +254,7 @@
         (when (> bytes-remaining 0)
           (loop while (> bytes-remaining 0)
                 do (let* ((to-read (min bytes-remaining buffer-size))
-                          (bytes-read (tls:tls-read tls-conn buffer 0 to-read)))
+                          (bytes-read (tls:tls-read tls-conn buffer :start 0 :end to-read)))
                      (when (and bytes-read (> bytes-read 0))
                        (loop for i from 0 below bytes-read
                              do (vector-push-extend (char buffer i) response-data))
@@ -278,10 +286,10 @@
                           (value (str:trim (subseq line (1+ colon-pos)))))
                       (setf headers (map:assoc headers key value))))))))
     
-      ;; Extract body
+      ;; Extract body and return http-response object
       (let ((body (when body-start
                     (str:join #\Linefeed (seq:from-list (subseq lines-list body-start))))))
-        (list :status status-code :headers headers :body body)))))
+        (response:make-response :status status-code :headers headers :body body)))))
 
 (defun request (url &key (method "GET") headers body tls-context cert-file key-file ca-file
                     alpn-protocols verify-depth session-cache-p)

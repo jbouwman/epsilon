@@ -10,7 +10,7 @@
   (:export
 
    ;; NEW
-   
+
    :buffer
    :make-output-stream
    :make-input-stream))

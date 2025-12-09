@@ -3,143 +3,108 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'  # Semantic versioning tags only
-  release:
-    types: [published]
+      - 'v*'
 
 jobs:
-  # Build release artifacts for all platforms
   build-release:
-    name: Build Release (${{ matrix.os }})
+    name: Build (${{ matrix.platform }})
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
-            platform: linux
-            arch: x86_64
-            container: ghcr.io/${{ github.repository }}/epsilon-ci:latest
+            platform: linux-x86_64
           - os: macos-latest
-            platform: darwin
-            arch: arm64
+            platform: macos-arm64
           - os: macos-13
-            platform: darwin
-            arch: x86_64
-          # Windows can be added when ready
-          # - os: windows-latest
-          #   platform: windows
-          #   arch: x86_64
-            
+            platform: macos-x86_64
     runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container }}
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup CI environment
-      shell: bash
-      run: ./scripts/ci-setup.sh
-        
-    - name: Extract version
-      id: version
-      shell: bash
-      run: |
-        VERSION=$(./epsilon --exec epsilon.release:version)
-        echo "version=${VERSION}" >> $GITHUB_OUTPUT
-        echo "Building version: ${VERSION}"
-        
-    - name: Run tests
-      shell: bash
-      run: |
-        ./epsilon --exec epsilon.release:run-smoke-tests
-        ./epsilon --exec epsilon.release:test
-        
-    - name: Build release package
-      shell: bash
-      run: |
-        VERSION="${{ steps.version.outputs.version }}"
-        ./epsilon --exec epsilon.release:create-package --version "${VERSION}"
-        
-    - name: Verify release
-      shell: bash
-      run: ./epsilon --exec epsilon.release:verify
-        
-    - name: Upload release artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: epsilon-${{ steps.version.outputs.version }}-${{ matrix.platform }}-${{ matrix.arch }}
-        path: |
-          releases/epsilon-*.tar.gz
-          releases/epsilon-*.tar.gz.sha256
-          releases/epk/*.epk
 
-  # Create GitHub release with all artifacts
-  publish-release:
-    name: Publish Release
-    needs: build-release
-    if: github.event_name == 'release' || startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Download all artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: release-artifacts
-        
-    - name: Prepare release assets
-      run: |
-        mkdir -p release-files
-        
-        # Collect all distribution files
-        find release-artifacts -type f \( -name "*.tar.gz" -o -name "*.sha256" -o -name "*.epk" \) -exec cp {} release-files/ \;
-        
-        # Generate release notes
-        VERSION="${GITHUB_REF#refs/tags/v}"
-        cat > release-files/RELEASE_NOTES.md << EOF
-        ## Epsilon ${VERSION}
-        
-        ### Installation
-        
-        Download the appropriate archive for your platform and extract it:
-        
-        \`\`\`bash
-        # Linux x86_64
-        curl -LO https://github.com/jbouwman/epsilon/releases/download/v${VERSION}/epsilon-${VERSION}-linux-x86_64.tar.gz
-        tar xzf epsilon-${VERSION}-linux-x86_64.tar.gz
-        
-        # macOS ARM64 (M1/M2)
-        curl -LO https://github.com/jbouwman/epsilon/releases/download/v${VERSION}/epsilon-${VERSION}-darwin-arm64.tar.gz
-        tar xzf epsilon-${VERSION}-darwin-arm64.tar.gz
-        
-        # macOS x86_64 (Intel)
-        curl -LO https://github.com/jbouwman/epsilon/releases/download/v${VERSION}/epsilon-${VERSION}-darwin-x86_64.tar.gz
-        tar xzf epsilon-${VERSION}-darwin-x86_64.tar.gz
-        \`\`\`
-        
-        ### Verify checksums
-        
-        \`\`\`bash
-        sha256sum -c epsilon-${VERSION}-<platform>.tar.gz.sha256
-        \`\`\`
-        
-        ### What's New
-        
-        See [CHANGELOG.md](https://github.com/jbouwman/epsilon/blob/v${VERSION}/CHANGELOG.md) for details.
-        EOF
-        
-        # List all files to be released
-        echo "=== Release files ==="
-        ls -la release-files/
-        
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
-      if: startsWith(github.ref, 'refs/tags/v')
-      with:
-        files: release-files/*
-        body_path: release-files/RELEASE_NOTES.md
-        draft: false
-        prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
-        generate_release_notes: true
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sbcl libffi-dev libssl-dev build-essential git tar gzip sqlite3 libsqlite3-dev
+
+      - name: Setup dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install sbcl libffi openssl@3
+
+      - name: Build native extensions
+        run: |
+          if [ -d "modules/foreign/c" ]; then
+            cd modules/foreign/c
+            make clean
+            make
+          fi
+
+      - name: Run tests
+        run: |
+          ./epsilon --exec epsilon.release:selftest
+
+      - name: Generate release
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          ./epsilon --exec "(epsilon.release:generate \"$VERSION\")"
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: |
+            releases/*.tar.gz
+            releases/*.sha256
+
+  create-release:
+    name: Create GitHub Release
+    needs: build-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          pattern: release-*
+          merge-multiple: true
+
+      - name: List artifacts
+        run: |
+          find artifacts/ -type f | sort
+
+      - name: Extract release notes from CHANGELOG
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          if [ -f "CHANGELOG.md" ]; then
+            # Extract section for this version
+            NOTES=$(sed -n "/^## \[${VERSION}\]/,/^## \[/p" CHANGELOG.md | sed '1d;$d' | head -50)
+            if [ -z "$NOTES" ]; then
+              NOTES="Release ${VERSION}"
+            fi
+          else
+            NOTES="Release ${VERSION}"
+          fi
+          # Write to file for multiline support
+          echo "$NOTES" > release_notes.md
+          echo "notes_file=release_notes.md" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/*.tar.gz
+            artifacts/*.sha256
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}

@@ -2,128 +2,101 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
-
-permissions:
-  contents: read
-  packages: write
-  checks: write
-  id-token: write
-
-env:
-  CACHE_VERSION: v1
+    branches: [main]
 
 jobs:
-  # Run tests for all packages
   test:
-    name: Test All Packages (${{ matrix.os }})
+    name: Test (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
         include:
           - os: ubuntu-latest
-            container: ghcr.io/${{ github.repository }}/epsilon-ci:latest
+            platform: linux-x86_64
           - os: macos-latest
-            container: null
-    
+            platform: macos-arm64
+          - os: macos-13
+            platform: macos-x86_64
     runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container }}
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup CI environment
-      run: ./scripts/ci-setup.sh
-        
-    - name: Cache build artifacts
-      uses: actions/cache@v4
-      with:
-        path: |
-          src/*/target
-          .epsilon-cache
-          modules/foreign/lib
-        key: build-${{ env.CACHE_VERSION }}-${{ runner.os }}-${{ hashFiles('src/**/package.lisp', 'src/**/*.lisp', 'modules/foreign/c/*') }}
-        restore-keys: |
-          build-${{ env.CACHE_VERSION }}-${{ runner.os }}-
-    
-    - name: Verify OpenSSL setup
-      run: |
-        echo "=== OpenSSL Configuration ==="
-        openssl version
-        echo "=== Checking for OpenSSL libraries ==="
-        # On Linux
-        if [ -f /usr/lib/x86_64-linux-gnu/libssl.so ]; then
-          echo "Found libssl.so"
-          ls -la /usr/lib/x86_64-linux-gnu/libssl* | head -5
-        fi
-        # On macOS
-        if [ -d /opt/homebrew/opt/openssl@3 ]; then
-          echo "Found Homebrew OpenSSL 3"
-          ls -la /opt/homebrew/opt/openssl@3/lib/libssl* | head -5
-        elif [ -d /usr/local/opt/openssl@3 ]; then
-          echo "Found Homebrew OpenSSL 3 (Intel)"
-          ls -la /usr/local/opt/openssl@3/lib/libssl* | head -5
-        fi
-    
-    - name: Verify SQLite setup
-      run: |
-        echo "=== SQLite Configuration ==="
-        sqlite3 --version
-        echo "=== Checking for SQLite libraries ==="
-        # On Linux
-        if [ -f /usr/lib/x86_64-linux-gnu/libsqlite3.so ]; then
-          echo "Found libsqlite3.so"
-          ls -la /usr/lib/x86_64-linux-gnu/libsqlite3* | head -5
-        fi
-        # On macOS - SQLite is bundled with the system
-        if [ "${{ runner.os }}" = "macOS" ]; then
-          echo "macOS system SQLite libraries:"
-          # Check common locations for system SQLite
-          if [ -f /usr/lib/libsqlite3.dylib ]; then
-            echo "Found system libsqlite3.dylib"
-            ls -la /usr/lib/libsqlite3* 2>/dev/null | head -5 || true
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sbcl libffi-dev libssl-dev build-essential git tar gzip sqlite3 libsqlite3-dev
+
+      - name: Setup dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install sbcl libffi openssl@3
+
+      - name: Build native extensions
+        run: |
+          if [ -d "modules/foreign/c" ]; then
+            cd modules/foreign/c
+            make clean
+            make
           fi
-          # Also check SDK location
-          if [ -d /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib ]; then
-            echo "Found SDK SQLite libraries:"
-            ls -la /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib/libsqlite3* 2>/dev/null | head -5 || true
+
+      - name: Run tests
+        run: |
+          ./epsilon --exec epsilon.release:selftest
+
+      - name: Run lint
+        run: |
+          ./epsilon --exec "(epsilon.lint:lint-directory \"modules/\")" || true
+
+  build:
+    name: Build (${{ matrix.platform }})
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+          - os: macos-latest
+            platform: macos-arm64
+          - os: macos-13
+            platform: macos-x86_64
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sbcl libffi-dev libssl-dev build-essential git tar gzip sqlite3 libsqlite3-dev
+
+      - name: Setup dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install sbcl libffi openssl@3
+
+      - name: Build native extensions
+        run: |
+          if [ -d "modules/foreign/c" ]; then
+            cd modules/foreign/c
+            make clean
+            make
           fi
-          # Check with otool where sqlite3 binary links to
-          echo "SQLite3 binary links to:"
-          otool -L $(which sqlite3) | grep sqlite || true
-        fi
-    
-    - name: Run smoke tests
-      run: ./epsilon --exec epsilon.release:run-smoke-tests
-      
-    - name: Run all module tests
-      run: |
-        # Set library paths for OpenSSL on macOS
-        if [ "${{ runner.os }}" = "macOS" ]; then
-          if [ -d /opt/homebrew/opt/openssl@3 ]; then
-            export DYLD_LIBRARY_PATH="/opt/homebrew/opt/openssl@3/lib:${DYLD_LIBRARY_PATH:-}"
-          elif [ -d /usr/local/opt/openssl@3 ]; then
-            export DYLD_LIBRARY_PATH="/usr/local/opt/openssl@3/lib:${DYLD_LIBRARY_PATH:-}"
-          fi
-        fi
-        ./epsilon --exec epsilon.release:test --format junit --output "target/TEST-epsilon-${{ runner.os }}.xml"
-        
-    - name: Publish Test Report
-      uses: mikepenz/action-junit-report@v5
-      if: success() || failure()
-      with:
-        report_paths: '**/TEST-*.xml'
-        check_name: 'Test Results (${{ runner.os }})'
-        job_summary: true
-        detailed_summary: true
-        
-    - name: Upload test results
-      uses: actions/upload-artifact@v4
-      if: success() || failure()
-      with:
-        name: test-results-${{ runner.os }}
-        path: target/TEST-*.xml
+
+      - name: Build release
+        run: |
+          ./epsilon --exec epsilon.release:build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: epsilon-${{ matrix.platform }}
+          path: releases/
+          retention-days: 7

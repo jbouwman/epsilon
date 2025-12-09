@@ -11,7 +11,8 @@
   (:local-nicknames
    (#:map #:epsilon.map)
    (#:str #:epsilon.string)
-   (#:seq #:epsilon.sequence))
+   (#:seq #:epsilon.sequence)
+   (#:m #:epsilon.match))
   (:export
    ;; Main API
    #:make-parser
@@ -190,15 +191,14 @@
 (defun convert-value (value type)
   "Convert a string value to the specified type"
   (handler-case
-      (cond
-        ((eq type 'string) value)
-        ((eq type 'integer) (parse-integer value))
-        ((eq type 'boolean) 
-         (if (member value '("true" "yes" "1" "on") :test #'string-equal) t nil))
-        ((functionp type) (funcall type value))
-        (t value))
+      (m:match type
+        ('string value)
+        ('integer (parse-integer value))
+        ('boolean (if (member value '("true" "yes" "1" "on") :test #'string-equal) t nil))
+        ((? functionp f) (funcall f value))
+        (_ value))
     (error (e)
-      (error 'type-conversion-error 
+      (error 'type-conversion-error
              :message (format nil "Cannot convert '~A' to ~A: ~A" value type e)
              :value value
              :target-type type))))

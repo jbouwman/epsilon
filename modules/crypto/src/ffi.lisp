@@ -38,6 +38,9 @@
    #:%ssl-ctx-set-alpn-select-cb
    #:%ssl-set-alpn-protos
    #:%ssl-get0-alpn-selected
+   #:%ssl-ctrl
+   #:+ssl-ctrl-set-tlsext-hostname+
+   #:+tlsext-nametype-host-name+
    #:%ssl-set-tlsext-host-name
    #:%ssl-ctx-set-session-cache-mode
    #:%ssl-get-verify-result
@@ -343,17 +346,36 @@
   (ssl :pointer) (data :pointer) (len :pointer)
   :documentation "Get selected ALPN protocol")
 
-(ffi:defshared %ssl-set-tlsext-host-name "SSL_set_tlsext_host_name" :ssl :int
-  (ssl :pointer) (name :string)
-  :documentation "Set SNI hostname")
+;; SSL_set_tlsext_host_name is a macro in OpenSSL, not a function.
+;; It expands to: SSL_ctrl(ssl, SSL_CTRL_SET_TLSEXT_HOSTNAME, TLSEXT_NAMETYPE_host_name, name)
+;; We use SSL_ctrl directly instead.
+(ffi:defshared %ssl-ctrl "SSL_ctrl" :ssl :long
+  (ssl :pointer) (cmd :int) (larg :long) (parg :pointer)
+  :documentation "Generic SSL control function")
+
+;; Constants for SSL_ctrl commands
+(defconstant +ssl-ctrl-set-tlsext-hostname+ 55
+  "SSL_CTRL_SET_TLSEXT_HOSTNAME command for SSL_ctrl")
+(defconstant +tlsext-nametype-host-name+ 0
+  "TLSEXT_NAMETYPE_host_name for SNI")
+
+(defun %ssl-set-tlsext-host-name (ssl hostname)
+  "Set SNI hostname using SSL_ctrl (workaround for SSL_set_tlsext_host_name macro)"
+  (epsilon.foreign:with-foreign-memory ((name-buf :char :count (1+ (length hostname))))
+    ;; Copy hostname to foreign buffer
+    (loop for i from 0 below (length hostname)
+          do (setf (sb-sys:sap-ref-8 name-buf i) (char-code (char hostname i))))
+    (setf (sb-sys:sap-ref-8 name-buf (length hostname)) 0)  ; null terminator
+    (%ssl-ctrl ssl +ssl-ctrl-set-tlsext-hostname+ +tlsext-nametype-host-name+ name-buf)))
 
 (ffi:defshared %ssl-ctx-set-session-cache-mode "SSL_CTX_set_session_cache_mode" :ssl :long
   (ctx :pointer) (mode :long)
   :documentation "Set session cache mode")
 
-(ffi:defshared %ssl-get-peer-certificate "SSL_get_peer_certificate" :ssl :pointer
+;; Note: In OpenSSL 3.0, SSL_get_peer_certificate was renamed to SSL_get1_peer_certificate
+(ffi:defshared %ssl-get-peer-certificate "SSL_get1_peer_certificate" :ssl :pointer
   (ssl :pointer)
-  :documentation "Get peer certificate from SSL connection")
+  :documentation "Get peer certificate from SSL connection (OpenSSL 3.0+)")
 
 (ffi:defshared %ssl-get-verify-result "SSL_get_verify_result" :ssl :long
   (ssl :pointer)

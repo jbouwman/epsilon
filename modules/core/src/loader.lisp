@@ -21,7 +21,7 @@
    get-module
    load-module
    environment
-   
+
    ;; Generic resource handling
    load-module-resources
    sort-sources
@@ -188,15 +188,15 @@
       ;; Requires validation - must be list of strings
       (when requires
         (unless (listp requires)
-          (push (format nil "Invalid :requires field in ~A: must be a list, got ~A" 
+          (push (format nil "Invalid :requires field in ~A: must be a list, got ~A"
                        filepath (type-of requires)) errors))
         (when (listp requires)
           (loop for req in requires
                 for index from 0
                 unless (stringp req)
-                  do (push (format nil "Invalid :requires entry at position ~D in ~A: must be a string, got ~A" 
+                  do (push (format nil "Invalid :requires entry at position ~D in ~A: must be a string, got ~A"
                                  index filepath (type-of req)) errors))))
-      
+
       ;; Provides validation - must be list of strings
       (when provides
         (unless (listp provides)
@@ -385,15 +385,20 @@
     (let ((epsilon-home (env:getenv "EPSILON_HOME")))
       (unless epsilon-home
         (error "EPSILON_HOME environment variable not set"))
+      ;; Scan main modules directory
       (let ((modules-path (path:path-join epsilon-home "modules")))
         (unless (probe-file (path:path-string modules-path))
           (error "Epsilon modules directory not found: ~A" modules-path))
-        (scan-module-directory *environment* modules-path)
-        ;; Verify core modules are available
-        (let ((core-modules '("epsilon.core")))
-          (dolist (module-name core-modules)
-            (unless (get-module *environment* module-name)
-              (error "Core module ~A not found in ~A" module-name modules-path)))))))
+        (scan-module-directory *environment* modules-path))
+      ;; Scan contrib modules directory if it exists
+      (let ((contrib-path (path:path-join epsilon-home "contrib" "modules")))
+        (when (probe-file (path:path-string contrib-path))
+          (scan-module-directory *environment* contrib-path)))
+      ;; Verify core modules are available
+      (let ((core-modules '("epsilon.core")))
+        (dolist (module-name core-modules)
+          (unless (get-module *environment* module-name)
+            (error "Core module ~A not found" module-name))))))
   *environment*)
 
 (defun module-uri (module-info)

@@ -1,0 +1,35 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "epsilon-lint",
+  "sourceRoot": ".",
+  "projectType": "library",
+  "tags": ["scope:epsilon", "type:library", "type:tooling"],
+  "implicitDependencies": ["epsilon-core"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "./epsilon --module epsilon.lint --eval t"
+      },
+      "inputs": ["{projectRoot}/**/*.lisp", "{projectRoot}/module.lisp"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "cwd": ".",
+        "command": "./epsilon --test epsilon.lint"
+      },
+      "inputs": ["{projectRoot}/**/*.lisp"]
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "cwd": ".",
+        "command": "./epsilon --exec \"(epsilon.lint:lint-module \\\"epsilon.lint\\\")\""
+      }
+    }
+  }
+}

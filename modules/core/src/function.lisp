@@ -6,7 +6,15 @@
    #:compose
    #:multiple-value-compose
    #:partial
-   #:named-lambda))
+   #:named-lambda
+   ;; Enhanced composition operators
+   #:pipe
+   #:juxt
+   #:complement*
+   #:constantly*
+   #:flip
+   #:curry
+   #:rcurry))
 
 (in-package #:epsilon.function)
 
@@ -103,3 +111,119 @@ it is called with to FUNCTION."
 corresponding function."
   `(labels ((,name ,lambda-list ,@body))
      #',name))
+
+;;; Enhanced composition operators
+
+(defun pipe (&rest functions)
+  "Compose functions left-to-right (opposite of compose).
+   (pipe f g h) is equivalent to (compose h g f)
+   and computes (h (g (f x))).
+
+   Reads naturally for data transformation pipelines:
+     (funcall (pipe #'parse-integer #'1+ #'number-to-string) \"41\")
+     => \"42\""
+  (if (null functions)
+      #'identity
+      (reduce (lambda (f g)
+                (let ((f (ensure-function f))
+                      (g (ensure-function g)))
+                  (lambda (&rest args)
+                    (declare (dynamic-extent args))
+                    (funcall g (apply f args)))))
+              functions)))
+
+(define-compiler-macro pipe (&rest functions)
+  (if (null functions)
+      '#'identity
+      (labels ((pipe-1 (funs result)
+                 (if (null funs)
+                     result
+                     (pipe-1 (rest funs) `(funcall ,(first funs) ,result)))))
+        (let ((funs (make-gensym-list (length functions) "PIPE")))
+          `(let ,(loop for f in funs for arg in functions
+                       collect `(,f (ensure-function ,arg)))
+             (lambda (&rest arguments)
+               (declare (dynamic-extent arguments))
+               ,(pipe-1 (rest funs) `(apply ,(first funs) arguments))))))))
+
+(defun juxt (&rest functions)
+  "Return a function that returns a list of applying each function to args.
+   ((juxt f g h) x) => (list (f x) (g x) (h x))
+
+   Useful for applying multiple transformations at once:
+     (funcall (juxt #'first #'last #'length) '(a b c d e))
+     => (A E 5)"
+  (let ((fns (mapcar #'ensure-function functions)))
+    (lambda (&rest args)
+      (declare (dynamic-extent args))
+      (mapcar (lambda (f) (apply f args)) fns))))
+
+(define-compiler-macro juxt (&rest functions)
+  (let ((funs (make-gensym-list (length functions) "JUXT")))
+    `(let ,(loop for f in funs for arg in functions
+                 collect `(,f (ensure-function ,arg)))
+       (lambda (&rest args)
+         (declare (dynamic-extent args))
+         (list ,@(mapcar (lambda (f) `(apply ,f args)) funs))))))
+
+(defun complement* (function)
+  "Return a function that returns the logical NOT of FUNCTION's result.
+   Uses function designators (unlike CL:COMPLEMENT which only takes functions).
+
+   Example:
+     (funcall (complement* #'evenp) 3)  => T
+     (remove-if (complement* #'alpha-char-p) \"a1b2c3\")  => \"abc\""
+  (let ((f (ensure-function function)))
+    (lambda (&rest args)
+      (declare (dynamic-extent args))
+      (not (apply f args)))))
+
+(defun constantly* (value)
+  "Return a function that always returns VALUE.
+   Like CL:CONSTANTLY but provided for API consistency.
+
+   Example:
+     (mapcar (constantly* 42) '(a b c))  => (42 42 42)"
+  (lambda (&rest args)
+    (declare (ignore args))
+    value))
+
+(defun flip (function)
+  "Return a function with first two arguments reversed.
+
+   Example:
+     (funcall (flip #'cons) '(1 2 3) 0)  => (0 1 2 3)
+     (funcall (flip #'-) 3 10)           => 7"
+  (let ((f (ensure-function function)))
+    (lambda (a b &rest args)
+      (declare (dynamic-extent args))
+      (apply f b a args))))
+
+(defun curry (function &rest args)
+  "Alias for partial - curry FUNCTION with ARGS.
+   Provided for familiarity with other functional languages.
+
+   Example:
+     (funcall (curry #'+ 1 2) 3 4)  => 10"
+  (apply #'partial function args))
+
+(defun rcurry (function &rest args)
+  "Partial application from the right.
+   Like curry/partial but ARGS are appended to the call.
+
+   Example:
+     (funcall (rcurry #'- 1) 10)    => 9  ; (- 10 1)
+     (funcall (rcurry #'list 3) 1 2) => (1 2 3)"
+  (let ((f (ensure-function function)))
+    (lambda (&rest more)
+      (declare (dynamic-extent more))
+      (apply f (append more args)))))
+
+(define-compiler-macro rcurry (function &rest arguments)
+  (let ((curries (make-gensym-list (length arguments) "RCURRY"))
+        (fun (gensym "FUN")))
+    `(let ((,fun (ensure-function ,function))
+           ,@(mapcar #'list curries arguments))
+       (lambda (&rest more)
+         (declare (dynamic-extent more))
+         (apply ,fun (append more (list ,@curries)))))))

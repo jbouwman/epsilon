@@ -728,8 +728,8 @@ exec \"$SBCL\" --script \"$EPSILON_BOOT\" \"$@\"
                                         :args '("--eval" "(+ 1 2)")
                                         :check-executable nil)))
           (if (search "3" output)
-              (progn (incf passed) (log:info "✓ Simple evaluation"))
-              (progn (incf failed) (log:error "✗ Simple evaluation: unexpected output"))))
+              (log:info "Simple evaluation: OK")
+              (progn (incf failed) (log:error "Simple evaluation: unexpected output"))))
       (process:process-error-condition (e)
         (incf failed)
         (log:error "Simple evaluation failed with exit code ~A" 

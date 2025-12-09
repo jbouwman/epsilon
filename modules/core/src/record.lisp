@@ -7,7 +7,9 @@
   (:use :cl)
   (:local-nicknames
    (:map :epsilon.map)
-   (:protocol :epsilon.protocol))
+   (:protocol :epsilon.protocol)
+   (:fn :epsilon.function)
+   (:th :epsilon.threading))
   (:export
    #:defrecord
    #:make-record
@@ -82,7 +84,7 @@
          (accessors (mapcar (lambda (field)
                               (intern (format nil "~A-~A" name field)))
                             fields))
-         (field-keywords (mapcar (lambda (f) (intern (string f) :keyword))
+         (field-keywords (mapcar (fn:pipe #'string (fn:rcurry #'intern :keyword))
                                  fields))
          (implementations '()))
     

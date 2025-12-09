@@ -177,7 +177,7 @@
   (log:debug "Closing connection...")
   (if ssl-p
       (tls:tls-close connection)
-    (net:tcp-shutdown connection))
+    (net:tcp-close connection))
   (log:debug "Connection closed"))
 
 (defun server-loop (server)
@@ -188,25 +188,36 @@
 	       (progn
                  (log:debug "Waiting for connection on port ~A..." (server-port server))
                  (let ((raw-connection (net:tcp-accept (server-socket server))))
-                   (log:info "Accepted connection: ~A" raw-connection)
+                   ;; Check if accept returned nil (timeout or socket closed)
+                   (unless raw-connection
+                     ;; If server is still running, this was just a timeout - continue
+                     (if (server-running-p server)
+                         (progn
+                           (log:trace "Accept timeout, continuing...")
+                           nil)  ; Continue the loop
+                         (progn
+                           (log:debug "Server stopped, exiting server loop")
+                           (return))))
+                   ;; Only process if we got a connection
                    (when raw-connection
+                     (log:info "Accepted connection: ~A" raw-connection)
                      (let ((connection (if (server-ssl-p server)
-                                           (tls:tls-accept raw-connection 
+                                           (tls:tls-accept raw-connection
                                                            :context (server-tls-context server))
                                          raw-connection))
                            (app (server-application server)))
                        (log:debug "Creating client handler thread...")
-                       (sb-thread:make-thread 
-		        (lambda () 
+                       (sb-thread:make-thread
+                        (lambda ()
                           (log:debug "Client handler thread started")
                           (handle-client connection (server-ssl-p server) app
                                          :require-client-cert (server-require-client-cert server))
                           (log:debug "Client handler thread finished"))
-		        :name "HTTP client handler"))))))
+                        :name "HTTP client handler")))))
              (error (e)
-		    (log:error "Error in server loop: ~A" e)
-		    (unless (server-running-p server)
-		      (return)))))
+                    (log:error "Error in server loop: ~A" e)
+                    (unless (server-running-p server)
+                      (return))))))
 
 (defun start-server (application &key (port *default-port*) (address "0.0.0.0") 
                                  tls-context ssl-p cert-file key-file ca-file
@@ -274,7 +285,7 @@
                   (map:get *servers* port-or-server))))
     (when server
       (setf (server-running-p server) nil)
-      (net:tcp-shutdown (server-socket server))
+      (net:tcp-close (server-socket server))
       (sb-thread:join-thread (server-thread server))
       (setf *servers* (map:dissoc *servers* (server-port server)))
       t)))

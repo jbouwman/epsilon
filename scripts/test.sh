@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CI test runner for epsilon - runs all tests for release validation
+# CI test runner for epsilon
 
 set -euo pipefail
 

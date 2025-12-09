@@ -1,14 +1,0 @@
-Generic tests for HTTP/2 server
-  1. Starting HTTP/2
-      1: Sends a client connection preface    ✔ 1: Sends a client connection preface
-
-  2. Streams and Multiplexing
-      1: Sends a PRIORITY frame on idle stream    ✔ 1: Sends a PRIORITY frame on idle stream
-      2: Sends a WINDOW_UPDATE frame on half-closed (remote) stream    using source address 127.0.0.1:51590
-    × 2: Sends a WINDOW_UPDATE frame on half-closed (remote) stream
-      -> The endpoint MUST accept WINDOW_UPDATE frame.
-         Expected: DATA frame
-           Actual: Connection closed
-      3: Sends a PRIORITY frame on half-closed (remote) stream    × 3: Sends a PRIORITY frame on half-closed (remote) stream
-
-Error: dial tcp 127.0.0.1:8080: connect: connection refused

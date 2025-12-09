@@ -39,6 +39,7 @@
    tcp-try-accept
    tcp-poll-accept
    tcp-local-addr
+   tcp-close
    
    ;; TCP Stream operations
    tcp-connect
@@ -125,65 +126,78 @@
 ;;; TCP Implementation
 ;;; ============================================================================
 
-(defun tcp-bind (address)
-  "Create a TCP listener bound to the specified address"
+(defun tcp-bind (address &key (backlog 128) (reuse-addr t))
+  "Create a TCP listener bound to the specified address.
+   BACKLOG specifies the maximum pending connections queue size (default 128).
+   REUSE-ADDR enables SO_REUSEADDR socket option (default t)."
   (let ((sock-addr (normalize-address address)))
     (handler-case
         (let* ((socket-fd (create-socket +af-inet+ +sock-stream+ +ipproto-tcp+))
                (kq (kqueue:kqueue)))
-          ;; Set reuse address by default
-          (set-socket-reuse-address socket-fd t)
-          
+          ;; Set reuse address option
+          (when reuse-addr
+            (set-socket-reuse-address socket-fd t))
+
           ;; Bind socket
           (bind-socket socket-fd sock-addr)
-          
+
           ;; Listen
-          (when (< (%listen socket-fd 128) 0)
+          (when (< (%listen socket-fd backlog) 0)
             (error 'network-error :message "Failed to listen on socket"))
-          
+
           ;; Add to kqueue for accept events
           (kqueue:add-event kq socket-fd kqueue:+evfilt-read+)
-          
+
           ;; Get actual bound address (in case port was 0)
           (let ((local-addr (get-socket-address socket-fd :local)))
             (make-instance 'tcp-listener
                            :handle socket-fd
                            :local-address local-addr
                            :kqueue kq
-                           :backlog 128)))
+                           :backlog backlog)))
       (error (e)
         (error 'network-error :message (format nil "TCP bind failed: ~A" e))))))
 
-(defun tcp-accept (listener)
-  "Accept a new incoming connection. Blocks until a connection is available."
+(defun tcp-accept (listener &key (timeout 1.0))
+  "Accept a new incoming connection.
+   If TIMEOUT is provided, waits up to that many seconds for each poll cycle.
+   Returns NIL if the listener socket has been closed or if interrupted.
+   With timeout, periodically returns NIL to allow checking for shutdown."
   (handler-case
       (loop
-       ;; Wait for accept event
-       (let ((events (kqueue:wait-for-events (tcp-listener-kqueue listener) 1 nil)))
-         (when events
-           (lib:with-foreign-memory ((addr :char :count 16)
-                                     (addrlen :int :count 1))
-             (setf (sb-sys:sap-ref-32 addrlen 0) 16)
-             (let ((client-fd (%accept (tcp-listener-handle listener) addr addrlen)))
-               (cond
-                 ((>= client-fd 0)
-                  ;; Success - create the stream
-                  (let ((peer-addr (parse-sockaddr-in addr))
-                        (local-addr (get-socket-address client-fd :local)))
-                    (return (values 
-                             (make-instance 'tcp-stream
-                                            :handle client-fd
-                                            :local-address local-addr
-                                            :peer-address peer-addr
-                                            :connected-p t)
-                             peer-addr))))
-                 (t
-                  ;; accept failed - get errno for specific error
-                  (let ((errno-val (get-errno)))
-                    (error 'network-error 
-                           :message (format nil "Accept failed with errno ~D: ~A" 
-                                            errno-val
-                                            (errno-to-string errno-val)))))))))))
+       ;; Wait for accept event with timeout
+       (let ((events (handler-case
+                         (kqueue:wait-for-events (tcp-listener-kqueue listener) 1 timeout)
+                       (error () nil))))  ; Return nil if kqueue fails (e.g., socket closed)
+         (unless events
+           ;; No events or kqueue error - return nil to allow shutdown check
+           (return nil))
+         (lib:with-foreign-memory ((addr :char :count 16)
+                                   (addrlen :int :count 1))
+           (setf (sb-sys:sap-ref-32 addrlen 0) 16)
+           (let ((client-fd (%accept (tcp-listener-handle listener) addr addrlen)))
+             (cond
+               ((>= client-fd 0)
+                ;; Success - create the stream
+                (let ((peer-addr (parse-sockaddr-in addr))
+                      (local-addr (get-socket-address client-fd :local)))
+                  (return (values
+                           (make-instance 'tcp-stream
+                                          :handle client-fd
+                                          :local-address local-addr
+                                          :peer-address peer-addr
+                                          :connected-p t)
+                           peer-addr))))
+               (t
+                ;; accept failed - get errno for specific error
+                (let ((errno-val (get-errno)))
+                  ;; EBADF (9) means socket closed - return nil instead of error
+                  (if (= errno-val 9)
+                      (return nil)
+                      (error 'network-error
+                             :message (format nil "Accept failed with errno ~D: ~A"
+                                              errno-val
+                                              (errno-to-string errno-val)))))))))))
     (network-error (e)
       ;; Re-raise network errors as-is
       (error e))
@@ -239,67 +253,64 @@
   "Get the local address the listener is bound to"
   (tcp-listener-local-address listener))
 
-(defun tcp-connect (address)
-  "Connect to a remote TCP server. Blocks until connected."
+(defun tcp-close (socket-or-listener)
+  "Close a TCP listener or stream.
+   Works with both tcp-listener and tcp-stream objects."
+  (etypecase socket-or-listener
+    (tcp-listener
+     ;; Close the listener's socket handle (kqueue will be cleaned up when socket closes)
+     (let ((handle (tcp-listener-handle socket-or-listener)))
+       (when (and handle (>= handle 0))
+         (close-socket handle))))
+    (tcp-stream
+     ;; Shutdown and close the stream's socket handle
+     (let ((handle (tcp-stream-handle socket-or-listener)))
+       (when (and handle (>= handle 0))
+         (handler-case
+             (%shutdown handle +shut-rdwr+)
+           (error () nil))
+         (close-socket handle)
+         (setf (tcp-stream-connected-p socket-or-listener) nil))))))
+
+(defun tcp-connect (address &key (timeout 30))
+  "Connect to a remote TCP server.
+   TIMEOUT specifies connection timeout in seconds (default 30).
+   Uses blocking connect for reliability."
+  (declare (ignore timeout)) ; For future use with select/poll
   (let ((sock-addr (normalize-address address)))
-    (log:debug "tcp-connect: Creating socket for ~A:~D~%" 
+    (log:debug "tcp-connect: Connecting to ~A:~D~%"
                (socket-address-ip sock-addr) (socket-address-port sock-addr))
-    (finish-output)
     (let ((socket-fd (create-socket +af-inet+ +sock-stream+ +ipproto-tcp+)))
       (log:debug "tcp-connect: Socket created, fd=~D~%" socket-fd)
-      (finish-output)
-      
-      ;; Set socket to non-blocking mode
-      (log:debug "tcp-connect: Setting socket to non-blocking~%")
-      (finish-output)
-      (set-nonblocking socket-fd)
-      
+
+      ;; Use blocking connect - simpler and more reliable
+      ;; The socket starts in blocking mode by default
       (lib:with-foreign-memory ((addr :char :count 16))
         (make-sockaddr-in-into addr (socket-address-ip sock-addr) (socket-address-port sock-addr))
         (log:debug "tcp-connect: Calling %connect...~%")
-        (finish-output)
         (let ((result (%connect socket-fd addr 16)))
           (log:debug "tcp-connect: %connect returned ~D~%" result)
-          (finish-output)
           (when (< result 0)
             (let ((errno-val (get-errno)))
-              (log:debug "tcp-connect: Connection errno ~D: ~A~%" 
+              (log:debug "tcp-connect: Connection errno ~D: ~A~%"
                          errno-val (errno-to-string errno-val))
-              (finish-output)
-              ;; For non-blocking sockets, EINPROGRESS (36) is expected
-              (unless (= errno-val 36) ; EINPROGRESS
-                (close-socket socket-fd)  ; Clean up socket on failure
-                (case errno-val
-                  (61 (error 'connection-refused 
-                             :message (format nil "Connection refused to ~A:~D" 
-                                              (socket-address-ip sock-addr)
-                                              (socket-address-port sock-addr))))
-                  (t (error 'network-error 
-                            :message (format nil "Connect failed to ~A:~D - errno ~D: ~A" 
-                                             (socket-address-ip sock-addr)
-                                             (socket-address-port sock-addr)
-                                             errno-val 
-                                             (errno-to-string errno-val))))))))
-          
-          ;; For non-blocking connect, we need to wait for completion
-          (when (and (< result 0) (= (get-errno) 36)) ; EINPROGRESS
-            (log:debug "tcp-connect: Connection in progress, waiting...~%")
-            (finish-output)
-            ;; Simple busy wait - in production use select/poll
-            (loop repeat 100
-                  do (sleep 0.01)
-                     (let ((write-ready-p t)) ; Simplified check
-                       (when write-ready-p
-                         (log:debug "tcp-connect: Connection completed~%")
-                         (finish-output)
-                         (return)))))
-          
-          ;; Get local address
+              (close-socket socket-fd)  ; Clean up socket on failure
+              (case errno-val
+                (61 (error 'connection-refused
+                           :message (format nil "Connection refused to ~A:~D"
+                                            (socket-address-ip sock-addr)
+                                            (socket-address-port sock-addr))))
+                (t (error 'network-error
+                          :message (format nil "Connect failed to ~A:~D - errno ~D: ~A"
+                                           (socket-address-ip sock-addr)
+                                           (socket-address-port sock-addr)
+                                           errno-val
+                                           (errno-to-string errno-val)))))))
+
+          ;; Connection successful - get local address
           (log:debug "tcp-connect: Getting local address...~%")
-          (finish-output)
           (let ((local-addr (get-socket-address socket-fd :local)))
             (log:debug "tcp-connect: Connection successful!~%")
-            (finish-output)
             (make-instance 'tcp-stream
                            :handle socket-fd
                            :local-address local-addr

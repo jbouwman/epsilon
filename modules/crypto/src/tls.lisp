@@ -6,7 +6,8 @@
   (:use :cl :epsilon.crypto)
   (:local-nicknames
    (alpn epsilon.crypto.alpn)
-   (#:ffi #:epsilon.crypto.ffi))
+   (#:ffi #:epsilon.crypto.ffi)
+   (#:net #:epsilon.net))
   (:import-from :epsilon.crypto
 		;; Import all needed symbols
 		#:+tls-verify-none+
@@ -63,6 +64,34 @@
    #:x509-certificate-subject))
 
 (in-package :epsilon.crypto.tls)
+
+;;;; Helper Functions
+
+(defun get-openssl-error-string ()
+  "Get the OpenSSL error string from the error queue"
+  (let ((err (ffi:%err-get-error)))
+    (if (zerop err)
+        "No OpenSSL error"
+        (let ((str-ptr (ffi:%err-error-string err (sb-sys:int-sap 0))))
+          (if (or (null str-ptr) (sb-sys:sap= str-ptr (sb-sys:int-sap 0)))
+              (format nil "OpenSSL error code: ~A" err)
+              (handler-case
+                  (sb-alien:cast str-ptr sb-alien:c-string)
+                (error () (format nil "OpenSSL error code: ~A" err))))))))
+
+(defun get-all-openssl-errors ()
+  "Get all OpenSSL errors from the error queue"
+  (let ((errors '()))
+    (loop for err = (ffi:%err-get-error)
+          while (not (zerop err))
+          do (let ((str-ptr (ffi:%err-error-string err (sb-sys:int-sap 0))))
+               (push (if (or (null str-ptr) (sb-sys:sap= str-ptr (sb-sys:int-sap 0)))
+                         (format nil "error:~8,'0X" err)
+                         (handler-case
+                             (sb-alien:cast str-ptr sb-alien:c-string)
+                           (error () (format nil "error:~8,'0X" err))))
+                     errors)))
+    (nreverse errors)))
 
 ;;;; TLS Context Management
 
@@ -285,23 +314,32 @@
     ;; Set ALPN protocols if provided
     (when alpn-protocols
       (epsilon.crypto.alpn:set-alpn-protocols ssl alpn-protocols :context-p nil))
-    
-    ;; Set socket file descriptor  
-    ;; TODO: Get FD from socket - needs net module integration
-    (let ((fd (if (integerp socket) socket 0)))
+
+    ;; Set socket file descriptor
+    ;; Extract FD from tcp-stream if needed
+    (let ((fd (cond
+                ((integerp socket) socket)
+                ((typep socket 'net:tcp-stream)
+                 (net:tcp-stream-handle socket))
+                (t (error 'crypto-error :code 0
+                          :message (format nil "Cannot extract FD from socket: ~A" socket))))))
       (when (zerop (ffi:%ssl-set-fd ssl fd))
         (ffi:%ssl-free ssl)
         (error 'crypto-error :code (ffi:%err-get-error)
                :message "Failed to set socket FD")))
-    
+
     ;; Perform handshake
     (let ((ret (ffi:%ssl-connect ssl)))
       (when (<= ret 0)
-        (let ((err (ffi:%ssl-get-error ssl ret)))
+        (let* ((err (ffi:%ssl-get-error ssl ret))
+               (openssl-errors (get-all-openssl-errors))
+               (error-details (if openssl-errors
+                                  (format nil "SSL_ERROR=~A: ~{~A~^; ~}" err openssl-errors)
+                                  (format nil "SSL_ERROR=~A" err))))
           (ffi:%ssl-free ssl)
           (error 'crypto-error :code err
-                 :message (format nil "SSL handshake failed: ~A" err)))))
-    
+                 :message (format nil "SSL connect handshake failed: ~A" error-details)))))
+
     (make-openssl-connection :ssl ssl
                              :socket socket
                              :context context
@@ -311,15 +349,20 @@
   "Accept TLS connection as server"
   (unless (openssl-context-p context)
     (error "OpenSSL context required"))
-  
+
   (let* ((ssl (ffi:%ssl-new (openssl-context-handle context))))
     (when (sb-sys:sap= ssl (sb-sys:int-sap 0))
       (error 'crypto-error :code (ffi:%err-get-error)
              :message "Failed to create SSL connection"))
-    
-    ;; Set socket file descriptor  
-    ;; TODO: Get FD from socket - needs net module integration
-    (let ((fd (if (integerp socket) socket 0)))
+
+    ;; Set socket file descriptor
+    ;; Extract FD from tcp-stream if needed
+    (let ((fd (cond
+                ((integerp socket) socket)
+                ((typep socket 'net:tcp-stream)
+                 (net:tcp-stream-handle socket))
+                (t (error 'crypto-error :code 0
+                          :message (format nil "Cannot extract FD from socket: ~A" socket))))))
       (when (zerop (ffi:%ssl-set-fd ssl fd))
         (ffi:%ssl-free ssl)
         (error 'crypto-error :code (ffi:%err-get-error)
@@ -328,11 +371,15 @@
     ;; Accept handshake
     (let ((ret (ffi:%ssl-accept ssl)))
       (when (<= ret 0)
-        (let ((err (ffi:%ssl-get-error ssl ret)))
+        (let* ((err (ffi:%ssl-get-error ssl ret))
+               (openssl-errors (get-all-openssl-errors))
+               (error-details (if openssl-errors
+                                  (format nil "SSL_ERROR=~A: ~{~A~^; ~}" err openssl-errors)
+                                  (format nil "SSL_ERROR=~A" err))))
           (ffi:%ssl-free ssl)
           (error 'crypto-error :code err
-                 :message (format nil "SSL accept failed: ~A" err)))))
-    
+                 :message (format nil "SSL accept handshake failed: ~A" error-details)))))
+
     (make-openssl-connection :ssl ssl
                              :socket socket
                              :context context
@@ -355,27 +402,29 @@
   (unless (and (openssl-connection-p connection)
                (openssl-connection-connected-p connection))
     (error "Not connected"))
-  
+
   (let ((len (- end start)))
     (sb-alien:with-alien ((buf (sb-alien:array sb-alien:unsigned-char 65536)))
-			 (let ((bytes-read (ffi:%ssl-read (openssl-connection-ssl connection)
-							  (sb-alien:alien-sap buf)
-							  (min len 65536))))
-			   (cond
-			    ((> bytes-read 0)
-			     ;; Copy data to buffer
-			     (loop for i from 0 below bytes-read
-				   do (setf (aref buffer (+ start i))
-					    (sb-alien:deref buf i)))
-			     bytes-read)
-			    ((= bytes-read 0)
-			     ;; Connection closed
-			     0)
-			    (t
-			     ;; Error occurred
-			     (let ((err (ffi:%ssl-get-error (openssl-connection-ssl connection) bytes-read)))
-			       (error 'crypto-error :code err
-				      :message (format nil "SSL read error: ~A" err)))))))))
+                         (let ((bytes-read (ffi:%ssl-read (openssl-connection-ssl connection)
+                                                          (sb-alien:alien-sap buf)
+                                                          (min len 65536))))
+                           (cond
+                            ((> bytes-read 0)
+                             ;; Copy data to buffer, handling both strings and byte arrays
+                             (loop for i from 0 below bytes-read
+                                   do (setf (aref buffer (+ start i))
+                                            (if (stringp buffer)
+                                                (code-char (sb-alien:deref buf i))
+                                                (sb-alien:deref buf i))))
+                             bytes-read)
+                            ((= bytes-read 0)
+                             ;; Connection closed
+                             0)
+                            (t
+                             ;; Error occurred
+                             (let ((err (ffi:%ssl-get-error (openssl-connection-ssl connection) bytes-read)))
+                               (error 'crypto-error :code err
+                                      :message (format nil "SSL read error: ~A" err)))))))))
 
 (defun openssl-write (connection buffer &key (start 0) (end (length buffer)))
   "Write data to TLS connection"
@@ -529,24 +578,72 @@
 ;;;; TLS Stream Interface
 
 (defclass tls-stream (sb-gray:fundamental-binary-input-stream
-		      sb-gray:fundamental-binary-output-stream)
+                      sb-gray:fundamental-binary-output-stream
+                      sb-gray:fundamental-character-input-stream
+                      sb-gray:fundamental-character-output-stream)
   ((connection :initarg :connection :reader tls-stream-connection)
    (buffer :initform (make-array 4096 :element-type '(unsigned-byte 8))
-           :reader tls-stream-buffer)))
+           :reader tls-stream-buffer)
+   (line-column :initform 0 :accessor tls-stream-line-column)))
 
+;; Binary I/O methods
 (defmethod sb-gray:stream-read-byte ((stream tls-stream))
   "Read a single byte from TLS stream"
   (let ((buffer (tls-stream-buffer stream)))
     (if (plusp (tls-read (tls-stream-connection stream) buffer :end 1))
         (aref buffer 0)
-      :eof)))
+        :eof)))
 
 (defmethod sb-gray:stream-write-byte ((stream tls-stream) byte)
   "Write a single byte to TLS stream"
   (let ((buffer (make-array 1 :element-type '(unsigned-byte 8)
-			    :initial-element byte)))
+                            :initial-element byte)))
     (tls-write (tls-stream-connection stream) buffer))
   byte)
+
+;; Character I/O methods
+(defmethod sb-gray:stream-read-char ((stream tls-stream))
+  "Read a single character from TLS stream"
+  (let ((byte (sb-gray:stream-read-byte stream)))
+    (if (eq byte :eof)
+        :eof
+        (code-char byte))))
+
+(defmethod sb-gray:stream-write-char ((stream tls-stream) char)
+  "Write a single character to TLS stream"
+  (sb-gray:stream-write-byte stream (char-code char))
+  char)
+
+(defmethod sb-gray:stream-write-string ((stream tls-stream) string &optional start end)
+  "Write a string to TLS stream"
+  (let* ((start (or start 0))
+         (end (or end (length string)))
+         (len (- end start)))
+    (when (> len 0)
+      (tls-write (tls-stream-connection stream)
+                 (subseq string start end))))
+  string)
+
+(defmethod sb-gray:stream-line-column ((stream tls-stream))
+  "Return current column position"
+  (tls-stream-line-column stream))
+
+(defmethod sb-gray:stream-force-output ((stream tls-stream))
+  "Force output - no-op for TLS streams as writes are immediate"
+  nil)
+
+(defmethod sb-gray:stream-finish-output ((stream tls-stream))
+  "Finish output - no-op for TLS streams as writes are immediate"
+  nil)
+
+(defmethod sb-gray:stream-read-char-no-hang ((stream tls-stream))
+  "Non-blocking read - just call read-char for now"
+  (sb-gray:stream-read-char stream))
+
+(defmethod sb-gray:stream-unread-char ((stream tls-stream) char)
+  "Unread a character - not implemented"
+  (declare (ignore char))
+  (error "UNREAD-CHAR not supported on TLS streams"))
 
 (defun openssl-stream (connection)
   "Create a stream interface for TLS connection"
