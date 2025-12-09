@@ -1,5 +1,5 @@
 (:name "epsilon.test"
  :version "1.0.0"
  :description "Test framework for Epsilon"
- :requires ("epsilon.digest")
- :optional ("epsilon.regex" "epsilon.xml"))
+ :requires ("epsilon.regex" "epsilon.digest")
+ :optional ("epsilon.xml"))
