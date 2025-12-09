@@ -385,15 +385,20 @@
     (let ((epsilon-home (env:getenv "EPSILON_HOME")))
       (unless epsilon-home
         (error "EPSILON_HOME environment variable not set"))
+      ;; Scan main modules directory
       (let ((modules-path (path:path-join epsilon-home "modules")))
         (unless (probe-file (path:path-string modules-path))
           (error "Epsilon modules directory not found: ~A" modules-path))
-        (scan-module-directory *environment* modules-path)
-        ;; Verify core modules are available
-        (let ((core-modules '("epsilon.core")))
-          (dolist (module-name core-modules)
-            (unless (get-module *environment* module-name)
-              (error "Core module ~A not found in ~A" module-name modules-path)))))))
+        (scan-module-directory *environment* modules-path))
+      ;; Scan contrib modules directory if it exists
+      (let ((contrib-path (path:path-join epsilon-home "contrib" "modules")))
+        (when (probe-file (path:path-string contrib-path))
+          (scan-module-directory *environment* contrib-path)))
+      ;; Verify core modules are available
+      (let ((core-modules '("epsilon.core")))
+        (dolist (module-name core-modules)
+          (unless (get-module *environment* module-name)
+            (error "Core module ~A not found" module-name))))))
   *environment*)
 
 (defun module-uri (module-info)
