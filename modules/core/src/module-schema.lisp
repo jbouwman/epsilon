@@ -244,7 +244,7 @@
                            (lambda (data)
                              (let ((valid-keys '(:name :version :description :author :platform
                                                :sources :tests :benchmarks :examples :experiments
-                                               :docs :data :requires :optional :provides))
+                                               :docs :data :requires :provides))
                                    (errors '()))
                                (loop for key in data by #'cddr
                                      unless (member key valid-keys)
@@ -276,7 +276,6 @@
                                               :docs (v:optional (string-list))
                                               :data (v:optional (string-list))
                                               :requires (validate-requires)
-                                              :optional (validate-requires)  ; Same format as requires
                                               :provides (validate-provides))))
                                ;; Convert plist to map for validation
                                (let ((data-map map:+empty+))
