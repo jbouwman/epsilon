@@ -293,9 +293,9 @@ If REGEX is provided, the condition's printed representation must match it."
 			 ,@body
 			 (suite:fail '(is-thrown ,condition-class ,@(when regex `(,regex)) ,@body)
 				     ,(if regex
-					  `(format nil "Expected ~S matching ~S but no condition was thrown" 
+					  `(format nil "Expected ~S matching ~S but no condition was thrown"
 						   ',condition-class ,regex)
-					`(format nil "Expected ~S but no condition was thrown" 
+					`(format nil "Expected ~S but no condition was thrown"
 						 ',condition-class))))
 		     (,condition-class (,condition-var)
 				       (declare (ignorable ,condition-var))
@@ -305,18 +305,18 @@ If REGEX is provided, the condition's printed representation must match it."
 					       (if (re:match ,regex condition-string)
 						   (suite:pass)
 						 (suite:fail '(is-thrown ,condition-class ,regex ,@body)
-							     (format nil "Expected ~S matching ~S but got: ~A" 
+							     (format nil "Expected ~S matching ~S but got: ~A"
 								     ',condition-class ,regex condition-string))))
 					  `(suite:pass)))
 		     (condition (,condition-var)
 				(when ,caught-var
 				  (suite:fail '(is-thrown ,condition-class ,@(when regex `(,regex)) ,@body)
 					      ,(if regex
-						   `(format nil "Expected ~S matching ~S but got ~S: ~A" 
-							    ',condition-class ,regex 
+						   `(format nil "Expected ~S matching ~S but got ~S: ~A"
+							    ',condition-class ,regex
 							    (type-of ,condition-var) ,condition-var)
-						 `(format nil "Expected ~S but got ~S: ~A" 
-							  ',condition-class 
+						 `(format nil "Expected ~S but got ~S: ~A"
+							  ',condition-class
 							  (type-of ,condition-var) ,condition-var)))))))))
 
 ;; Re-export fixture functionality

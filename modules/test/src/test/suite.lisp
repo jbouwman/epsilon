@@ -12,8 +12,6 @@
    (seq epsilon.sequence)
    (str epsilon.string)
    (pkg epsilon.sys.pkg)
-   (re epsilon.regex)
-   (xml epsilon.xml)
    (log epsilon.log)
    (digest epsilon.digest))
   (:export
