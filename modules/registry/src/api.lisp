@@ -123,19 +123,168 @@
           (map:make-map "error" (format nil "~A" e))
           :status 400))))))
 
-(defun extract-bearer-token (request)
-  "Extract Bearer token from Authorization header."
-  (let ((auth-header (http:request-header request "Authorization")))
-    (when (and auth-header (str:starts-with-p "Bearer " auth-header))
-      (subseq auth-header 7))))
+;;; Admin API endpoints (require mTLS)
+
+(defun handle-delete-package (request)
+  "Handle DELETE /api/v1/admin/packages/:name - Delete a package (admin only)."
+  (handler-case
+      (progn
+        (require-admin-auth request)
+        (let* ((name (http:request-path-param request "name")))
+          (if (delete-package-internal name)
+              (add-security-headers
+               (http:json-response
+                (map:make-map "status" "deleted"
+                              "package" name)))
+              (add-security-headers
+               (http:json-response
+                (map:make-map "error" "Package not found"
+                              "package" name)
+                :status 404)))))
+    (admin-auth-required ()
+      (add-security-headers
+       (http:json-response
+        (map:make-map "error" "Admin authentication required (mTLS)")
+        :status 403)))))
+
+(defun handle-delete-version (request)
+  "Handle DELETE /api/v1/admin/packages/:name/:version - Delete a version (admin only)."
+  (handler-case
+      (progn
+        (require-admin-auth request)
+        (let* ((name (http:request-path-param request "name"))
+               (version (http:request-path-param request "version")))
+          (if (delete-version-internal name version)
+              (add-security-headers
+               (http:json-response
+                (map:make-map "status" "deleted"
+                              "package" name
+                              "version" version)))
+              (add-security-headers
+               (http:json-response
+                (map:make-map "error" "Version not found"
+                              "package" name
+                              "version" version)
+                :status 404)))))
+    (admin-auth-required ()
+      (add-security-headers
+       (http:json-response
+        (map:make-map "error" "Admin authentication required (mTLS)")
+        :status 403)))))
+
+(defun handle-list-users (request)
+  "Handle GET /api/v1/admin/users - List all users (admin only)."
+  (handler-case
+      (progn
+        (require-admin-auth request)
+        (add-security-headers
+         (http:json-response
+          (map:make-map "users" (list-users-internal)))))
+    (admin-auth-required ()
+      (add-security-headers
+       (http:json-response
+        (map:make-map "error" "Admin authentication required (mTLS)")
+        :status 403)))))
+
+(defun handle-revoke-token (request)
+  "Handle POST /api/v1/admin/tokens/revoke - Revoke a token (admin only)."
+  (handler-case
+      (progn
+        (require-admin-auth request)
+        (let* ((body (http:request-json-body request))
+               (token-id (map:get body "token_id")))
+          (if token-id
+              (progn
+                (revoke-token-internal token-id)
+                (add-security-headers
+                 (http:json-response
+                  (map:make-map "status" "revoked"
+                                "token_id" token-id))))
+              (add-security-headers
+               (http:json-response
+                (map:make-map "error" "token_id required")
+                :status 400)))))
+    (admin-auth-required ()
+      (add-security-headers
+       (http:json-response
+        (map:make-map "error" "Admin authentication required (mTLS)")
+        :status 403)))))
+
+(defun handle-registry-stats (request)
+  "Handle GET /api/v1/admin/stats - Get registry statistics (admin only)."
+  (handler-case
+      (progn
+        (require-admin-auth request)
+        (add-security-headers
+         (http:json-response
+          (get-registry-stats-internal))))
+    (admin-auth-required ()
+      (add-security-headers
+       (http:json-response
+        (map:make-map "error" "Admin authentication required (mTLS)")
+        :status 403)))))
+
+;;; Internal admin functions
+
+(defun delete-package-internal (name)
+  "Delete a package and all its versions from storage."
+  (when *storage-directory*
+    (let ((package-dir (merge-pathnames (format nil "~A/" name) *storage-directory*)))
+      (when (probe-file package-dir)
+        (delete-directory-recursive package-dir)
+        t))))
+
+(defun delete-version-internal (name version)
+  "Delete a specific version from storage."
+  (when *storage-directory*
+    (let ((version-dir (merge-pathnames (format nil "~A/~A/" name version) *storage-directory*)))
+      (when (probe-file version-dir)
+        (delete-directory-recursive version-dir)
+        t))))
+
+(defun list-users-internal ()
+  "List all users. Returns list of user info maps."
+  ;; Placeholder - actual implementation depends on user storage
+  nil)
+
+(defun revoke-token-internal (token-id)
+  "Revoke a specific token."
+  ;; Placeholder - actual implementation depends on token storage
+  (declare (ignore token-id))
+  t)
+
+(defun get-registry-stats-internal ()
+  "Get registry statistics."
+  (let ((package-count 0)
+        (version-count 0)
+        (total-size 0))
+    (when *storage-directory*
+      ;; Count packages and versions
+      (dolist (package-dir (directory (merge-pathnames "*/" *storage-directory*)))
+        (incf package-count)
+        (dolist (version-dir (directory (merge-pathnames "*/" package-dir)))
+          (incf version-count)
+          (incf total-size (directory-size version-dir)))))
+    (map:make-map "package_count" package-count
+                  "version_count" version-count
+                  "total_size_bytes" total-size
+                  "storage_directory" (namestring *storage-directory*))))
 
 ;;; Route registration
 
 (defun register-api-routes (server)
   "Register all API routes with the HTTP server."
+  ;; Public read endpoints
   (http:route server :get "/api/v1/packages" #'handle-list-packages)
-  (http:route server :post "/api/v1/packages" #'handle-publish-package)
   (http:route server :get "/api/v1/packages/:name" #'handle-get-package)
   (http:route server :get "/api/v1/packages/:name/versions" #'handle-get-versions)
   (http:route server :get "/api/v1/packages/:name/:version" #'handle-get-version-details)
-  (http:route server :get "/api/v1/packages/:name/:version/archive" #'handle-download-archive))
+  (http:route server :get "/api/v1/packages/:name/:version/archive" #'handle-download-archive)
+  ;; Write endpoints (require bearer token)
+  (http:route server :post "/api/v1/packages" #'handle-publish-package)
+  ;; Admin endpoints (require mTLS client certificate)
+  (http:route server :delete "/api/v1/admin/packages/:name" #'handle-delete-package)
+  (http:route server :delete "/api/v1/admin/packages/:name/:version" #'handle-delete-version)
+  (http:route server :get "/api/v1/admin/users" #'handle-list-users)
+  (http:route server :post "/api/v1/admin/tokens/revoke" #'handle-revoke-token)
+  (http:route server :get "/api/v1/admin/stats" #'handle-registry-stats))

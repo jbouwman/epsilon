@@ -52,7 +52,18 @@
 
    ;; Authentication
    authenticate
-   set-auth-token))
+   set-auth-token
+
+   ;; Admin mTLS authentication
+   *admin-cert-fingerprints*
+   *require-mtls-for-admin*
+   add-admin-certificate
+   remove-admin-certificate
+   list-admin-certificates
+   clear-admin-certificates
+
+   ;; Server API
+   register-api-routes))
 
 (in-package epsilon.registry)
 
