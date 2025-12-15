@@ -17,8 +17,6 @@ jobs:
             platform: linux-x86_64
           - os: macos-latest
             platform: macos-arm64
-          - os: macos-13
-            platform: macos-x86_64
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -63,8 +61,6 @@ jobs:
             platform: linux-x86_64
           - os: macos-latest
             platform: macos-arm64
-          - os: macos-13
-            platform: macos-x86_64
     runs-on: ${{ matrix.os }}
 
     steps:
