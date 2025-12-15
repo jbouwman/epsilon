@@ -177,7 +177,7 @@
   (log:debug "Closing connection...")
   (if ssl-p
       (tls:tls-close connection)
-    (net:tcp-close connection))
+    (net:tcp-shutdown connection))
   (log:debug "Connection closed"))
 
 (defun server-loop (server)
