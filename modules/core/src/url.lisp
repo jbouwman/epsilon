@@ -7,7 +7,9 @@
   (:use :cl)
   (:local-nicknames
    (:path :epsilon.path)
-   (:map :epsilon.map))
+   (:map :epsilon.map)
+   (:fn :epsilon.function)
+   (:th :epsilon.threading))
   (:export
    ;; Core URL type
    :url
@@ -355,18 +357,29 @@
                               (url-decode-component (subseq param (1+ eq-pos))))
                         (cons (url-decode-component param) nil))))))
 
+(defun encode-query-param (param)
+  "Encode a single query parameter (key . value) pair"
+  (if (cdr param)
+      (concatenate 'string
+                   (url-encode-component (car param))
+                   "="
+                   (url-encode-component (cdr param)))
+      (url-encode-component (car param))))
+
+(defun join-with-ampersand (a b)
+  "Join two strings with &"
+  (concatenate 'string a "&" b))
+
+(defun join-with-slash (a b)
+  "Join two strings with /"
+  (concatenate 'string a "/" b))
+
 (defun build-query-string (params)
   "Build query string from alist of key-value pairs"
   (when params
-    (reduce (lambda (a b) (concatenate 'string a "&" b))
-            (mapcar (lambda (param)
-                      (if (cdr param)
-                          (concatenate 'string 
-                                       (url-encode-component (car param))
-                                       "="
-                                       (url-encode-component (cdr param)))
-                          (url-encode-component (car param))))
-                    params))))
+    (th:->> params
+            (mapcar #'encode-query-param)
+            (reduce #'join-with-ampersand))))
 
 (defun query-params (url)
   "Get query parameters as alist"
@@ -449,8 +462,7 @@
                (setf normalized-segments (append normalized-segments (list segment))))))
           
           (setf path (if normalized-segments
-                         (concatenate 'string "/" (reduce (lambda (a b) (concatenate 'string a "/" b))
-                                                          normalized-segments))
+                         (concatenate 'string "/" (reduce #'join-with-slash normalized-segments))
                          "/"))))
       
       (make-url :scheme (url-scheme url)
@@ -501,8 +513,7 @@
                   :host (url-host url)
                   :port (url-port url)
                   :path (concatenate 'string base-path
-                                     (reduce (lambda (a b) (concatenate 'string a "/" b))
-                                             path-components))
+                                     (reduce #'join-with-slash path-components))
                   :query (url-query url)
                   :fragment (url-fragment url))))))
 
@@ -639,8 +650,7 @@
            (setf normalized-segments (append normalized-segments (list segment))))))
       
       (if normalized-segments
-          (concatenate 'string "/" (reduce (lambda (a b) (concatenate 'string a "/" b))
-                                          normalized-segments))
+          (concatenate 'string "/" (reduce #'join-with-slash normalized-segments))
           "/"))))
 
 ;;;; ==========================================================================

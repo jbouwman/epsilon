@@ -14,7 +14,7 @@
   (:import-from epsilon.net.socket-options
    set-socket-option get-socket-option)
   (:import-from epsilon.net.sockets
-   tcp-bind tcp-accept tcp-incoming tcp-try-accept tcp-poll-accept tcp-local-addr
+   tcp-bind tcp-accept tcp-incoming tcp-try-accept tcp-poll-accept tcp-local-addr tcp-close
    tcp-connect tcp-read tcp-write tcp-write-all tcp-flush
    tcp-try-read tcp-try-write tcp-poll-read tcp-poll-write
    tcp-peer-addr tcp-shutdown tcp-stream-reader tcp-stream-writer tcp-connected-p
@@ -39,6 +39,7 @@
    tcp-try-accept
    tcp-poll-accept
    tcp-local-addr
+   tcp-close
    
    ;; TCP Stream operations
    tcp-connect

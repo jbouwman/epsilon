@@ -368,17 +368,17 @@
   (let (dir)
     (unwind-protect
          (progn
-           (setf dir (sb-unix:unix-opendir dirpath))
+           (setf dir (sb-posix:opendir dirpath))
            (when dir
-             (loop :for ent := (sb-unix:unix-readdir dir nil)
-                   :while ent
-                   :for name := (sb-unix:unix-dirent-name ent)
+             (loop :for ent := (sb-posix:readdir dir)
+                   :until (sb-alien:null-alien ent)
+                   :for name := (sb-posix:dirent-name ent)
                    :when (and (not (string= name "."))
                               (not (string= name "..")))
                    :do (funcall f
                                 (path:string-path-join dirpath name)))))
       (when dir
-        (sb-unix:unix-closedir dir nil))))
+        (sb-posix:closedir dir))))
   #+(or windows win32)
   ;; Windows implementation using directory()
   (let ((pattern (if (and (> (length dirpath) 0)
@@ -499,16 +499,16 @@
   (let (dir)
     (unwind-protect
          (progn
-           (setf dir (sb-unix:unix-opendir directory))
+           (setf dir (sb-posix:opendir directory))
            (when dir
-             (loop :for ent := (sb-unix:unix-readdir dir nil)
-                   :while ent
-                   :for name := (sb-unix:unix-dirent-name ent)
+             (loop :for ent := (sb-posix:readdir dir)
+                   :until (sb-alien:null-alien ent)
+                   :for name := (sb-posix:dirent-name ent)
                    :when (and (not (string= name "."))
 			      (not (string= name "..")))
                    :collect name)))
       (when dir
-        (sb-unix:unix-closedir dir nil))))
+        (sb-posix:closedir dir))))
   #+(or windows win32)
   ;; Windows implementation using directory()
   (let* ((normalized-dir (normalize-separators directory))

@@ -65,8 +65,18 @@ test-project:
 	@test -f $(TEST_PROJECT)/tests/test-tests.lisp || (echo "Missing tests/test-tests.lisp" && exit 1)
 	@echo "Test project structure is valid"
 
+# Lint Emacs Lisp files
+lint:
+	@echo "Linting Emacs Lisp files..."
+	$(EMACS) -batch \
+		-L . \
+		--eval "(require 'checkdoc)" \
+		--eval "(setq checkdoc-spellcheck-documentation-flag nil)" \
+		-f checkdoc-file \
+		$(SOURCE_FILES)
+
 # Run CI tests (non-interactive)
-ci: test-project check-syntax test
+ci: test-project check-syntax lint test
 	@echo "All CI tests passed!"
 
 # Package for distribution
@@ -90,14 +100,15 @@ dev-setup:
 # Help target
 help:
 	@echo "Available targets:"
-	@echo "  test            - Run automated tests"
+	@echo "  test             - Run automated tests"
 	@echo "  test-interactive - Run tests interactively"
-	@echo "  check-syntax    - Check Emacs Lisp syntax"
-	@echo "  compile         - Byte compile files"
-	@echo "  clean           - Remove compiled files"
-	@echo "  install         - Install to user's Emacs directory"
-	@echo "  test-project    - Validate test project structure"
-	@echo "  ci              - Run all CI tests"
-	@echo "  package         - Create distribution package"
-	@echo "  dev-setup       - Set up development environment"
-	@echo "  help            - Show this help"
+	@echo "  check-syntax     - Check Emacs Lisp syntax"
+	@echo "  lint             - Lint Emacs Lisp files with checkdoc"
+	@echo "  compile          - Byte compile files"
+	@echo "  clean            - Remove compiled files"
+	@echo "  install          - Install to user's Emacs directory"
+	@echo "  test-project     - Validate test project structure"
+	@echo "  ci               - Run all CI tests (check-syntax, lint, test)"
+	@echo "  package          - Create distribution package"
+	@echo "  dev-setup        - Set up development environment"
+	@echo "  help             - Show this help"

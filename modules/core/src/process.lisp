@@ -2,7 +2,9 @@
   (:use #:cl)
   (:shadow find)
   (:local-nicknames
-   (log epsilon.log))
+   (log epsilon.log)
+   (fn epsilon.function)
+   (th epsilon.threading))
   (:export #:process
            #:start #:stop #:running-p
            #:subprocess #:make-subprocess
@@ -360,7 +362,7 @@
           (if (position #\Space command)
               (escape-shell-arg command :shell shell)
               command)
-          (mapcar (lambda (arg) (escape-shell-arg arg :shell shell)) args)))
+          (mapcar (fn:rcurry #'escape-shell-arg :shell shell) args)))
 
 (defun find-executable (name)
   "Find an executable in PATH and return its full path, or nil if not found."

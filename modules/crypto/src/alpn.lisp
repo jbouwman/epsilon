@@ -79,22 +79,30 @@
 (defun get-selected-protocol (ssl)
   "Get the ALPN protocol selected during handshake.
    Returns protocol string or nil if none selected."
-  (sb-alien:with-alien ((data-ptr sb-alien:system-area-pointer)
-                        (len-ptr sb-alien:unsigned-int))
-    (ffi:%ssl-get0-alpn-selected ssl 
-                                 (sb-alien:alien-sap (sb-alien:addr data-ptr))
-                                 (sb-alien:alien-sap (sb-alien:addr len-ptr)))
-    
-    (let ((len (sb-alien:deref len-ptr))
-          (data (sb-alien:deref data-ptr)))
-      (when (and (> len 0)
-                 (not (sb-sys:sap= data (sb-sys:int-sap 0))))
-        ;; Convert to string
-        (let ((result (make-string len)))
-          (loop for i from 0 below len
-                do (setf (char result i) 
-                        (code-char (sb-sys:sap-ref-8 data i))))
-          result)))))
+  ;; Allocate memory for output parameters:
+  ;; - data-ptr: pointer to protocol string (8 bytes for 64-bit pointer)
+  ;; - len-ptr: length of protocol string (4 bytes for unsigned int)
+  (epsilon.foreign:with-foreign-memory ((out-buf :char :count 16))
+    (let ((data-ptr-location out-buf)          ; First 8 bytes for pointer
+          (len-ptr-location (sb-sys:sap+ out-buf 8)))  ; Next 4 bytes for length
+      ;; Initialize to zero
+      (loop for i from 0 below 16
+            do (setf (sb-sys:sap-ref-8 out-buf i) 0))
+
+      ;; Call OpenSSL function
+      (ffi:%ssl-get0-alpn-selected ssl data-ptr-location len-ptr-location)
+
+      ;; Read results
+      (let ((len (sb-sys:sap-ref-32 len-ptr-location 0))
+            (data (sb-sys:sap-ref-sap data-ptr-location 0)))
+        (when (and (> len 0)
+                   (not (sb-sys:sap= data (sb-sys:int-sap 0))))
+          ;; Convert to string
+          (let ((result (make-string len)))
+            (loop for i from 0 below len
+                  do (setf (char result i)
+                           (code-char (sb-sys:sap-ref-8 data i))))
+            result))))))
 
 ;;;; ALPN Selection Callback Support
 

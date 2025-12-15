@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/nx/schemas/nx-schema.json",
+  "namedInputs": {
+    "default": ["{projectRoot}/**/*"],
+    "lisp": ["{projectRoot}/**/*.lisp", "{projectRoot}/module.lisp"]
+  },
+  "targetDefaults": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["lisp"],
+      "cache": true
+    },
+    "test": {
+      "dependsOn": ["build"],
+      "inputs": ["lisp"],
+      "cache": true
+    },
+    "lint": {
+      "dependsOn": ["^build"],
+      "inputs": ["lisp"],
+      "cache": true
+    }
+  },
+  "plugins": null,
+  "defaultBase": "main"
+}

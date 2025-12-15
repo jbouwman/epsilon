@@ -66,16 +66,18 @@
     (log:debug "make-sockaddr-in-into: Set sin_port=~D (bytes: ~2,'0X ~2,'0X)~%" 
                port (sb-sys:sap-ref-8 sap 2) (sb-sys:sap-ref-8 sap 3))
     
-    ;; sin_addr (convert IP string to network byte order)
-    (let* ((ip-parts (mapcar #'parse-integer 
-                             (seq:realize (str:split #\. ip-address))))
-           (ip-addr-be (logior (ash (first ip-parts) 24)
-                               (ash (second ip-parts) 16)
-                               (ash (third ip-parts) 8)
-                               (fourth ip-parts))))
-      (setf (sb-sys:sap-ref-32 sap 4) ip-addr-be)
-      (log:debug "make-sockaddr-in-into: Set sin_addr=~D.~D.~D.~D (BE: ~X)~%" 
-                 (first ip-parts) (second ip-parts) (third ip-parts) (fourth ip-parts) ip-addr-be))
+    ;; sin_addr (network byte order - write bytes individually)
+    ;; Network byte order is big-endian, and we must write bytes directly
+    ;; to avoid native byte order issues on ARM64 (little-endian)
+    (let* ((ip-parts (mapcar #'parse-integer
+                             (seq:realize (str:split #\. ip-address)))))
+      ;; Write each octet directly in network order
+      (setf (sb-sys:sap-ref-8 sap 4) (first ip-parts))
+      (setf (sb-sys:sap-ref-8 sap 5) (second ip-parts))
+      (setf (sb-sys:sap-ref-8 sap 6) (third ip-parts))
+      (setf (sb-sys:sap-ref-8 sap 7) (fourth ip-parts))
+      (log:debug "make-sockaddr-in-into: Set sin_addr=~D.~D.~D.~D~%"
+                 (first ip-parts) (second ip-parts) (third ip-parts) (fourth ip-parts)))
     
     ;; sin_zero (8 bytes of zeros)
     (loop for i from 8 to 15
@@ -153,14 +155,38 @@
 ;;; Helper Functions
 ;;; ============================================================================
 
+(defun looks-like-ip-address-p (host)
+  "Quick check if string looks like an IP address (has dots or colons for IPv6)"
+  (and host
+       (stringp host)
+       (or (position #\. host)   ; IPv4 has dots
+           (position #\: host)))) ; IPv6 has colons
+
+(defun resolve-hostname-to-ip (hostname)
+  "Resolve common hostnames to IP addresses.
+   For 'localhost', returns 127.0.0.1.
+   For IP addresses, returns as-is."
+  (cond
+    ((or (null hostname) (string= hostname "")) "0.0.0.0")
+    ((string-equal hostname "localhost") "127.0.0.1")
+    ((looks-like-ip-address-p hostname) hostname)
+    (t hostname)))  ; Return as-is for now; DNS resolution happens elsewhere
+
 (defun normalize-address (address)
-  "Convert an address specification to a socket-address object"
+  "Convert an address specification to a socket-address object.
+   Resolves common hostnames like 'localhost' to IP addresses."
   (etypecase address
-    (socket-address address)
-    (string 
+    (socket-address
+     ;; Resolve hostname in existing socket-address if needed
+     (let ((ip (socket-address-ip address)))
+       (if (and ip (not (looks-like-ip-address-p ip)))
+           (make-socket-address (resolve-hostname-to-ip ip)
+                                (socket-address-port address))
+           address)))
+    (string
      (multiple-value-bind (host port)
          (parse-address address)
-       (make-socket-address host port)))))
+       (make-socket-address (resolve-hostname-to-ip host) port)))))
 
 ;;; ============================================================================
 ;;; Address Resolution

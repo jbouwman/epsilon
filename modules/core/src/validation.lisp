@@ -6,7 +6,9 @@
   (:local-nicknames
    (map epsilon.map)
    (seq epsilon.sequence)
-   (str epsilon.string))
+   (str epsilon.string)
+   (fn epsilon.function)
+   (th epsilon.threading))
   (:export
    ;; Result types
    validation-result
@@ -155,7 +157,7 @@
 (defun validate-all (validators value)
   "Apply multiple validators to the same value, accumulating all errors"
   (combine-results
-   (mapcar (lambda (v) (funcall v value)) validators)))
+   (mapcar (fn:rcurry #'funcall value) validators)))
 
 (defun validate-map (validator-map data-map)
   "Validate a map/plist against a map of validators"
@@ -333,7 +335,7 @@
 (defun any-of (validators)
   "At least one validator must pass"
   (lambda (value)
-    (let ((results (mapcar (lambda (v) (funcall v value)) validators)))
+    (let ((results (mapcar (fn:rcurry #'funcall value) validators)))
       (if (some #'validation-success-p results)
           ;; Return first success
           (find-if #'validation-success-p results)

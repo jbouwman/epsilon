@@ -65,7 +65,13 @@
    #:response-status
    #:response-header
    #:download-file
-   #:upload-file))
+   #:upload-file
+   #:url-encode
+   #:url-decode
+   #:add-header
+   #:json-response
+   #:html-response
+   #:text-response))
 
 (in-package #:epsilon.http)
 
@@ -204,3 +210,29 @@
 (defun pool-stats (&rest args)
   "Get connection pool statistics"
   (apply #'pool:pool-stats args))
+
+;;; URL Encoding Functions
+(defun url-encode (string)
+  "URL encode a string"
+  (request:url-encode string))
+
+(defun url-decode (string)
+  "URL decode a string"
+  (request:url-decode string))
+
+(defun add-header (request header-name header-value)
+  "Add or update a header in a request object"
+  (request:add-header request header-name header-value))
+
+;;; Response Builder Functions
+(defun json-response (data &key (status 200))
+  "Create a JSON response"
+  (response:json-response data :status status))
+
+(defun html-response (html &key (status 200))
+  "Create an HTML response"
+  (response:html-response html :status status))
+
+(defun text-response (text &key (status 200))
+  "Create a plain text response"
+  (response:text-response text :status status))

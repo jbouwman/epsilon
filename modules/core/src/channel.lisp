@@ -61,7 +61,28 @@
    #:to-sequence
    #:from-function
    #:from-channel
-   #:channel-stats))
+   #:channel-stats
+
+   ;; CSP-style shorthand operators
+   #:>!
+   #:<!
+   #:close!
+
+   ;; Goroutines and async
+   #:spawn
+   #:spawn-loop
+   #:async
+   #:await
+   #:await-all
+   #:await-any
+   #:promise
+   #:promise-p
+   #:promise-ready-p
+
+   ;; Select for multiplexing
+   #:select
+   #:alts!
+   #:timeout-channel))
 
 (in-package :epsilon.channel)
 
@@ -505,3 +526,284 @@
                            (incf count)))
                 (values (nreverse batch) t)))
    :close-fn (lambda () (stream-close stream))))
+
+;;;; CSP-Style Shorthand Operators
+
+(defun >! (channel value &key timeout)
+  "Send VALUE to CHANNEL. CSP-style shorthand for send.
+
+   Example: (>! ch 42)"
+  (send channel value :timeout timeout))
+
+(defun <! (channel &key timeout)
+  "Receive from CHANNEL. CSP-style shorthand for receive.
+
+   Example: (multiple-value-bind (val ok) (<! ch) ...)"
+  (receive channel :timeout timeout))
+
+(defun close! (channel)
+  "Close CHANNEL. CSP-style shorthand for close-channel."
+  (close-channel channel))
+
+;;;; Promise Implementation
+
+(defstruct (promise (:constructor %make-promise)
+                     (:predicate promise-p))
+  "A promise representing an asynchronous computation"
+  (value nil)
+  (ready nil :type boolean)
+  (error-value nil)
+  (lock (sb-thread:make-mutex :name "promise-lock"))
+  (condition (sb-thread:make-waitqueue)))
+
+(defun promise-ready-p (promise)
+  "Check if PROMISE has completed"
+  (promise-ready promise))
+
+(defmacro async (&body body)
+  "Execute BODY asynchronously, returning a promise.
+
+   Example:
+   (let ((p (async (expensive-computation))))
+     (do-other-work)
+     (await p))"
+  (let ((promise-var (gensym "PROMISE")))
+    `(let ((,promise-var (%make-promise)))
+       (sb-thread:make-thread
+        (lambda ()
+          (handler-case
+              (let ((result (progn ,@body)))
+                (sb-thread:with-mutex ((promise-lock ,promise-var))
+                  (setf (promise-value ,promise-var) result)
+                  (setf (promise-ready ,promise-var) t)
+                  (sb-thread:condition-broadcast (promise-condition ,promise-var))))
+            (error (e)
+              (sb-thread:with-mutex ((promise-lock ,promise-var))
+                (setf (promise-error-value ,promise-var) e)
+                (setf (promise-ready ,promise-var) t)
+                (sb-thread:condition-broadcast (promise-condition ,promise-var))))))
+        :name "async-worker")
+       ,promise-var)))
+
+(defun await (promise &optional timeout)
+  "Wait for PROMISE to complete and return its value.
+   Optionally specify TIMEOUT in seconds.
+
+   Example: (await (async (compute-something)))"
+  (sb-thread:with-mutex ((promise-lock promise))
+    (loop until (promise-ready promise)
+          do (if timeout
+                 (unless (sb-thread:condition-wait
+                          (promise-condition promise)
+                          (promise-lock promise)
+                          :timeout timeout)
+                   (error 'channel-timeout-error :channel nil :timeout timeout))
+                 (sb-thread:condition-wait (promise-condition promise)
+                                           (promise-lock promise))))
+    (if (promise-error-value promise)
+        (error (promise-error-value promise))
+        (promise-value promise))))
+
+(defun await-all (&rest promises)
+  "Wait for all PROMISES to complete, returning list of values.
+
+   Example:
+   (await-all
+     (async (fetch url1))
+     (async (fetch url2))
+     (async (fetch url3)))"
+  (mapcar #'await promises))
+
+(defun await-any (&rest promises)
+  "Wait for any PROMISE to complete, returning (values value index).
+
+   Example:
+   (multiple-value-bind (result idx) (await-any p1 p2 p3)
+     (format t \"Promise ~a finished first with ~a~%\" idx result))"
+  (loop
+    (loop for p in promises
+          for i from 0
+          when (promise-ready p)
+            do (return-from await-any
+                 (values (if (promise-error-value p)
+                             (error (promise-error-value p))
+                             (promise-value p))
+                         i)))
+    (sleep 0.001)))
+
+;;;; Spawn Macro (Goroutines)
+
+(defmacro spawn (&body body)
+  "Spawn a lightweight concurrent process (goroutine).
+   Like async but doesn't return a promise.
+
+   Example:
+   (let ((ch (make-channel)))
+     (spawn (loop for i from 1 to 10
+                  do (>! ch i))
+            (close! ch))
+     (spawn (loop (multiple-value-bind (v ok) (<! ch)
+                    (unless ok (return))
+                    (print v)))))"
+  `(sb-thread:make-thread (lambda () ,@body) :name "goroutine"))
+
+(defmacro spawn-loop (bindings &body body)
+  "Spawn a loop in a goroutine with BINDINGS as initial values.
+   Use (recur ...) to loop with new values.
+
+   Example:
+   (spawn-loop ((count 0))
+     (let ((msg (<! ch)))
+       (when msg
+         (process msg)
+         (recur (1+ count)))))"
+  (let ((loop-name (gensym "SPAWN-LOOP")))
+    `(spawn
+       (labels ((,loop-name ,(mapcar #'first bindings)
+                  (flet ((recur (&rest args)
+                           (apply #',loop-name args)))
+                    ,@body)))
+         (,loop-name ,@(mapcar #'second bindings))))))
+
+;;;; Select for Multiplexing
+
+(defmacro select (&body clauses)
+  "Select from multiple channel operations. Non-deterministically chooses
+   the first operation that can proceed without blocking.
+
+   Clause forms:
+     ((var <- channel) body...) - Receive from channel
+     ((channel <- value) body...) - Send to channel
+     ((timeout seconds) body...) - Timeout clause
+     (default body...) - Execute if nothing else ready
+
+   Example:
+   (select
+     ((msg <- input-ch)
+      (process msg))
+     ((output-ch <- result)
+      (log \"sent result\"))
+     ((timeout 1.0)
+      (log \"timed out\"))
+     (default
+      (do-other-work)))"
+  (let ((ready-ops (gensym "READY-OPS")))
+    `(block select-block
+       ;; Try each clause without blocking
+       (let ((,ready-ops '()))
+         ,@(loop for clause in clauses
+                 for i from 0
+                 unless (or (eq (first clause) 'default)
+                            (and (listp (first clause))
+                                 (eq (first (first clause)) 'timeout)))
+                   collect (expand-select-try clause i ready-ops))
+
+         ;; If something is ready, pick one randomly
+         (when ,ready-ops
+           (let ((chosen (nth (random (length ,ready-ops)) ,ready-ops)))
+             (case (first chosen)
+               ,@(loop for clause in clauses
+                       for i from 0
+                       unless (or (eq (first clause) 'default)
+                                  (and (listp (first clause))
+                                       (eq (first (first clause)) 'timeout)))
+                         collect (expand-select-execute clause i))))))
+
+       ;; Handle timeout clauses
+       ,@(loop for clause in clauses
+               when (and (listp (first clause))
+                         (eq (first (first clause)) 'timeout))
+                 collect (expand-timeout-clause clause))
+
+       ;; Handle default clause
+       ,@(loop for clause in clauses
+               when (eq (first clause) 'default)
+                 collect `(return-from select-block (progn ,@(rest clause))))
+
+       ;; If nothing ready and no default, block on first available
+       (error "All channels blocked with no default clause"))))
+
+(defun expand-select-try (clause idx ready-ops)
+  "Expand a select clause into a try operation"
+  (let ((op (first clause)))
+    (cond
+      ;; Receive: (var <- channel)
+      ((and (listp op) (>= (length op) 3)
+            (string= (symbol-name (second op)) "<-"))
+       (let ((ch (third op)))
+         `(multiple-value-bind (val ok) (try-receive ,ch)
+            (when ok
+              (push (list ,idx val) ,ready-ops)))))
+
+      ;; Send: (channel <- value)
+      ((and (listp op) (>= (length op) 3)
+            (string= (symbol-name (second op)) "<-"))
+       (let ((ch (first op))
+             (val (third op)))
+         `(when (try-send ,ch ,val)
+            (push (list ,idx nil) ,ready-ops)))))))
+
+(defun expand-select-execute (clause idx)
+  "Expand a select clause into execution code"
+  (let ((op (first clause))
+        (body (rest clause)))
+    (cond
+      ;; Receive: bind the variable
+      ((and (listp op) (>= (length op) 3)
+            (string= (symbol-name (second op)) "<-")
+            (not (channel-form-p (first op))))
+       (let ((var (first op)))
+         `(,idx (let ((,var (second chosen)))
+                  (return-from select-block (progn ,@body))))))
+
+      ;; Send: just execute body
+      (t
+       `(,idx (return-from select-block (progn ,@body)))))))
+
+(defun channel-form-p (form)
+  "Check if FORM looks like a channel (not a simple variable for receive)"
+  ;; Heuristic: if it's a function call or has special characters, it's likely a channel
+  (and (listp form) (not (eq (first form) 'quote))))
+
+(defun expand-timeout-clause (clause)
+  "Expand a timeout clause"
+  (let ((seconds (second (first clause)))
+        (body (rest clause)))
+    `(progn
+       (sleep ,seconds)
+       (return-from select-block (progn ,@body)))))
+
+(defmacro alts! (&rest channel-ops)
+  "Simplified select - just channel operations, returns first ready value.
+
+   Example:
+   (alts! ch1 ch2 ch3) ; Returns (values value channel-index)"
+  (let ((ops (gensym "OPS"))
+        (ready (gensym "READY")))
+    `(let ((,ops (list ,@channel-ops)))
+       ;; Try each channel
+       (loop for ch in ,ops
+             for i from 0
+             do (multiple-value-bind (val ok) (try-receive ch)
+                  (when ok
+                    (return (values val i)))))
+       ;; Nothing ready - block on first
+       (values (receive (first ,ops)) 0))))
+
+;;;; Timeout Channel
+
+(defun timeout-channel (seconds)
+  "Create a channel that closes after SECONDS.
+   Useful in select for implementing timeouts.
+
+   Example:
+   (select
+     ((msg <- work-ch) (process msg))
+     ((_ <- (timeout-channel 5.0)) (log \"timed out\")))"
+  (let ((ch (make-channel :capacity 1)))
+    (sb-thread:make-thread
+     (lambda ()
+       (sleep seconds)
+       (close-channel ch))
+     :name "timeout-channel")
+    ch))

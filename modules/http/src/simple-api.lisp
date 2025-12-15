@@ -100,12 +100,16 @@
     (error "No response received"))
   response)
 
-(defun follow-redirect (url method headers body redirect-count)
+(defun follow-redirect (url method headers body redirect-count verify-ssl)
   "Follow HTTP redirect"
   (when (>= redirect-count *max-redirects*)
     (error "Too many redirects (~D)" redirect-count))
-  
-  (let ((response (client:request url :method method :headers headers :body body)))
+
+  ;; Use ca-file of nil when verify-ssl is false to skip verification
+  (let ((response (if verify-ssl
+                      (client:request url :method method :headers headers :body body)
+                      (client:request url :method method :headers headers :body body
+                                      :ca-file nil))))
     (if (and *follow-redirects*
              (member (response:response-status response) '(301 302 303 307 308)))
         (let ((location (map:get (response:response-headers response) "Location")))
@@ -115,7 +119,8 @@
                               (if (= (response:response-status response) 303) "GET" method)
                               headers
                               (if (= (response:response-status response) 303) nil body)
-                              (1+ redirect-count))
+                              (1+ redirect-count)
+                              verify-ssl)
               response))
         response)))
 
@@ -168,8 +173,11 @@
     
     (handle-response
      (if follow-redirects
-         (follow-redirect url method-str headers body 0)
-         (client:request url :method method-str :headers headers :body body)))))
+         (follow-redirect url method-str headers body 0 verify-ssl)
+         (if verify-ssl
+             (client:request url :method method-str :headers headers :body body)
+             (client:request url :method method-str :headers headers :body body
+                             :ca-file nil))))))
 
 ;;;; Simple One-Liner Functions
 

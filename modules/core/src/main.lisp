@@ -39,6 +39,9 @@
     (argparse:add-argument parser "--version"
                            :action 'store-true
                            :help "Show version information")
+    (argparse:add-argument parser "--version-json"
+                           :action 'store-true
+                           :help "Show version information as JSON")
     (argparse:add-argument parser "--debug"
                            :action 'store-true
                            :help "Enable debugger (don't use --disable-debugger)")
@@ -106,6 +109,16 @@
     (argparse:add-argument parser "--missing-libraries"
                            :action 'store-true
                            :help "List missing critical libraries")
+    ;; Development tools
+    (argparse:add-argument parser "--init"
+                           :action 'store-true
+                           :help "Initialize a new project in current directory")
+    (argparse:add-argument parser "--new"
+                           :metavar "NAME"
+                           :help "Create a new module with the given name")
+    (argparse:add-argument parser "--doctor"
+                           :action 'store-true
+                           :help "Run environment diagnostics")
     parser))
 
 ;;; Pure Data Transformation Functions
@@ -127,20 +140,43 @@
                 (subseq args (1+ delimiter-pos)))
         (values args nil))))
 
+(defun get-version-info ()
+  "Get version information as a map."
+  (map:make-map
+   "version" (env:version)
+   "sbcl_version" (lisp-implementation-version)
+   "os" (string-downcase (symbol-name (env:platform)))
+   "architecture" (machine-type)
+   "epsilon_home" (or (sb-ext:posix-getenv "EPSILON_HOME") "")
+   "lisp_implementation" (lisp-implementation-type)))
+
 (defun format-version-table ()
   "Format version information as a structured table string."
-  (format nil "╭────────────────────────────────────────╮~%~
-               │                EPSILON                 │~%~
-               ├────────────────────────────────────────┤~%~
-               │ Version:      ~24A │~%~
-               │ SBCL:         ~24A │~%~
-               │ OS:           ~24A │~%~
-               │ Architecture: ~24A │~%~
-               ╰────────────────────────────────────────╯"
-          (env:version)
-          (lisp-implementation-version)
-          (string-downcase (symbol-name (env:platform)))
-          (machine-type)))
+  (let ((info (get-version-info)))
+    (format nil "╭────────────────────────────────────────╮~%~
+                 │                EPSILON                 │~%~
+                 ├────────────────────────────────────────┤~%~
+                 │ Version:      ~24A │~%~
+                 │ SBCL:         ~24A │~%~
+                 │ OS:           ~24A │~%~
+                 │ Architecture: ~24A │~%~
+                 ╰────────────────────────────────────────╯"
+            (map:get info "version")
+            (map:get info "sbcl_version")
+            (map:get info "os")
+            (map:get info "architecture"))))
+
+(defun format-version-json ()
+  "Format version information as JSON string."
+  (let ((info (get-version-info)))
+    ;; Simple JSON formatting without requiring epsilon.json module
+    (format nil "{\"version\":\"~A\",\"sbcl_version\":\"~A\",\"os\":\"~A\",\"architecture\":\"~A\",\"epsilon_home\":\"~A\",\"lisp_implementation\":\"~A\"}"
+            (map:get info "version")
+            (map:get info "sbcl_version")
+            (map:get info "os")
+            (map:get info "architecture")
+            (map:get info "epsilon_home")
+            (map:get info "lisp_implementation"))))
 
 (defun parse-main-spec (main-spec)
   "Parse a main specification, handling both string and list forms.
@@ -394,8 +430,74 @@
   nil)
 
 (defun show-help-and-exit (parser &optional (exit-code 0))
-  "Display help for the given parser and exit."
-  (argparse:print-help parser)
+  "Display enhanced help with sections and examples."
+  (declare (ignore parser))
+  (format t "~%Epsilon - A Modern Lisp Environment~%")
+  (format t "====================================~%~%")
+  (format t "Usage: epsilon [OPTIONS] [COMMAND]~%~%")
+
+  (format t "Getting Started:~%")
+  (format t "  epsilon                    Start interactive REPL~%")
+  (format t "  epsilon --init             Initialize new project~%")
+  (format t "  epsilon --doctor           Check environment setup~%")
+  (format t "~%")
+
+  (format t "Evaluation:~%")
+  (format t "  --eval EXPR                Evaluate expression and exit~%")
+  (format t "  --load FILE                Load Lisp file (repeatable)~%")
+  (format t "  --exec PKG:FN              Execute function with remaining args~%")
+  (format t "~%")
+
+  (format t "Modules:~%")
+  (format t "  --module MODULE            Load module before execution (repeatable)~%")
+  (format t "  --modules                  List all available modules~%")
+  (format t "  --path PATH                Set module search path~%")
+  (format t "  --module-dir DIR           Add module directory (repeatable)~%")
+  (format t "~%")
+
+  (format t "Testing:~%")
+  (format t "  --test MODULE              Run tests for module (repeatable)~%")
+  (format t "  --list-tests               List all tests with identifiers~%")
+  (format t "  --verbose                  Enable verbose test output~%")
+  (format t "~%")
+
+  (format t "Development:~%")
+  (format t "  --init                     Initialize new project in current directory~%")
+  (format t "  --new NAME                 Create new module from template~%")
+  (format t "  --doctor                   Run environment diagnostics~%")
+  (format t "~%")
+
+  (format t "Self-Update:~%")
+  (format t "  --exec epsilon.update:check        Check for updates~%")
+  (format t "  --exec epsilon.update:update       Update to latest version~%")
+  (format t "~%")
+
+  (format t "Options:~%")
+  (format t "  --version                  Show version information~%")
+  (format t "  --version-json             Show version as JSON~%")
+  (format t "  --debug                    Enable debugger~%")
+  (format t "  --quiet                    Suppress warnings~%")
+  (format t "  --log SPEC                 Configure logging (e.g., debug, trace:*)~%")
+  (format t "  --help                     Show this help message~%")
+  (format t "~%")
+
+  (format t "Examples:~%")
+  (format t "  epsilon                              Start REPL~%")
+  (format t "  epsilon --eval \"(+ 1 2 3)\"           Evaluate expression~%")
+  (format t "  epsilon --module epsilon.json        Load JSON module~%")
+  (format t "  epsilon --test epsilon.core          Run core tests~%")
+  (format t "  epsilon --load script.lisp           Load and run script~%")
+  (format t "  epsilon --exec myapp:main -- args    Run app with arguments~%")
+  (format t "~%")
+
+  (format t "Project Setup:~%")
+  (format t "  epsilon --init                       Initialize in current dir~%")
+  (format t "  epsilon --new myutil                 Create new module~%")
+  (format t "  epsilon --new mytool --template cli  Create CLI tool~%")
+  (format t "~%")
+
+  (format t "Documentation: https://github.com/jbouwman/epsilon~%")
+  (format t "Version: ~A~%" (env:version))
   (sb-ext:exit :code exit-code))
 
 (defun display-modules (environment)
@@ -590,7 +692,10 @@
         (when (map:get (argparse:parsed-options parsed-args) "help")
           (show-help-and-exit arg-parser))
             
-        ;; Handle --version
+        ;; Handle --version and --version-json
+        (when (map:get (argparse:parsed-options parsed-args) "version_json")
+          (format t "~A~%" (format-version-json))
+          (sb-ext:exit :code 0))
         (when (map:get (argparse:parsed-options parsed-args) "version")
           (format t "~A~%" (format-version-table))
           (sb-ext:exit :code 0))
@@ -688,7 +793,49 @@
             (error (e)
               (format *error-output* "Error listing missing libraries: ~A~%" e)))
           (sb-ext:exit :code 0))
-            
+
+        ;; Handle --init (project initialization)
+        (when (map:get (argparse:parsed-options parsed-args) "init")
+          (handler-case
+              (progn
+                (loader:load-module environment "epsilon.cli")
+                (let ((init-fn (find-symbol "INIT" (find-package "EPSILON.CLI"))))
+                  (when init-fn
+                    (funcall init-fn))))
+            (error (e)
+              (format *error-output* "Error initializing project: ~A~%" e)
+              (sb-ext:exit :code 1)))
+          (sb-ext:exit :code 0))
+
+        ;; Handle --new (module scaffolding)
+        (when (map:get (argparse:parsed-options parsed-args) "new")
+          (handler-case
+              (progn
+                (loader:load-module environment "epsilon.cli")
+                (let ((new-fn (find-symbol "NEW-MODULE" (find-package "EPSILON.CLI")))
+                      (module-name (map:get (argparse:parsed-options parsed-args) "new")))
+                  (when new-fn
+                    (funcall new-fn :name module-name))))
+            (error (e)
+              (format *error-output* "Error creating module: ~A~%" e)
+              (sb-ext:exit :code 1)))
+          (sb-ext:exit :code 0))
+
+        ;; Handle --doctor (diagnostics)
+        (when (map:get (argparse:parsed-options parsed-args) "doctor")
+          (handler-case
+              (progn
+                (loader:load-module environment "epsilon.cli")
+                (let ((doctor-fn (find-symbol "DOCTOR" (find-package "EPSILON.CLI")))
+                      (verbose (map:get (argparse:parsed-options parsed-args) "verbose")))
+                  (when doctor-fn
+                    (let ((success (funcall doctor-fn :verbose verbose)))
+                      (sb-ext:exit :code (if success 0 1))))))
+            (error (e)
+              (format *error-output* "Error running diagnostics: ~A~%" e)
+              (sb-ext:exit :code 1)))
+          (sb-ext:exit :code 0))
+
         ;; STEP 4: Process --load, --eval, and --exec in order of appearance
         (when ordered-actions
           (process-ordered-actions environment ordered-actions passthrough-args)
