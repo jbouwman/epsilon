@@ -285,7 +285,7 @@
                   (map:get *servers* port-or-server))))
     (when server
       (setf (server-running-p server) nil)
-      (net:tcp-close (server-socket server))
+      (net:tcp-shutdown (server-socket server))
       (sb-thread:join-thread (server-thread server))
       (setf *servers* (map:dissoc *servers* (server-port server)))
       t)))
