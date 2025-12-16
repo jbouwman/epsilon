@@ -8,7 +8,8 @@
    :if-let
    :when-let
    :when-let*
-   :while))
+   :while
+   :re-export))
 
 (in-package :epsilon.syntax)
 
@@ -142,3 +143,30 @@ PROGN."
                         ,(bind (cdr bindings) body)))
                    `(progn ,@body))))
       (bind binding-list body))))
+
+(defmacro re-export (source-package &rest symbols)
+  "Import SYMBOLS from SOURCE-PACKAGE and re-export them from the current package.
+
+   This eliminates the need to duplicate symbol names in both :import-from
+   and :export clauses of defpackage.
+
+   Example:
+     ;; Instead of:
+     ;; (:import-from :epsilon.net.core network-error connection-refused)
+     ;; (:export network-error connection-refused)
+
+     ;; Use:
+     (re-export epsilon.net.core
+       network-error connection-refused)
+
+   The macro must be called after the source package is loaded."
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (let ((pkg (find-package ',source-package)))
+       (unless pkg
+         (error "Package ~A not found for re-export" ',source-package))
+       (dolist (sym-name ',(mapcar #'string symbols))
+         (let ((sym (find-symbol sym-name pkg)))
+           (unless sym
+             (error "Symbol ~S not found in package ~A" sym-name ',source-package))
+           (import sym)
+           (export (list (intern sym-name))))))))
