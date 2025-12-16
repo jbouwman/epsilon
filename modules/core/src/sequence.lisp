@@ -17,7 +17,9 @@
    reduce
    seq
    map
-   filter)
+   filter
+   length
+   find)
   (:local-nicknames
    (map epsilon.map))
   (:export
@@ -31,9 +33,13 @@
    cons
    first
    count
+   length
+   element-at
+   find
    reduce
    rest
    realize
+   to-vector
    seq
    drop
    iterate
@@ -160,7 +166,7 @@ of the sequences. If more than one sequence is provided, FUNCTION should
 accept as many arguments as there are sequences."
   (if (null sequences)
       *empty*
-      (let ((seqs (if (= 1 (length sequences))
+      (let ((seqs (if (= 1 (cl:length sequences))
                       (car sequences)
                       sequences)))
         (labels ((map-one (s)
@@ -173,7 +179,7 @@ accept as many arguments as there are sequences."
                        *empty*
                        (cons (apply function (mapcar #'first ss))
                              (map-many (mapcar #'rest ss))))))
-          (if (= 1 (length sequences))
+          (if (= 1 (cl:length sequences))
               (map-one seqs)
               (map-many seqs))))))
 
@@ -277,4 +283,29 @@ Returns true for empty sequences."
   (loop for current = seq then (rest current)
         while (not (empty-p current))
         always (funcall predicate (first current))))
+
+(defun length (seq)
+  "Returns the number of elements in the sequence.
+Alias for count with clearer naming."
+  (count seq))
+
+(defun element-at (n seq)
+  "Returns the nth element (0-indexed) of the sequence.
+Consumes up to n+1 elements. Returns nil if n is out of bounds."
+  (loop for i from 0 to n
+        for current = seq then (rest current)
+        when (empty-p current) return nil
+        finally (return (first current))))
+
+(defun find (predicate seq)
+  "Returns the first element in seq for which predicate returns true.
+Returns nil if no matching element is found. Uses early exit."
+  (loop for current = seq then (rest current)
+        while (not (empty-p current))
+        when (funcall predicate (first current))
+          return (first current)))
+
+(defun to-vector (seq)
+  "Realizes the lazy sequence into a vector instead of a list."
+  (coerce (realize seq) 'vector))
 

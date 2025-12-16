@@ -27,7 +27,9 @@
    deftest
    with-label
    module-file
-   
+   fixture-path
+   data-path
+
    ;; fixtures
    fixture
    with-fixture
@@ -62,6 +64,16 @@
    Example: (module-file 'epsilon.test \"fixtures/data.txt\")"
   (let ((module (loader:get-module (loader:environment) module-name :error-p t)))
     (path:string-path-join (path::path-from-uri (loader:module-uri module)) relative-path)))
+
+(defun fixture-path (module-name filename)
+  "Return path to FILENAME in MODULE-NAME's tests/fixtures/ directory.
+   Example: (fixture-path 'epsilon.json \"simple.json\")"
+  (module-file module-name (format nil "tests/fixtures/~A" filename)))
+
+(defun data-path (module-name filename)
+  "Return path to FILENAME in MODULE-NAME's tests/data/ directory.
+   Example: (data-path 'epsilon.compiler \"sample.s1\")"
+  (module-file module-name (format nil "tests/data/~A" filename)))
 
 (defmacro deftest (name &body body)
   (let ((docstring (when (and (stringp (first body))
