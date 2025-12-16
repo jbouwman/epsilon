@@ -1,0 +1,56 @@
+;;; epsilon.manifest.example
+;;;
+;;; Example manifest file for declaring epsilon module dependencies.
+;;; Copy this file to your project as 'epsilon.manifest' and customize.
+;;;
+;;; Usage:
+;;;   epsilon --install-manifest epsilon.manifest
+;;;   # or during install:
+;;;   ./install.sh --manifest epsilon.manifest
+
+(:version "1.0.0"
+
+ :dependencies
+ (
+  ;; GitHub repository dependency
+  ;; The checksum is REQUIRED for security - obtain it from the release page
+  ;; or compute with: sha256sum module-1.0.0.tar.gz
+  ;;
+  ;; (:name "epsilon.json-rpc"
+  ;;  :source "github:someuser/json-rpc-module"
+  ;;  :version "1.2.0"
+  ;;  :checksum "sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")
+
+  ;; GitHub repository with specific version tag
+  ;; (:name "epsilon.graphql"
+  ;;  :source "github:anotheruser/graphql-module"
+  ;;  :version "2.0.0"
+  ;;  :checksum "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+
+  ;; Direct URL dependency (for non-GitHub sources)
+  ;; (:name "epsilon.custom-module"
+  ;;  :source "https://example.com/releases/custom-module-1.0.0.tar.gz"
+  ;;  :version "1.0.0"
+  ;;  :checksum "sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210")
+  ))
+
+;;; Notes:
+;;;
+;;; 1. All checksums must be in the format "sha256:<64-hex-chars>"
+;;;
+;;; 2. Source formats supported:
+;;;    - github:owner/repo     - Latest release from GitHub
+;;;    - github:owner/repo@v1.0.0 - Specific tag from GitHub
+;;;    - https://... or http://... - Direct archive URL
+;;;
+;;; 3. Archive formats supported:
+;;;    - .tar.gz
+;;;    - .zip
+;;;
+;;; 4. Installed modules are stored in ~/.epsilon/modules/
+;;;    and automatically discovered by the epsilon loader.
+;;;
+;;; 5. To compute a checksum for a local file:
+;;;    sha256sum mymodule.tar.gz
+;;;    # or on macOS:
+;;;    shasum -a 256 mymodule.tar.gz

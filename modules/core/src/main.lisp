@@ -119,6 +119,20 @@
     (argparse:add-argument parser "--doctor"
                            :action 'store-true
                            :help "Run environment diagnostics")
+    ;; Module installation options
+    (argparse:add-argument parser "--install"
+                           :metavar "SPEC"
+                           :help "Install module from GitHub (github:owner/repo[@version])")
+    (argparse:add-argument parser "--install-manifest"
+                           :nargs '?
+                           :default :not-provided
+                           :help "Install from manifest file (default: epsilon.manifest)")
+    (argparse:add-argument parser "--install-checksum"
+                           :metavar "CHECKSUM"
+                           :help "SHA-256 checksum for --install (sha256:hexdigest)")
+    (argparse:add-argument parser "--install-name"
+                           :metavar "NAME"
+                           :help "Module name for --install (required for URL installs)")
     parser))
 
 ;;; Pure Data Transformation Functions
@@ -835,6 +849,54 @@
               (format *error-output* "Error running diagnostics: ~A~%" e)
               (sb-ext:exit :code 1)))
           (sb-ext:exit :code 0))
+
+        ;; Handle --install (ad-hoc module installation)
+        (when (map:get (argparse:parsed-options parsed-args) "install")
+          (handler-case
+              (progn
+                (loader:load-module environment "epsilon.install")
+                (let ((install-fn (find-symbol "INSTALL" (find-package "EPSILON.INSTALL")))
+                      (spec (map:get (argparse:parsed-options parsed-args) "install"))
+                      (checksum (map:get (argparse:parsed-options parsed-args) "install_checksum"))
+                      (name (map:get (argparse:parsed-options parsed-args) "install_name")))
+                  (when install-fn
+                    ;; Determine if it's a GitHub spec or URL
+                    (cond
+                      ((or (str:starts-with-p "github:" spec)
+                           (and (position #\/ spec)
+                                (not (str:starts-with-p "http" spec))))
+                       ;; GitHub spec (github:owner/repo or owner/repo)
+                       (let ((github-spec (if (str:starts-with-p "github:" spec)
+                                              (subseq spec 7)
+                                              spec)))
+                         (funcall install-fn :github github-spec :checksum checksum :name name)))
+                      ((or (str:starts-with-p "https://" spec)
+                           (str:starts-with-p "http://" spec))
+                       ;; Direct URL
+                       (funcall install-fn :url spec :checksum checksum :name name))
+                      (t
+                       (format *error-output* "Invalid install spec: ~A~%" spec)
+                       (format *error-output* "Use github:owner/repo or a direct URL~%")
+                       (sb-ext:exit :code 1))))))
+            (error (e)
+              (format *error-output* "Error installing module: ~A~%" e)
+              (sb-ext:exit :code 1)))
+          (sb-ext:exit :code 0))
+
+        ;; Handle --install-manifest (manifest-based installation)
+        (let ((manifest-arg (map:get (argparse:parsed-options parsed-args) "install_manifest")))
+          (when (and manifest-arg (not (eq manifest-arg :not-provided)))
+            (handler-case
+                (progn
+                  (loader:load-module environment "epsilon.install")
+                  (let ((install-fn (find-symbol "INSTALL-MANIFEST" (find-package "EPSILON.INSTALL")))
+                        (manifest-path (if (stringp manifest-arg) manifest-arg "epsilon.manifest")))
+                    (when install-fn
+                      (funcall install-fn :path manifest-path))))
+              (error (e)
+                (format *error-output* "Error installing from manifest: ~A~%" e)
+                (sb-ext:exit :code 1)))
+            (sb-ext:exit :code 0)))
 
         ;; STEP 4: Process --load, --eval, and --exec in order of appearance
         (when ordered-actions

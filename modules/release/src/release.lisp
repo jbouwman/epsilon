@@ -512,7 +512,7 @@
     (fs:make-dirs bin-dir)
     
     ;; Create a release-specific wrapper script
-    (fs:write-file-string target-script 
+    (fs:write-file-string target-script
 "#!/bin/sh
 #
 # Epsilon command-line interface (Release version)
@@ -533,22 +533,27 @@ if ! [ -f \"$EPSILON_BOOT\" ]; then
 fi
 
 # Use bundled SBCL if available, otherwise system SBCL
+SBCL_ARGS=\"--noinform --no-sysinit --no-userinit --disable-debugger --quit\"
 if [ -x \"$EPSILON_HOME/bin/sbcl\" ]; then
     SBCL=\"$EPSILON_HOME/bin/sbcl\"
+    # Use bundled core file
+    if [ -f \"$EPSILON_HOME/lib/sbcl-libs/sbcl.core\" ]; then
+        export SBCL_HOME=\"$EPSILON_HOME/lib/sbcl-libs\"
+        SBCL_ARGS=\"--core $SBCL_HOME/sbcl.core $SBCL_ARGS\"
+    fi
 else
     SBCL=\"sbcl\"
-fi
-
-# Set SBCL_HOME if using bundled SBCL
-if [ -d \"$EPSILON_HOME/lib/sbcl-libs\" ]; then
-    export SBCL_HOME=\"$EPSILON_HOME/lib/sbcl-libs\"
 fi
 
 # Change to EPSILON_HOME for relative path loading
 cd \"$EPSILON_HOME\"
 
 # Execute epsilon with all arguments
-exec \"$SBCL\" --script \"$EPSILON_BOOT\" \"$@\"
+if [ $# -eq 0 ]; then
+    exec \"$SBCL\" $SBCL_ARGS --load \"$EPSILON_BOOT\" --eval \"(epsilon.main:cli-run)\" --
+else
+    exec \"$SBCL\" $SBCL_ARGS --load \"$EPSILON_BOOT\" --eval \"(epsilon.main:cli-run)\" -- \"$@\"
+fi
 ")
     
     ;; Make executable (assuming Unix-like system)
@@ -644,10 +649,12 @@ exec \"$SBCL\" --script \"$EPSILON_BOOT\" \"$@\"
 
 (defun copy-install-instructions (release-dir)
   "Copy installation instructions from external resource."
-  (let ((source-file (make-path (namestring (fs:current-directory)) 
+  (let ((source-file (make-path (namestring (fs:current-directory))
                                 "docs" "development" "installation.md"))
         (target-file (make-path release-dir "INSTALL.md")))
-    (fs:copy-file source-file target-file)))
+    (if (probe-file source-file)
+        (fs:copy-file source-file target-file)
+        (log:warn "Installation docs not found at ~A, skipping" source-file))))
 
 (defun create-zip-archive (release-dir release-name)
   "Create a ZIP archive for Windows releases."
