@@ -48,7 +48,7 @@ jobs:
 
       - name: Run lint
         run: |
-          ./epsilon --exec "(epsilon.lint:lint-directory \"modules/\")" || true
+          ./epsilon --exec epsilon.lint:lint-directory -- "modules/" || true
 
   build:
     name: Build (${{ matrix.platform }})

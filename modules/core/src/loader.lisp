@@ -394,6 +394,11 @@
       (let ((contrib-path (path:path-join epsilon-home "contrib" "modules")))
         (when (probe-file (path:path-string contrib-path))
           (scan-module-directory *environment* contrib-path)))
+      ;; Scan user-installed modules directory (~/.epsilon/modules/)
+      (let ((user-modules-path (path:path-join (namestring (user-homedir-pathname)) ".epsilon" "modules")))
+        (when (probe-file (path:path-string user-modules-path))
+          (log:debug "Scanning user modules directory: ~A" (path:path-string user-modules-path))
+          (scan-module-directory *environment* user-modules-path)))
       ;; Verify core modules are available
       (let ((core-modules '("epsilon.core")))
         (dolist (module-name core-modules)

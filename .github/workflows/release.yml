@@ -50,7 +50,7 @@ jobs:
       - name: Generate release
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
-          ./epsilon --exec "(epsilon.release:generate \"$VERSION\")"
+          ./epsilon --exec epsilon.release:generate -- "$VERSION"
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
