@@ -322,7 +322,8 @@ get_download_url() {
     # Extract version using awk (portable across BSD and GNU)
     local version
     version=$(echo "$release_info" | awk -F'"' '/"tag_name"/ {print $4; exit}' | sed 's/^v//')
-    info "Version: $version"
+    # Output to stderr so it doesn't get captured with the URL
+    [ "$QUIET" = false ] && echo "[INFO] Version: $version" >&2
 
     # Extract download URL for the platform using awk
     local download_url
@@ -622,11 +623,34 @@ verify_installation() {
     success "Binary exists and is executable"
 
     # Test execution
-    if "$epsilon_bin" --quiet --eval "(+ 1 2)" >/dev/null 2>&1; then
+    local test_output
+    if test_output=$("$epsilon_bin" --quiet --eval "(+ 1 2)" 2>&1); then
         success "Execution test passed"
     else
-        error "Execution test failed"
-        return 1
+        # Check if bundled SBCL exists and system SBCL is available
+        if [ -x "$INSTALL_DIR/bin/sbcl" ] && command -v sbcl >/dev/null 2>&1; then
+            warning "Bundled SBCL failed, falling back to system SBCL..."
+            rm -f "$INSTALL_DIR/bin/sbcl"
+            # Clear cached FASL files (compiled for wrong SBCL version)
+            rm -f "$INSTALL_DIR/bootstrap.fasl" 2>/dev/null
+            find "$INSTALL_DIR/modules" -name "*.fasl" -delete 2>/dev/null
+            # Retry with system SBCL
+            if test_output=$("$epsilon_bin" --quiet --eval "(+ 1 2)" 2>&1); then
+                success "Execution test passed (using system SBCL)"
+            else
+                error "Execution test failed"
+                if [ -n "$test_output" ]; then
+                    echo "  Error: $(echo "$test_output" | head -3)" >&2
+                fi
+                return 1
+            fi
+        else
+            error "Execution test failed"
+            if [ -n "$test_output" ]; then
+                echo "  Error: $(echo "$test_output" | head -3)" >&2
+            fi
+            return 1
+        fi
     fi
 
     # Show version
