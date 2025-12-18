@@ -6,6 +6,7 @@
 
 (defpackage epsilon.main
   (:use cl)
+  (:shadow #:package)  ; Shadow CL:PACKAGE to define our macro
   (:local-nicknames
    (map epsilon.map)
    (str epsilon.string)
@@ -18,7 +19,8 @@
    (table epsilon.table)
    (common epsilon.tool.common))
   (:export
-   #:cli-run))
+   #:cli-run
+   #:package))
 
 (in-package epsilon.main)
 
@@ -79,6 +81,10 @@
                            :action 'append
                            :metavar "FILE"
                            :help "Load a Lisp file (can be used multiple times)")
+    ;; Add run option for scripts with package declarations
+    (argparse:add-argument parser "--run"
+                           :metavar "FILE"
+                           :help "Run a script file (auto-loads dependencies from package declaration)")
     ;; Add test option
     (argparse:add-argument parser "--test"
                            :action 'append
@@ -459,6 +465,7 @@
   (format t "Evaluation:~%")
   (format t "  --eval EXPR                Evaluate expression and exit~%")
   (format t "  --load FILE                Load Lisp file (repeatable)~%")
+  (format t "  --run FILE                 Run script (auto-loads package dependencies)~%")
   (format t "  --exec PKG:FN              Execute function with remaining args~%")
   (format t "~%")
 
@@ -501,6 +508,7 @@
   (format t "  epsilon --module epsilon.json        Load JSON module~%")
   (format t "  epsilon --test epsilon.core          Run core tests~%")
   (format t "  epsilon --load script.lisp           Load and run script~%")
+  (format t "  epsilon --run examples/mtls.lisp     Run script with auto-deps~%")
   (format t "  epsilon --exec myapp:main -- args    Run app with arguments~%")
   (format t "~%")
 
@@ -673,6 +681,217 @@
                     (probe-file path)
                     (probe-file (merge-pathnames "module.lisp" path)))
             return (namestring path))))
+
+;;; Script Running (--run)
+
+(defun read-package-form (filepath)
+  "Read the first (package ...) form from a script file.
+   Returns the form or NIL if not found."
+  (with-open-file (stream filepath :if-does-not-exist :error)
+    (let ((*read-eval* nil)) ; Safety: don't evaluate during read
+      (loop for form = (read stream nil :eof)
+            until (eq form :eof)
+            when (and (consp form)
+                      (symbolp (first form))
+                      (string-equal "PACKAGE" (symbol-name (first form))))
+              return form))))
+
+(defun extract-package-imports (package-form)
+  "Extract import specs from a (package name (import ...)) form.
+   Returns a list of (package-name nickname) pairs."
+  (let ((imports-clause (find-if (lambda (clause)
+                                   (and (consp clause)
+                                        (symbolp (first clause))
+                                        (string-equal "IMPORT" (symbol-name (first clause)))))
+                                 (cddr package-form))))
+    (when imports-clause
+      (mapcar (lambda (spec)
+                (if (consp spec)
+                    (list (string (first spec)) (string (second spec)))
+                    (list (string spec) nil)))
+              (cdr imports-clause)))))
+
+(defun package-name-to-module-name (package-name)
+  "Derive module name from a package name.
+   For epsilon.http.simple -> epsilon.http
+   For epsilon.crypto.certificates -> epsilon.crypto
+   For epsilon.path -> epsilon.path (resolved later to epsilon.core if needed)"
+  (let* ((name-lower (string-downcase package-name))
+         (parts (seq:realize (str:split #\. name-lower)))
+         (num-parts (length parts)))
+    (cond
+      ;; Not an epsilon package - can't auto-resolve
+      ((or (< num-parts 2)
+           (not (string-equal "epsilon" (first parts))))
+       nil)
+      ;; epsilon.X -> epsilon.X
+      ((= num-parts 2)
+       name-lower)
+      ;; epsilon.X.Y[.Z...] -> epsilon.X
+      (t
+       (format nil "~A.~A" (first parts) (second parts))))))
+
+(defun resolve-script-dependencies (environment imports)
+  "Given import specs, determine which modules need to be loaded.
+   Returns a list of module names to load."
+  (let ((modules-to-load '()))
+    (dolist (import-spec imports)
+      (let* ((package-name (first import-spec))
+             (module-name (package-name-to-module-name package-name)))
+        (when module-name
+          ;; Try to find a module with that name
+          (let ((found-module (loader:get-module environment module-name)))
+            (cond
+              ;; Module exists with derived name
+              (found-module
+               (pushnew module-name modules-to-load :test #'string=))
+              ;; For 2-part names (epsilon.X), try epsilon.core as fallback
+              ;; (epsilon.path, epsilon.string, etc. are from epsilon.core)
+              ((and (= 2 (length (seq:realize (str:split #\. module-name))))
+                    (loader:get-module environment "epsilon.core"))
+               (pushnew "epsilon.core" modules-to-load :test #'string=))
+              ;; No module found - might be an error, but we'll let loading fail naturally
+              (t nil))))))
+    (nreverse modules-to-load)))
+
+(defun transform-package-form-to-defpackage (package-form)
+  "Transform a (package name (import ...)) form into defpackage + in-package forms."
+  (let* ((name (second package-form))
+         (imports (extract-package-imports package-form))
+         (local-nicknames (mapcar (lambda (spec)
+                                    (let ((pkg-name (first spec))
+                                          (nickname (second spec)))
+                                      (list (intern (string-upcase nickname))
+                                            (intern (string-upcase pkg-name) :keyword))))
+                                  (remove-if-not #'second imports))))
+    `(progn
+       (defpackage ,name
+         (:use cl)
+         ,@(when local-nicknames
+             `((:local-nicknames ,@local-nicknames))))
+       (in-package ,name))))
+
+;;; Package Macro for Dependency-Driven Compilation
+;;;
+;;; This macro enables modules outside epsilon.core to use a simpler package
+;;; declaration form that automatically loads dependencies:
+;;;
+;;;   (package my-module
+;;;     (import (epsilon.http.simple http)
+;;;             (epsilon.crypto certs)))
+;;;
+;;; At compile/load time, this loads the required modules and expands to
+;;; a standard defpackage with local-nicknames.
+
+(defmacro package (name &body clauses)
+  "Define a package with automatic dependency loading.
+
+   Usage:
+     (package my-package
+       (import (epsilon.http.simple http)
+               (epsilon.json json)))
+
+   Each import specifies a package and an optional local nickname.
+   The system automatically loads the modules that provide these packages
+   before defining the package.
+
+   This expands to a standard DEFPACKAGE with :local-nicknames."
+  (let* ((form (list* 'package name clauses))
+         (imports (extract-package-imports form))
+         (module-loads (mapcar (lambda (spec)
+                                 (let ((module-name (package-name-to-module-name (first spec))))
+                                   (when module-name
+                                     `(when (and (boundp 'loader:*environment*)
+                                                 loader:*environment*)
+                                        (let ((env loader:*environment*))
+                                          (unless (loader:module-loaded-p
+                                                   (or (loader:get-module env ,module-name)
+                                                       (loader:get-module env "epsilon.core")))
+                                            (loader:load-module env
+                                              (if (loader:get-module env ,module-name)
+                                                  ,module-name
+                                                  "epsilon.core"))))))))
+                               imports))
+         (local-nicknames (mapcar (lambda (spec)
+                                    (let ((pkg-name (first spec))
+                                          (nickname (second spec)))
+                                      (when nickname
+                                        (list (intern (string-upcase nickname))
+                                              (intern (string-upcase pkg-name) :keyword)))))
+                                  imports)))
+    `(progn
+       (eval-when (:compile-toplevel :load-toplevel :execute)
+         ,@(remove nil module-loads))
+       (defpackage ,name
+         (:use cl)
+         ,@(when (remove nil local-nicknames)
+             `((:local-nicknames ,@(remove nil local-nicknames)))))
+       (in-package ,name))))
+
+(defun run-script (environment filepath passthrough-args)
+  "Run a script file with automatic dependency loading.
+   Parses the (package ...) form, loads required modules, then evaluates the file."
+  (let* ((user-dir (sb-ext:posix-getenv "EPSILON_USER"))
+         (resolved-path (if (and (> (length filepath) 0)
+                                 (char= (char filepath 0) #\/))
+                            filepath
+                            (if user-dir
+                                ;; Ensure user-dir ends with / for proper merge
+                                (let ((dir (if (char= (char user-dir (1- (length user-dir))) #\/)
+                                               user-dir
+                                               (concatenate 'string user-dir "/"))))
+                                  (namestring (merge-pathnames filepath dir)))
+                                filepath))))
+    (unless (probe-file resolved-path)
+      (format *error-output* "Error: Script file not found: ~A~%" resolved-path)
+      (sb-ext:exit :code 1))
+
+    ;; Read the package form
+    (let ((package-form (read-package-form resolved-path)))
+      (unless package-form
+        (format *error-output* "Error: No (package ...) form found in ~A~%" resolved-path)
+        (sb-ext:exit :code 1))
+
+      ;; Extract imports and resolve dependencies
+      (let* ((imports (extract-package-imports package-form))
+             (modules-to-load (resolve-script-dependencies environment imports)))
+
+        ;; Load required modules
+        (dolist (module-name modules-to-load)
+          (handler-case
+              (progn
+                (log:info "Loading module: ~A" module-name)
+                (loader:load-module environment module-name))
+            (error (e)
+              (format *error-output* "Error loading module ~A: ~A~%" module-name e)
+              (sb-ext:exit :code 1))))
+
+        ;; Transform and evaluate the package form
+        (let ((defpackage-form (transform-package-form-to-defpackage package-form)))
+          (eval defpackage-form))
+
+        ;; Load the rest of the file (skip the package form we already processed)
+        (with-open-file (stream resolved-path)
+          (let ((*read-eval* t))
+            ;; Skip forms until we're past the package form
+            (loop for form = (read stream nil :eof)
+                  until (eq form :eof)
+                  unless (and (consp form)
+                              (symbolp (first form))
+                              (string-equal "PACKAGE" (symbol-name (first form))))
+                    do (eval form))))
+
+        ;; Call main function if it exists
+        (let* ((package-name (second package-form))
+               (package (find-package (string-upcase (string package-name)))))
+          (when package
+            (let ((main-fn (find-symbol "MAIN" package)))
+              (when (and main-fn (fboundp main-fn))
+                (log:info "Calling ~A:MAIN" package-name)
+                ;; Call with passthrough args if any, otherwise with no args
+                (if passthrough-args
+                    (apply main-fn passthrough-args)
+                    (funcall main-fn))))))))))
 
 (defun run (args)
   "Dispatch to the appropriate command handler"
@@ -897,6 +1116,17 @@
                 (format *error-output* "Error installing from manifest: ~A~%" e)
                 (sb-ext:exit :code 1)))
             (sb-ext:exit :code 0)))
+
+        ;; Handle --run (script with package declaration)
+        (when (map:get (argparse:parsed-options parsed-args) "run")
+          (handler-case
+              (run-script environment
+                          (map:get (argparse:parsed-options parsed-args) "run")
+                          passthrough-args)
+            (error (e)
+              (format *error-output* "Error running script: ~A~%" e)
+              (sb-ext:exit :code 1)))
+          (sb-ext:exit :code 0))
 
         ;; STEP 4: Process --load, --eval, and --exec in order of appearance
         (when ordered-actions

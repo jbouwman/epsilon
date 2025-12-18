@@ -269,7 +269,7 @@
     (when (http-connection-tls-connection connection)
       (crypto:tls-close (http-connection-tls-connection connection)))
     (when (http-connection-socket connection)
-      (net:tcp-shutdown (http-connection-socket connection) :both))))
+      (net:tcp-shutdown (http-connection-socket connection)))))
 
 ;;;; Pool Operations
 

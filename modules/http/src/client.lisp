@@ -103,7 +103,7 @@
            (tls:tls-close (connection-tls-connection ,conn)))
          (when (and (connection-socket ,conn)
                     (not (connection-ssl-p ,conn)))
-           (net:tcp-shutdown (connection-socket ,conn) :both))))))
+           (net:tcp-shutdown (connection-socket ,conn)))))))
 
 (defun parse-url (url-string)
   "Parse URL-STRING into scheme, host, port, path, and query components.
