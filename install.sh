@@ -10,6 +10,7 @@
 #
 # Options:
 #   --version VERSION   Install a specific version (e.g., 1.0.0)
+#   --source            Install from source via git clone (requires SBCL)
 #   --check             Check/verify existing installation
 #   --uninstall         Remove epsilon installation
 #   --completions       Install shell completions only
@@ -20,6 +21,7 @@
 #
 # Environment Variables (useful for CI):
 #   EPSILON_VERSION     Version to install (default: latest)
+#   EPSILON_SOURCE      Set to 'true' for source installation
 #   EPSILON_HOME        Installation directory (default: ~/.epsilon)
 #   EPSILON_BIN         Binary symlink directory (default: ~/.local/bin)
 #   EPSILON_MANIFEST    Manifest file to process after install
@@ -44,6 +46,7 @@ COMPLETIONS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/epsilon/completions"
 # Command line options (env vars as defaults)
 INSTALL_VERSION="${EPSILON_VERSION:-}"
 MANIFEST_PATH="${EPSILON_MANIFEST:-}"
+INSTALL_SOURCE="${EPSILON_SOURCE:-false}"
 CHECK_ONLY=false
 UNINSTALL=false
 COMPLETIONS_ONLY=false
@@ -91,6 +94,7 @@ Usage: install.sh [OPTIONS]
 
 Options:
     --version VERSION   Install a specific version (e.g., 1.0.0 or v1.0.0)
+    --source            Install from source via git clone (requires SBCL)
     --check             Check/verify existing installation without changes
     --uninstall         Remove epsilon installation completely
     --completions       Install shell completions only (requires existing install)
@@ -101,6 +105,7 @@ Options:
 
 Environment Variables:
     EPSILON_VERSION     Version to install (alternative to --version)
+    EPSILON_SOURCE      Set to 'true' for source installation
     EPSILON_HOME        Installation directory (default: ~/.epsilon)
     EPSILON_BIN         Binary symlink directory (default: ~/.local/bin)
     EPSILON_MANIFEST    Manifest file path (alternative to --manifest)
@@ -110,11 +115,20 @@ Examples:
     # Install latest stable release
     curl -sSL https://raw.githubusercontent.com/jbouwman/epsilon/main/install.sh | bash
 
+    # Install from source (for development)
+    ./install.sh --source
+
+    # Install specific version from source
+    ./install.sh --source --version 0.10.0
+
     # Install specific version
     ./install.sh --version 1.0.0
 
     # Install via environment variable (useful for CI)
     EPSILON_VERSION=1.0.0 ./install.sh
+
+    # Install from source via environment variable
+    EPSILON_SOURCE=true ./install.sh
 
     # Install and process manifest
     ./install.sh --manifest epsilon.manifest
@@ -166,6 +180,10 @@ parse_args() {
                 ;;
             --quiet|-q)
                 QUIET=true
+                shift
+                ;;
+            --source|-s)
+                INSTALL_SOURCE=true
                 shift
                 ;;
             --help|-h)
@@ -322,7 +340,7 @@ verify_checksum() {
     local checksum_url="$2"
 
     local expected
-    expected=$(fetch_url "$checksum_url" 2>/dev/null | awk '{print $1}' || true)
+    expected=$(fetch_url "$checksum_url" 2>/dev/null | awk '{print tolower($1)}' || true)
 
     if [ -z "$expected" ]; then
         info "No checksum file found, skipping verification"
@@ -331,9 +349,9 @@ verify_checksum() {
 
     local actual
     if command -v sha256sum >/dev/null 2>&1; then
-        actual=$(sha256sum "$file" | awk '{print $1}')
+        actual=$(sha256sum "$file" | awk '{print tolower($1)}')
     elif command -v shasum >/dev/null 2>&1; then
-        actual=$(shasum -a 256 "$file" | awk '{print $1}')
+        actual=$(shasum -a 256 "$file" | awk '{print tolower($1)}')
     else
         info "No SHA-256 tool available, skipping verification"
         return 0
@@ -399,6 +417,75 @@ download_and_extract() {
     success "Extracted to $INSTALL_DIR"
 }
 
+# Install from source (git clone)
+install_from_source() {
+    info "Installing from source..."
+
+    # Check for git
+    if ! command -v git >/dev/null 2>&1; then
+        error "git is required for source installation"
+        exit 1
+    fi
+
+    # Check for SBCL (required for source installs)
+    if ! command -v sbcl >/dev/null 2>&1; then
+        error "SBCL is required for source installation"
+        echo "Install SBCL: https://www.sbcl.org/" >&2
+        exit 1
+    fi
+
+    # Handle existing installation
+    if [ -d "$INSTALL_DIR" ]; then
+        if [ -d "$INSTALL_DIR/.git" ]; then
+            # Existing git clone - update it
+            info "Updating existing source installation..."
+            cd "$INSTALL_DIR"
+            git fetch --tags --quiet
+        else
+            # Existing non-git installation
+            if [ "$FORCE" = true ]; then
+                info "Removing existing installation..."
+                rm -rf "${INSTALL_DIR:?}"
+            else
+                warning "Existing installation found at $INSTALL_DIR (not a git clone)"
+                read -p "Remove and reinstall from source? (y/N) " -n 1 -r < /dev/tty
+                echo
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    rm -rf "${INSTALL_DIR:?}"
+                else
+                    error "Installation cancelled"
+                    exit 1
+                fi
+            fi
+        fi
+    fi
+
+    # Clone if needed
+    if [ ! -d "$INSTALL_DIR/.git" ]; then
+        info "Cloning repository..."
+        git clone --quiet "https://github.com/$GITHUB_REPO.git" "$INSTALL_DIR"
+    fi
+
+    cd "$INSTALL_DIR"
+
+    # Checkout specific version if requested
+    if [ -n "$INSTALL_VERSION" ]; then
+        local tag="v${INSTALL_VERSION#v}"
+        info "Checking out $tag..."
+        if ! git checkout --quiet "$tag" 2>/dev/null; then
+            error "Version $tag not found"
+            echo "Available versions:" >&2
+            git tag -l 'v*' | tail -5 >&2
+            exit 1
+        fi
+    else
+        # Stay on default branch (main)
+        git checkout --quiet main 2>/dev/null || true
+    fi
+
+    success "Source installed to $INSTALL_DIR"
+}
+
 # Create symlinks
 create_symlinks() {
     [ "$IS_CI" = true ] && return 0  # Skip symlinks in CI
@@ -406,7 +493,12 @@ create_symlinks() {
     info "Creating symlinks..."
     mkdir -p "$BINARY_DIR"
 
-    local epsilon_bin="$INSTALL_DIR/bin/epsilon"
+    local epsilon_bin
+    if [ "$INSTALL_SOURCE" = true ]; then
+        epsilon_bin="$INSTALL_DIR/epsilon"  # Source checkout
+    else
+        epsilon_bin="$INSTALL_DIR/bin/epsilon"  # Release build
+    fi
     local symlink_path="$BINARY_DIR/epsilon"
 
     if [ ! -f "$epsilon_bin" ]; then
@@ -514,7 +606,12 @@ update_shell_config() {
 verify_installation() {
     info "Verifying installation..."
 
-    local epsilon_bin="$INSTALL_DIR/bin/epsilon"
+    local epsilon_bin
+    if [ "$INSTALL_SOURCE" = true ]; then
+        epsilon_bin="$INSTALL_DIR/epsilon"
+    else
+        epsilon_bin="$INSTALL_DIR/bin/epsilon"
+    fi
 
     if [ ! -x "$epsilon_bin" ]; then
         error "Epsilon binary not found or not executable"
@@ -570,13 +667,25 @@ check_installation() {
         if [ -f "$INSTALL_DIR/VERSION" ]; then
             info "Version: $(cat "$INSTALL_DIR/VERSION")"
         fi
+        if [ -d "$INSTALL_DIR/.git" ]; then
+            info "Type: source installation"
+        else
+            info "Type: release installation"
+        fi
     else
         error "Installation directory not found: $INSTALL_DIR"
         status=1
     fi
 
-    local epsilon_bin="$INSTALL_DIR/bin/epsilon"
-    if [ -x "$epsilon_bin" ]; then
+    # Check for epsilon binary (source: at root, release: in bin/)
+    local epsilon_bin
+    if [ -x "$INSTALL_DIR/epsilon" ]; then
+        epsilon_bin="$INSTALL_DIR/epsilon"
+    elif [ -x "$INSTALL_DIR/bin/epsilon" ]; then
+        epsilon_bin="$INSTALL_DIR/bin/epsilon"
+    fi
+
+    if [ -n "$epsilon_bin" ]; then
         success "Binary: $epsilon_bin"
         if "$epsilon_bin" --quiet --eval "(+ 1 2)" >/dev/null 2>&1; then
             success "Execution test passed"
@@ -625,9 +734,15 @@ uninstall_epsilon() {
 show_post_install() {
     if [ "$IS_CI" = true ]; then
         # CI-specific output
+        local bin_path
+        if [ "$INSTALL_SOURCE" = true ]; then
+            bin_path="$INSTALL_DIR"  # Source: epsilon script at root
+        else
+            bin_path="$INSTALL_DIR/bin"  # Release: epsilon in bin/
+        fi
         echo ""
         echo "Add to your CI workflow:"
-        echo "  export PATH=\"$INSTALL_DIR/bin:\$PATH\""
+        echo "  export PATH=\"$bin_path:\$PATH\""
         echo "  export EPSILON_HOME=\"$INSTALL_DIR\""
     else
         echo ""
@@ -681,13 +796,20 @@ main() {
     platform_arch=$(detect_platform)
     success "Platform: $platform_arch"
 
-    local release_info
-    release_info=$(get_release_info "$INSTALL_VERSION")
+    if [ "$INSTALL_SOURCE" = true ]; then
+        # Source installation via git clone
+        install_from_source
+    else
+        # Release installation via download
+        local release_info
+        release_info=$(get_release_info "$INSTALL_VERSION")
 
-    local download_url
-    download_url=$(get_download_url "$release_info" "$platform_arch")
+        local download_url
+        download_url=$(get_download_url "$release_info" "$platform_arch")
 
-    download_and_extract "$download_url"
+        download_and_extract "$download_url"
+    fi
+
     create_symlinks
     install_completions
     update_shell_config
