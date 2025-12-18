@@ -1024,31 +1024,18 @@
 
 ;; shared-call is defined above - use shared-call-unified directly
 
-;; Missing stub functions
+;; Library handle for libffi extension
 (defvar *libffi-library* nil
   "Handle to the libffi extension library")
 
-(defun resolve-function-address (function-designator)
-  "Resolve function address from designator"
-  (etypecase function-designator
-    (symbol (lib:lib-function 
-             (lib:lib-open "libc") 
-             (string function-designator)))
-    (list (destructuring-bind (fn-name lib-name) function-designator
-            (lib:lib-function 
-             (lib:lib-open lib-name) 
-             (string fn-name))))))
+;; resolve-function-address is defined in libffi-calls.lisp
+;; ffi-call-auto is defined in libffi-calls.lisp
 
 (defun ffi-call (function-address return-type arg-types &rest args)
   "Direct FFI call with function address"
   (call-with-signature function-address return-type arg-types args))
 
-(defun ffi-call-auto (function-designator &rest args)
-  "Auto-discovering FFI call"
-  ;; Auto-discovery not implemented
-  (error "ffi-call-auto not yet implemented for ~A" function-designator))
-
-(defvar *primitive-type-map*)
+;; *primitive-type-map* is defined earlier in this file (line ~622)
 
 ;;;; New Trampoline-based Fast FFI
 
