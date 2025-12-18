@@ -453,7 +453,7 @@
   "Get the local address of the socket"
   (tcp-stream-local-address stream))
 
-(defun tcp-shutdown (stream how)
+(defun tcp-shutdown (stream &key (how :both))
   "Shutdown the TCP connection"
   (handler-case
       (let ((shutdown-how (ecase how

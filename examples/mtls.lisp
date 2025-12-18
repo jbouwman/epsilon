@@ -1,26 +1,12 @@
-;;;; TLS Demonstration Examples
-;;;;
-;;;; Examples showing TLS with HTTP/1.1
-;;;;
-;;;; Requires: epsilon.http, epsilon.crypto
+;;;; TLS with HTTP/1.1
 
-;; Load required modules
-(epsilon.loader:load-module epsilon.loader:*environment* "epsilon.http")
-(epsilon.loader:load-module epsilon.loader:*environment* "epsilon.crypto")
-
-(defpackage :epsilon.examples.mtls-demo
-  (:use :cl)
-  (:local-nicknames
-   (#:http #:epsilon.http.simple)
-   (#:server #:epsilon.http.server)
-   (#:req #:epsilon.http.request)
-   (#:resp #:epsilon.http.response)
-   (#:certs #:epsilon.crypto.certificates)
-   (#:path #:epsilon.path))
-  (:export #:run-demo
-           #:setup-demo-certificates))
-
-(in-package :epsilon.examples.mtls-demo)
+(package mtls
+         (import (epsilon.http.simple http)
+                 (epsilon.http.server server)
+                 (epsilon.http.request req)
+                 (epsilon.http.response resp)
+                 (epsilon.crypto.certificates certs)
+                 (epsilon.path path)))
 
 ;;;; Certificate Setup
 
@@ -98,7 +84,7 @@
 
 ;;;; Complete Demo
 
-(defun run-demo ()
+(defun main ()
   "Run TLS demonstration"
   (format t "~%")
   (format t "=====================================~%")
@@ -119,17 +105,3 @@
           (server:stop-server server))))
 
     (format t "~%=== Demo Complete ===~%")))
-
-;;;; Usage Instructions
-
-(defun print-usage ()
-  "Print usage instructions"
-  (format t "~%TLS Demo Usage:~%")
-  (format t "===============~%~%")
-  (format t "1. Run demo:~%")
-  (format t "   (epsilon.examples.mtls-demo:run-demo)~%~%")
-  (format t "2. Generate test certificates:~%")
-  (format t "   (epsilon.examples.mtls-demo:setup-demo-certificates)~%~%"))
-
-;; Print usage on load
-(print-usage)

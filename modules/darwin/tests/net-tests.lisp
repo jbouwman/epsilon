@@ -94,7 +94,7 @@
       (let* ((addr (net:make-socket-address "240.0.0.1" 12345)) ; Non-routable address
              (client (net:tcp-connect addr)))
         (is nil "Should have thrown an error")
-        (when client (net:tcp-shutdown client :both)))
+        (when client (net:tcp-shutdown client)))
     (net:network-error ()
       (is t "Got expected network error for unreachable address"))
     (error (e)
@@ -205,7 +205,7 @@
                   (handler-case
                       (let ((stream (net:tcp-accept listener)))
                         (is (typep stream 'net:tcp-stream))
-                        (net:tcp-shutdown stream :both))
+                        (net:tcp-shutdown stream))
                     (error (e)
                       (is nil (format nil "Accept failed: ~A" e)))))
                 :name "accept-thread")))
@@ -218,7 +218,7 @@
                  (client (net:tcp-connect connect-addr)))
             (is (typep client 'net:tcp-stream))
             (is (net:tcp-connected-p client))
-            (net:tcp-shutdown client :both))
+            (net:tcp-shutdown client))
           
           ;; Wait for accept thread to finish
           (sb-thread:join-thread accept-thread :timeout 2))
@@ -235,7 +235,7 @@
       (let* ((addr (net:make-socket-address "0.0.0.0" 65432))
              (client (net:tcp-connect addr)))
         (is nil "Should have thrown an error")
-        (when client (net:tcp-shutdown client :both)))
+        (when client (net:tcp-shutdown client)))
     (net:connection-refused ()
       (is t "Got expected connection-refused error"))
     (net:network-error (e)
@@ -267,7 +267,7 @@
                           (let ((bytes-read (net:tcp-read stream buffer)))
                             ;; Echo it back
                             (net:tcp-write stream buffer :end bytes-read)))
-                        (net:tcp-shutdown stream :both))
+                        (net:tcp-shutdown stream))
                     (error (e)
                       (is nil (format nil "Server error: ~A" e)))))
                 :name "echo-server")))
@@ -290,7 +290,7 @@
                                  (subseq buffer 0 bytes-read))))
                   (is-equal test-message response))))
             
-            (net:tcp-shutdown client :both))
+            (net:tcp-shutdown client))
           
           ;; Wait for server thread
           (sb-thread:join-thread server-thread :timeout 2))
@@ -502,7 +502,7 @@
   (when (server-thread fixture)
     (ignore-errors (sb-thread:join-thread (server-thread fixture) :timeout 0.5)))
   (dolist (conn (client-connections fixture))
-    (ignore-errors (net:tcp-shutdown conn :both))))
+    (ignore-errors (net:tcp-shutdown conn))))
 
 (defun echo-handler (client fixture)
   "Echo handler for TCP connections"
@@ -515,7 +515,7 @@
               (return))
             (net:tcp-write client buffer :end bytes-read))))
     (error () nil))
-  (net:tcp-shutdown client :both))
+  (net:tcp-shutdown client))
 
 (defun uppercase-handler (client fixture)
   "Handler that converts input to uppercase"
@@ -531,7 +531,7 @@
                    (upper (string-upcase str)))
               (net:tcp-write client upper)))))
     (error () nil))
-  (net:tcp-shutdown client :both))
+  (net:tcp-shutdown client))
 
 (defmacro with-tcp-fixture ((var &key (handler '#'echo-handler)) &body body)
   "Run body with a TCP test fixture"
@@ -626,7 +626,7 @@
       ;; Check that connection was accepted
       (is (not (null (client-connections fixture))))
       
-      (net:tcp-shutdown client :both))))
+      (net:tcp-shutdown client))))
 
 (deftest test-tcp-try-accept-non-blocking
   "Test non-blocking accept behavior"
@@ -647,9 +647,9 @@
       (let ((result (net:tcp-try-accept listener)))
         (is (typep result 'net:tcp-stream) "Should accept the connection")
         (when (typep result 'net:tcp-stream)
-          (net:tcp-shutdown result :both)))
+          (net:tcp-shutdown result)))
       
-      (net:tcp-shutdown client :both))))
+      (net:tcp-shutdown client))))
 
 (deftest test-tcp-poll-accept
   "Test poll-accept functionality"
@@ -672,9 +672,9 @@
       (let ((result (net:tcp-poll-accept listener waker)))
         (is (typep result 'net:tcp-stream) "Should return the connection")
         (when (typep result 'net:tcp-stream)
-          (net:tcp-shutdown result :both)))
+          (net:tcp-shutdown result)))
       
-      (net:tcp-shutdown client :both))))
+      (net:tcp-shutdown client))))
 
 (deftest test-tcp-incoming
   "Test tcp-incoming function"
@@ -713,7 +713,7 @@
         ;; Second call should return same stream
         (is (eq writer (net:tcp-stream-writer client)) "Should cache writer"))
       
-      (net:tcp-shutdown client :both))))
+      (net:tcp-shutdown client))))
 
 (deftest test-tcp-write-all
   "Test tcp-write-all function"
@@ -738,7 +738,7 @@
           (let ((received (sb-ext:octets-to-string (subseq buffer 0 bytes-read))))
             (is-equal test-data received "Should receive same data"))))
       
-      (net:tcp-shutdown client :both))))
+      (net:tcp-shutdown client))))
 
 (deftest test-tcp-flush
   "Test tcp-flush function - simplified without server"
@@ -750,7 +750,7 @@
                        (error () nil))))
         (when client
           (net:tcp-flush client)
-          (net:tcp-shutdown client :both))
+          (net:tcp-shutdown client))
         (is t "tcp-flush completed without error"))
     (error (e)
       (is t (format nil "tcp-flush handled error gracefully: ~A" (type-of e))))))
@@ -776,7 +776,7 @@
         (when (numberp result)
           (is (> result 0) "Should write some bytes")))
       
-      (net:tcp-shutdown client :both))))
+      (net:tcp-shutdown client))))
 
 (deftest test-tcp-poll-operations
   "Test poll operations for read/write"
@@ -796,7 +796,7 @@
         (is (or (eq result :pending) (numberp result))
             "Read should return :pending or data"))
       
-      (net:tcp-shutdown client :both))))
+      (net:tcp-shutdown client))))
 
 (deftest test-tcp-shutdown-modes
   "Test different shutdown modes"
@@ -806,20 +806,20 @@
       ;; Test shutdown read
       (let ((client1 (net:tcp-connect addr)))
         (sleep 0.05)  ; Give server time to accept
-        (net:tcp-shutdown client1 :read)
+        (net:tcp-shutdown client1 :how :read)
         (is (not (net:tcp-connected-p client1)) "Should mark as disconnected")
-        (net:tcp-shutdown client1 :write))
+        (net:tcp-shutdown client1 :how :write))
       
       ;; Test shutdown write
       (let ((client2 (net:tcp-connect addr)))
         (sleep 0.05)  ; Give server time to accept
-        (net:tcp-shutdown client2 :write)
-        (net:tcp-shutdown client2 :read))
+        (net:tcp-shutdown client2 :how :write)
+        (net:tcp-shutdown client2 :how :read))
       
       ;; Test shutdown both
       (let ((client3 (net:tcp-connect addr)))
         (sleep 0.05)  ; Give server time to accept
-        (net:tcp-shutdown client3 :both)
+        (net:tcp-shutdown client3)
         (is (not (net:tcp-connected-p client3)) "Should mark as disconnected")))))
 
 (deftest test-tcp-connection-refused
@@ -944,7 +944,7 @@
       (net:set-socket-option client :nodelay nil)
       (is (not (net:get-socket-option client :nodelay)) "TCP_NODELAY should be disabled")
       
-      (net:tcp-shutdown client :both))))
+      (net:tcp-shutdown client))))
 
 (deftest test-socket-option-errors
   "Test socket option error handling"
@@ -1091,7 +1091,7 @@
                                         "Should receive uppercased response")))))))
         ;; Cleanup
         (dolist (client clients)
-          (ignore-errors (net:tcp-shutdown client :both)))))))
+          (ignore-errors (net:tcp-shutdown client)))))))
 
 (deftest test-tcp-large-data-transfer
   "Test transferring large amounts of data"
@@ -1120,7 +1120,7 @@
         (let ((received (sb-ext:octets-to-string (subseq buffer 0 total-read))))
           (is-equal large-data received "Should receive same data")))
       
-      (net:tcp-shutdown client :both))))
+      (net:tcp-shutdown client))))
 
 ;;; ============================================================================
 ;;; Edge Cases and Corner Cases
@@ -1143,7 +1143,7 @@
         (let ((result (net:tcp-read client buffer)))
           (is (zerop result) "Reading into empty buffer should return 0")))
       
-      (net:tcp-shutdown client :both))))
+      (net:tcp-shutdown client))))
 
 (deftest test-address-edge-cases
   "Test address handling edge cases"
@@ -1189,7 +1189,7 @@
                    (sleep 0.1) ; Small delay to let polling start
                    (let* ((connect-addr (net:make-socket-address "127.0.0.1" port))
                           (client (net:tcp-connect connect-addr)))
-                     (net:tcp-shutdown client :both)))
+                     (net:tcp-shutdown client)))
                  :name "connect-thread")))
           
           ;; Wait for waker to be called or timeout
@@ -1228,7 +1228,7 @@
                        (let ((stream (net:tcp-accept listener)))
                          (sleep 0.2) ; Wait before sending data
                          (net:tcp-write-all stream test-data)
-                         (net:tcp-shutdown stream :both))
+                         (net:tcp-shutdown stream))
                      (error (e)
                        (format t "Accept thread error: ~A~%" e))))
                  :name "accept-thread")))
@@ -1252,7 +1252,7 @@
                    (bytes-read (net:tcp-read client buffer)))
               (is (> bytes-read 0) "Should read some data after polling indicates ready"))
             
-            (net:tcp-shutdown client :both)
+            (net:tcp-shutdown client)
             (sb-thread:join-thread accept-thread :timeout 2)))
         t)
     (error (e)
@@ -1276,7 +1276,7 @@
                    (handler-case
                        (let ((stream (net:tcp-accept listener)))
                          (sleep 1) ; Keep connection open
-                         (net:tcp-shutdown stream :both))
+                         (net:tcp-shutdown stream))
                      (error (e)
                        (format t "Accept thread error: ~A~%" e))))
                  :name "accept-thread")))
@@ -1291,7 +1291,7 @@
               (is (or (eq result :ready) (eq result :pending))
                   "Should return :ready or :pending for write polling"))
             
-            (net:tcp-shutdown client :both)
+            (net:tcp-shutdown client)
             (sb-thread:join-thread accept-thread :timeout 2)))
         t)
     (error (e)

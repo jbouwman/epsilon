@@ -130,7 +130,7 @@
                        (when (pooled-connection-tls-connection conn)
                          (epsilon.crypto:tls-close (pooled-connection-tls-connection conn)))
                        (when (pooled-connection-socket conn)
-                         (net:tcp-shutdown (pooled-connection-socket conn) :both)))
+                         (net:tcp-shutdown (pooled-connection-socket conn))))
                       (incf (pool-stats-connections-closed (connection-pool-stats pool)))
                       t)))
                 connections)))
@@ -163,7 +163,7 @@
               (let ((tls-context (epsilon.crypto:create-tls-context :server-p nil)))
                 (setf tls-conn (epsilon.crypto:tls-connect socket tls-context)))
             (error (e)
-              (net:tcp-shutdown socket :both)
+              (net:tcp-shutdown socket)
               (error "TLS handshake failed for ~A:~D: ~A" host port e))))
         
         (make-pooled-connection :socket socket
@@ -247,7 +247,7 @@
          (when (pooled-connection-tls-connection conn)
            (epsilon.crypto:tls-close (pooled-connection-tls-connection conn)))
          (when (pooled-connection-socket conn)
-           (net:tcp-shutdown (pooled-connection-socket conn) :both)))
+           (net:tcp-shutdown (pooled-connection-socket conn))))
         (sb-thread:with-mutex ((connection-pool-lock pool))
           (incf (pool-stats-connections-closed (connection-pool-stats pool)))))
       
@@ -270,7 +270,7 @@
                  (when (pooled-connection-tls-connection conn)
                    (epsilon.crypto:tls-close (pooled-connection-tls-connection conn)))
                  (when (pooled-connection-socket conn)
-                   (net:tcp-shutdown (pooled-connection-socket conn) :both)))
+                   (net:tcp-shutdown (pooled-connection-socket conn))))
                 (incf (pool-stats-connections-closed (connection-pool-stats pool)))))))))
 
 (defmacro with-pooled-connection ((conn-var host port &key ssl-p pool) &body body)
@@ -317,7 +317,7 @@
           (when (pooled-connection-tls-connection conn)
             (epsilon.crypto:tls-close (pooled-connection-tls-connection conn)))
           (when (pooled-connection-socket conn)
-            (net:tcp-shutdown (pooled-connection-socket conn) :both)))
+            (net:tcp-shutdown (pooled-connection-socket conn))))
          (incf (pool-stats-connections-closed (connection-pool-stats pool)))))
      (connection-pool-pools pool))
     (setf (connection-pool-pools pool) (map:make-map))))
