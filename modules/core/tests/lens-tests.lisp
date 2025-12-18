@@ -4,7 +4,8 @@
    #:epsilon.test)
   (:local-nicknames
    (#:lens #:epsilon.lens)
-   (#:map #:epsilon.map)))
+   (#:map #:epsilon.map)
+   (#:set #:epsilon.set)))
 
 (in-package #:epsilon.lens.tests)
 
@@ -126,6 +127,57 @@
              (lens:over (lens:filtered-lens #'evenp)
                         #'(lambda (x) (* x 2))
                         '(1 2 3 4 5 6)))))
+
+;;; each-lens with sets
+
+(deftest test-each-set-view
+  (let ((s (set:make-set 1 2 3)))
+    (is (set:set-p (lens:view (lens:each-lens) s)))
+    (is (= 3 (set:count (lens:view (lens:each-lens) s))))))
+
+(deftest test-each-set-over
+  (let* ((s (set:make-set 1 2 3))
+         (result (lens:over (lens:each-lens) #'1+ s)))
+    (is (set:set-p result))
+    (is (set:contains-p result 2))
+    (is (set:contains-p result 3))
+    (is (set:contains-p result 4))
+    (is (not (set:contains-p result 1)))))
+
+(deftest test-each-set-over-square
+  (let* ((s (set:make-set 1 2 3))
+         (result (lens:over (lens:each-lens) (lambda (x) (* x x)) s)))
+    (is (set:set-p result))
+    (is (set:contains-p result 1))
+    (is (set:contains-p result 4))
+    (is (set:contains-p result 9))))
+
+;;; filtered-lens with sets
+
+(deftest test-filtered-set-view
+  (let* ((s (set:make-set 1 2 3 4 5 6))
+         (result (lens:view (lens:filtered-lens #'evenp) s)))
+    (is (set:set-p result))
+    (is (= 3 (set:count result)))
+    (is (set:contains-p result 2))
+    (is (set:contains-p result 4))
+    (is (set:contains-p result 6))))
+
+(deftest test-filtered-set-over
+  (let* ((s (set:make-set 1 2 3 4))
+         (result (lens:over (lens:filtered-lens #'evenp)
+                            (lambda (x) (* x 10))
+                            s)))
+    (is (set:set-p result))
+    ;; Odd numbers unchanged
+    (is (set:contains-p result 1))
+    (is (set:contains-p result 3))
+    ;; Even numbers multiplied by 10
+    (is (set:contains-p result 20))
+    (is (set:contains-p result 40))
+    ;; Original evens removed
+    (is (not (set:contains-p result 2)))
+    (is (not (set:contains-p result 4)))))
 
 ;;; car/cdr lens tests
 

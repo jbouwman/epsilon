@@ -8,7 +8,8 @@
   (:shadow #:set)
   (:local-nicknames
    (:map :epsilon.map)
-   (:th :epsilon.threading))
+   (:th :epsilon.threading)
+   (:eset :epsilon.set))
   (:export
    ;; Lens type
    #:lens
@@ -187,34 +188,44 @@
 ;;; Traversals (lenses that focus on multiple values)
 
 (defun each-lens ()
-  "Traversal lens that focuses on each element of a list.
-   view returns the whole list.
+  "Traversal lens that focuses on each element of a list or set.
+   view returns the whole collection.
    over applies function to each element."
   (make-lens
-   #'identity  ; view returns whole list
+   #'identity  ; view returns whole collection
    (lambda (v s)
-     (declare (ignore v))
+     (declare (ignore v s))
      (error "each-lens does not support set, use over instead"))
    ;; over-fn: apply function to each element
    (lambda (f s)
-     (mapcar f s))))
+     (etypecase s
+       (list (mapcar f s))
+       (eset:hamt-set (eset:map s f))))))
 
 (defun filtered-lens (pred)
   "Traversal that focuses on elements matching PRED.
    view returns matching elements.
    over applies function to matching elements only."
   (make-lens
-   (lambda (s) (remove-if-not pred s))
+   (lambda (s)
+     (etypecase s
+       (list (remove-if-not pred s))
+       (eset:hamt-set (eset:filter pred s))))
    (lambda (v s)
-     (declare (ignore v))
+     (declare (ignore v s))
      (error "filtered-lens does not support set, use over instead"))
    ;; over-fn: apply function only to matching elements
    (lambda (f s)
-     (mapcar (lambda (x)
-               (if (funcall pred x)
-                   (funcall f x)
-                   x))
-             s))))
+     (etypecase s
+       (list (mapcar (lambda (x)
+                       (if (funcall pred x)
+                           (funcall f x)
+                           x))
+                     s))
+       (eset:hamt-set (eset:map s (lambda (x)
+                                    (if (funcall pred x)
+                                        (funcall f x)
+                                        x))))))))
 
 ;;; Utilities
 
