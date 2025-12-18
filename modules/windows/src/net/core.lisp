@@ -40,6 +40,7 @@
    #:tcp-poll-write
    #:tcp-peer-addr
    #:tcp-shutdown
+   #:tcp-close
    #:tcp-stream-reader
    #:tcp-stream-writer
    
@@ -454,6 +455,25 @@
                         (:both 2))))
     (sb-posix:shutdown (tcp-stream-handle stream) shutdown-how)
     (setf (tcp-connected-p stream) nil)))
+
+(defun tcp-close (socket-or-listener)
+  "Close a TCP listener or stream.
+   Works with both tcp-listener and tcp-stream objects."
+  (etypecase socket-or-listener
+    (tcp-listener
+     ;; Close the listener's socket handle
+     (let ((socket (tcp-listener-socket socket-or-listener)))
+       (when socket
+         (sb-bsd-sockets:socket-close socket))))
+    (tcp-stream
+     ;; Shutdown and close the stream's socket handle
+     (let ((socket (tcp-stream-handle socket-or-listener)))
+       (when socket
+         (handler-case
+             (sb-posix:shutdown socket 2)  ; SHUT_RDWR
+           (error () nil))
+         (sb-bsd-sockets:socket-close socket)
+         (setf (tcp-connected-p socket-or-listener) nil))))))
 
 ;;; ============================================================================
 ;;; UDP Operations

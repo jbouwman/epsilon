@@ -40,6 +40,7 @@
    #:tcp-poll-write
    #:tcp-peer-addr
    #:tcp-shutdown
+   #:tcp-close
    #:tcp-stream-reader
    #:tcp-stream-writer
    #:tcp-stream-handle
@@ -870,6 +871,33 @@
 (defun tcp-connected-p (stream)
   "Check if TCP stream is connected"
   (tcp-stream-connected-p stream))
+
+(defun tcp-close (socket-or-listener)
+  "Close a TCP listener or stream.
+   Works with both tcp-listener and tcp-stream objects."
+  (etypecase socket-or-listener
+    (tcp-listener
+     ;; Close the listener's socket handle
+     (let ((handle (tcp-listener-handle socket-or-listener)))
+       (when (and handle (>= handle 0))
+         ;; Clean up epoll if it exists
+         (when (tcp-listener-epoll socket-or-listener)
+           (epoll:epoll-close (tcp-listener-epoll socket-or-listener))
+           (setf (tcp-listener-epoll socket-or-listener) nil))
+         (%close handle))))
+    (tcp-stream
+     ;; Shutdown and close the stream's socket handle
+     (let ((handle (tcp-stream-handle socket-or-listener)))
+       (when (and handle (>= handle 0))
+         (handler-case
+             (%shutdown handle +shut-rdwr+)
+           (error () nil))
+         ;; Clean up epoll if it exists
+         (when (tcp-stream-epoll socket-or-listener)
+           (epoll:epoll-close (tcp-stream-epoll socket-or-listener))
+           (setf (tcp-stream-epoll socket-or-listener) nil))
+         (%close handle)
+         (setf (tcp-stream-connected-p socket-or-listener) nil))))))
 
 ;;; ============================================================================
 ;;; UDP Operations
