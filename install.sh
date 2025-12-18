@@ -319,14 +319,14 @@ get_download_url() {
     local release_info="$1"
     local platform_arch="$2"
 
-    # Extract version - portable across BSD and GNU sed
+    # Extract version using awk (portable across BSD and GNU)
     local version
-    version=$(echo "$release_info" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*"tag_name"[[:space:]]*:[[:space:]]*"v*//' | sed 's/".*//')
+    version=$(echo "$release_info" | awk -F'"' '/"tag_name"/ {print $4; exit}' | sed 's/^v//')
     info "Version: $version"
 
-    # Extract download URL for the platform
+    # Extract download URL for the platform using awk
     local download_url
-    download_url=$(echo "$release_info" | grep -o '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*"' | grep "${platform_arch}\.tar\.gz" | head -1 | sed 's/.*"browser_download_url"[[:space:]]*:[[:space:]]*"//' | sed 's/".*//')
+    download_url=$(echo "$release_info" | awk -F'"' '/"browser_download_url"/ {print $4}' | grep "${platform_arch}\.tar\.gz" | head -1)
 
     if [ -z "$download_url" ]; then
         error "No release found for platform: $platform_arch"
