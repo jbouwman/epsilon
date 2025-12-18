@@ -26,6 +26,7 @@
    (max-failures :initform 10)))
 
 (defmethod event ((formatter shell-report) (event-type (eql :start)) event-data)
+  (declare (ignore event-data))
   (format t "~&Running tests:~%~%"))
 
 (defmethod event ((formatter shell-report) (event-type (eql :start-group)) group)
@@ -124,6 +125,7 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
    (start-time :initform nil :accessor start-time)))
 
 (defmethod event ((formatter minimal-report) (event-type (eql :start)) event-data)
+  (declare (ignore event-data))
   (setf (start-time formatter) (get-internal-real-time))
   (format t "Running tests...~%"))
 
@@ -247,6 +249,7 @@ TOTAL-WIDTH specifies the desired total line width (default 78 characters)."
    (assertion-count :initform 0 :accessor assertion-count)))
 
 (defmethod event ((formatter verbose-report) (event-type (eql :start)) event-data)
+  (declare (ignore event-data))
   (format t "~&== EPSILON TEST RUNNER ==~%")
   (format t "   Verbose Mode Active~%~%"))
 
