@@ -669,12 +669,31 @@ fi
   (format t "~%"))
 
 (defun create-checksum-file (archive-name)
-  "Create SHA256 checksum file for archive using built-in SHA-256 implementation."
+  "Create SHA256 checksum file for archive using system sha256sum/shasum.
+   Using shell commands ensures consistency with install.sh verification
+   and avoids race conditions with file I/O."
   (format t "  Computing SHA-256 checksum...~%")
-  (let* ((file-bytes (fs:read-file-bytes archive-name))
-         (sha256-digest (digest:sha256 file-bytes))
-         (hex-string (format nil "~{~2,'0x~}" (coerce sha256-digest 'list)))
-         (checksum-content (format nil "~A  ~A~%" hex-string archive-name)))
+  ;; Use sync to ensure file is fully written to disk
+  (handler-case
+      (process:run-sync "sync" :check-executable nil)
+    (error () nil))  ; Ignore if sync not available
+  ;; Compute checksum using system tools (same as install.sh uses)
+  (let* ((basename (path:path-name (path:make-path archive-name)))
+         (checksum-output
+           (handler-case
+               ;; Try sha256sum first (Linux)
+               (process:run-sync "sha256sum"
+                                 :args (list archive-name)
+                                 :check-executable nil)
+             (error ()
+               ;; Fall back to shasum (macOS)
+               (process:run-sync "shasum"
+                                 :args (list "-a" "256" archive-name)
+                                 :check-executable nil))))
+         ;; Extract just the hash (first field, lowercase)
+         (hash (string-downcase (str:trim (first (str:split #\Space (str:trim checksum-output))))))
+         ;; Format: hash  filename (two spaces, relative filename)
+         (checksum-content (format nil "~A  ~A~%" hash basename)))
     (fs:write-file-string (format nil "~A.sha256" archive-name) checksum-content)
     (format t "  ✓ Checksum file created: ~A.sha256~%" archive-name)))
 
