@@ -1,1 +1,34 @@
-{"tags":["scope:epsilon","type:library"],"targets":{"build":{"options":{"cwd":".","command":"./epsilon --module epsilon.crypto --eval t"},"inputs":["{projectRoot}/**/*.lisp","{projectRoot}/module.lisp"],"executor":"nx:run-commands"},"lint":{"options":{"cwd":".","command":"echo 'Lint: epsilon.crypto'"},"executor":"nx:run-commands"},"test":{"options":{"cwd":".","command":"./epsilon --test epsilon.crypto"},"dependsOn":["build"],"inputs":["{projectRoot}/**/*.lisp"],"executor":"nx:run-commands"}},"$schema":"../../node_modules/nx/schemas/project-schema.json","name":"epsilon-crypto","sourceRoot":".","implicitDependencies":["epsilon-foreign","epsilon-darwin","epsilon-library"],"projectType":"library"}
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "epsilon-crypto",
+  "sourceRoot": ".",
+  "projectType": "library",
+  "tags": ["scope:epsilon", "type:library"],
+  "implicitDependencies": ["epsilon-foreign", "epsilon-darwin", "epsilon-library"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "./epsilon --module epsilon.crypto --eval t"
+      },
+      "inputs": ["{projectRoot}/**/*.lisp", "{projectRoot}/module.lisp"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "cwd": ".",
+        "command": "./epsilon --test epsilon.crypto"
+      },
+      "inputs": ["{projectRoot}/**/*.lisp"]
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "echo 'Lint: epsilon.crypto'"
+      }
+    }
+  }
+}

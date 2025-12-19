@@ -1,1 +1,34 @@
-{"tags":["scope:epsilon","type:library","platform:windows"],"targets":{"build":{"options":{"cwd":".","command":"if [ \"$(uname -s)\" != \"Windows\" ]; then echo 'Skipping: wrong platform (need windows)'; exit 0; fi && ./epsilon --module epsilon.windows --eval t"},"inputs":["{projectRoot}/**/*.lisp","{projectRoot}/module.lisp"],"executor":"nx:run-commands"},"lint":{"options":{"cwd":".","command":"if [ \"$(uname -s)\" != \"Windows\" ]; then echo 'Skipping: wrong platform (need windows)'; exit 0; fi && echo 'Lint: epsilon.windows'"},"executor":"nx:run-commands"},"test":{"options":{"cwd":".","command":"if [ \"$(uname -s)\" != \"Windows\" ]; then echo 'Skipping: wrong platform (need windows)'; exit 0; fi && ./epsilon --test epsilon.windows"},"dependsOn":["build"],"inputs":["{projectRoot}/**/*.lisp"],"executor":"nx:run-commands"}},"$schema":"../../node_modules/nx/schemas/project-schema.json","name":"epsilon-windows","sourceRoot":".","implicitDependencies":null,"projectType":"library"}
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "epsilon-windows",
+  "sourceRoot": ".",
+  "projectType": "library",
+  "tags": ["scope:epsilon", "type:library", "platform:windows"],
+  "implicitDependencies": null,
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "if [ \"$(uname -s)\" != \"Windows\" ]; then echo 'Skipping: wrong platform (need windows)'; exit 0; fi && ./epsilon --module epsilon.windows --eval t"
+      },
+      "inputs": ["{projectRoot}/**/*.lisp", "{projectRoot}/module.lisp"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "cwd": ".",
+        "command": "if [ \"$(uname -s)\" != \"Windows\" ]; then echo 'Skipping: wrong platform (need windows)'; exit 0; fi && ./epsilon --test epsilon.windows"
+      },
+      "inputs": ["{projectRoot}/**/*.lisp"]
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "if [ \"$(uname -s)\" != \"Windows\" ]; then echo 'Skipping: wrong platform (need windows)'; exit 0; fi && echo 'Lint: epsilon.windows'"
+      }
+    }
+  }
+}

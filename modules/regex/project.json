@@ -1,1 +1,34 @@
-{"tags":["scope:epsilon","type:library"],"targets":{"build":{"options":{"cwd":".","command":"./epsilon --module epsilon.regex --eval t"},"inputs":["{projectRoot}/**/*.lisp","{projectRoot}/module.lisp"],"executor":"nx:run-commands"},"lint":{"options":{"cwd":".","command":"echo 'Lint: epsilon.regex'"},"executor":"nx:run-commands"},"test":{"options":{"cwd":".","command":"./epsilon --test epsilon.regex"},"dependsOn":["build"],"inputs":["{projectRoot}/**/*.lisp"],"executor":"nx:run-commands"}},"$schema":"../../node_modules/nx/schemas/project-schema.json","name":"epsilon-regex","sourceRoot":".","implicitDependencies":null,"projectType":"library"}
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "epsilon-regex",
+  "sourceRoot": ".",
+  "projectType": "library",
+  "tags": ["scope:epsilon", "type:library"],
+  "implicitDependencies": null,
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "./epsilon --module epsilon.regex --eval t"
+      },
+      "inputs": ["{projectRoot}/**/*.lisp", "{projectRoot}/module.lisp"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "cwd": ".",
+        "command": "./epsilon --test epsilon.regex"
+      },
+      "inputs": ["{projectRoot}/**/*.lisp"]
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "echo 'Lint: epsilon.regex'"
+      }
+    }
+  }
+}
