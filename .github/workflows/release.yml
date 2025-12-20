@@ -82,29 +82,12 @@ jobs:
         run: |
           find artifacts/ -type f | sort
 
-      - name: Extract release notes from CHANGELOG
-        id: changelog
-        run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
-          if [ -f "CHANGELOG.md" ]; then
-            # Extract section for this version
-            NOTES=$(sed -n "/^## \[${VERSION}\]/,/^## \[/p" CHANGELOG.md | sed '1d;$d' | head -50)
-            if [ -z "$NOTES" ]; then
-              NOTES="Release ${VERSION}"
-            fi
-          else
-            NOTES="Release ${VERSION}"
-          fi
-          # Write to file for multiline support
-          echo "$NOTES" > release_notes.md
-          echo "notes_file=release_notes.md" >> "$GITHUB_OUTPUT"
-
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/*.tar.gz
             artifacts/*.sha256
-          body_path: release_notes.md
+          generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}

@@ -8,7 +8,7 @@
   (:local-nicknames
    (:opt :epsilon.option)
    (:result :epsilon.result)
-   (:proto :epsilon.protocol.ext))
+   (:proto :epsilon.protocol))
   (:export
    #:do-m
    #:do-option
