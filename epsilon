@@ -3,15 +3,28 @@
 # Epsilon command-line interface
 #
 # Works from fresh checkout or system installation.
-# Requires SBCL to be installed and available in PATH.
+# Uses bundled SBCL if available, otherwise system SBCL.
 #
 
 set -eu
 
 # The user's working directory
 export EPSILON_USER="$PWD"
+
+# Resolve symlinks to find the actual epsilon installation
+SCRIPT="$0"
+while [ -L "$SCRIPT" ]; do
+    SCRIPT_DIR="$(cd "$(dirname "$SCRIPT")" && pwd)"
+    SCRIPT="$(readlink "$SCRIPT")"
+    # Handle relative symlinks
+    case "$SCRIPT" in
+        /*) ;;
+        *) SCRIPT="$SCRIPT_DIR/$SCRIPT" ;;
+    esac
+done
+
 # The directory where epsilon is located
-export EPSILON_HOME="$(cd "$(dirname "$0")" && pwd)"
+export EPSILON_HOME="$(cd "$(dirname "$SCRIPT")" && pwd)"
 EPSILON_BOOT="$EPSILON_HOME/modules/core/src/epsilon.lisp"
 
 # Detect boot script
@@ -20,9 +33,22 @@ if ! [ -f "$EPSILON_BOOT" ]; then
     exit 1
 fi
 
-# Check if SBCL is available
-if ! command -v sbcl >/dev/null 2>&1; then
-    echo "Error: SBCL not found in PATH" >&2
+# Find SBCL: prefer bundled, fall back to system
+SBCL=""
+SBCL_CORE_ARG=""
+
+if [ -x "$EPSILON_HOME/bin/sbcl" ]; then
+    # Use bundled SBCL
+    SBCL="$EPSILON_HOME/bin/sbcl"
+    if [ -f "$EPSILON_HOME/lib/sbcl-libs/sbcl.core" ]; then
+        export SBCL_HOME="$EPSILON_HOME/lib/sbcl-libs"
+        SBCL_CORE_ARG="--core $SBCL_HOME/sbcl.core"
+    fi
+elif command -v sbcl >/dev/null 2>&1; then
+    # Use system SBCL
+    SBCL="sbcl"
+else
+    echo "Error: SBCL not found" >&2
     echo "Please install SBCL: https://www.sbcl.org/" >&2
     exit 1
 fi
@@ -80,13 +106,13 @@ fi
 
 # Note: SBCL args must be unquoted, user args must be quoted
 if [ $# -eq 0 ]; then
-    exec sbcl $SBCL_RUNTIME_ARGS \
+    exec "$SBCL" $SBCL_CORE_ARG $SBCL_RUNTIME_ARGS \
          $SBCL_TOPLEVEL_ARGS \
          --load "$EPSILON_BOOT" \
          --eval "(epsilon.main:cli-run)" \
          --
 else
-    exec sbcl $SBCL_RUNTIME_ARGS \
+    exec "$SBCL" $SBCL_CORE_ARG $SBCL_RUNTIME_ARGS \
          $SBCL_TOPLEVEL_ARGS \
          --load "$EPSILON_BOOT" \
          --eval "(epsilon.main:cli-run)" \

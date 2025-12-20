@@ -503,72 +503,25 @@
     (format t "  ✓ Source tree copied successfully~%")))
 
 (defun copy-epsilon-script (release-dir)
-  "Create a release-specific epsilon wrapper script."
+  "Copy the epsilon script to the release bin directory."
   (format t "Copying epsilon script...~%")
-  
-  (let ((bin-dir (path:path-string (path:path-join release-dir "bin")))
-        (target-script (path:path-string (path:path-join release-dir "bin" "epsilon"))))
-    
+
+  (let* ((bin-dir (path:path-string (path:path-join release-dir "bin")))
+         (target-script (path:path-string (path:path-join release-dir "bin" "epsilon")))
+         (source-script (path:path-string
+                         (path:path-join (namestring (fs:current-directory)) "epsilon"))))
+
     (fs:make-dirs bin-dir)
-    
-    ;; Create a release-specific wrapper script
-    (fs:write-file-string target-script
-"#!/bin/sh
-#
-# Epsilon command-line interface (Release version)
-#
+    (fs:copy-file source-script target-script)
 
-set -eu
-
-# The user's working directory
-export EPSILON_USER=\"$PWD\"
-# The directory where epsilon is installed (parent of bin)
-export EPSILON_HOME=\"$(cd \"$(dirname \"$0\")/..\" && pwd)\"
-EPSILON_BOOT=\"$EPSILON_HOME/modules/core/src/epsilon.lisp\"
-
-# Detect boot script
-if ! [ -f \"$EPSILON_BOOT\" ]; then
-    echo \"Error: epsilon boot script not found in $EPSILON_HOME\" >&2
-    exit 1
-fi
-
-# Use bundled SBCL if available, otherwise system SBCL
-SBCL_ARGS=\"--noinform --no-sysinit --no-userinit --disable-debugger --quit\"
-if [ -x \"$EPSILON_HOME/bin/sbcl\" ]; then
-    SBCL=\"$EPSILON_HOME/bin/sbcl\"
-    # Use bundled core file
-    if [ -f \"$EPSILON_HOME/lib/sbcl-libs/sbcl.core\" ]; then
-        export SBCL_HOME=\"$EPSILON_HOME/lib/sbcl-libs\"
-        SBCL_ARGS=\"--core $SBCL_HOME/sbcl.core $SBCL_ARGS\"
-    fi
-else
-    SBCL=\"sbcl\"
-fi
-
-# Change to EPSILON_HOME for relative path loading
-cd \"$EPSILON_HOME\"
-
-# Execute epsilon with all arguments
-if [ $# -eq 0 ]; then
-    exec \"$SBCL\" $SBCL_ARGS --load \"$EPSILON_BOOT\" --eval \"(epsilon.main:cli-run)\" --
-else
-    exec \"$SBCL\" $SBCL_ARGS --load \"$EPSILON_BOOT\" --eval \"(epsilon.main:cli-run)\" -- \"$@\"
-fi
-")
-    
-    ;; Make executable (assuming Unix-like system)
+    ;; Make executable
     #+unix
     (handler-case
-        (progn
-          (format t "  Making script executable...~%")
-          (process:run-sync "chmod" 
-                            :args (list "+x" target-script)
-                            :check-executable nil))
-      (process:command-not-found ()
-        (log:warn "chmod command not found - script may not be executable"))
+        (sb-posix:chmod target-script #o755)
       (error (e)
         (log:warn "Could not make epsilon script executable: ~A" e)))
-    (format t "  ✓ Epsilon script created successfully~%")))
+
+    (format t "  ✓ Epsilon script copied~%")))
 
 (defun create-sbcl-bundle (release-dir)
   "Bundle SBCL with the release."
