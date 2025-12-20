@@ -364,34 +364,43 @@
   (let ((dir-path (if (typep path 'path) path (make-path path))))
     (when (and dir-path (path-directory-p dir-path))
       (let* ((path-string (path-string dir-path))
-             (search-pattern (concatenate 'string path-string *separator* "*"))
+             ;; SBCL needs different patterns for files vs directories:
+             ;; - path/* matches files only
+             ;; - path/*/ matches directories only
+             (file-pattern (concatenate 'string path-string *separator* "*"))
+             (dir-pattern (concatenate 'string path-string *separator* "*" *separator*))
              (results '()))
-        
+
         (handler-case
-            (dolist (entry (directory search-pattern))
-              (let* ((entry-pathname (pathname entry))
-                     (entry-name (if (pathname-name entry-pathname)
-                                     ;; It's a file
-                                     (if (pathname-type entry-pathname)
-                                         (concatenate 'string 
-                                                      (pathname-name entry-pathname)
-                                                      "."
-                                                      (pathname-type entry-pathname))
-                                         (pathname-name entry-pathname))
-                                     ;; It's a directory - get last directory component
-                                     (car (last (pathname-directory entry-pathname))))))
-                (when (and entry-name
-                           (not (string= entry-name "."))
-                           (not (string= entry-name "..")))
-                  (let ((full-path (path-join dir-path entry-name)))
-                    (case type
-                      (:all (push full-path results))
-                      (:files (when (path-file-p full-path)
-                                (push full-path results)))
-                      (:directories (when (path-directory-p full-path)
-                                      (push full-path results))))))))
+            (progn
+              ;; Search for files (unless only directories requested)
+              (unless (eq type :directories)
+                (dolist (entry (directory file-pattern))
+                  (let* ((entry-pathname (pathname entry))
+                         (entry-name (when (pathname-name entry-pathname)
+                                       (if (pathname-type entry-pathname)
+                                           (concatenate 'string
+                                                        (pathname-name entry-pathname)
+                                                        "."
+                                                        (pathname-type entry-pathname))
+                                           (pathname-name entry-pathname)))))
+                    (when (and entry-name
+                               (not (string= entry-name "."))
+                               (not (string= entry-name "..")))
+                      (push (path-join dir-path entry-name) results)))))
+
+              ;; Search for directories (unless only files requested)
+              (unless (eq type :files)
+                (dolist (entry (directory dir-pattern))
+                  (let* ((entry-pathname (pathname entry))
+                         (entry-name (car (last (pathname-directory entry-pathname)))))
+                    (when (and entry-name
+                               (stringp entry-name)
+                               (not (string= entry-name "."))
+                               (not (string= entry-name "..")))
+                      (push (path-join dir-path entry-name) results))))))
           (error () nil))
-        
+
         (nreverse results)))))
 
 (defun walk-directory (root-path &key recursive (type :all) filter)

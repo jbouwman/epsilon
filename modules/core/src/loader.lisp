@@ -378,27 +378,31 @@
   "The default build environment.")
 
 (defun environment ()
-  "Get or create the default environment"
+  "Get or create the default environment.
+   Module directories are determined by:
+   - EPSILON_HOME: The main epsilon installation directory (required).
+     The 'modules' subdirectory is always scanned.
+   - EPSILON_PATH: A colon-separated list of additional directories to scan
+     for modules (optional)."
   (unless *environment*
     (setf *environment* (make-build-environment))
-    ;; Use proper environment accessor instead of direct posix call
-    (let ((epsilon-home (env:getenv "EPSILON_HOME")))
+    (let ((epsilon-home (env:getenv "EPSILON_HOME"))
+          (epsilon-path (env:getenv "EPSILON_PATH")))
       (unless epsilon-home
         (error "EPSILON_HOME environment variable not set"))
-      ;; Scan main modules directory
+      ;; Scan main modules directory from EPSILON_HOME
       (let ((modules-path (path:path-join epsilon-home "modules")))
         (unless (probe-file (path:path-string modules-path))
           (error "Epsilon modules directory not found: ~A" modules-path))
         (scan-module-directory *environment* modules-path))
-      ;; Scan contrib modules directory if it exists
-      (let ((contrib-path (path:path-join epsilon-home "contrib" "modules")))
-        (when (probe-file (path:path-string contrib-path))
-          (scan-module-directory *environment* contrib-path)))
-      ;; Scan user-installed modules directory (~/.epsilon/modules/)
-      (let ((user-modules-path (path:path-join (namestring (user-homedir-pathname)) ".epsilon" "modules")))
-        (when (probe-file (path:path-string user-modules-path))
-          (log:debug "Scanning user modules directory: ~A" (path:path-string user-modules-path))
-          (scan-module-directory *environment* user-modules-path)))
+      ;; Scan additional directories from EPSILON_PATH
+      (when epsilon-path
+        (dolist (dir (seq:realize (str:split #\: epsilon-path)))
+          (let ((dir-path (str:trim dir)))
+            (when (and (plusp (length dir-path))
+                       (probe-file dir-path))
+              (log:debug "Scanning module directory from EPSILON_PATH: ~A" dir-path)
+              (scan-module-directory *environment* dir-path)))))
       ;; Verify core modules are available
       (let ((core-modules '("epsilon.core")))
         (dolist (module-name core-modules)
