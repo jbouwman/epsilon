@@ -32,7 +32,6 @@
     "hex"
     "url"
     "protocol"
-    "protocol-ext"
     "do-notation"
     "effects"
     "properties"

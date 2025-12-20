@@ -691,7 +691,7 @@ fi
                                  :args (list "-a" "256" archive-name)
                                  :check-executable nil))))
          ;; Extract just the hash (first field, lowercase)
-         (hash (string-downcase (str:trim (first (str:split #\Space (str:trim checksum-output))))))
+         (hash (string-downcase (str:trim (seq:first (str:split #\Space (str:trim checksum-output))))))
          ;; Format: hash  filename (two spaces, relative filename)
          (checksum-content (format nil "~A  ~A~%" hash basename)))
     (fs:write-file-string (format nil "~A.sha256" archive-name) checksum-content)
