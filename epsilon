@@ -24,7 +24,17 @@ while [ -L "$SCRIPT" ]; do
 done
 
 # The directory where epsilon is located
-export EPSILON_HOME="$(cd "$(dirname "$SCRIPT")" && pwd)"
+# Handle both root-level (./epsilon) and bin-level (./bin/epsilon) layouts
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT")" && pwd)"
+if [ -d "$SCRIPT_DIR/modules" ]; then
+    # Script is at root level (development layout)
+    export EPSILON_HOME="$SCRIPT_DIR"
+elif [ -d "$SCRIPT_DIR/../modules" ]; then
+    # Script is in bin/ subdirectory (release layout)
+    export EPSILON_HOME="$(cd "$SCRIPT_DIR/.." && pwd)"
+else
+    export EPSILON_HOME="$SCRIPT_DIR"
+fi
 EPSILON_BOOT="$EPSILON_HOME/modules/core/src/epsilon.lisp"
 
 # Detect boot script

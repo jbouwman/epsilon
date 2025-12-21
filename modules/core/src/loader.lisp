@@ -26,17 +26,17 @@
    load-module-resources
    sort-sources
    project-resources
-   
+
    ;; REPL environment
    *environment*
-   
+
    find-module
    name
    version
    location
    metadata
    source
-   
+
    ;; From loader.environment
    ;; Environment class
    build-environment
@@ -54,7 +54,14 @@
    module-loaded-p
    module-load-time
    module-uri
-   module-metadata))
+   module-metadata
+
+   ;; Workspace module loading
+   load-workspace-modules
+
+   ;; SBCL require integration
+   epsilon-module-provider
+   install-module-provider))
 
 (in-package epsilon.loader)
 
@@ -240,7 +247,8 @@
             (push (format nil "Invalid configuration in ~A: :sources and :tests must not overlap, found common directories: ~{~A~^, ~}"
                          filepath common) errors)))))
     
-    ;; NEW: Validate that source and test directories actually exist
+    ;; Validate that source directories actually exist
+    ;; Note: :tests directories are optional - don't error if they don't exist
     (let ((base-path (path:path-parent (path:make-path filepath))))
       (flet ((check-directories (field-name dirs)
                (when (and dirs (listp dirs))
@@ -252,8 +260,7 @@
                                    (fs:dir-p path-str))
                          (push (format nil "Invalid ~A directory '~A' in ~A: directory does not exist"
                                       field-name dir filepath) errors))))))))
-        (check-directories ":sources" (getf metadata :sources))
-        (check-directories ":tests" (getf metadata :tests))))
+        (check-directories ":sources" (getf metadata :sources))))
     
     ;; Return errors (NIL if no errors)
     (when errors (nreverse errors))))
@@ -379,36 +386,107 @@
 
 (defun environment ()
   "Get or create the default environment.
-   Module directories are determined by:
-   - EPSILON_HOME: The main epsilon installation directory (required).
-     The 'modules' subdirectory is always scanned.
-   - EPSILON_PATH: A colon-separated list of additional directories to scan
-     for modules (optional)."
+
+   Module discovery uses workspace.lisp files from two directories
+   set by the epsilon shell script:
+
+   - EPSILON_HOME: The epsilon installation directory (required).
+     Must contain a workspace.lisp that defines the core modules.
+
+   - EPSILON_USER: The user's working directory (optional).
+     If it contains a workspace.lisp, those modules are also loaded.
+     User modules take precedence over home modules with the same name.
+
+   Each workspace.lisp is expanded into a list of module paths.
+   The environment is built from the combined module list."
   (unless *environment*
     (setf *environment* (make-build-environment))
     (let ((epsilon-home (env:getenv "EPSILON_HOME"))
-          (epsilon-path (env:getenv "EPSILON_PATH")))
+          (epsilon-user (env:getenv "EPSILON_USER")))
+
+      ;; EPSILON_HOME is required and must have workspace.lisp
       (unless epsilon-home
         (error "EPSILON_HOME environment variable not set"))
-      ;; Scan main modules directory from EPSILON_HOME
-      (let ((modules-path (path:path-join epsilon-home "modules")))
-        (unless (probe-file (path:path-string modules-path))
-          (error "Epsilon modules directory not found: ~A" modules-path))
-        (scan-module-directory *environment* modules-path))
-      ;; Scan additional directories from EPSILON_PATH
-      (when epsilon-path
-        (dolist (dir (seq:realize (str:split #\: epsilon-path)))
-          (let ((dir-path (str:trim dir)))
-            (when (and (plusp (length dir-path))
-                       (probe-file dir-path))
-              (log:debug "Scanning module directory from EPSILON_PATH: ~A" dir-path)
-              (scan-module-directory *environment* dir-path)))))
+
+      (let ((home-workspace (path:path-string
+                             (path:path-join epsilon-home "workspace.lisp"))))
+        (unless (probe-file home-workspace)
+          (error "No workspace.lisp found in EPSILON_HOME: ~A" epsilon-home))
+
+        ;; Load EPSILON_HOME workspace first (base modules)
+        (log:info "Loading workspace from EPSILON_HOME: ~A" epsilon-home)
+        (load-workspace-modules *environment* epsilon-home))
+
+      ;; Load EPSILON_USER workspace if present and different from EPSILON_HOME
+      (when (and epsilon-user
+                 (not (equal (truename epsilon-home)
+                             (ignore-errors (truename epsilon-user)))))
+        (let ((user-workspace (path:path-string
+                               (path:path-join epsilon-user "workspace.lisp"))))
+          (when (probe-file user-workspace)
+            (log:info "Loading workspace from EPSILON_USER: ~A" epsilon-user)
+            (load-workspace-modules *environment* epsilon-user))))
+
       ;; Verify core modules are available
-      (let ((core-modules '("epsilon.core")))
-        (dolist (module-name core-modules)
-          (unless (get-module *environment* module-name)
-            (error "Core module ~A not found" module-name))))))
+      (unless (get-module *environment* "epsilon.core")
+        (error "Core module epsilon.core not found"))
+
+      ;; Register epsilon module provider with SBCL's require
+      (install-module-provider)))
   *environment*)
+
+(defun epsilon-module-provider (module-name)
+  "SBCL module provider for epsilon modules.
+   Called by REQUIRE when a module is not already loaded."
+  (when *environment*
+    (let* ((name (string-downcase (string module-name)))
+           (module-info (get-module *environment* name)))
+      (when module-info
+        (unless (module-loaded-p module-info)
+          (log:info "Loading module: ~A" name)
+          (load-module *environment* name))
+        t))))
+
+(defun install-module-provider ()
+  "Install epsilon's module provider into SBCL's require mechanism."
+  (pushnew 'epsilon-module-provider sb-ext:*module-provider-functions*))
+
+(defun load-workspace-modules (environment workspace-path)
+  "Load modules from a workspace.lisp file into the environment.
+   WORKSPACE-PATH is a directory containing workspace.lisp."
+  (let* ((ws-file (path:path-string
+                   (path:path-join workspace-path "workspace.lisp")))
+         (metadata (handler-case
+                       (with-open-file (stream ws-file)
+                         (read stream))
+                     (error (e)
+                       (error "Failed to parse workspace at ~A: ~A" ws-file e))))
+         (ws-name (getf metadata :name))
+         (module-paths (getf metadata :modules))
+         (workspace-refs (getf metadata :workspaces)))
+
+    (log:debug "Workspace '~A': ~D modules, ~D referenced workspaces"
+               ws-name (length module-paths) (length workspace-refs))
+
+    ;; Register modules from this workspace
+    (dolist (rel-path module-paths)
+      (let ((abs-path (path:path-string
+                       (path:path-join workspace-path rel-path))))
+        (when (probe-file abs-path)
+          (register-module environment abs-path))))
+
+    ;; Load referenced workspaces (for transitive dependencies)
+    (dolist (ref-path workspace-refs)
+      (let ((abs-ref-path
+             (if (path:path-absolute-p (path:make-path ref-path))
+                 ref-path
+                 (path:path-string
+                  (path:path-join workspace-path ref-path)))))
+        (let ((ref-ws-file (path:path-string
+                            (path:path-join abs-ref-path "workspace.lisp"))))
+          (when (probe-file ref-ws-file)
+            (load-workspace-modules environment abs-ref-path)))))))
+
 
 (defun module-uri (module-info)
   (module-location module-info))
