@@ -76,10 +76,10 @@
   "Test basic compilation capture"
   (hooks:with-compilation-capture ()
     ;; Simulate capturing a warning
-    (hooks:capture-compiler-condition 
+    (hooks:capture-compiler-condition
      (make-condition 'simple-warning :format-control "Test warning")
      :warning)
-    
+
     (is-= 1 (length hooks:*current-compilation-messages*))
     (let ((msg (first hooks:*current-compilation-messages*)))
       (is-equal :warning (api:compilation-message-severity msg))
@@ -108,7 +108,7 @@
 (deftest test-compile-form-with-warning
   "Test compilation with warnings"
   (let ((result (compile:compile-form-structured
-                 '(lambda (x) 
+                 '(lambda (x)
                    (declare (ignore x))
                    (+ y 1))  ; y is undefined
                  :name 'test-warning)))
@@ -139,23 +139,23 @@
   (let ((temp-file "/tmp/epsilon-test-compile.lisp"))
     (with-open-file (stream temp-file :direction :output :if-exists :supersede)
       (format stream "line 1~%line 2~%line 3~%"))
-    
+
     (unwind-protect
          (progn
            ;; Cache the file
            (location:cache-file-lines temp-file)
-           
+
            ;; Test position to line conversion
            (multiple-value-bind (line column)
                (location:file-position-to-line-column temp-file 0)
              (is-= 1 line)
              (is-= 1 column))
-           
+
            (multiple-value-bind (line column)
                (location:file-position-to-line-column temp-file 7)  ; Start of line 2
              (is-= 2 line)
              (is-= 1 column)))
-      
+
       ;; Clean up
       (delete-file temp-file))))
 
@@ -199,7 +199,7 @@
     (let ((errors (api:get-errors result)))
       (is-= 1 (length errors))
       (is-equal "err" (api:compilation-message-text (first errors))))
-    
+
     (let ((warnings (api:get-warnings result)))
       (is-= 2 (length warnings))  ; warnings and style-warnings
       (is (member "warn" warnings :key #'api:compilation-message-text :test #'equal))
@@ -213,10 +213,10 @@
     (compile:with-compilation-observer
         (lambda (event &rest args)
           (push (cons event args) events))
-      
+
       ;; Compile something simple
       (compile:compile-form-structured '(lambda (x) x)))
-    
+
     ;; Should have received start and end events
     (is (assoc :compilation-start events))
     (is (assoc :compilation-end events))))

@@ -90,6 +90,15 @@
   (hash 0 :type fixnum)
   values)
 
+(defmethod make-load-form ((self leaf-node) &optional environment)
+  (make-load-form-saving-slots self :environment environment))
+
+(defmethod make-load-form ((self bitmap-node) &optional environment)
+  (make-load-form-saving-slots self :environment environment))
+
+(defmethod make-load-form ((self collision-node) &optional environment)
+  (make-load-form-saving-slots self :environment environment))
+
 ;; Utility functions (same as map)
 
 (declaim (inline get-index bitmap-present-p bitmap-index))
@@ -176,13 +185,13 @@
                 (if (typep node2 'collision-node)
                     (collision-node-values node2)
                     (list (leaf-node-value node2))))))
-      
+
       ;; Same index: recurse deeper
       ((= index1 index2)
        (let ((new-child (merge-nodes (make-bitmap-node :bitmap 0 :array #())
                                      node1 node2 (+ shift +bit-partition+))))
          (insert-node parent (ash 1 index1) 0 new-child)))
-      
+
       ;; Different indices: store both
       (t
        (let ((bitmap (logior (ash 1 index1) (ash 1 index2)))

@@ -9,16 +9,16 @@
    ;; Duration formatting
    #:format-duration
    #:format-time-duration
-   
+
    ;; Size formatting
    #:format-bytes
    #:format-memory-size
-   
+
    ;; Number formatting
    #:format-count
    #:format-throughput
    #:format-rate
-   
+
    ;; Precision control
    #:with-precision))
 
@@ -31,19 +31,19 @@
    PRECISION controls the number of decimal places (default 2)."
   (cond
     ;; Picoseconds
-    ((< seconds 1e-9) 
+    ((< seconds 1e-9)
      (format nil "~,vF ps" precision (* seconds 1e12)))
     ;; Nanoseconds
-    ((< seconds 1e-6) 
+    ((< seconds 1e-6)
      (format nil "~,vF ns" precision (* seconds 1e9)))
     ;; Microseconds
-    ((< seconds 1e-3) 
+    ((< seconds 1e-3)
      (format nil "~,vF µs" precision (* seconds 1e6)))
     ;; Milliseconds
-    ((< seconds 1.0) 
+    ((< seconds 1.0)
      (format nil "~,vF ms" precision (* seconds 1e3)))
     ;; Seconds
-    ((< seconds 60) 
+    ((< seconds 60)
      (format nil "~,vF s" precision seconds))
     ;; Minutes
     ((< seconds 3600)

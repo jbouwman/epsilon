@@ -16,13 +16,13 @@
    #:destroy-pool
    #:pool-size
    #:pool-capacity
-   
+
    ;; Resource acquisition/release
    #:acquire
    #:release
    #:with-resource
    #:try-acquire
-   
+
    ;; Pool configuration
    #:pool-config
    #:make-pool-config
@@ -42,7 +42,7 @@
    #:pool-config-acquire-timeout
    #:pool-config-validation-on-acquire
    #:pool-config-validation-on-release
-   
+
    ;; Pool statistics
    #:pool-stats
    #:pool-stats-p
@@ -53,7 +53,7 @@
    #:pool-stats-released
    #:pool-stats-timeouts
    #:pool-stats-validation-failures
-   
+
    ;; Pool health
    #:pool-health-check
    #:pool-clear
@@ -83,7 +83,7 @@
 (defstruct pool-config
   "Configuration for object pool behavior"
   (factory nil :type (or null function))
-  (destroyer nil :type (or null function)) 
+  (destroyer nil :type (or null function))
   (validator nil :type (or null function))
   (max-size 10 :type (integer 1 *))
   (min-size 0 :type (integer 0 *))
@@ -125,13 +125,13 @@
 
 ;;;; Pool Creation and Destruction
 
-(defun create-pool (&key factory destroyer validator 
-                         (max-size 10) (min-size 0) 
+(defun create-pool (&key factory destroyer validator
+                         (max-size 10) (min-size 0)
                          (idle-timeout 300) (acquire-timeout 30)
                          (validation-on-acquire t) (validation-on-release t)
                          warm-up-p)
   "Create a new object pool
-  
+
   - FACTORY: Function () -> resource. Creates new resources.
   - DESTROYER: Function (resource) -> nil. Cleans up resources.
   - VALIDATOR: Function (resource) -> boolean. Validates resource health.
@@ -141,11 +141,11 @@
   - ACQUIRE-TIMEOUT: Seconds to wait for available resource
   - VALIDATION-ON-*: Whether to validate on acquire/release
   - WARM-UP-P: Whether to pre-populate with min-size resources"
-  
+
   (unless factory
     (error "Pool factory function is required"))
-  
-  (let* ((config (make-pool-config 
+
+  (let* ((config (make-pool-config
                   :factory factory
                   :destroyer destroyer
                   :validator validator
@@ -157,17 +157,17 @@
                   :validation-on-release validation-on-release))
          (pool (make-pool :config config
                          :stats (make-pool-stats))))
-    
+
     ;; Start maintenance thread
     (setf (pool-maintenance-thread pool)
           (sb-thread:make-thread
            (lambda () (maintenance-loop pool))
            :name "pool-maintenance"))
-    
+
     ;; Warm up pool if requested
     (when warm-up-p
       (pool-warm-up pool))
-    
+
     pool))
 
 (defun destroy-pool (pool)
@@ -178,17 +178,17 @@
       (setf (pool-shutdown-p pool) t)
       (setf maintenance-thread (pool-maintenance-thread pool))
       (setf (pool-maintenance-thread pool) nil)
-      
+
       ;; Cleanup available resources
       (dolist (wrapped (pool-available pool))
         (safely-destroy-resource pool (pooled-resource-resource wrapped)))
       (setf (pool-available pool) '())
-      
+
       ;; Note: In-use resources will be cleaned up when released
-      
+
       ;; Signal waiting threads
       (sb-thread:condition-broadcast (pool-condition pool)))
-    
+
     ;; Shutdown maintenance thread outside of mutex
     (when maintenance-thread
       (sb-thread:join-thread maintenance-thread))))
@@ -197,16 +197,16 @@
 
 (defun acquire (pool &key (timeout nil))
   "Acquire a resource from the pool
-  
+
   Returns the resource or signals an error on timeout.
   Use WITH-RESOURCE for automatic cleanup."
-  
+
   (when (pool-shutdown-p pool)
     (error "Pool has been shutdown"))
-  
+
   (let ((timeout-time (when timeout (+ (get-universal-time) timeout)))
         (config (pool-config pool)))
-    
+
     (loop
       (sb-thread:with-mutex ((pool-lock pool))
         ;; Try to get available resource
@@ -221,11 +221,11 @@
             (return (pooled-resource-resource wrapped)))
           ;; Resource failed validation, destroy it
           (safely-destroy-resource pool (pooled-resource-resource wrapped)))
-        
+
         ;; No valid available resource, try to create new one
         (when (< (total-pool-size pool) (pool-config-max-size config))
           (when-let ((resource (safely-create-resource pool)))
-            (let ((wrapped (make-pooled-resource 
+            (let ((wrapped (make-pooled-resource
                            :resource resource
                            :created-at (get-universal-time)
                            :last-used-at (get-universal-time))))
@@ -233,24 +233,24 @@
               (incf (pooled-resource-use-count wrapped))
               (incf (pool-stats-acquired (pool-stats pool)))
               (return resource))))
-        
+
         ;; Pool full, wait with timeout
         (let ((remaining-time (when timeout-time
                                 (- timeout-time (get-universal-time)))))
           (when (and timeout-time (<= remaining-time 0))
             (incf (pool-stats-timeouts (pool-stats pool)))
             (error "Pool acquire timeout after ~A seconds" timeout))
-          
+
           (sb-thread:condition-wait (pool-condition pool) (pool-lock pool)
                                     :timeout remaining-time))))))
 
 (defun try-acquire (pool)
   "Try to acquire a resource without blocking
-  
+
   Returns resource or NIL if none available immediately."
   (when (pool-shutdown-p pool)
     (return-from try-acquire nil))
-  
+
   (sb-thread:with-mutex ((pool-lock pool))
     (when-let ((wrapped (pop (pool-available pool))))
       (when (validate-resource pool wrapped)
@@ -263,11 +263,11 @@
         (return-from try-acquire (pooled-resource-resource wrapped)))
       ;; Resource failed validation
       (safely-destroy-resource pool (pooled-resource-resource wrapped)))
-    
+
     ;; Try to create new resource if pool not full
     (when (< (total-pool-size pool) (pool-config-max-size (pool-config pool)))
       (when-let ((resource (safely-create-resource pool)))
-        (let ((wrapped (make-pooled-resource 
+        (let ((wrapped (make-pooled-resource
                        :resource resource
                        :created-at (get-universal-time)
                        :last-used-at (get-universal-time))))
@@ -282,19 +282,19 @@
     ;; Pool shutdown, just destroy the resource
     (safely-destroy-resource pool resource)
     (return-from release))
-  
+
   (sb-thread:with-mutex ((pool-lock pool))
     ;; Remove from in-use
     (remhash resource (pool-in-use pool))
     (incf (pool-stats-released (pool-stats pool)))
-    
+
     ;; Validate if configured
     (if (and (pool-config-validation-on-release (pool-config pool))
              (not (validate-resource-direct pool resource)))
         ;; Failed validation, destroy
         (safely-destroy-resource pool resource)
         ;; Return to available pool
-        (let ((wrapped (make-pooled-resource 
+        (let ((wrapped (make-pooled-resource
                        :resource resource
                        :last-used-at (get-universal-time))))
           (push wrapped (pool-available pool))
@@ -323,11 +323,11 @@
       (when (pool-shutdown-p pool)
         (return-from maintenance-loop))
       (sleep 1))
-    
+
     ;; Check again before maintenance
     (when (pool-shutdown-p pool)
       (return))
-    
+
     (handler-case
         (perform-maintenance pool)
       (error (e)
@@ -339,36 +339,36 @@
     (let ((config (pool-config pool))
           (stats (pool-stats pool))
           (current-time (get-universal-time)))
-      
+
       ;; Remove expired idle resources
       (setf (pool-available pool)
-            (remove-if 
+            (remove-if
              (lambda (wrapped)
                (let ((idle-time (- current-time (pooled-resource-last-used-at wrapped))))
                  (when (> idle-time (pool-config-idle-timeout config))
                    (safely-destroy-resource pool (pooled-resource-resource wrapped))
                    t)))
              (pool-available pool)))
-      
+
       ;; Ensure minimum pool size
       (let ((current-size (total-pool-size pool))
             (min-size (pool-config-min-size config)))
         (when (< current-size min-size)
           (dotimes (i (- min-size current-size))
             (when-let ((resource (safely-create-resource pool)))
-              (push (make-pooled-resource 
+              (push (make-pooled-resource
                      :resource resource
                      :created-at current-time
                      :last-used-at current-time)
                     (pool-available pool))))))
-      
+
       (setf (pool-stats-last-maintenance stats) current-time))))
 
 (defun pool-health-check (pool)
   "Validate all available resources in pool"
   (sb-thread:with-mutex ((pool-lock pool))
     (setf (pool-available pool)
-          (remove-if-not 
+          (remove-if-not
            (lambda (wrapped)
              (if (validate-resource pool wrapped)
                  t
@@ -390,7 +390,7 @@
     (dotimes (i min-size)
       (when-let ((resource (safely-create-resource pool)))
         (sb-thread:with-mutex ((pool-lock pool))
-          (push (make-pooled-resource 
+          (push (make-pooled-resource
                  :resource resource
                  :created-at (get-universal-time)
                  :last-used-at (get-universal-time))

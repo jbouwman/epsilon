@@ -11,11 +11,11 @@
   (:export
    #:*source-location-cache*
    #:clear-source-location-cache
-   
+
    #:track-source-location
    #:get-current-source-location
    #:enhance-location-with-line-info
-   
+
    #:file-position-to-line-column
    #:cache-file-lines
    #:with-source-tracking))
@@ -49,10 +49,10 @@
     (handler-case
         (let ((mod-time (get-file-modification-time truename))
               (line-starts (make-array 1000 :adjustable t :fill-pointer 0)))
-          
+
           ;; First line starts at position 0
           (vector-push-extend 0 line-starts)
-          
+
           ;; Read file and record line starts
           (with-open-file (stream truename :direction :input)
             (let ((pos 0))
@@ -62,7 +62,7 @@
                          (incf pos)
                          (when (char= char #\Newline)
                            (vector-push-extend pos line-starts))))))
-          
+
           ;; Create and cache the result
           (let ((cache (make-file-line-cache
                         :pathname truename
@@ -77,7 +77,7 @@
   (let* ((truename (handler-case (truename pathname)
                      (error () (return-from get-cached-file-lines nil))))
          (cached (gethash truename *source-location-cache*)))
-    
+
     ;; Check if cache is still valid
     (if (and cached
              (equal (file-line-cache-modification-time cached)
@@ -111,12 +111,12 @@
         (position nil)
         (toplevel-form nil)
         (form-number nil))
-    
+
     ;; Get file from compiler state
     (when (and (boundp 'sb-c::*compile-file-pathname*)
                sb-c::*compile-file-pathname*)
       (setf file sb-c::*compile-file-pathname*))
-    
+
     ;; Try to get position from compiler error context
     (when (and (boundp 'sb-c::*compiler-error-context*)
                sb-c::*compiler-error-context*)
@@ -125,25 +125,25 @@
          (let ((context sb-c::*compiler-error-context*))
            (setf position (sb-c::compiler-error-context-file-position context))
            (setf toplevel-form (sb-c::compiler-error-context-original-form context))))))
-    
+
     ;; Try to get form number from current path
     (when (and (boundp 'sb-c::*current-path*)
                sb-c::*current-path*)
       (let ((path sb-c::*current-path*))
         (when (consp path)
           (setf form-number (length path)))))
-    
+
     (values file position toplevel-form form-number)))
 
 (defun get-current-source-location ()
   "Get the current source location with line and column information."
   (multiple-value-bind (file position toplevel-form form-number)
       (extract-sbcl-source-location)
-    
+
     (multiple-value-bind (line column)
         (when (and file position)
           (file-position-to-line-column file position))
-      
+
       (api:make-source-location
        :file (when file (namestring file))
        :line line

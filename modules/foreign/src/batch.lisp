@@ -59,7 +59,7 @@
         ;; Return a promise for the result
         (lambda ()
           (map:get (batch-context-deferred-results *current-batch*) call-id)))
-      ;; No batch context, execute immediately  
+      ;; No batch context, execute immediately
       (if (find-package "EPSILON.FOREIGN")
           (apply (find-symbol "SHARED-CALL" "EPSILON.FOREIGN")
                  name-lib return-type arg-types args)
@@ -99,7 +99,7 @@
       ;; Optimize call sequence if threshold met
       (when (>= (length calls) *batch-threshold*)
         (setf calls (optimize-call-sequence calls)))
-      
+
       ;; Execute all calls
       (dolist (call calls)
         (destructuring-bind (id name-lib return-type arg-types args) call
@@ -132,9 +132,9 @@
   (let ((grouped map:+empty+))
     (dolist (call calls)
       (let ((lib (second (second call))))  ; Extract library from name-lib
-        (setf grouped (map:assoc grouped lib 
+        (setf grouped (map:assoc grouped lib
                                  (cons call (map:get grouped lib '()))))))
-    
+
     ;; Flatten grouped calls, keeping same-library calls together
     (let ((optimized '()))
       (map:each (lambda (lib calls)
@@ -167,7 +167,7 @@
   (mapcar (lambda (str)
            (ecase operation
              (:length (batch-call '("strlen" "libc") :unsigned-long '(:string) str))
-             (:uppercase (batch-call '("toupper" "libc") :int '(:int) 
+             (:uppercase (batch-call '("toupper" "libc") :int '(:int)
                                     (char-code (char str 0))))
              (:lowercase (batch-call '("tolower" "libc") :int '(:int)
                                     (char-code (char str 0))))))
@@ -186,7 +186,7 @@
            (ecase operation
              (:exists (batch-call '("access" "libc") :int '(:string :int) file 0))
              (:size (let ((stat-buf (batch-allocate :char 144))) ; sizeof(struct stat)
-                     (batch-call '("stat" "libc") :int '(:string :pointer) 
+                     (batch-call '("stat" "libc") :int '(:string :pointer)
                                 file stat-buf)))
              (:delete (batch-call '("unlink" "libc") :int '(:string) file))))
          files))
@@ -211,7 +211,7 @@
              (let ((times (mapcar (lambda (s) (getf s :time)) stats)))
                (format t "~%Batch size ~D:~%" size)
                (format t "  Executions:  ~D~%" (length times))
-               (format t "  Avg time:    ~,3f ms~%" 
+               (format t "  Avg time:    ~,3f ms~%"
                       (/ (reduce #'+ times) (length times)))
                (format t "  Min time:    ~,3f ms~%" (apply #'min times))
                (format t "  Max time:    ~,3f ms~%" (apply #'max times))))

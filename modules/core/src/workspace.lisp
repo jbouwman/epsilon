@@ -36,6 +36,8 @@
    workspace-name
    workspace-location
    workspace-modules
+   workspace-module-paths
+   workspace-workspace-refs
    workspace-referenced-workspaces
 
    ;; Loading and discovery

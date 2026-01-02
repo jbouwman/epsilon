@@ -3,7 +3,7 @@
   (:local-nicknames
    (fs epsilon.sys.fs)
    (path epsilon.path))
-  (:export 
+  (:export
    #:event
    #:find-local-package-file
    #:read-local-package-definition))
@@ -25,11 +25,7 @@
 (defun find-local-package-file ()
   "Find module.lisp in current working directory"
   (handler-case
-      (let* ((user-dir (or (ignore-errors
-                            (when (find-package :sb-posix)
-                              (funcall (intern "GETENV" :sb-posix) "EPSILON_USER")))
-                           (ignore-errors (fs:current-directory))
-                           "."))
+      (let* ((user-dir (or (ignore-errors (fs:current-directory)) "."))
              (package-path (ignore-errors (path:path-join user-dir "module.lisp"))))
         (when (and package-path (ignore-errors (fs:exists-p package-path)))
           package-path))
@@ -62,4 +58,3 @@
               nil))))
     (error ()
       nil)))
-

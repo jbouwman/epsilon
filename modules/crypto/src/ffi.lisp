@@ -319,7 +319,7 @@
   :documentation "Set private key in SSL context")
 
 (ffi:defshared %ssl-ctx-load-verify-locations "SSL_CTX_load_verify_locations" :ssl :int
-  (ctx :pointer) (ca-file :string) (ca-path :string)
+  (ctx :pointer) (ca-file :string) (ca-path :pointer)
   :documentation "Load CA certificates for verification")
 
 (ffi:defshared %ssl-ctx-set-client-ca-list "SSL_CTX_set_client_CA_list" :ssl :void
@@ -570,7 +570,7 @@
   :documentation "Write public key to BIO in PEM format")
 
 (ffi:defshared %pem-write-bio-privatekey "PEM_write_bio_PrivateKey" :crypto :int
-  (bio :pointer) (x :pointer) (enc :pointer) (kstr :pointer) 
+  (bio :pointer) (x :pointer) (enc :pointer) (kstr :pointer)
   (klen :int) (cb :pointer) (u :pointer)
   :documentation "Write private key to BIO in PEM format")
 

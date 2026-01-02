@@ -1,6 +1,6 @@
 /*
  * epsilon-libffi.c - libffi integration for Epsilon FFI callbacks
- * 
+ *
  * This C extension provides real callback functionality using libffi's
  * closure API to overcome SBCL's alien-lambda limitations.
  */
@@ -88,10 +88,10 @@ static void epsilon_callback_handler(ffi_cif *cif, void *ret, void **args, void 
     epsilon_callback_t *cb = (epsilon_callback_t*)user_data;
     (void)cif;  /* Suppress unused parameter warning */
     (void)args; /* Suppress unused parameter warning */
-    
+
     /* For now, we'll implement a simple dispatch mechanism */
     /* In a real implementation, this would call back into SBCL */
-    
+
     /* Set default return values based on type */
     if (ret != NULL) {
         switch (cb->return_type) {
@@ -117,7 +117,7 @@ static void epsilon_callback_handler(ffi_cif *cif, void *ret, void **args, void 
                 break;
         }
     }
-    
+
     /* TODO: Implement actual SBCL callback mechanism */
     /* This would involve calling back into Lisp through SBCL's C API */
 }
@@ -131,31 +131,31 @@ int epsilon_create_callback(void *lisp_function, int return_type, int *arg_types
     ffi_type **ffi_arg_types = NULL;
     ffi_type *ffi_return_type = NULL;
     ffi_status status;
-    
+
     /* Validate parameters */
     if (nargs < 0 || nargs > 32) {
         epsilon_set_error("Invalid argument count: %d", nargs);
         return -1;
     }
-    
+
     if (nargs > 0 && arg_types == NULL) {
         epsilon_set_error("arg_types is NULL but nargs > 0");
         return -1;
     }
-    
+
     /* Allocate callback structure */
     cb = (epsilon_callback_t*)malloc(sizeof(epsilon_callback_t));
     if (!cb) {
         epsilon_set_error("Failed to allocate callback structure");
         return -1;
     }
-    
+
     memset(cb, 0, sizeof(epsilon_callback_t));
     cb->callback_id = next_callback_id++;
     cb->lisp_function = lisp_function;
     cb->return_type = return_type;
     cb->nargs = nargs;
-    
+
     /* Copy argument types */
     if (nargs > 0) {
         cb->arg_types = (int*)malloc(nargs * sizeof(int));
@@ -166,14 +166,14 @@ int epsilon_create_callback(void *lisp_function, int return_type, int *arg_types
         }
         memcpy(cb->arg_types, arg_types, nargs * sizeof(int));
     }
-    
+
     /* Convert types to libffi format */
     ffi_return_type = epsilon_type_to_ffi_type(return_type);
     if (!ffi_return_type) {
         epsilon_cleanup_callback(cb);
         return -1;
     }
-    
+
     if (nargs > 0) {
         ffi_arg_types = (ffi_type**)malloc(nargs * sizeof(ffi_type*));
         if (!ffi_arg_types) {
@@ -181,7 +181,7 @@ int epsilon_create_callback(void *lisp_function, int return_type, int *arg_types
             epsilon_cleanup_callback(cb);
             return -1;
         }
-        
+
         for (int i = 0; i < nargs; i++) {
             ffi_arg_types[i] = epsilon_type_to_ffi_type(arg_types[i]);
             if (!ffi_arg_types[i]) {
@@ -191,7 +191,7 @@ int epsilon_create_callback(void *lisp_function, int return_type, int *arg_types
             }
         }
     }
-    
+
     /* Prepare the call interface */
     status = ffi_prep_cif(&cb->cif, FFI_DEFAULT_ABI, nargs, ffi_return_type, ffi_arg_types);
     if (status != FFI_OK) {
@@ -200,7 +200,7 @@ int epsilon_create_callback(void *lisp_function, int return_type, int *arg_types
         epsilon_cleanup_callback(cb);
         return -1;
     }
-    
+
     /* Allocate closure memory */
     cb->writable = ffi_closure_alloc(sizeof(ffi_closure), &cb->executable);
     if (!cb->writable) {
@@ -209,9 +209,9 @@ int epsilon_create_callback(void *lisp_function, int return_type, int *arg_types
         epsilon_cleanup_callback(cb);
         return -1;
     }
-    
+
     cb->closure = (ffi_closure*)cb->writable;
-    
+
     /* Prepare the closure */
     status = ffi_prep_closure_loc(cb->closure, &cb->cif, epsilon_callback_handler, cb, cb->executable);
     if (status != FFI_OK) {
@@ -220,14 +220,14 @@ int epsilon_create_callback(void *lisp_function, int return_type, int *arg_types
         epsilon_cleanup_callback(cb);
         return -1;
     }
-    
+
     /* Add to registry */
     cb->next = callback_registry;
     callback_registry = cb;
-    
+
     /* Clean up temporary arrays */
     if (ffi_arg_types) free(ffi_arg_types);
-    
+
     return cb->callback_id;
 }
 
@@ -237,14 +237,14 @@ int epsilon_create_callback(void *lisp_function, int return_type, int *arg_types
  */
 void* epsilon_get_callback_pointer(int callback_id) {
     epsilon_callback_t *cb = callback_registry;
-    
+
     while (cb) {
         if (cb->callback_id == callback_id) {
             return cb->executable;
         }
         cb = cb->next;
     }
-    
+
     epsilon_set_error("Callback ID %d not found", callback_id);
     return NULL;
 }
@@ -255,7 +255,7 @@ void* epsilon_get_callback_pointer(int callback_id) {
 int epsilon_destroy_callback(int callback_id) {
     epsilon_callback_t **cb_ptr = &callback_registry;
     epsilon_callback_t *cb;
-    
+
     while (*cb_ptr) {
         if ((*cb_ptr)->callback_id == callback_id) {
             cb = *cb_ptr;
@@ -265,7 +265,7 @@ int epsilon_destroy_callback(int callback_id) {
         }
         cb_ptr = &(*cb_ptr)->next;
     }
-    
+
     epsilon_set_error("Callback ID %d not found for destruction", callback_id);
     return -1;
 }
@@ -275,15 +275,15 @@ int epsilon_destroy_callback(int callback_id) {
  */
 static void epsilon_cleanup_callback(epsilon_callback_t *cb) {
     if (!cb) return;
-    
+
     if (cb->writable) {
         ffi_closure_free(cb->writable);
     }
-    
+
     if (cb->arg_types) {
         free(cb->arg_types);
     }
-    
+
     free(cb);
 }
 
@@ -293,13 +293,13 @@ static void epsilon_cleanup_callback(epsilon_callback_t *cb) {
 void epsilon_cleanup_all_callbacks(void) {
     epsilon_callback_t *cb = callback_registry;
     epsilon_callback_t *next;
-    
+
     while (cb) {
         next = cb->next;
         epsilon_cleanup_callback(cb);
         cb = next;
     }
-    
+
     callback_registry = NULL;
     next_callback_id = 1;
 }
@@ -310,12 +310,12 @@ void epsilon_cleanup_all_callbacks(void) {
 int epsilon_get_callback_count(void) {
     int count = 0;
     epsilon_callback_t *cb = callback_registry;
-    
+
     while (cb) {
         count++;
         cb = cb->next;
     }
-    
+
     return count;
 }
 
@@ -334,37 +334,37 @@ int epsilon_prep_cif(int return_type, int *arg_types, int nargs, void **cif_ptr)
     ffi_type **ffi_arg_types = NULL;
     ffi_type *ffi_return_type = NULL;
     ffi_status status;
-    
+
     /* Validate parameters */
     if (nargs < 0 || nargs > 32) {
         epsilon_set_error("Invalid argument count for CIF: %d", nargs);
         return -1;
     }
-    
+
     if (nargs > 0 && arg_types == NULL) {
         epsilon_set_error("arg_types is NULL but nargs > 0 for CIF");
         return -1;
     }
-    
+
     if (cif_ptr == NULL) {
         epsilon_set_error("cif_ptr is NULL");
         return -1;
     }
-    
+
     /* Allocate CIF structure */
     cif = (ffi_cif*)malloc(sizeof(ffi_cif));
     if (!cif) {
         epsilon_set_error("Failed to allocate CIF structure");
         return -1;
     }
-    
+
     /* Convert return type */
     ffi_return_type = epsilon_type_to_ffi_type(return_type);
     if (!ffi_return_type) {
         free(cif);
         return -1;
     }
-    
+
     /* Convert argument types */
     if (nargs > 0) {
         ffi_arg_types = (ffi_type**)malloc(nargs * sizeof(ffi_type*));
@@ -373,7 +373,7 @@ int epsilon_prep_cif(int return_type, int *arg_types, int nargs, void **cif_ptr)
             free(cif);
             return -1;
         }
-        
+
         for (int i = 0; i < nargs; i++) {
             ffi_arg_types[i] = epsilon_type_to_ffi_type(arg_types[i]);
             if (!ffi_arg_types[i]) {
@@ -383,7 +383,7 @@ int epsilon_prep_cif(int return_type, int *arg_types, int nargs, void **cif_ptr)
             }
         }
     }
-    
+
     /* Prepare the call interface */
     status = ffi_prep_cif(cif, FFI_DEFAULT_ABI, nargs, ffi_return_type, ffi_arg_types);
     if (status != FFI_OK) {
@@ -392,12 +392,12 @@ int epsilon_prep_cif(int return_type, int *arg_types, int nargs, void **cif_ptr)
         free(cif);
         return -1;
     }
-    
+
     /* Store the argument types array in the CIF for later cleanup */
     /* Note: This is a hack - we store the pointer in an unused field */
     /* In production, we'd use a proper structure */
     *((void**)&cif->rtype - 1) = ffi_arg_types;  /* Store for cleanup */
-    
+
     *cif_ptr = cif;
     return 0;  /* Success */
 }
@@ -410,15 +410,15 @@ int epsilon_call_function(void *cif, void *function_ptr, void **args, void *resu
         epsilon_set_error("CIF is NULL");
         return -1;
     }
-    
+
     if (!function_ptr) {
         epsilon_set_error("Function pointer is NULL");
         return -1;
     }
-    
+
     /* Make the call using libffi */
     ffi_call((ffi_cif*)cif, function_ptr, result, args);
-    
+
     return 0;  /* Success */
 }
 
@@ -427,15 +427,15 @@ int epsilon_call_function(void *cif, void *function_ptr, void **args, void *resu
  */
 void epsilon_free_cif(void *cif) {
     if (!cif) return;
-    
+
     ffi_cif *cif_ptr = (ffi_cif*)cif;
-    
+
     /* Free the argument types array we stored during prep */
     void **stored_arg_types = (void**)((void**)&cif_ptr->rtype - 1);
     if (*stored_arg_types) {
         free(*stored_arg_types);
     }
-    
+
     /* Free the CIF itself */
     free(cif_ptr);
 }

@@ -13,7 +13,7 @@
 
 (defparameter *test-message* "The quick brown fox jumps over the lazy dog")
 (defparameter *test-message-2* "Pack my box with five dozen liquor jugs")
-(defparameter *test-binary-data* 
+(defparameter *test-binary-data*
   (make-array 256 :element-type '(unsigned-byte 8)
               :initial-contents (loop for i from 0 below 256 collect i)))
 
@@ -28,15 +28,15 @@
       (is (typep signature '(vector (unsigned-byte 8))))
       (is (> (length signature) 0))
       (is-= (length signature) 256)  ; 2048 bits / 8
-      
+
       ;; Verify correct message
       (is (crypto:verify-message key *test-message* signature
                                  :digest-algo crypto:+digest-sha256+))
-      
+
       ;; Verify wrong message fails
       (is (not (crypto:verify-message key *test-message-2* signature
                                       :digest-algo crypto:+digest-sha256+)))
-      
+
       ;; Verify tampered signature fails
       (let ((bad-sig (copy-seq signature)))
         (setf (aref bad-sig 0) (logxor (aref bad-sig 0) #xFF))
@@ -51,11 +51,11 @@
                                           :digest-algo crypto:+digest-sha512+)))
       (is (typep signature '(vector (unsigned-byte 8))))
       (is-= (length signature) 256)
-      
+
       ;; Verify with SHA-512
       (is (crypto:verify-message key *test-message* signature
                                  :digest-algo crypto:+digest-sha512+))
-      
+
       ;; Verify with wrong algorithm fails
       (is (not (crypto:verify-message key *test-message* signature
                                       :digest-algo crypto:+digest-sha256+))))))
@@ -66,10 +66,10 @@
     ;; Sign binary data
     (let ((signature (crypto:sign-message key *test-binary-data*)))
       (is (typep signature '(vector (unsigned-byte 8))))
-      
+
       ;; Verify binary data
       (is (crypto:verify-message key *test-binary-data* signature))
-      
+
       ;; Modify one byte and verify fails
       (let ((bad-data (copy-seq *test-binary-data*)))
         (setf (aref bad-data 128) (logxor (aref bad-data 128) #x01))
@@ -86,10 +86,10 @@
       ;; EC signatures vary in size due to DER encoding
       (is (> (length signature) 0))
       (is (< (length signature) 100))  ; Typically 70-72 bytes
-      
+
       ;; Verify correct message
       (is (crypto:verify-message key *test-message* signature))
-      
+
       ;; Verify wrong message fails
       (is (not (crypto:verify-message key *test-message-2* signature))))))
 
@@ -101,7 +101,7 @@
       ;; P-384 signatures are larger than P-256
       (is (> (length signature) 50))
       (is (< (length signature) 150))
-      
+
       ;; Verify
       (is (crypto:verify-message key *test-message* signature)))))
 
@@ -110,7 +110,7 @@
   (let ((key (crypto:generate-ec-key :curve :secp256k1)))
     (let ((signature (crypto:sign-message key *test-message*)))
       (is (typep signature '(vector (unsigned-byte 8))))
-      
+
       ;; Verify
       (is (crypto:verify-message key *test-message* signature)))))
 
@@ -125,13 +125,13 @@
 	  (is (typep signature '(vector (unsigned-byte 8))))
 	  ;; Ed25519 signatures are always 64 bytes
 	  (is-= (length signature) 64)
-	  
+
 	  ;; Verify correct message
 	  (is (crypto:verify-message key *test-message* signature))
-	  
+
 	  ;; Verify wrong message fails
 	  (is (not (crypto:verify-message key *test-message-2* signature)))
-	  
+
 	  ;; Verify tampered signature fails
 	  (let ((bad-sig (copy-seq signature)))
             (setf (aref bad-sig 32) (logxor (aref bad-sig 32) #x01))
@@ -160,13 +160,13 @@
   (let* ((original-key (crypto:generate-rsa-key :bits 2048))
          (message "Test cross-key verification")
          (signature (crypto:sign-message original-key message)))
-    
+
     ;; Export and reimport public key
     (let* ((public-pem (crypto:key-to-pem original-key :private-p nil))
            (public-key (crypto:key-from-pem public-pem :private-p nil)))
       ;; Verify with reimported public key
       (is (crypto:verify-message public-key message signature)))
-    
+
     ;; Export and reimport private key
     (let* ((private-pem (crypto:key-to-pem original-key :private-p t))
            (private-key (crypto:key-from-pem private-pem :private-p t)))
@@ -180,7 +180,7 @@
   (let* ((original-key (crypto:generate-ec-key :curve :p256))
          (message "Test EC cross-key")
          (signature (crypto:sign-message original-key message)))
-    
+
     ;; Export and reimport public key
     (let* ((public-pem (crypto:key-to-pem original-key :private-p nil))
            (public-key (crypto:key-from-pem public-pem :private-p nil)))
@@ -192,12 +192,12 @@
     "Test that verification with wrong key type fails"
   (let ((rsa-key (crypto:generate-rsa-key :bits 2048))
         (ec-key (crypto:generate-ec-key :curve :p256)))
-    
+
     ;; Sign with RSA
     (let ((rsa-sig (crypto:sign-message rsa-key *test-message*)))
       ;; Try to verify with EC key - should fail
       (is (not (crypto:verify-message ec-key *test-message* rsa-sig))))
-    
+
     ;; Sign with EC
     (let ((ec-sig (crypto:sign-message ec-key *test-message*)))
       ;; Try to verify with RSA key - should fail
@@ -210,16 +210,16 @@
   (let ((key (crypto:generate-rsa-key :bits 2048))
         ;; Create 10KB of data
         (large-data (make-string 10000 :initial-element #\A)))
-    
+
     ;; Sign large data
     (let ((signature (crypto:sign-message key large-data)))
       (is (typep signature '(vector (unsigned-byte 8))))
       ;; Signature size should be same regardless of data size
       (is-= (length signature) 256)
-      
+
       ;; Verify large data
       (is (crypto:verify-message key large-data signature))
-      
+
       ;; Change one character and verify fails
       (setf (char large-data 5000) #\B)
       (is (not (crypto:verify-message key large-data signature))))))
@@ -232,7 +232,7 @@
          ;; Get public key only
          (public-pem (crypto:key-to-pem key :private-p nil))
          (public-key (crypto:key-from-pem public-pem :private-p nil)))
-    
+
     ;; Try to sign with public key only
     (handler-case
         (progn
@@ -260,7 +260,7 @@
       ;; Try to verify with SHA-512 - should fail
       (is (not (crypto:verify-message key *test-message* sig256
                                       :digest-algo crypto:+digest-sha512+))))
-    
+
     ;; Sign with SHA-512
     (let ((sig512 (crypto:sign-message key *test-message*
                                        :digest-algo crypto:+digest-sha512+)))
@@ -276,7 +276,7 @@
       (let ((rsa-key (crypto:generate-rsa-key :bits 2048))
             (ec-key (crypto:generate-ec-key :curve :p256))
             (ed-key (crypto:generate-ed25519-key)))
-        
+
         ;; RSA signing performance
         (let ((start (get-internal-real-time)))
           (dotimes (i 10)
@@ -284,14 +284,14 @@
           (let ((elapsed (- (get-internal-real-time) start)))
             ;; Should complete 10 signatures in reasonable time
             (is (< elapsed (* 2 internal-time-units-per-second)))))
-        
+
         ;; EC signing performance (should be faster than RSA)
         (let ((start (get-internal-real-time)))
           (dotimes (i 100)
             (crypto:sign-message ec-key *test-message*))
           (let ((elapsed (- (get-internal-real-time) start)))
             (is (< elapsed internal-time-units-per-second))))
-        
+
         ;; Ed25519 signing performance (should be fastest)
         (let ((start (get-internal-real-time)))
           (dotimes (i 100)
@@ -303,7 +303,7 @@
       ;; Test without ED25519 if not available
       (let ((rsa-key (crypto:generate-rsa-key :bits 2048))
             (ec-key (crypto:generate-ec-key :curve :p256)))
-        
+
         ;; RSA signing performance
         (let ((start (get-internal-real-time)))
           (dotimes (i 10)
@@ -311,7 +311,7 @@
           (let ((elapsed (- (get-internal-real-time) start)))
             ;; Should complete 10 signatures in reasonable time
             (is (< elapsed (* 2 internal-time-units-per-second)))))
-        
+
         ;; EC signing performance (should be faster than RSA)
         (let ((start (get-internal-real-time)))
           (dotimes (i 100)

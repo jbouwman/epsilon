@@ -24,6 +24,7 @@
 
    ;; Generic resource handling
    load-module-resources
+   load-project
    sort-sources
    project-resources
 
@@ -36,6 +37,7 @@
    location
    metadata
    source
+   uri
 
    ;; From loader.environment
    ;; Environment class
@@ -69,20 +71,20 @@
   "Enable debug logging of build order information")
 
 (defclass module-info ()
-  ((name :initarg :name 
-         :reader module-name 
+  ((name :initarg :name
+         :reader module-name
          :type string
          :documentation "Module name")
-   (location :initarg :location 
+   (location :initarg :location
              :reader module-location
              :documentation "Module location (path or URI)")
-   (loaded-p :initarg :loaded-p 
-             :accessor module-loaded-p 
-             :initform nil 
+   (loaded-p :initarg :loaded-p
+             :accessor module-loaded-p
+             :initform nil
              :type boolean
              :documentation "Whether module has been loaded")
-   (load-time :initarg :load-time 
-              :accessor module-load-time 
+   (load-time :initarg :load-time
+              :accessor module-load-time
               :initform nil
               :documentation "When module was loaded")
    (metadata :initarg :metadata
@@ -106,7 +108,7 @@
 (defun make-build-environment (&key config)
   "Create a new build environment"
   (make-instance 'build-environment
-                 :config (or config 
+                 :config (or config
                             (map:make-map
                              :error-behavior :halt
                              :warning-behavior :ignore
@@ -128,7 +130,7 @@
            (fboundp (find-symbol "VALIDATE-MODULE-METADATA" "EPSILON.MODULE-SCHEMA")))
       ;; Use new validation system
       (multiple-value-bind (valid-p errors)
-          (funcall (find-symbol "VALIDATE-MODULE-METADATA" "EPSILON.MODULE-SCHEMA") 
+          (funcall (find-symbol "VALIDATE-MODULE-METADATA" "EPSILON.MODULE-SCHEMA")
                    metadata filepath)
         (if valid-p
             nil
@@ -141,13 +143,13 @@
   (let ((errors '())
         (valid-keys '(:name :version :description :author :platform
                      :sources :tests :benchmarks :examples :experiments
-                     :docs :data :requires :provides)))
-    
+                     :docs :data :requires :provides :source-type)))
+
     ;; Check that metadata is a property list
     (unless (and (listp metadata) (evenp (length metadata)))
       (push (format nil "Invalid module.lisp format in ~A: must be a property list with even number of elements" filepath) errors)
       (return-from validate-module-metadata-basic errors))
-    
+
     ;; Check for required :name field
     (let ((name (getf metadata :name)))
       (cond
@@ -157,13 +159,13 @@
          (push (format nil "Invalid :name field in ~A: must be a string, got ~A" filepath (type-of name)) errors))
         ((string= name "")
          (push (format nil "Invalid :name field in ~A: cannot be empty string" filepath) errors))))
-    
+
     ;; Check for unknown keys
     (loop for key in metadata by #'cddr
           unless (member key valid-keys)
-            do (push (format nil "Unknown key ~A in ~A. Valid keys are: ~{~A~^, ~}" 
+            do (push (format nil "Unknown key ~A in ~A. Valid keys are: ~{~A~^, ~}"
                            key filepath valid-keys) errors))
-    
+
     ;; Validate optional fields if present
     (let ((version (getf metadata :version))
           (description (getf metadata :description))
@@ -171,27 +173,27 @@
           (platform (getf metadata :platform))
           (requires (getf metadata :requires))
           (provides (getf metadata :provides)))
-      
+
       ;; Version validation
       (when (and version (not (stringp version)))
-        (push (format nil "Invalid :version field in ~A: must be a string, got ~A" 
+        (push (format nil "Invalid :version field in ~A: must be a string, got ~A"
                      filepath (type-of version)) errors))
-      
+
       ;; Description validation
       (when (and description (not (stringp description)))
-        (push (format nil "Invalid :description field in ~A: must be a string, got ~A" 
+        (push (format nil "Invalid :description field in ~A: must be a string, got ~A"
                      filepath (type-of description)) errors))
-      
+
       ;; Author validation
       (when (and author (not (stringp author)))
-        (push (format nil "Invalid :author field in ~A: must be a string, got ~A" 
+        (push (format nil "Invalid :author field in ~A: must be a string, got ~A"
                      filepath (type-of author)) errors))
-      
+
       ;; Platform validation
       (when (and platform (not (stringp platform)))
-        (push (format nil "Invalid :platform field in ~A: must be a string, got ~A" 
+        (push (format nil "Invalid :platform field in ~A: must be a string, got ~A"
                      filepath (type-of platform)) errors))
-      
+
       ;; Requires validation - must be list of strings
       (when requires
         (unless (listp requires)
@@ -207,28 +209,28 @@
       ;; Provides validation - must be list of strings
       (when provides
         (unless (listp provides)
-          (push (format nil "Invalid :provides field in ~A: must be a list, got ~A" 
+          (push (format nil "Invalid :provides field in ~A: must be a list, got ~A"
                        filepath (type-of provides)) errors))
         (when (listp provides)
           (loop for prov in provides
                 for index from 0
                 unless (stringp prov)
-                  do (push (format nil "Invalid :provides entry at position ~D in ~A: must be a string, got ~A" 
+                  do (push (format nil "Invalid :provides entry at position ~D in ~A: must be a string, got ~A"
                                  index filepath (type-of prov)) errors))))
-      
+
       ;; Path list validation helper
       (flet ((validate-path-list (field-name value)
                (when value
                  (unless (listp value)
-                   (push (format nil "Invalid ~A field in ~A: must be a list, got ~A" 
+                   (push (format nil "Invalid ~A field in ~A: must be a list, got ~A"
                                field-name filepath (type-of value)) errors))
                  (when (listp value)
                    (loop for path in value
                          for index from 0
                          unless (stringp path)
-                           do (push (format nil "Invalid ~A entry at position ~D in ~A: must be a string, got ~A" 
+                           do (push (format nil "Invalid ~A entry at position ~D in ~A: must be a string, got ~A"
                                           field-name index filepath (type-of path)) errors))))))
-        
+
         ;; Validate path lists
         (validate-path-list ":sources" (getf metadata :sources))
         (validate-path-list ":tests" (getf metadata :tests))
@@ -237,7 +239,7 @@
         (validate-path-list ":experiments" (getf metadata :experiments))
         (validate-path-list ":docs" (getf metadata :docs))
         (validate-path-list ":data" (getf metadata :data))))
-    
+
     ;; NEW: Validate sources and tests don't overlap
     (let ((sources (getf metadata :sources))
           (tests (getf metadata :tests)))
@@ -246,7 +248,7 @@
           (when common
             (push (format nil "Invalid configuration in ~A: :sources and :tests must not overlap, found common directories: ~{~A~^, ~}"
                          filepath common) errors)))))
-    
+
     ;; Validate that source directories actually exist
     ;; Note: :tests directories are optional - don't error if they don't exist
     (let ((base-path (path:path-parent (path:make-path filepath))))
@@ -261,7 +263,7 @@
                          (push (format nil "Invalid ~A directory '~A' in ~A: directory does not exist"
                                       field-name dir filepath) errors))))))))
         (check-directories ":sources" (getf metadata :sources))))
-    
+
     ;; Return errors (NIL if no errors)
     (when errors (nreverse errors))))
 
@@ -282,7 +284,7 @@
                  (log:error "Invalid module.lisp at ~A:" file-string)
                  (dolist (error validation-errors)
                    (log:error "  ~A" error))
-                 (error "Module validation failed: ~A~%~{  ~A~%~}" 
+                 (error "Module validation failed: ~A~%~{  ~A~%~}"
                         file-string validation-errors))
                 ;; Validation passed - register the module
                 (t
@@ -298,7 +300,7 @@
           (error (e)
             (log:error "Failed to parse module.lisp at ~A: ~A" file-string e)
             (error "Invalid module.lisp format at ~A: ~A~%~
-                    Make sure the file contains a valid property list starting with (:name \"module-name\" ...)" 
+                    Make sure the file contains a valid property list starting with (:name \"module-name\" ...)"
                    file-string e)))
         (log:debug "No module.lisp found at: ~A" file-string))))
 
@@ -331,11 +333,11 @@
 ;;; Query Operations
 
 (defun query-modules (environment &key name provides loaded-only predicate)
-  "Query modules matching specified criteria. 
+  "Query modules matching specified criteria.
    Modules provide themselves by default (e.g., epsilon.core provides epsilon.core)."
   (let ((results '())
         (current-platform (string-downcase (symbol-name (env:platform)))))
-    
+
     ;; Search all modules
     (loop for module-info in (map:vals (modules environment))
           for pkg-name = (module-name module-info)
@@ -355,19 +357,19 @@
                         (funcall predicate module-info)))
             collect module-info into loaded-results
           finally (setf results loaded-results))
-    
+
     ;; Filter by loaded-only if requested
     (when loaded-only
       (setf results (remove-if-not #'module-loaded-p results)))
-    
+
     results))
 
 (defun find-module (environment &key name provides)
   "Find exactly one module matching the given criteria.
    Raises an error if no modules match or if multiple modules match.
    This is a convenience wrapper around query-modules."
-  (let ((matches (query-modules environment 
-                                 :name name 
+  (let ((matches (query-modules environment
+                                 :name name
                                  :provides provides)))
     (cond
       ((null matches)
@@ -387,22 +389,14 @@
 (defun environment ()
   "Get or create the default environment.
 
-   Module discovery uses workspace.lisp files from two directories
-   set by the epsilon shell script:
+   Module discovery uses the workspace.lisp file from EPSILON_HOME,
+   set by the epsilon shell script. Additional workspaces can be
+   loaded dynamically using the ,workspace REPL command.
 
-   - EPSILON_HOME: The epsilon installation directory (required).
-     Must contain a workspace.lisp that defines the core modules.
-
-   - EPSILON_USER: The user's working directory (optional).
-     If it contains a workspace.lisp, those modules are also loaded.
-     User modules take precedence over home modules with the same name.
-
-   Each workspace.lisp is expanded into a list of module paths.
-   The environment is built from the combined module list."
+   EPSILON_HOME must contain a workspace.lisp that defines the core modules."
   (unless *environment*
     (setf *environment* (make-build-environment))
-    (let ((epsilon-home (env:getenv "EPSILON_HOME"))
-          (epsilon-user (env:getenv "EPSILON_USER")))
+    (let ((epsilon-home (env:getenv "EPSILON_HOME")))
 
       ;; EPSILON_HOME is required and must have workspace.lisp
       (unless epsilon-home
@@ -413,19 +407,9 @@
         (unless (probe-file home-workspace)
           (error "No workspace.lisp found in EPSILON_HOME: ~A" epsilon-home))
 
-        ;; Load EPSILON_HOME workspace first (base modules)
-        (log:info "Loading workspace from EPSILON_HOME: ~A" epsilon-home)
+        ;; Load EPSILON_HOME workspace
+        (log:debug "Loading workspace from EPSILON_HOME: ~A" epsilon-home)
         (load-workspace-modules *environment* epsilon-home))
-
-      ;; Load EPSILON_USER workspace if present and different from EPSILON_HOME
-      (when (and epsilon-user
-                 (not (equal (truename epsilon-home)
-                             (ignore-errors (truename epsilon-user)))))
-        (let ((user-workspace (path:path-string
-                               (path:path-join epsilon-user "workspace.lisp"))))
-          (when (probe-file user-workspace)
-            (log:info "Loading workspace from EPSILON_USER: ~A" epsilon-user)
-            (load-workspace-modules *environment* epsilon-user))))
 
       ;; Verify core modules are available
       (unless (get-module *environment* "epsilon.core")
@@ -620,14 +604,17 @@
            (requires-list (getf plist :requires))
            (provides-list (getf plist :provides))
            (platform (getf plist :platform))
+           (source-type (getf plist :source-type))
+           ;; Determine file extension from source-type
+           (file-extension (if (eq source-type :e) ".e" ".lisp"))
            ;; Helper function to load resources from paths
            (load-resources (lambda (paths)
                              (when paths
-                               (sort-sources 
+                               (sort-sources
                                 (mapcan (lambda (resource-path)
                                           (let ((full-uri (path:uri-merge uri resource-path)))
                                             (if (probe-file (path:path-from-uri full-uri))
-                                                (find-source-info full-uri)
+                                                (find-source-info full-uri file-extension)
                                                 '())))
                                         paths)))))
            (sources (funcall load-resources source-paths))
@@ -637,7 +624,7 @@
            (experiments (funcall load-resources experiment-paths))
            (docs (funcall load-resources doc-paths))
            (data (funcall load-resources data-paths)))
-      
+
       (let ((project (make-instance 'project
                                     :uri uri
                                     :name name
@@ -657,11 +644,12 @@
                                     :modules map:+empty+)))
         project))))
 
-(defun find-source-info (uri)
+(defun find-source-info (uri &optional (extension ".lisp"))
+  "Find source files in directory URI with the given EXTENSION (default .lisp)."
   (handler-case
       (remove-if #'null
                  (mapcar #'make-source-info
-                         (fs:list-files uri ".lisp")))
+                         (fs:list-files uri extension)))
     (file-error ()
       ;; If directory doesn't exist or can't be read, return empty list
       '())
@@ -679,7 +667,7 @@
 
 (defun target-info (build-input)
   "Create target information for a source file using simplified EPK structure
-   
+
    Output structure:
    - target/package/fasl/lib/... - individual FASLs
    - target/package/module.fasl - concatenated FASL"
@@ -687,6 +675,11 @@
          (project-path (path project))
          (source-full-path (path (source-info build-input)))
          (source-rel-path (subseq source-full-path (length project-path)))
+         ;; Strip leading "/" if present
+         (source-rel-path (if (and (> (length source-rel-path) 0)
+                                   (char= (char source-rel-path 0) #\/))
+                              (subseq source-rel-path 1)
+                              source-rel-path))
          ;; Strip "src/" from the beginning if present
          (clean-rel-path (if (and (> (length source-rel-path) 4)
                                   (string= (subseq source-rel-path 0 4) "src/"))
@@ -715,16 +708,16 @@
 ;; test-build-order removed - use project-resources with :tests instead
 
 (defun read-first-form (uri)
-  "Read forms from a file until we find a defpackage or in-package form.
+  "Read forms from a file until we find a defpackage, in-package, or package form.
    Throws an error if no package definition is found, except for bootstrap files."
   (let ((file-path (path:path-from-uri uri)))
     (with-open-file (stream file-path)
       (loop for form = (ignore-errors (read stream nil :eof))
             until (eq form :eof)
-            when (and (consp form) 
-                      (member (first form) '(defpackage in-package) :test #'string-equal))
+            when (and (consp form)
+                      (member (first form) '(defpackage in-package package) :test #'string-equal))
               return form
-            finally 
+            finally
               ;; Allow certain types of files to not have package definitions
               (let ((filename (file-namestring file-path))
                     (path-str (namestring file-path)))
@@ -735,7 +728,7 @@
                             (search "/benchmarks/" path-str)
                             (search "/experiments/" path-str))
                   (error "No package definition (defpackage or in-package) found in file: ~A~%~
-                          Regular source files must define a package. Bootstrap, test, example, and experimental files are exempt." 
+                          Regular source files must define a package. Bootstrap, test, example, and experimental files are exempt."
                          file-path))
                 (return nil))))))
 
@@ -745,14 +738,20 @@
                  (append (cdr (assoc :use (cddr form)))
                          (mapcar #'second (cdr (assoc :local-nicknames (cddr form))))
                          ;; Extract packages from :import-from clauses
-                         (mapcar #'cadr 
+                         (mapcar #'cadr
                                  (remove-if-not (lambda (clause)
                                                   (and (consp clause)
                                                        (eq (car clause) :import-from)))
                                                 (cddr form))))))
         ((string-equal 'in-package (first form))
          (values nil
-                 (cdr form)))))
+                 (cdr form)))
+        ;; Handle epsilon's (package ...) macro form
+        ((string-equal 'package (first form))
+         (values (second form)
+                 (let ((import-clause (assoc :import (cddr form))))
+                   (when import-clause
+                     (mapcar #'second (cdr import-clause))))))))
 
 (defun sort-sources (sources)
   "Sort source files topologically based on their intra-package dependencies.
@@ -817,33 +816,33 @@
   "Print stdout and stderr output from build result"
   (format *error-output* "~%=== BUILD FAILURE DUMP ===~%")
   (format *error-output* "File: ~A~%" (path:path-from-uri (source-uri (build-input result))))
-  (format *error-output* "Operation: ~A~%" (compilation-status (build-input result)))
-  
+  (format *error-output* "Status: ~A~%" (compilation-status result))
+
   (when (stdout-output result)
     (let ((output (stdout-output result)))
       (format *error-output* "~%--- Captured STDOUT (~D chars) ---~%" (length output))
       (format *error-output* "~A~%" output)))
-  
+
   (when (stderr-output result)
     (let ((output (stderr-output result)))
       (format *error-output* "~%--- Captured STDERR (~D chars) ---~%" (length output))
       (format *error-output* "~A~%" output)))
-  
+
   (when (compilation-warnings result)
     (format *error-output* "~%--- Warnings (~D) ---~%" (length (compilation-warnings result)))
     (dolist (warning (compilation-warnings result))
       (format *error-output* "  ~A~%" warning)))
-  
+
   (when (compilation-errors result)
     (format *error-output* "~%--- Errors (~D) ---~%" (length (compilation-errors result)))
     (dolist (error (compilation-errors result))
       (format *error-output* "  ~A~%" error)))
-  
+
   (when (stack-trace result)
     (format *error-output* "~%--- Stack Trace ---~%")
     (dolist (frame (stack-trace result))
       (format *error-output* "  ~A~%" frame)))
-  
+
   (format *error-output* "~%=== END BUILD FAILURE DUMP ===~%"))
 
 (defun redefinition-warning-p (warning)
@@ -855,14 +854,14 @@
 (defun handle-warning (warning result)
   "Handle compilation warning"
   (push warning (compilation-warnings result))
-  
+
   ;; Always suppress redefinition warnings for interactive development
   (when (redefinition-warning-p warning)
     (muffle-warning)))
-  
+
 
 (defun handle-error (error result)
-  "Handle compilation error"  
+  "Handle compilation error"
   (push error (compilation-errors result))
   ;; Force output to be flushed before halting
   (force-output *standard-output*)
@@ -877,55 +876,69 @@
 
 
 (defun watch-operation (environment build-input fn)
+  "Execute FN in a separate thread with proper error collection.
+   Error handling must be INSIDE the thread since handler-bind only
+   catches conditions in the same thread."
   (let ((result (make-instance 'build-result
                                :build-input build-input))
         (stdout-stream (make-string-output-stream))
         (stderr-stream (make-string-output-stream))
+        ;; Mutable boxes for cross-thread communication
+        (captured-error (list nil))
+        (captured-backtrace (list nil))
         (completed nil))
     (unwind-protect
          (progn
            (setf (start-time result) (get-internal-real-time))
-           (let ((*standard-output* stdout-stream)
-                 (*error-output* stderr-stream))
-             (handler-bind ((warning (lambda (w)
-                                       ;; Capture output before handling warning
-                                       (setf (stdout-output result) (get-output-stream-string stdout-stream)
-                                             (stderr-output result) (get-output-stream-string stderr-stream))
-                                       (handle-warning w result)))
-                            (error (lambda (e)
-                                     ;; Capture output before handling error  
-                                     (setf (stdout-output result) (get-output-stream-string stdout-stream)
-                                           (stderr-output result) (get-output-stream-string stderr-stream)
-                                           (stack-trace result) (sb-debug:list-backtrace))
-                                     (handle-error e result))))
-               ;; Try to run with timeout
-               (let ((thread (sb-thread:make-thread 
-                             (lambda () 
-                               (funcall fn)
-                               (setf completed t))
-                             :name "build-operation")))
-                 (sleep 0.1) ; Give thread a moment to start
-                 (let ((timeout-count 0)
-                       (timeout-secs (map:get (environment-config environment) :timeout 60)))
-                   (loop while (and (sb-thread:thread-alive-p thread) 
-                                    (< timeout-count (* timeout-secs 10)))
-                         do (sleep 0.1)
-                            (incf timeout-count))
-                   (when (sb-thread:thread-alive-p thread)
-                     ;; Timeout occurred - capture output and terminate
-                     (setf (stdout-output result) (get-output-stream-string stdout-stream)
-                           (stderr-output result) (get-output-stream-string stderr-stream))
-                     (sb-thread:terminate-thread thread)
-                     (error "Build operation timed out after ~D seconds" 
-                            (map:get (environment-config environment) :timeout 60)))
-                   (sb-thread:join-thread thread))))))
+           ;; Capture stream references for the child thread
+           (let ((child-stdout stdout-stream)
+                 (child-stderr stderr-stream))
+             ;; Create thread with error handling INSIDE the thread
+             (let ((thread (sb-thread:make-thread
+                           (lambda ()
+                             ;; Bind output streams inside the thread
+                             (let ((*standard-output* child-stdout)
+                                   (*error-output* child-stderr))
+                               (handler-bind
+                                   ((warning (lambda (w)
+                                               (handle-warning w result)
+                                               (muffle-warning w)))
+                                    (error (lambda (e)
+                                             ;; Capture error and backtrace before unwinding
+                                             (setf (first captured-error) e)
+                                             (setf (first captured-backtrace)
+                                                   (sb-debug:list-backtrace)))))
+                                 (handler-case
+                                     (progn
+                                       (funcall fn)
+                                       (setf completed t))
+                                   (error (e)
+                                     ;; Error already captured in handler-bind above
+                                     (declare (ignore e)))))))
+                           :name "build-operation")))
+               (sleep 0.1) ; Give thread a moment to start
+               (let ((timeout-count 0)
+                     (timeout-secs (map:get (environment-config environment) :timeout 60)))
+                 (loop while (and (sb-thread:thread-alive-p thread)
+                                  (< timeout-count (* timeout-secs 10)))
+                       do (sleep 0.1)
+                          (incf timeout-count))
+                 (when (sb-thread:thread-alive-p thread)
+                   ;; Timeout occurred - terminate thread
+                   (sb-thread:terminate-thread thread)
+                   (setf (first captured-error)
+                         (make-condition 'simple-error
+                                         :format-control "Build operation timed out after ~D seconds"
+                                         :format-arguments (list timeout-secs))))
+                 (ignore-errors (sb-thread:join-thread thread))))))
+      ;; Capture final output
       (setf (end-time result) (get-internal-real-time))
-      ;; Always capture final output
-      (unless (stdout-output result)
-        (setf (stdout-output result) (get-output-stream-string stdout-stream)))
-      (unless (stderr-output result)
-        (setf (stderr-output result) (get-output-stream-string stderr-stream))))
-    ;; Removed direct reporting - now handled by events
+      (setf (stdout-output result) (get-output-stream-string stdout-stream))
+      (setf (stderr-output result) (get-output-stream-string stderr-stream))
+      ;; Handle captured error from the build thread
+      (when (first captured-error)
+        (setf (stack-trace result) (first captured-backtrace))
+        (handle-error (first captured-error) result)))
     result))
 
 (defun compile-source (environment build-input)
@@ -936,12 +949,20 @@
                      (let ((*compile-verbose* nil)
                            (*compile-print* nil))
                        (log:debug "Compiling: ~A" (path:path-from-uri (source-uri build-input)))
-                       (compile-file (path:path-from-uri (source-uri build-input))
-                                     :output-file (path:path-from-uri (target-uri build-input))
-                                     :verbose nil
-                                     :print nil)
-                       ;; Load the compiled file immediately
-                       (load (path:path-from-uri (target-uri build-input)))))))
+                       ;; compile-file returns (output-truename warnings-p failure-p)
+                       ;; Check failure-p and signal error if compilation failed
+                       (multiple-value-bind (output-path warnings-p failure-p)
+                           (compile-file (path:path-from-uri (source-uri build-input))
+                                         :output-file (path:path-from-uri (target-uri build-input))
+                                         :verbose nil
+                                         :print nil)
+                         (declare (ignore warnings-p))
+                         (when failure-p
+                           (error "Compilation failed for ~A" (path:path-from-uri (source-uri build-input))))
+                         (unless output-path
+                           (error "compile-file returned NIL for ~A" (path:path-from-uri (source-uri build-input))))
+                         ;; Load the compiled file immediately
+                         (load output-path))))))
 
 (defun load-source (environment build-input)
   (watch-operation environment build-input
@@ -951,20 +972,33 @@
 ;; Events now handled by logging
 
 (defun create-binary (fasl-files output-path)
-  "Create a concatenated FASL file from individual FASL files"
+  "Create a concatenated FASL file from individual FASL files.
+   Writes atomically to prevent leaving empty files on failure."
   (when fasl-files
     (fs:make-dirs (path:path-parent (path:make-path output-path)))
-    (with-open-file (output output-path :direction :output
-                                        :element-type '(unsigned-byte 8)
-                                        :if-exists :supersede
-                                        :if-does-not-exist :create)
-      (dolist (fasl-file fasl-files)
-        (when (probe-file fasl-file)
-          (with-open-file (input fasl-file :direction :input
-                                           :element-type '(unsigned-byte 8))
-            (loop for byte = (read-byte input nil nil)
-                  while byte
-                  do (write-byte byte output))))))))
+    (let ((temp-path (format nil "~A.tmp" output-path))
+          (bytes-written 0))
+      (unwind-protect
+           (progn
+             (with-open-file (output temp-path :direction :output
+                                               :element-type '(unsigned-byte 8)
+                                               :if-exists :supersede
+                                               :if-does-not-exist :create)
+               (dolist (fasl-file fasl-files)
+                 (when (probe-file fasl-file)
+                   (with-open-file (input fasl-file :direction :input
+                                                    :element-type '(unsigned-byte 8))
+                     (loop for byte = (read-byte input nil nil)
+                           while byte
+                           do (write-byte byte output)
+                              (incf bytes-written))))))
+             ;; Only rename if we actually wrote content
+             (if (> bytes-written 0)
+                 (rename-file temp-path output-path)
+                 (log:warn "No FASL content to concatenate for ~A" output-path)))
+        ;; Cleanup temp file on any exit path
+        (when (probe-file temp-path)
+          (delete-file temp-path))))))
 
 (defun binary-current-p (project binary-path)
   "Check if concatenated FASL is current relative to all source files"
@@ -977,28 +1011,42 @@
                      (<= (file-write-date source-path) fasl-time))))
              sources))))
 
+(defun file-empty-p (path)
+  "Check if a file is empty (zero bytes)."
+  (with-open-file (stream path :direction :input :element-type '(unsigned-byte 8)
+                               :if-does-not-exist nil)
+    (or (null stream) (zerop (file-length stream)))))
+
 (defun load-binary (project)
-  "Load concatenated FASL if it exists and is current, returns T if loaded"
-  (let* ((binary-rel-path (path:string-path-join 
+  "Load concatenated FASL if it exists, is current, and is not empty.
+   Returns T if loaded, NIL otherwise."
+  (let* ((binary-rel-path (path:string-path-join
                                 "target" "package" "module.fasl"))
-         (binary-path (path:path-from-uri 
+         (binary-path (path:path-from-uri
                             (path:uri-merge (uri project) binary-rel-path))))
-    (when (and (probe-file binary-path)
-               (binary-current-p project binary-path))
-      (load binary-path)
-      t)))
+    (when (probe-file binary-path)
+      (cond
+        ((file-empty-p binary-path)
+         ;; Remove corrupted empty FASL file
+         (log:warn "Removing empty FASL file: ~A" binary-path)
+         (delete-file binary-path)
+         nil)
+        ((binary-current-p project binary-path)
+         (load binary-path)
+         t)
+        (t nil)))))
 
 ;;; TODO unify %build and %build-test
 
 (defun %build (environment project &key force)
   "Build the given build-inputs, optionally forcing compilation of all steps"
-  
+
   (let* ((build (make-instance 'project-build
                                :project project
                                :results '()))
-         ;; Force build-inputs to ensure we have a concrete list  
+         ;; Force build-inputs to ensure we have a concrete list
          (build-inputs (seq:seq (seq:realize (build-order project)))))
-    
+
     ;; Log build information for debugging (can be disabled if not needed)
     (when *debug-build-order*
       (log:info "Build order for ~A:" (project-name project))
@@ -1006,14 +1054,14 @@
             (build-list (seq:realize build-inputs)))
         (dolist (build-input build-list)
           (incf index)
-          (log:info "  ~D. ~A (~A)" 
+          (log:info "  ~D. ~A (~A)"
                     index
                     (path:path-from-uri (source-uri build-input))
                     (build-input-status build-input)))))
-    
+
     ;; Force compilation/loading to happen immediately by realizing the sequence
     (let* ((results (let ((index 0))
-                      (seq:realize 
+                      (seq:realize
                        (seq:map (lambda (build-input)
                                   (incf index)
                                   (let ((result (if force
@@ -1025,49 +1073,66 @@
                                                       (t
                                                        (load-source environment build-input))))))
                                     (when (compilation-errors result)
-                                      (log:error "Compilation failed: ~A" 
+                                      (log:error "Compilation failed: ~A"
                                                      (path (source-info (build-input result)))))
                                     result))
                                 build-inputs)))))
       ;; Now results is a realized list, safe to store and use
       (setf (slot-value build 'results) results)
       (setf (end-time build) (get-internal-real-time))
-      
+
       ;; results is now a concrete list, so every-p will work correctly
       (when (and (not force)
                  (every (lambda (result)
                           (not (compilation-errors result)))
                         results))
         (let* (;; Force fasl-files to be computed immediately
-               (fasl-files (seq:realize 
+               (fasl-files (seq:realize
                             (seq:map (lambda (build-input)
                                        (path:path-from-uri (target-uri build-input)))
                                      build-inputs)))
-               (binary-rel-path (path:string-path-join 
+               (binary-rel-path (path:string-path-join
                                       "target" "package" "module.fasl"))
-               (binary-path (path:path-from-uri 
+               (binary-path (path:path-from-uri
                                   (path:uri-merge (uri project) binary-rel-path))))
           ;; fasl-files is now a concrete list
           (when fasl-files
             (create-binary fasl-files binary-path))))
-      
+
       build)))
+
+(defun e-module-p (module-info)
+  "Check if MODULE-INFO represents an .e module (has :source-type :e in metadata)."
+  (when module-info
+    (let ((metadata (module-metadata module-info)))
+      (eq (getf metadata :source-type) :e))))
 
 (defun load-module (environment package &key force compile-only)
   "Ensure a package is available in the environment.
   Compiles if necessary, then loads unless compile-only is true.
-  
+
   PACKAGE - Package name to load (e.g., 'epsilon.core', 'http')
   FORCE - Force compilation of all build steps regardless of timestamps
   COMPILE-ONLY - Only compile, don't load (for backward compatibility with build)
-  
+
+  For .e modules (with :source-type :e in module.lisp), dispatches to eloader.
+
   Returns T if successfully loaded/compiled, NIL otherwise."
   ;; Check if module is already loaded
   (let ((module-info (get-module environment package)))
     (when (and module-info (module-loaded-p module-info) (not force))
       (log:debug "Module ~A already loaded, skipping" package)
-      (return-from load-module t)))
-  
+      (return-from load-module t))
+
+    ;; Check if this is an .e module - dispatch to eloader
+    ;; Use runtime lookup because eloader is loaded after loader during bootstrap
+    (when (e-module-p module-info)
+      (log:debug "Dispatching .e module ~A to eloader" package)
+      (let ((load-e-module-fn (find-symbol "LOAD-E-MODULE" "EPSILON.ELOADER")))
+        (when load-e-module-fn
+          (return-from load-module
+            (funcall load-e-module-fn environment package :force force :verbose nil))))))
+
   (let* ((module-info (get-module environment package))
          (location (when module-info (module-location module-info)))
          (module-dir (if location
@@ -1085,13 +1150,13 @@
       (let ((resolved-dep (find-module environment :provides dep-name)))
         (unless (module-loaded-p resolved-dep)
           (load-module environment (module-name resolved-dep)))))
-    
+
     ;; Now try to load concatenated FASL if dependencies are resolved and it's up-to-date
     (unless (or force compile-only (map:get (environment-config environment) :force))
       (when (load-binary project)
         (mark-module-loaded environment package)
         (return-from load-module t)))
-    
+
     ;; Build if needed
     (let ((build-result (%build environment project :force (or force (map:get (environment-config environment) :force)))))
       (when build-result
@@ -1119,7 +1184,7 @@
    RESOURCE-TYPE - Type of resources (:tests, :benchmarks, :examples, etc.)
    FORCE - Force recompilation even if up-to-date
    COMPILE-ONLY - Only compile, don't load
-   
+
    Returns T if successful, NIL otherwise."
   (let* ((module-info (get-module environment module))
          (location (when module-info (module-location module-info)))
@@ -1128,22 +1193,22 @@
                           (error "Unknown module: ~A" module)))
          (project (load-project module-dir environment))
          (resources (project-resources project resource-type)))
-    
+
     ;; Sort resources if they have dependencies, otherwise use as-is
     ;; Tests, benchmarks, etc. typically don't have inter-file dependencies
-    (let ((sorted-resources 
+    (let ((sorted-resources
            (if (eq resource-type :sources)
                ;; Source files need topological sorting based on dependencies
                (multiple-value-bind (sorted cycles)
                    (sort-sources resources)
                  (when cycles
-                   (error "Circular dependencies detected in ~A sources: ~A" 
+                   (error "Circular dependencies detected in ~A sources: ~A"
                           module cycles))
                  sorted)
                ;; Other resources (tests, benchmarks, etc.) can be processed in any order
                ;; They should be independent and not have inter-file dependencies
                resources)))
-      
+
       ;; Build each resource
       (let ((all-success t))
         (dolist (resource sorted-resources)
@@ -1155,13 +1220,13 @@
                (let ((result (compile-source environment build-input)))
                  (when (compilation-errors result)
                    (setf all-success nil)
-                   (log:error "Failed to compile ~A" 
+                   (log:error "Failed to compile ~A"
                              (path (source-info build-input))))))
               ;; Just load if not compile-only
               ((not compile-only)
                (let ((result (load-source environment build-input)))
                  (when (compilation-errors result)
                    (setf all-success nil)
-                   (log:error "Failed to load ~A" 
+                   (log:error "Failed to load ~A"
                              (path (source-info build-input)))))))))
         all-success))))

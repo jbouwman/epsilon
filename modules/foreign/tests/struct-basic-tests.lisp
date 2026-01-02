@@ -17,7 +17,7 @@
   (struct:define-c-struct 'test-point
     '((x :int)
       (y :int)))
-  
+
   ;; Get the layout
   (let ((layout (struct:get-struct-layout 'test-point)))
     (is (struct:struct-layout-p layout))
@@ -30,7 +30,7 @@
   (struct:define-c-struct 'test-point2
     '((x :int)
       (y :int)))
-  
+
   ;; Test field info
   (let ((layout (struct:get-struct-layout 'test-point2)))
     (is (= (struct:struct-field-offset layout 'x) 0))
@@ -44,21 +44,21 @@
   (struct:define-c-struct 'test-point3
     '((x :int)
       (y :int)))
-  
+
   ;; Create and use instance
   (struct:with-c-struct (pt test-point3)
     ;; Initially zeroed
     (is (= (struct:struct-ref pt 'x) 0))
     (is (= (struct:struct-ref pt 'y) 0))
-    
+
     ;; Set values
     (setf (struct:struct-ref pt 'x) 42)
     (setf (struct:struct-ref pt 'y) 100)
-    
+
     ;; Read back
     (is (= (struct:struct-ref pt 'x) 42))
     (is (= (struct:struct-ref pt 'y) 100))
-    
+
     ;; Check we have a pointer
     (is (sb-sys:system-area-pointer-p (struct:struct-pointer pt)))))
 
@@ -72,12 +72,12 @@
       (float-val :float)
       (double-val :double)
       (ptr-val :pointer)))
-  
+
   (let ((layout (struct:get-struct-layout 'mixed-struct)))
     ;; Basic checks
     (is (struct:struct-layout-p layout))
     ;; Check some offsets are reasonable
-    (is (>= (struct:struct-field-offset layout 'double-val) 
+    (is (>= (struct:struct-field-offset layout 'double-val)
             (struct:struct-field-offset layout 'float-val)))
     (is (>= (struct:struct-field-offset layout 'ptr-val)
             (struct:struct-field-offset layout 'double-val)))))
@@ -90,7 +90,7 @@
       (b :int)       ; 4 bytes, needs alignment
       (c :char)      ; 1 byte
       (d :double)))  ; 8 bytes, needs alignment
-  
+
   (let ((layout (struct:get-struct-layout 'aligned-struct)))
     ;; Check alignment-based offsets
     (is (= (struct:struct-field-offset layout 'a) 0))
@@ -106,7 +106,7 @@
     '((i :int)
       (f :float)
       (c (:array :char 4))))
-  
+
   (let ((layout (struct:get-struct-layout 'test-union)))
     (is (struct:struct-layout-p layout))
     ;; All fields at offset 0 (union)
@@ -122,13 +122,13 @@
     '((magic :unsigned-int)
       (version :unsigned-char)
       (flags :unsigned-char)))
-  
+
   (struct:with-c-struct (s serializable)
     ;; Set values
     (setf (struct:struct-ref s 'magic) #xDEADBEEF)
     (setf (struct:struct-ref s 'version) 1)
     (setf (struct:struct-ref s 'flags) #xFF)
-    
+
     ;; Convert to bytes
     (let ((bytes (struct:struct-to-bytes s)))
       (is (typep bytes '(vector (unsigned-byte 8))))

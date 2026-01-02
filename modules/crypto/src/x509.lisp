@@ -32,17 +32,17 @@
    #:save-certificate
    #:certificate-public-key
    #:verify-certificate
-   
+
    ;; CSR operations
    #:create-csr
    #:sign-csr
    #:load-csr
    #:save-csr
-   
+
    ;; Utility functions
    #:save-key-and-cert-pair
    #:load-key-and-cert-pair
-   
+
    ;; Re-export imported types
    #:x509-certificate
    #:x509-certificate-p
@@ -165,7 +165,7 @@
 (defun add-x509-name-entries (name-ptr entries)
   "Add entries to an X509 name"
   (loop for (field value) on entries by #'cddr
-        do (when (zerop (ffi:%x509-name-add-entry-by-txt 
+        do (when (zerop (ffi:%x509-name-add-entry-by-txt
                          name-ptr (string field) 4097 ; MBSTRING_ASC
                          (string value) -1 -1 0))
              (error 'crypto-error :code (ffi:%err-get-error)
@@ -215,11 +215,11 @@
                            subject-cn
                            issuer-cn)
   "Create a new X.509 certificate with specified attributes.
-   
+
    Creates an X.509 v3 certificate suitable for TLS, code signing, or other PKI uses.
    Can create self-signed certificates (when issuer equals subject) or certificates
    signed by a CA (when issuer differs from subject).
-   
+
    Parameters:
      subject (list): Subject DN as property list (\"CN\" \"example.com\" \"O\" \"Corp\")
      issuer (list): Issuer DN as property list (defaults to subject for self-signed)
@@ -227,15 +227,15 @@
      days (integer): Validity period in days from now (default: 365)
      public-key (crypto-key): Public key to embed in certificate
      signing-key (crypto-key): Private key to sign certificate (issuer's key)
-     
+
      Compatibility parameters (deprecated):
      key: Same key for both public-key and signing-key (self-signed)
      subject-cn: Simple common name for subject
      issuer-cn: Simple common name for issuer
-   
+
    Returns:
      X509-CERTIFICATE structure containing the created certificate
-   
+
    Distinguished Name (DN) Fields:
      \"CN\" - Common Name (e.g., domain name)
      \"O\" - Organization
@@ -244,14 +244,14 @@
      \"ST\" - State/Province
      \"L\" - Locality/City
      \"emailAddress\" - Email address
-   
+
    Example - Self-signed certificate:
      (create-certificate
        :subject (list \"CN\" \"example.com\" \"O\" \"Example Corp\" \"C\" \"US\")
        :public-key my-key
        :signing-key my-key
        :days 365)
-   
+
    Example - CA-signed certificate:
      (create-certificate
        :subject (list \"CN\" \"server.example.com\")
@@ -260,13 +260,13 @@
        :signing-key ca-key
        :serial 12345
        :days 90)
-   
+
    Security Notes:
      - Serial numbers must be unique per issuer
      - Use appropriate validity periods (shorter is more secure)
      - For production, use proper CA infrastructure
      - Self-signed certificates require explicit trust
-   
+
    Errors:
      Signals CRYPTO-ERROR if certificate creation or signing fails"
   ;; Handle compatibility arguments
@@ -277,13 +277,13 @@
     (setf subject (or subject (list "CN" subject-cn))))
   (when issuer-cn
     (setf issuer (or issuer (list "CN" issuer-cn))))
-  
+
   (unless (crypto-key-p public-key)
     (error "Invalid public key"))
-  
+
   (unless (crypto-key-p signing-key)
     (error "Invalid signing key"))
-  
+
   (with-x509 (x509)
     ;; Set all certificate fields
     (set-x509-version x509 2)  ; X509 v3
@@ -293,7 +293,7 @@
     (set-x509-issuer x509 issuer)
     (set-x509-public-key x509 public-key)
     (sign-x509 x509 signing-key)
-    
+
     ;; Extract certificate info for the structure
     (let ((subject-str (get-x509-name-string (ffi:%x509-get-subject-name x509)))
           (issuer-str (get-x509-name-string (ffi:%x509-get-issuer-name x509))))
@@ -313,7 +313,7 @@
         (when (sb-sys:sap= x509 (sb-sys:int-sap 0))
           (error 'crypto-error :code (ffi:%err-get-error)
                  :message "Failed to read certificate from PEM"))
-        
+
         ;; Extract certificate info
         (let ((subject (get-x509-name-string (ffi:%x509-get-subject-name x509)))
               (issuer (get-x509-name-string (ffi:%x509-get-issuer-name x509)))
@@ -330,7 +330,7 @@
   "Export X.509 certificate to PEM format string"
   (unless (x509-certificate-p certificate)
     (error "Invalid certificate object"))
-  
+
   (call-with-bio-mem
    (lambda (bio)
      (when (zerop (ffi:%pem-write-bio-x509 bio (x509-certificate-handle certificate)))
@@ -342,15 +342,15 @@
   "Extract public key from X.509 certificate"
   (unless (x509-certificate-p certificate)
     (error "Invalid certificate object"))
-  
+
   (let ((pkey (ffi:%x509-get-pubkey (x509-certificate-handle certificate))))
     (when (sb-sys:sap= pkey (sb-sys:int-sap 0))
       (error 'crypto-error :code (ffi:%err-get-error)
              :message "Failed to extract public key from certificate"))
-    
+
     ;; Determine key type
     (let ((key-id (ffi:%evp-pkey-id pkey)))
-      (make-crypto-key 
+      (make-crypto-key
        :handle pkey
        :type (cond ((= key-id 6) :rsa)  ; EVP_PKEY_RSA
                    ((= key-id 408) :ec)   ; EVP_PKEY_EC
@@ -364,10 +364,10 @@
   "Verify certificate signature with issuer's public key"
   (unless (x509-certificate-p certificate)
     (error "Invalid certificate object"))
-  
+
   (unless (crypto-key-p issuer-key)
     (error "Invalid issuer key"))
-  
+
   (= 1 (ffi:%x509-verify (x509-certificate-handle certificate)
                         (crypto-key-handle issuer-key))))
 
@@ -401,21 +401,21 @@
            subject-or-keyword)
           ;; Default to empty subject
           (t nil))))
-    
+
     (unless (crypto-key-p key)
       (error "Invalid key object"))
-    
+
     (with-x509-req (req)
       ;; Set public key
       (when (zerop (ffi:%x509-req-set-pubkey req (crypto-key-handle key)))
         (error 'crypto-error :code (ffi:%err-get-error)
                :message "Failed to set CSR public key"))
-      
+
       ;; Set subject name
       (when subject
         (let ((name (ffi:%x509-req-get-subject-name req)))
           (add-x509-name-entries name subject)))
-      
+
       ;; Sign CSR - Ed25519 uses NULL digest
       (let ((md (if (eq (crypto-key-type key) :ed25519)
                     (sb-sys:int-sap 0)  ; NULL for Ed25519
@@ -423,49 +423,51 @@
         (when (and (not (eq (crypto-key-type key) :ed25519))
                    (sb-sys:sap= md (sb-sys:int-sap 0)))
           (error 'crypto-error :code -1 :message "Unknown digest algorithm"))
-        
+
         (when (zerop (ffi:%x509-req-sign req (crypto-key-handle key) md))
           (error 'crypto-error :code (ffi:%err-get-error)
                  :message "Failed to sign CSR")))
-      
+
       ;; Convert CSR to PEM string before returning
       (save-csr req))))
 
-(defun sign-csr (csr-handle issuer subject signing-key &key (days 365) (serial 1))
-  "Sign a CSR to create a certificate"
+(defun sign-csr (csr-handle issuer subject signing-key &key (days 365) (serial 1) is-ca)
+  "Sign a CSR to create a certificate.
+   IS-CA when true marks the resulting certificate as a CA certificate."
   (declare (ignore subject)) ;; Subject is copied from CSR
+  (declare (ignore is-ca)) ;; TODO: Add Basic Constraints extension for CA certs
   (with-x509 (x509)
     ;; Set certificate fields
     (set-x509-version x509 2)  ; X509 v3
     (set-x509-serial x509 serial)
     (set-x509-validity x509 days)
-    
+
     ;; Copy subject from CSR
     (let ((csr-subject (ffi:%x509-req-get-subject-name csr-handle)))
       (when (zerop (ffi:%x509-set-subject-name x509 csr-subject))
         (error 'crypto-error :code (ffi:%err-get-error)
                :message "Failed to set subject name from CSR")))
-    
+
     ;; Set issuer name
     (set-x509-issuer x509 issuer)
-    
+
     ;; Get public key from CSR (this creates a new reference)
     (let ((pubkey (ffi:%x509-req-get-pubkey csr-handle)))
       (when (sb-sys:sap= pubkey (sb-sys:int-sap 0))
         (error 'crypto-error :code (ffi:%err-get-error)
                :message "Failed to get public key from CSR"))
-      
+
       ;; Set public key in certificate
       (when (zerop (ffi:%x509-set-pubkey x509 pubkey))
         (ffi:%evp-pkey-free pubkey)
         (error 'crypto-error :code (ffi:%err-get-error)
                :message "Failed to set public key"))
-      
+
       (ffi:%evp-pkey-free pubkey)) ; Free the reference
-    
+
     ;; Sign certificate
     (sign-x509 x509 signing-key)
-    
+
     ;; Create certificate structure
     (let ((subject-str (get-x509-name-string (ffi:%x509-get-subject-name x509)))
           (issuer-str (get-x509-name-string (ffi:%x509-get-issuer-name x509))))
@@ -504,11 +506,11 @@
     (error "Invalid key object"))
   (unless (x509-certificate-p cert)
     (error "Invalid certificate object"))
-  
+
   ;; Save the private key
   (with-open-file (stream key-file :direction :output :if-exists :supersede)
     (write-string (key-to-pem key :private-p t) stream))
-  
+
   ;; Save the certificate
   (with-open-file (stream cert-file :direction :output :if-exists :supersede)
     (write-string (save-certificate cert) stream)))

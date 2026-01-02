@@ -15,7 +15,7 @@
 (defparameter *test-vectors*
   '(;; SHA-256 test vectors
     (:sha256
-     (("" 
+     ((""
        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855")
       ("abc"
        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
@@ -23,17 +23,17 @@
        "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592")
       ("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
        "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1")))
-    
+
     ;; SHA-384 test vectors
     (:sha384
-     (("" 
+     ((""
        "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b")
       ("abc"
        "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7")))
-    
+
     ;; SHA-512 test vectors
     (:sha512
-     (("" 
+     ((""
        "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e")
       ("abc"
        "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f")))))
@@ -87,7 +87,7 @@
 (deftest test-sha256-binary-data
   "Test SHA-256 hash of binary data"
   (let* ((data (make-array 256 :element-type '(unsigned-byte 8)
-                           :initial-contents (loop for i from 0 below 256 
+                           :initial-contents (loop for i from 0 below 256
                                                    collect i)))
          (hash (crypto:digest data crypto:+digest-sha256+)))
     (is (typep hash '(vector (unsigned-byte 8))))
@@ -172,7 +172,7 @@
          (hash (crypto:digest large-data crypto:+digest-sha256+)))
     (is (typep hash '(vector (unsigned-byte 8))))
     (is-= (length hash) 32)
-    
+
     ;; Hash should be deterministic
     (let ((hash2 (crypto:digest large-data crypto:+digest-sha256+)))
       (is (equalp hash hash2)))))
@@ -183,7 +183,7 @@
         (data2 (make-string 10000 :initial-element #\A)))
     ;; Change one character in middle
     (setf (char data2 5000) #\B)
-    
+
     (let ((hash1 (crypto:digest data1 crypto:+digest-sha256+))
 	  (hash2 (crypto:digest data2 crypto:+digest-sha256+)))
       ;; Even one bit change should produce completely different hash
@@ -220,7 +220,7 @@
       (let ((elapsed (- (get-internal-real-time) start)))
         ;; Should hash 1000 times quickly
         (is (< elapsed internal-time-units-per-second))))
-    
+
     ;; SHA-512 performance (might be slightly slower)
     (let ((start (get-internal-real-time)))
       (dotimes (i 1000)
@@ -238,7 +238,7 @@
     (let ((hash (crypto:digest empty-string crypto:+digest-sha256+)))
       (is (typep hash '(vector (unsigned-byte 8))))
       (is-= (length hash) 32))
-    
+
     ;; Empty byte array
     (let ((hash (crypto:digest empty-bytes crypto:+digest-sha256+)))
       (is (typep hash '(vector (unsigned-byte 8))))
@@ -251,7 +251,7 @@
 Line 2
 Line 3")
         (data-nulls (format nil "Before~CAfter" (code-char 0))))
-    
+
     ;; All should produce valid hashes
     (is (typep (crypto:digest data-unicode crypto:+digest-sha256+)
                '(vector (unsigned-byte 8))))

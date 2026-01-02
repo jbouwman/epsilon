@@ -33,9 +33,9 @@
 ;;; Define trampolines for common callback signatures
 ;;; These are SBCL alien-callable functions that C can call
 
-(sb-alien:define-alien-callable libffi-trampoline-int-int-int 
-    sb-alien:int ((callback-id sb-alien:int) 
-                  (arg1 sb-alien:int) 
+(sb-alien:define-alien-callable libffi-trampoline-int-int-int
+    sb-alien:int ((callback-id sb-alien:int)
+                  (arg1 sb-alien:int)
                   (arg2 sb-alien:int))
   "Trampoline for callbacks with signature (int, int) -> int"
   (let ((function (get-libffi-callback-function callback-id)))
@@ -92,7 +92,7 @@
 (defun get-trampoline-address (signature)
   "Get the address of the appropriate trampoline function"
   (case signature
-    (:int-int-int 
+    (:int-int-int
      (sb-alien:alien-callable-function 'libffi-trampoline-int-int-int))
     (:void-int
      (sb-alien:alien-callable-function 'libffi-trampoline-void-int))
@@ -108,7 +108,7 @@
   (let* ((signature (determine-callback-signature return-type arg-types))
          (trampoline-addr (get-trampoline-address signature)))
     (if trampoline-addr
-        (let ((callback-id (register-callback-with-trampoline 
+        (let ((callback-id (register-callback-with-trampoline
                            function trampoline-addr return-type arg-types)))
           (if (>= callback-id 0)
               (epsilon-get-callback-pointer callback-id)
@@ -119,7 +119,7 @@
   "Determine the trampoline signature needed"
   (cond
     ;; Common signatures
-    ((and (eq return-type :int) 
+    ((and (eq return-type :int)
           (equal arg-types '(:int :int)))
      :int-int-int)
     ((and (eq return-type :void)

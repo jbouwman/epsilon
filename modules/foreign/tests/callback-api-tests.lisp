@@ -33,15 +33,15 @@
   (let ((callback-name (gensym "TEST-CB-")))
     ;; Clean up any pre-existing callback (defensive)
     (ignore-errors (callback:unregister-callback callback-name))
-    
+
     (unwind-protect
          (progn
            ;; Test registration
-           (let ((cb-id (callback:register-callback callback-name 
+           (let ((cb-id (callback:register-callback callback-name
                                                (lambda (a b) (+ a b))
                                                :int '(:int :int))))
              (is (integerp cb-id))
-             
+
              ;; Test retrieval with retry
              (let ((cb-ptr nil)
                    (retries 3))
@@ -49,9 +49,9 @@
                      do (setf cb-ptr (callback:get-callback callback-name))
                      when cb-ptr return nil
                      do (sleep 0.01))
-               
+
                (is (sb-sys:system-area-pointer-p cb-ptr))
-               
+
                ;; Test calling
                (when cb-ptr
                  (let ((result (callback:call-callback cb-ptr 3 7)))
@@ -73,13 +73,13 @@
   (let ((callback-name (gensym "TEST-MULTIPLY-")))
     ;; Clean up any pre-existing callback (defensive)
     (ignore-errors (callback:unregister-callback callback-name))
-    
+
     (unwind-protect
          (progn
            ;; Define a callback using eval to use the generated name
            (eval `(callback:defcallback ,callback-name :int ((x :int) (factor :int))
                     (* x factor)))
-           
+
            ;; Get its pointer with retry
            (let ((cb-ptr nil)
                  (retries 3))
@@ -87,9 +87,9 @@
                    do (setf cb-ptr (callback:callback-pointer callback-name))
                    when cb-ptr return nil
                    do (sleep 0.01))
-             
+
              (is (sb-sys:system-area-pointer-p cb-ptr))
-             
+
              ;; Test calling it
              (when cb-ptr
                (let ((result (callback:call-callback cb-ptr 6 7)))
@@ -100,16 +100,16 @@
 (deftest test-closure-capture
   "Test that callbacks can capture lexical variables"
   (let ((multiplier 10))
-    (let ((cb (callback:make-callback 
+    (let ((cb (callback:make-callback
                (lambda (x) (* x multiplier))
                :int '(:int))))
       ;; Test initial value
       (let ((result1 (callback:call-callback cb 5)))
         (is (= result1 50)))
-      
+
       ;; Change captured variable
       (setf multiplier 20)
-      
+
       ;; Test updated value
       (let ((result2 (callback:call-callback cb 5)))
         (is (= result2 100))))))
@@ -117,7 +117,7 @@
 (deftest test-real-callback-creation
   "Test attempting to create real callbacks"
   ;; Try to create a real callback
-  (let ((real-cb (impl:create-real-callback 
+  (let ((real-cb (impl:create-real-callback
                   (lambda (x) (+ x 1))
                   :int '(:int))))
     (is (sb-sys:system-area-pointer-p real-cb))

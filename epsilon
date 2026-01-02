@@ -8,9 +8,6 @@
 
 set -eu
 
-# The user's working directory
-export EPSILON_USER="$PWD"
-
 # Resolve symlinks to find the actual epsilon installation
 SCRIPT="$0"
 while [ -L "$SCRIPT" ]; do
@@ -102,6 +99,9 @@ if [ "$DEBUG_MODE" = "true" ]; then
 else
     SBCL_TOPLEVEL_ARGS="--no-sysinit --no-userinit --disable-debugger --quit"
 fi
+
+# Capture user's working directory before changing to EPSILON_HOME
+export EPSILON_CWD="$PWD"
 
 cd "$EPSILON_HOME"
 

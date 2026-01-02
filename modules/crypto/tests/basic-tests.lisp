@@ -23,7 +23,7 @@
   (is (fboundp 'crypto:tls-accept))
   (is (fboundp 'crypto:tls-read))
   (is (fboundp 'crypto:tls-write))
-  
+
   ;; Crypto symbols
   (is (fboundp 'crypto:generate-rsa-key))
   (is (fboundp 'crypto:generate-ec-key))
@@ -32,7 +32,7 @@
   (is (fboundp 'crypto:verify-message))
   (is (fboundp 'crypto:encrypt))
   (is (fboundp 'crypto:decrypt))
-  
+
   ;; Certificate symbols
   (is (fboundp 'crypto:create-certificate))
   (is (fboundp 'crypto:load-certificate))
@@ -45,13 +45,13 @@
   (is (fboundp 'crypto:tls-context-p))
   (is (fboundp 'crypto:make-tls-connection))
   (is (fboundp 'crypto:tls-connection-p))
-  
+
   ;; Crypto structures
   (is (fboundp 'crypto:make-crypto-key))
   (is (fboundp 'crypto:crypto-key-p))
   (is (fboundp 'crypto:crypto-key-type))
   (is (fboundp 'crypto:crypto-key-bits))
-  
+
   ;; Certificate structures
   (is (fboundp 'crypto:make-x509-certificate))
   (is (fboundp 'crypto:x509-certificate-p))
@@ -72,14 +72,14 @@
 (deftest test-structure-creation
   "Test creating basic structures without FFI"
   ;; Create TLS context
-  (let ((ctx (crypto:make-tls-context :server-p nil 
+  (let ((ctx (crypto:make-tls-context :server-p nil
                                       :cert-file "test.crt"
                                       :key-file "test.key")))
     (is (crypto:tls-context-p ctx))
     (is (not (crypto:tls-context-server-p ctx)))
     (is (equal (crypto:tls-context-cert-file ctx) "test.crt"))
     (is (equal (crypto:tls-context-key-file ctx) "test.key")))
-  
+
   ;; Create crypto key structure
   (let ((key (crypto:make-crypto-key :type :rsa
                                      :bits 2048
@@ -90,7 +90,7 @@
     (is (= (crypto:crypto-key-bits key) 2048))
     (is (crypto:crypto-key-public-p key))
     (is (crypto:crypto-key-private-p key)))
-  
+
   ;; Create certificate structure
   (let ((cert (crypto:make-x509-certificate :subject "CN=Test"
                                             :issuer "CN=Test CA"

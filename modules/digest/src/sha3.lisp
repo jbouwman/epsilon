@@ -179,8 +179,8 @@
       (dotimes (byte-idx 8)
         (let ((block-idx (+ (* lane-idx 8) byte-idx)))
           (when (< block-idx rate-bytes)
-            (setf lane-value 
-                  (logior lane-value 
+            (setf lane-value
+                  (logior lane-value
                           (ash (aref block block-idx) (* byte-idx 8)))))))
       ;; XOR into state
       (setf (aref state lane-idx)
@@ -203,9 +203,9 @@
 ;;; SHA3-256 digest structure
 
 (defstruct (sha3-256
-             (:constructor %make-sha3-256-digest 
+             (:constructor %make-sha3-256-digest
                            (&aux (buffer (make-array +sha3-256-rate-bytes+ :element-type 'u8))))
-             (:constructor %make-sha3-256-state 
+             (:constructor %make-sha3-256-state
                            (state buffer buffer-index total-bytes))
              (:copier nil)
              (:include mdx))
@@ -270,24 +270,24 @@
       (declare (type keccak-state state-array)
                (type ->u8 buffer)
                (type (integer 0 136) buffer-index))
-      
+
       ;; Create final block with padding
       (let ((final-block (make-array +sha3-256-rate-bytes+ :element-type 'u8
                                                             :initial-element 0)))
         ;; Copy remaining buffer content
         (dotimes (i buffer-index)
           (setf (aref final-block i) (aref buffer i)))
-        
+
         ;; SHA-3 padding: append 0x06, then pad with zeros, then 0x80
         ;; The 0x06 distinguishes SHA-3 from Keccak (which uses 0x01)
         (setf (aref final-block buffer-index) #x06)
         (setf (aref final-block (1- +sha3-256-rate-bytes+))
               (logior (aref final-block (1- +sha3-256-rate-bytes+)) #x80))
-        
+
         ;; Absorb final padded block
         (absorb-block state-array final-block +sha3-256-rate-bytes+)
         (keccak-f state-array))
-      
+
       ;; Squeeze output
       (let ((output (squeeze-output state-array +sha3-256-output-bytes+)))
         ;; If digest buffer provided, copy output there; otherwise return new array

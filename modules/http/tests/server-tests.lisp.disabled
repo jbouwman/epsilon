@@ -21,8 +21,8 @@
   "Find a free port starting from start-port"
   (loop for port from start-port to (+ start-port 100)
         do (handler-case
-               (let ((test-server (server:start-server 
-                                   (lambda (req) 
+               (let ((test-server (server:start-server
+                                   (lambda (req)
                                      (response:text-response "test"))
                                    :port port)))
                  (server:stop-server test-server)
@@ -47,7 +47,7 @@
 (deftest test-server-start-stop ()
   "Test basic server start and stop"
   (let ((port (find-free-port)))
-    (let ((server (server:start-server 
+    (let ((server (server:start-server
                    (lambda (req) (response:text-response "Hello"))
                    :port port)))
       (is (typep server 'server::http-server))
@@ -60,7 +60,7 @@
   "Test that starting server on same port fails"
   (with-test-server (server1 (lambda (req) (response:text-response "Server 1")))
     (is-thrown 'error
-               (server:start-server 
+               (server:start-server
                 (lambda (req) (response:text-response "Server 2"))
                 :port *test-port*))))
 
@@ -68,8 +68,8 @@
   "Test handling simple GET request"
   (with-test-server (server
                      (lambda (req)
-                       (response:text-response 
-                        (format nil "Method: ~A, Path: ~A" 
+                       (response:text-response
+                        (format nil "Method: ~A, Path: ~A"
                                 (request:request-method req)
                                 (request:request-path req)))))
     (multiple-value-bind (status headers body)
@@ -81,7 +81,7 @@
   "Test handling POST request with body"
   (with-test-server (server
                      (lambda (req)
-                       (response:text-response 
+                       (response:text-response
                         (format nil "Body: ~A" (request:request-body req)))))
     (multiple-value-bind (status headers body)
         (client:http-post (format nil "http://localhost:~A/data" *test-port*)
@@ -95,7 +95,7 @@
   (with-test-server (server
                      (lambda (req)
                        (let ((user-agent (map:get (request:request-headers req) "user-agent")))
-                         (response:text-response 
+                         (response:text-response
                           (format nil "User-Agent: ~A" user-agent)))))
     (multiple-value-bind (status headers body)
         (client:http-get (format nil "http://localhost:~A/" *test-port*)
@@ -109,7 +109,7 @@
                      (lambda (req)
                        (let ((name (map:get (request:request-params req) "name"))
                              (age (map:get (request:request-params req) "age")))
-                         (response:text-response 
+                         (response:text-response
                           (format nil "Name: ~A, Age: ~A" name age)))))
     (multiple-value-bind (status headers body)
         (client:http-get (format nil "http://localhost:~A/user?name=John&age=30" *test-port*))
@@ -132,7 +132,7 @@
   "Test JSON response"
   (with-test-server (server
                      (lambda (req)
-                       (response:json-response 
+                       (response:json-response
                         (map:make-map "message" "success" "count" 42))))
     (multiple-value-bind (status headers body)
         (client:http-get (format nil "http://localhost:~A/api/data" *test-port*))
@@ -216,7 +216,7 @@
       (let ((threads (loop for i from 1 to 5
                            collect (sb-thread:make-thread
                                     (lambda ()
-                                      (client:http-get 
+                                      (client:http-get
                                        (format nil "http://localhost:~A/concurrent" *test-port*)))
                                     :name (format nil "request-~A" i)))))
         ;; Wait for all threads
@@ -230,8 +230,8 @@
   (let ((large-body (make-string 10000 :initial-element #\A)))
     (with-test-server (server
                        (lambda (req)
-                         (response:text-response 
-                          (format nil "Received ~A bytes" 
+                         (response:text-response
+                          (format nil "Received ~A bytes"
                                   (length (request:request-body req))))))
       (multiple-value-bind (status headers body)
           (client:http-post (format nil "http://localhost:~A/upload" *test-port*)

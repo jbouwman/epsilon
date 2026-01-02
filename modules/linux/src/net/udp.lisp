@@ -29,7 +29,7 @@
    #:udp-local-addr
    #:udp-poll-send
    #:udp-poll-recv
-   
+
    ;; Macros
    #:with-udp-socket))
 

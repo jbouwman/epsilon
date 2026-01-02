@@ -52,7 +52,7 @@
                                        (c-var (third vars))
                                        (d-var (fourth vars))
                                        (e-var (fifth vars)))
-                                   `(setf ,e-var 
+                                   `(setf ,e-var
                                           (mod32+ (rol32 ,a-var 5)
                                                   (mod32+ (mod32+ (,func ,b-var ,c-var ,d-var) ,e-var)
                                                           (mod32+ (aref ,block ,i) ,constant)))

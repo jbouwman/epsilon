@@ -2,11 +2,9 @@
 ;;;;
 ;;;; This file defines the modules that comprise the epsilon system.
 ;;;;
-;;;; The epsilon loader consults workspace.lisp files in two locations:
-;;;;   - EPSILON_HOME: The epsilon installation directory (required)
-;;;;   - EPSILON_USER: The user's working directory (optional)
-;;;;
-;;;; Both are set automatically by the epsilon shell script.
+;;;; The epsilon loader reads workspace.lisp from EPSILON_HOME (set by
+;;;; the epsilon shell script). Additional workspaces can be loaded
+;;;; dynamically using the ,workspace REPL command.
 ;;;;
 ;;;; To create a project that uses epsilon modules:
 ;;;;   (:name "my-project"
@@ -44,13 +42,15 @@
   ;; I/O and async runtime
   "modules/io"
 
+  ;; Binary encoding (endian-aware integer conversion)
+  "modules/binary"
+
   ;; Data formats
   "modules/json"
 
   ;; Security and networking
   "modules/crypto"
   "modules/http"
-  "modules/registry"
 
   ;; Development tools
   "modules/test"

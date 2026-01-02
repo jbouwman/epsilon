@@ -21,8 +21,8 @@
     (is (find "ALIEN-FUNCALL" alien-exports :test #'string=))
     (is (find "DEFINE-ALIEN-ROUTINE" alien-exports :test #'string=))
     ;; Document what we find
-    (format t "~%SB-ALIEN exports with 'ALIEN': ~A~%" 
-            (sort (remove-if-not (lambda (name) (search "ALIEN" name)) alien-exports) 
+    (format t "~%SB-ALIEN exports with 'ALIEN': ~A~%"
+            (sort (remove-if-not (lambda (name) (search "ALIEN" name)) alien-exports)
                   #'string<))))
 
 (deftest test-sbcl-callback-internals
@@ -33,14 +33,14 @@
                                   collect (symbol-name sym))))
     (format t "~%SB-ALIEN callback symbols: ~A~%" alien-callback-syms)
     (is (listp alien-callback-syms)))
-  
-  ;; Check SB-IMPL internals  
+
+  ;; Check SB-IMPL internals
   (let ((impl-callback-syms (loop for sym being the symbols of :sb-impl
                                  when (search "CALLBACK" (symbol-name sym))
                                  collect (symbol-name sym))))
     (format t "~%SB-IMPL callback symbols: ~A~%" impl-callback-syms)
     (is (listp impl-callback-syms)))
-  
+
   ;; Check SB-KERNEL internals
   (let ((kernel-callback-syms (loop for sym being the symbols of :sb-kernel
                                    when (search "CALLBACK" (symbol-name sym))
@@ -56,7 +56,7 @@
                           collect (symbol-name sym))))
     (format t "~%SB-ALIEN lambda symbols: ~A~%" lambda-syms)
     (is (listp lambda-syms)))
-  
+
   ;; Test if we can find function-related symbols
   (let ((func-syms (loop for sym being the symbols of :sb-alien
                         when (or (search "FUNCTION" (symbol-name sym))
@@ -116,18 +116,18 @@
   "Test different approaches to FFI callbacks"
   ;; Approach 1: Check if SB-ALIEN has any callback support
   (format t "~%Testing callback approaches...~%")
-  
+
   ;; Look for any export that might be callback-related
-  (let ((potential-callbacks 
+  (let ((potential-callbacks
          (loop for sym being the external-symbols of :sb-alien
               when (or (search "CALL" (symbol-name sym))
                       (search "FUNC" (symbol-name sym)))
               collect sym)))
     (format t "Potential callback symbols: ~A~%" potential-callbacks)
     (is (listp potential-callbacks)))
-  
+
   ;; Approach 2: Check SB-SYS for system-level support
-  (let ((sys-callback-syms 
+  (let ((sys-callback-syms
          (loop for sym being the symbols of :sb-sys
               when (search "CALLBACK" (symbol-name sym))
               collect (symbol-name sym))))
@@ -141,13 +141,13 @@
         (callback-name (gensym "TEST-CB-")))
     ;; Clean up any pre-existing callback (defensive)
     (ignore-errors (callback:unregister-callback callback-name))
-    
+
     (unwind-protect
          (progn
            ;; Register a callback (this should work with our infrastructure)
            (let ((cb-id (callback:register-callback callback-name test-func :int '(:int))))
              (is (integerp cb-id))
-             
+
              ;; Retrieve it with retry logic
              (let ((cb-ptr nil)
                    (retries 3))
@@ -177,13 +177,13 @@
           (if make-cb-sym
               (format t "~%Found MAKE-CALLBACK in SB-ALIEN~%")
               (format t "~%MAKE-CALLBACK not found in SB-ALIEN~%")))
-        
+
         ;; Try SB-IMPL (use string to avoid package lock)
         (let ((make-cb-sym (find-symbol "MAKE-CALLBACK" "SB-IMPL")))
           (if make-cb-sym
               (format t "~%Found MAKE-CALLBACK in SB-IMPL~%")
               (format t "~%MAKE-CALLBACK not found in SB-IMPL~%")))
-        
+
         (is t "Alternative callback exploration completed"))
     (error (e)
       (format t "~%Error in alternative callback creation: ~A~%" e)
@@ -210,10 +210,10 @@
   (let ((cb-ptr (callback:make-callback (lambda (x) (+ x 10)) :int '(:int))))
     ;; Verify we get a pointer
     (is (sb-sys:system-area-pointer-p cb-ptr))
-    
+
     ;; Check if it's the dummy pointer we expect
     (format t "~%Callback pointer: ~A~%" cb-ptr)
-    
+
     ;; Test calling the callback
     (handler-case
         (let ((result (callback:call-callback cb-ptr 5)))
@@ -233,7 +233,7 @@
           (is (integerp addr)))
       (error (e)
         (format t "~%Cannot get function address: ~A~%" e)))
-    
+
     ;; Try getting code address
     (handler-case
         (let ((code-component (sb-kernel:fun-code-header test-func)))

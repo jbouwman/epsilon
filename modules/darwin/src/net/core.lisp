@@ -16,27 +16,29 @@
    #:socket-address-ip
    #:socket-address-port
    #:socket-address-family
-   
+
    ;; Socket types
    #:tcp-listener
    #:tcp-listener-handle
    #:tcp-listener-local-address
    #:tcp-listener-kqueue
    #:tcp-listener-backlog
-   
+
    #:tcp-stream
    #:tcp-stream-handle
    #:tcp-stream-local-address
    #:tcp-stream-peer-address
    #:tcp-stream-input
    #:tcp-stream-output
+   #:tcp-stream-byte-input
+   #:tcp-stream-byte-output
    #:tcp-stream-connected-p
-   
+
    #:udp-socket
    #:udp-socket-handle
    #:udp-socket-local-address
    #:udp-socket-connected-peer
-   
+
    ;; Error conditions
    #:network-error
    #:connection-refused
@@ -45,7 +47,7 @@
    #:timeout-error
    #:address-in-use
    #:would-block-error
-   
+
    ;; Error utilities
    #:get-errno
    #:errno-to-string))
@@ -110,10 +112,16 @@
                  :documentation "Remote peer address")
    (input :initarg :input :accessor tcp-stream-input
           :initform nil
-          :documentation "Input stream for reading")
+          :documentation "Character input stream for reading")
    (output :initarg :output :accessor tcp-stream-output
            :initform nil
-           :documentation "Output stream for writing")
+           :documentation "Character output stream for writing")
+   (byte-input :initarg :byte-input :accessor tcp-stream-byte-input
+               :initform nil
+               :documentation "Byte input stream for reading")
+   (byte-output :initarg :byte-output :accessor tcp-stream-byte-output
+                :initform nil
+                :documentation "Byte output stream for writing")
    (connected-p :initarg :connected-p :accessor tcp-stream-connected-p
                 :initform t
                 :documentation "Connection status"))
@@ -138,7 +146,7 @@
   ((message :initarg :message :reader error-message))
   (:documentation "Base condition for network errors")
   (:report (lambda (condition stream)
-             (format stream "Network error: ~A" 
+             (format stream "Network error: ~A"
                      (if (slot-boundp condition 'message)
                          (error-message condition)
                          "Unknown error")))))
@@ -192,8 +200,8 @@
 (defun get-errno ()
   "Get the current errno value"
   (handler-case
-      (let ((errno-ptr (sb-alien:alien-funcall 
-                        (sb-alien:extern-alien "__error" 
+      (let ((errno-ptr (sb-alien:alien-funcall
+                        (sb-alien:extern-alien "__error"
                                                (function (* sb-alien:int))))))
         (sb-alien:deref errno-ptr 0))
     (error ()

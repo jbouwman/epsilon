@@ -78,34 +78,34 @@
   "Generate an RSA key pair using OpenSSL 3.0 API"
   (unless (member bits '(2048 3072 4096))
     (error "RSA key size must be 2048, 3072, or 4096 bits"))
-  
-  (let* ((ctx (%evp-pkey-ctx-new-from-name 
+
+  (let* ((ctx (%evp-pkey-ctx-new-from-name
                 (sb-sys:int-sap 0) "RSA" (sb-sys:int-sap 0)))
          (pkey-ptr nil))
     (when (zerop (sb-sys:sap-int ctx))
       (error "Failed to create RSA context: ~A" (get-error-string)))
-    
+
     (unwind-protect
          (progn
            ;; Initialize key generation
            (when (zerop (%evp-pkey-keygen-init ctx))
              (error "Failed to initialize RSA key generation: ~A" (get-error-string)))
-           
+
            ;; Set RSA key size
            (when (zerop (%evp-pkey-ctx-set-rsa-keygen-bits ctx bits))
              (error "Failed to set RSA key size: ~A" (get-error-string)))
-           
+
            ;; Generate the key
            (let ((pkey-holder (sb-alien:make-alien sb-alien:system-area-pointer)))
              (setf (sb-alien:deref pkey-holder) (sb-sys:int-sap 0))
              (unwind-protect
                   (progn
-                    (when (zerop (%evp-pkey-generate ctx 
+                    (when (zerop (%evp-pkey-generate ctx
                                                      (sb-alien:alien-sap pkey-holder)))
                       (error "Failed to generate RSA key: ~A" (get-error-string)))
                     (setf pkey-ptr (sb-alien:deref pkey-holder)))
                (sb-alien:free-alien pkey-holder)))
-           
+
            ;; Return the key pointer
            pkey-ptr)
       ;; Cleanup
@@ -116,30 +116,30 @@
   "Generate an EC key pair using OpenSSL 3.0 API"
   (declare (ignore curve)) ;; TODO: Implement curve parameter
   ;; For now, use the same pattern as RSA but with "EC" algorithm
-  (let* ((ctx (%evp-pkey-ctx-new-from-name 
+  (let* ((ctx (%evp-pkey-ctx-new-from-name
                 (sb-sys:int-sap 0) "EC" (sb-sys:int-sap 0)))
          (pkey-ptr nil))
     (when (zerop (sb-sys:sap-int ctx))
       (error "Failed to create EC context: ~A" (get-error-string)))
-    
+
     (unwind-protect
          (progn
            ;; Initialize key generation
            (when (zerop (%evp-pkey-keygen-init ctx))
              (error "Failed to initialize EC key generation: ~A" (get-error-string)))
-           
+
            ;; TODO: Set EC curve parameters
            ;; This requires OSSL_PARAM API which needs more work
-           
+
            ;; Generate the key
            (sb-alien:with-alien ((pkey-holder sb-alien:system-area-pointer))
              (setf (sb-alien:deref pkey-holder) (sb-sys:int-sap 0))
-             (when (zerop (%evp-pkey-generate ctx 
-                                              (sb-alien:alien-sap 
+             (when (zerop (%evp-pkey-generate ctx
+                                              (sb-alien:alien-sap
                                                (sb-alien:addr pkey-holder))))
                (error "Failed to generate EC key: ~A" (get-error-string)))
              (setf pkey-ptr (sb-alien:deref pkey-holder)))
-           
+
            ;; Return the key pointer
            pkey-ptr)
       ;; Cleanup
@@ -148,29 +148,29 @@
 
 (defun generate-ed25519-key ()
   "Generate an Ed25519 key pair using OpenSSL 3.0 API"
-  (let* ((ctx (%evp-pkey-ctx-new-from-name 
+  (let* ((ctx (%evp-pkey-ctx-new-from-name
                 (sb-sys:int-sap 0) "ED25519" (sb-sys:int-sap 0)))
          (pkey-ptr nil))
     (when (zerop (sb-sys:sap-int ctx))
       (error "Failed to create Ed25519 context: ~A" (get-error-string)))
-    
+
     (unwind-protect
          (progn
            ;; Initialize key generation
            (when (zerop (%evp-pkey-keygen-init ctx))
              (error "Failed to initialize Ed25519 key generation: ~A" (get-error-string)))
-           
+
            ;; Ed25519 doesn't need parameters
-           
+
            ;; Generate the key
            (sb-alien:with-alien ((pkey-holder sb-alien:system-area-pointer))
              (setf (sb-alien:deref pkey-holder) (sb-sys:int-sap 0))
-             (when (zerop (%evp-pkey-generate ctx 
-                                              (sb-alien:alien-sap 
+             (when (zerop (%evp-pkey-generate ctx
+                                              (sb-alien:alien-sap
                                                (sb-alien:addr pkey-holder))))
                (error "Failed to generate Ed25519 key: ~A" (get-error-string)))
              (setf pkey-ptr (sb-alien:deref pkey-holder)))
-           
+
            ;; Return the key pointer
            pkey-ptr)
       ;; Cleanup
@@ -190,6 +190,6 @@
                  (when (zerop (%rand-bytes (sb-alien:alien-sap buf) chunk-size))
                    (error "Failed to generate random bytes: ~A" (get-error-string)))
                  (loop for i from 0 below chunk-size
-                       do (setf (aref result (+ offset i)) 
+                       do (setf (aref result (+ offset i))
                                (sb-alien:deref buf i))))))
     result))

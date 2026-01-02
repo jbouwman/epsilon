@@ -17,7 +17,7 @@
    reduced-value
    ensure-reduced
    preserving-reduced
-   
+
    ;; Basic transducers
    map
    filter
@@ -36,14 +36,14 @@
    mapcat
    halt-when
    cat
-   
+
    ;; Transducer composition
    comp
-   
+
    ;; Reduction functions
    transduce
    into
-   
+
    ;; Advanced constructs
    eduction
    eduction->seq

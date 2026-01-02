@@ -18,7 +18,7 @@
     (test:is (= (iocp:overlapped-offset overlapped) 1024))
     (test:is (= (iocp:overlapped-offset-high overlapped) 0))
     (test:is (= (iocp:overlapped-internal overlapped) 42))
-    
+
     ;; Test packing/unpacking
     (epsilon.foreign:with-foreign-memory ((buffer :char :count (iocp:overlapped-size)))
       (iocp:pack-overlapped overlapped buffer 0)
@@ -44,7 +44,7 @@
   (let ((fd-data (iocp:make-epoll-data :fd 123))
         (u32-data (iocp:make-epoll-data :u32 #x12345678))
         (u64-data (iocp:make-epoll-data :u64 #x123456789abcdef0)))
-    
+
     (test:is (= (iocp:epoll-data-fd fd-data) 123))
     (test:is (= (iocp:epoll-data-u32 u32-data) #x12345678))
     (test:is (= (iocp:epoll-data-u64 u64-data) #x123456789abcdef0))))

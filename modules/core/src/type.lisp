@@ -9,22 +9,22 @@
    ;; Array types
    #:array-index
    #:array-index+1
-   
+
    ;; Basic unsigned types
    #:u8
    #:u16
    #:u32
    #:u64
-   
+
    ;; Type conversion
    #:->u8
    #:->u16
    #:->u32
    #:->u64
-   
+
    ;; Essential utilities
    #:random-u8
-   
+
    ;; Essential binary I/O (only what's actually used)
    #:u16ref/le
    #:u32ref/le
@@ -99,9 +99,9 @@
    - An integer specifying the array size
    - A sequence to convert to a u8 array"
   (etypecase arg
-    (array-index 
+    (array-index
      (make-array arg :element-type 'u8))
-    (sequence 
+    (sequence
      (make-array (length arg)
                  :element-type 'u8
                  :initial-contents arg))))
@@ -109,9 +109,9 @@
 (defun ->u16 (arg)
   "Create a simple array of unsigned 16-bit integers"
   (etypecase arg
-    (array-index 
+    (array-index
      (make-array arg :element-type 'u16))
-    (sequence 
+    (sequence
      (make-array (length arg)
                  :element-type 'u16
                  :initial-contents arg))))
@@ -119,9 +119,9 @@
 (defun ->u32 (arg)
   "Create a simple array of unsigned 32-bit integers"
   (etypecase arg
-    (array-index 
+    (array-index
      (make-array arg :element-type 'u32))
-    (sequence 
+    (sequence
      (make-array (length arg)
                  :element-type 'u32
                  :initial-contents arg))))
@@ -129,9 +129,9 @@
 (defun ->u64 (arg)
   "Create a simple array of unsigned 64-bit integers"
   (etypecase arg
-    (array-index 
+    (array-index
      (make-array arg :element-type 'u64))
-    (sequence 
+    (sequence
      (make-array (length arg)
                  :element-type 'u64
                  :initial-contents arg))))

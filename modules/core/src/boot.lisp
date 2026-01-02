@@ -8,6 +8,7 @@
     "map"
     "set"
     "sequence"
+    "char"
     "string"
     "table"
     "log"
@@ -18,11 +19,11 @@
     "path"
     "sys/fs"
     "tool/common"
-    "char"
     "function"
     "threading"
     "option"
     "result"
+    "interpolation"        ; String interpolation - needed by reader-extensions
     "reader-extensions"
     "match"                ; Pattern matching - needed by modules below
     "data"
@@ -41,7 +42,8 @@
     "compile"
     "compile-integration"
     "loader"
-    "main"))
+    "main"
+    "eloader"))
 
 (defparameter *boot-fasl*
   #+win32 "modules\\core\\target\\bootstrap.fasl"
@@ -49,7 +51,7 @@
 
 (defparameter *boot-dirs*
   #+win32
-  '("modules\\core\\target\\" 
+  '("modules\\core\\target\\"
     "modules\\core\\target\package\\fasl\\")
   #-win32
   '("modules/core/target/"
@@ -68,7 +70,7 @@
 
 (defun epk-fasl-path (file)
   "Generate EPK FASL path for a given source file"
-  (concatenate 'string 
+  (concatenate 'string
                #+win32 "modules\\core\\target\\package\\fasl\\"
                #-win32 "modules/core/target/package/fasl/"
                #+win32 (substitute #\\ #\/ file)
@@ -79,7 +81,7 @@
   "Check if any source files are newer than the boot FASL"
   (or (not (probe-file *boot-fasl*))
       (some (lambda (file)
-              (let ((source-path (concatenate 'string *core-module* 
+              (let ((source-path (concatenate 'string *core-module*
                                               #+win32 (substitute #\\ #\/ file)
                                               #-win32 file
                                               ".lisp")))
@@ -88,7 +90,7 @@
 
 (defun load-boot-fasl ()
   "Load the concatenated boot FASL if it exists and is current"
-  (when (and (probe-file *boot-fasl*) 
+  (when (and (probe-file *boot-fasl*)
              (not (bootfile-needs-rebuild-p)))
     (load *boot-fasl*)
     t))
@@ -110,7 +112,7 @@
 (defun generate-boot-fasl ()
   (let ((fasl-files '()))
     (dolist (file *files*)
-      (let* ((source-path (concatenate 'string *core-module* 
+      (let* ((source-path (concatenate 'string *core-module*
                                        #+win32 (substitute #\\ #\/ file)
                                        #-win32 file
                                        ".lisp"))
@@ -119,8 +121,8 @@
         (ensure-directories-exist target-fasl-path)
         (force-output)
         (handler-bind ((sb-kernel:redefinition-warning #'muffle-warning))
-          (let ((fasl-path 
-                 (compile-file source-path 
+          (let ((fasl-path
+                 (compile-file source-path
                                :output-file target-fasl-path
                                :print nil :verbose nil)))
             (unless fasl-path

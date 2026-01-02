@@ -5,18 +5,18 @@
   (:local-nicknames
    (lib epsilon.foreign))
   (:export
-   ;; Core epoll operations  
+   ;; Core epoll operations
    #:epoll-create
    #:epoll-create1
    #:epoll-ctl
    #:epoll-wait
    #:epoll-close
-   
+
    ;; Event creation and management
    #:make-epoll-event
    #:epoll-event-events
    #:epoll-event-data
-   
+
    ;; Event types
    #:+epollin+
    #:+epollout+
@@ -28,15 +28,15 @@
    #:+epolloneshot+
    #:+epollwakeup+
    #:+epollexclusive+
-   
+
    ;; Control operations
    #:+epoll-ctl-add+
    #:+epoll-ctl-mod+
    #:+epoll-ctl-del+
-   
+
    ;; epoll_create1 flags
    #:+epoll-cloexec+
-   
+
    ;; High-level interface
    #:with-epoll
    #:add-event
@@ -46,14 +46,14 @@
    #:epoll-modify
    #:epoll-delete
    #:wait-for-events
-   
+
    ;; Utility functions
    #:make-epoll-data
    #:epoll-data-fd
    #:epoll-data-ptr
    #:epoll-data-u32
    #:epoll-data-u64
-   
+
    ;; Event checking predicates
    #:epoll-event-readable-p
    #:epoll-event-writable-p
@@ -78,7 +78,7 @@
 
 ;; Control operations for epoll_ctl
 (defconstant +epoll-ctl-add+ 1)     ; Add file descriptor
-(defconstant +epoll-ctl-del+ 2)     ; Remove file descriptor  
+(defconstant +epoll-ctl-del+ 2)     ; Remove file descriptor
 (defconstant +epoll-ctl-mod+ 3)     ; Modify file descriptor
 
 ;; epoll_create1 flags
@@ -215,7 +215,7 @@
       (let ((result (%epoll-wait epfd events-buf max-events timeout)))
         (when (= result -1)
           (let ((errno (sb-alien:get-errno)))
-            (error "epoll_wait failed with errno ~D (~A)" 
+            (error "epoll_wait failed with errno ~D (~A)"
                    errno
                    (case errno
                      (9 "EBADF - epfd is not a valid file descriptor")
@@ -300,7 +300,7 @@
 
 (defun epoll-event-error-p (event)
   "Check if event indicates error"
-  (not (zerop (logand (epoll-event-events event) 
+  (not (zerop (logand (epoll-event-events event)
                       (logior +epollerr+ +epollhup+)))))
 
 (defun epoll-event-hangup-p (event)

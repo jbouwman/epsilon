@@ -10,13 +10,13 @@
    #:socket-address-ip
    #:socket-address-port
    #:make-socket-address
-   
+
    ;; Socket types
    #:tcp-listener
    #:tcp-listener-handle
    #:tcp-listener-local-address
    #:tcp-listener-backlog
-   
+
    #:tcp-stream
    #:tcp-stream-handle
    #:tcp-stream-local-address
@@ -24,7 +24,7 @@
    #:tcp-stream-connected-p
    #:tcp-stream-input
    #:tcp-stream-output
-   
+
    #:udp-socket
    #:udp-socket-handle
    #:udp-socket-local-address
@@ -46,7 +46,7 @@
 
 (defmethod print-object ((addr socket-address) stream)
   (print-unreadable-object (addr stream :type t)
-    (format stream "~A:~D" 
+    (format stream "~A:~D"
             (socket-address-ip addr)
             (socket-address-port addr))))
 
@@ -71,7 +71,7 @@
 
 (defmethod print-object ((listener tcp-listener) stream)
   (print-unreadable-object (listener stream :type t)
-    (format stream "listening on ~A" 
+    (format stream "listening on ~A"
             (tcp-listener-local-address listener))))
 
 (defclass tcp-stream ()
@@ -93,7 +93,7 @@
 
 (defmethod print-object ((stream tcp-stream) stream-obj)
   (print-unreadable-object (stream stream-obj :type t)
-    (format stream-obj "~A -> ~A (~A)" 
+    (format stream-obj "~A -> ~A (~A)"
             (tcp-stream-local-address stream)
             (tcp-stream-peer-address stream)
             (if (tcp-stream-connected-p stream) "connected" "disconnected"))))
@@ -115,6 +115,6 @@
 
 (defmethod print-object ((socket udp-socket) stream)
   (print-unreadable-object (socket stream :type t)
-    (format stream "bound to ~A~@[ connected to ~A~]" 
+    (format stream "bound to ~A~@[ connected to ~A~]"
             (udp-socket-local-address socket)
             (udp-socket-connected-peer socket))))

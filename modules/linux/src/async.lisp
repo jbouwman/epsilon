@@ -13,27 +13,31 @@
    ;; Async operation types
    #:async-operation
    #:async-operation-p
+   #:make-async-operation
    #:async-operation-fd
    #:async-operation-type
    #:async-operation-buffer
+   #:async-operation-start
+   #:async-operation-end
    #:async-operation-callback
    #:async-operation-error-callback
-   
+   #:async-operation-result
+
    ;; Async system management
    #:ensure-async-system
    #:stop-async-system
    #:submit-async-operation
    #:poll-completions
-   
+
    ;; Async operations
    #:async-read
    #:async-write
    #:async-accept
    #:async-connect
-   
+
    ;; Utilities
    #:set-nonblocking
-   
+
    ;; Operation management
    #:cleanup-fd-operations
    #:cancel-async-operation))
@@ -49,14 +53,17 @@
   (fd nil :type (or null fixnum))
   (type nil :type keyword)
   (buffer nil)
+  (start 0 :type fixnum)
+  (end nil :type (or null fixnum))
   (callback nil :type (or null function))
-  (error-callback nil :type (or null function)))
+  (error-callback nil :type (or null function))
+  (result nil))
 
 ;;; ============================================================================
 ;;; System Constants and FFI
 ;;; ============================================================================
 
-;; fcntl commands  
+;; fcntl commands
 (defconstant +f-getfl+ 3)
 (defconstant +f-setfl+ 4)
 
@@ -155,7 +162,7 @@
                            ((logtest events epoll:+epollout+) :write)
                            (t :unknown)))
          (key (cons fd operation-type)))
-    
+
     ;; Check for error conditions first
     (when (or (logtest events epoll:+epollerr+)
               (logtest events epoll:+epollhup+)
@@ -178,18 +185,18 @@
           (sb-thread:with-mutex (*completion-lock*)
             (push async-op *completion-queue*)))
         (return-from process-epoll-event)))
-    
+
     ;; Handle normal events
     (let ((async-op (gethash key *pending-operations*)))
       (when async-op
         (remhash key *pending-operations*)
-        
+
         ;; Perform the actual I/O operation based on type
         (case operation-type
           (:read (perform-read-operation async-op))
           (:write (perform-write-operation async-op))
           (:accept (perform-accept-operation async-op)))
-        
+
         ;; Add to completion queue
         (sb-thread:with-mutex (*completion-lock*)
           (push async-op *completion-queue*))))))
@@ -247,11 +254,11 @@
   (ensure-async-system)
   (let ((fd (async-operation-fd operation))
         (op-type (async-operation-type operation)))
-    
+
     ;; Validate file descriptor
     (unless (validate-file-descriptor fd)
       (error "Invalid file descriptor: ~A" fd))
-    
+
     (let* ((key (cons fd op-type))
            (epoll-events (case op-type
                            (:read epoll:+epollin+)
@@ -259,10 +266,10 @@
                            (:accept epoll:+epollin+)
                            (:connect epoll:+epollout+)
                            (t (error "Unknown operation type: ~A" op-type)))))
-      
+
       ;; Store operation for completion lookup
       (setf (gethash key *pending-operations*) operation)
-      
+
       ;; Register with epoll manager
       (handler-case
           (epoll-mgr:register-socket
@@ -292,23 +299,29 @@
 ;;; High-Level Async Operations
 ;;; ============================================================================
 
-(defun async-read (fd buffer &key on-complete on-error)
-  "Perform async read operation"
+(defun async-read (fd buffer &key (start 0) (end (length buffer)) on-complete on-error)
+  "Perform async read operation.
+   START and END specify the region of BUFFER to read into."
   (let ((operation (make-async-operation
                     :fd fd
                     :type :read
                     :buffer buffer
+                    :start start
+                    :end end
                     :callback on-complete
                     :error-callback on-error)))
     (submit-async-operation operation)
     operation))
 
-(defun async-write (fd buffer &key on-complete on-error)
-  "Perform async write operation"
+(defun async-write (fd buffer &key (start 0) (end (length buffer)) on-complete on-error)
+  "Perform async write operation.
+   START and END specify the region of BUFFER to write from."
   (let ((operation (make-async-operation
                     :fd fd
                     :type :write
                     :buffer buffer
+                    :start start
+                    :end end
                     :callback on-complete
                     :error-callback on-error)))
     (submit-async-operation operation)
@@ -353,18 +366,18 @@
                      (error (e)
                        (warn "Error in cleanup error callback: ~A" e))))))
              *pending-operations*)
-    
+
     ;; Remove operations from pending table
     (dolist (key operations-to-remove)
       (remhash key *pending-operations*))
-    
+
     ;; Unregister from epoll manager (ignore errors)
     (handler-case
         (epoll-mgr:unregister-socket fd)
       (error ()
         ;; Ignore errors - fd might already be closed
         nil))
-    
+
     (length operations-to-remove)))
 
 (defun cancel-async-operation (operation)

@@ -35,12 +35,12 @@
    Each protocol is prefixed with its length as a single byte.
    Example: (make-alpn-protos-buffer '(\"h2\" \"http/1.1\"))
    Returns (values buffer length)"
-  (let* ((total-len (reduce #'+ protocols 
+  (let* ((total-len (reduce #'+ protocols
                             :key (lambda (p) (1+ (length p)))
                             :initial-value 0))
          (buffer (make-array total-len :element-type '(unsigned-byte 8)))
          (pos 0))
-    
+
     (dolist (proto protocols)
       (let ((len (length proto)))
         ;; Write length byte
@@ -50,7 +50,7 @@
         (loop for char across proto
               do (setf (aref buffer pos) (char-code char))
                  (incf pos))))
-    
+
     (values buffer total-len)))
 
 (defun set-alpn-protocols (ctx-or-ssl protocols &key context-p)
@@ -59,12 +59,12 @@
    context-p: t if ctx-or-ssl is a context, nil if it's a connection"
   (multiple-value-bind (buffer len)
       (make-alpn-protos-buffer protocols)
-    
+
     (sb-alien:with-alien ((proto-buf (sb-alien:array sb-alien:unsigned-char 256)))
       ;; Copy buffer to alien array
       (loop for i from 0 below len
             do (setf (sb-alien:deref proto-buf i) (aref buffer i)))
-      
+
       ;; Call appropriate FFI function
       (let ((result (if context-p
                         (ffi:%ssl-ctx-set-alpn-protos ctx-or-ssl

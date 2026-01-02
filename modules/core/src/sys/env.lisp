@@ -92,7 +92,7 @@ then returning the non-empty string value of the variable"
         (truename ".")
         ;; Fallback: walk up from current directory
         (let ((current-dir (truename *default-pathname-defaults*)))
-          (loop for dir = current-dir 
+          (loop for dir = current-dir
                   then (make-pathname :directory (butlast (pathname-directory dir)))
                 for depth from 0 below 10
                 when (probe-file (merge-pathnames "scripts/epsilon.lisp" dir))

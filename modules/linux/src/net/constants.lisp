@@ -10,15 +10,15 @@
    ;; Address families
    #:+af-inet+
    #:+af-inet6+
-   
-   ;; Socket types  
+
+   ;; Socket types
    #:+sock-stream+
    #:+sock-dgram+
-   
+
    ;; Protocols
    #:+ipproto-tcp+
    #:+ipproto-udp+
-   
+
    ;; Socket options
    #:+sol-socket+
    #:+so-reuseaddr+
@@ -29,21 +29,21 @@
    #:+so-sndbuf+
    #:+so-rcvtimeo+
    #:+so-sndtimeo+
-   
+
    ;; TCP options
    #:+ipproto-tcp-level+
    #:+tcp-nodelay+
-   
+
    ;; Shutdown options
    #:+shut-rd+
    #:+shut-wr+
    #:+shut-rdwr+
-   
+
    ;; fcntl commands
    #:+f-getfl+
    #:+f-setfl+
    #:+o-nonblock+
-   
+
    ;; Errno values
    #:+eagain+
    #:+ewouldblock+
@@ -53,7 +53,7 @@
    #:+econnreset+
    #:+etimedout+
    #:+enotconn+
-   
+
    ;; FFI Bindings
    #:%socket
    #:%bind
@@ -203,7 +203,7 @@
 ;;; FFI Bindings
 ;;; ============================================================================
 
-(lib:defshared %socket "socket" "libc" :int 
+(lib:defshared %socket "socket" "libc" :int
   (domain :int) (type :int) (protocol :int)
   :documentation "Create socket")
 

@@ -54,7 +54,10 @@
    #:make-x509-certificate
    #:openssl-connection-p
    #:openssl-connection-ssl
+   #:openssl-context-cert-file
    #:openssl-context-handle
+   #:openssl-context-p
+   #:openssl-context-server-p
    #:tls-cipher
    #:tls-close
    #:tls-connect
@@ -95,7 +98,7 @@
 
 ;;;; TLS Context Management
 
-(defun create-tls-context (&key server-p cert-file key-file 
+(defun create-tls-context (&key server-p cert-file key-file
                                 ca-file (verify-mode +tls-verify-peer+)
                                 require-client-cert verify-depth)
   "Create a new TLS context with specified configuration.
@@ -112,19 +115,19 @@
                     :cert-file cert-file
                     :key-file key-file
                     :verify-mode (if (and server-p require-client-cert)
-                                     (logior +ssl-verify-peer+ 
+                                     (logior +ssl-verify-peer+
                                              +ssl-verify-fail-if-no-peer-cert+)
                                    verify-mode)))
 
-(defun create-openssl-context (&key server-p cert-file key-file 
+(defun create-openssl-context (&key server-p cert-file key-file
                                     ca-file (verify-mode +ssl-verify-peer+)
                                     require-client-cert verify-depth
                                     alpn-protocols session-cache-p)
   "Create an OpenSSL-backed TLS context with  security configuration.
-   
+
    Creates a low-level OpenSSL SSL_CTX for advanced TLS operations including
    mutual authentication, certificate validation, and cipher suite control.
-   
+
    Parameters:
      server-p (boolean): Create server context if T, client context if NIL
      cert-file (string): Path to X.509 certificate in PEM format
@@ -133,27 +136,27 @@
      verify-mode (integer): SSL verification mode (default: +SSL-VERIFY-PEER+)
      require-client-cert (boolean): Require client certificates (server only)
      verify-depth (integer): Maximum certificate chain depth to verify
-   
+
    Returns:
      OPENSSL-CONTEXT structure with configured SSL_CTX handle
-   
+
    Security Configuration:
      - Automatic certificate/key matching verification
      - CA certificate chain loading for peer validation
      - Client certificate requirement for mutual TLS
      - Configurable verification depth to prevent long chains
-   
+
    Common verify-mode values:
      +SSL-VERIFY-NONE+ (0): No certificate verification (insecure)
      +SSL-VERIFY-PEER+ (1): Verify peer certificate
      +SSL-VERIFY-FAIL-IF-NO-PEER-CERT+ (2): Fail if no peer cert
-     
+
    Security Notes:
      - Always use +SSL-VERIFY-PEER+ in production
      - Set require-client-cert for mutual TLS authentication
      - Limit verify-depth to prevent DoS from long chains (typical: 4-10)
      - Ensure cert-file and key-file have proper permissions (0600)
-   
+
    Errors:
      Signals CRYPTO-ERROR if:
      - SSL context creation fails
@@ -162,31 +165,31 @@
      - CA certificate loading fails"
   (let* ((method (if server-p (ffi:%tls-server-method) (ffi:%tls-client-method)))
          (ctx (ffi:%ssl-ctx-new method)))
-    
+
     (when (sb-sys:sap= ctx (sb-sys:int-sap 0))
       (error 'crypto-error :code (ffi:%err-get-error)
              :message "Failed to create SSL context"))
-    
+
     ;; Load certificate if provided
     (when cert-file
       (when (zerop (ffi:%ssl-ctx-use-certificate-file ctx cert-file +ssl-filetype-pem+))
         (ffi:%ssl-ctx-free ctx)
         (error 'crypto-error :code (ffi:%err-get-error)
                :message (format nil "Failed to load certificate: ~A" cert-file))))
-    
+
     ;; Load private key if provided
     (when key-file
       (when (zerop (ffi:%ssl-ctx-use-privatekey-file ctx key-file +ssl-filetype-pem+))
         (ffi:%ssl-ctx-free ctx)
         (error 'crypto-error :code (ffi:%err-get-error)
                :message (format nil "Failed to load private key: ~A" key-file)))
-      
+
       ;; Verify that private key matches certificate
       (when (zerop (ffi:%ssl-ctx-check-private-key ctx))
         (ffi:%ssl-ctx-free ctx)
         (error 'crypto-error :code (ffi:%err-get-error)
                :message "Private key does not match certificate")))
-    
+
     ;; Load CA certificates if provided
     (when ca-file
       ;; Use nil for ca-path parameter
@@ -198,7 +201,7 @@
         (ffi:%ssl-ctx-free ctx)
         (error 'crypto-error :code (ffi:%err-get-error)
                :message (format nil "Failed to load CA certificates: ~A" ca-file)))
-      
+
       ;; For servers requiring client certificates, set the CA list
       (when (and server-p require-client-cert)
         (let ((ca-list (ffi:%ssl-load-client-ca-file ca-file)))
@@ -207,28 +210,28 @@
             (error 'crypto-error :code (ffi:%err-get-error)
                    :message "Failed to load client CA list"))
           (ffi:%ssl-ctx-set-client-ca-list ctx ca-list))))
-    
+
     ;; Set verification mode and depth
     (let ((final-verify-mode (if (and server-p require-client-cert)
-                                 (logior +ssl-verify-peer+ 
+                                 (logior +ssl-verify-peer+
                                          +ssl-verify-fail-if-no-peer-cert+)
                                verify-mode)))
       (ffi:%ssl-ctx-set-verify ctx final-verify-mode (sb-sys:int-sap 0)))
-    
+
     (when verify-depth
       (ffi:%ssl-ctx-ctrl ctx 35 verify-depth (sb-sys:int-sap 0)))  ; SSL_CTRL_SET_VERIFY_DEPTH
-    
+
     ;; Set ALPN protocols if provided
     (when alpn-protocols
       (alpn:set-alpn-protocols ctx alpn-protocols :context-p t))
-    
-    ;; Configure session caching  
+
+    ;; Configure session caching
     (when session-cache-p
       ;; Session caching is enabled by default in OpenSSL
       ;; Just skip explicit configuration if function not available
       (ignore-errors
         (ffi:%ssl-ctx-set-session-cache-mode ctx 2)))  ; SSL_SESS_CACHE_SERVER
-    
+
     (make-openssl-context :handle ctx
                           :server-p server-p
                           :cert-file cert-file
@@ -237,24 +240,24 @@
 
 (defun load-cert-file (context cert-file)
   "Load an X.509 certificate from file into TLS context.
-   
+
    Parameters:
      context: TLS-CONTEXT or OPENSSL-CONTEXT structure
      cert-file (string): Path to certificate file in PEM format
-   
+
    Side Effects:
      Updates the context's certificate configuration
-   
+
    Security Notes:
      - Certificate should match the previously loaded private key
      - File should contain the full certificate chain if needed
      - PEM format supports multiple certificates in one file
-   
+
    Errors:
      Signals CRYPTO-ERROR if certificate loading fails or format is invalid"
   (cond
    ((openssl-context-p context)
-    (when (zerop (ffi:%ssl-ctx-use-certificate-file 
+    (when (zerop (ffi:%ssl-ctx-use-certificate-file
                   (openssl-context-handle context) cert-file +ssl-filetype-pem+))
       (error 'crypto-error :code (ffi:%err-get-error)
              :message (format nil "Failed to load certificate: ~A" cert-file)))
@@ -267,7 +270,7 @@
   "Load private key file into TLS context"
   (cond
    ((openssl-context-p context)
-    (when (zerop (ffi:%ssl-ctx-use-privatekey-file 
+    (when (zerop (ffi:%ssl-ctx-use-privatekey-file
                   (openssl-context-handle context) key-file +ssl-filetype-pem+))
       (error 'crypto-error :code (ffi:%err-get-error)
              :message (format nil "Failed to load private key: ~A" key-file)))
@@ -298,19 +301,19 @@
    - context: OpenSSL context
    - hostname: Server hostname for SNI
    - alpn-protocols: List of ALPN protocols to advertise"
-  
+
   (unless (openssl-context-p context)
     (error "OpenSSL context required"))
-  
+
   (let* ((ssl (ffi:%ssl-new (openssl-context-handle context))))
     (when (sb-sys:sap= ssl (sb-sys:int-sap 0))
       (error 'crypto-error :code (ffi:%err-get-error)
              :message "Failed to create SSL connection"))
-    
+
     ;; Set SNI hostname if provided
     (when hostname
       (ffi:%ssl-set-tlsext-host-name ssl hostname))
-    
+
     ;; Set ALPN protocols if provided
     (when alpn-protocols
       (epsilon.crypto.alpn:set-alpn-protocols ssl alpn-protocols :context-p nil))
@@ -367,7 +370,7 @@
         (ffi:%ssl-free ssl)
         (error 'crypto-error :code (ffi:%err-get-error)
                :message "Failed to set socket FD")))
-    
+
     ;; Accept handshake
     (let ((ret (ffi:%ssl-accept ssl)))
       (when (<= ret 0)
@@ -431,7 +434,7 @@
   (unless (and (openssl-connection-p connection)
                (openssl-connection-connected-p connection))
     (error "Not connected"))
-  
+
   (let ((len (- end start)))
     (sb-alien:with-alien ((buf (sb-alien:array sb-alien:unsigned-char 65536)))
 			 ;; Copy data to alien buffer
@@ -440,7 +443,7 @@
 					(if (stringp buffer)
 					    (char-code (char buffer (+ start i)))
 					  (aref buffer (+ start i)))))
-			 
+
 			 (let ((bytes-written (ffi:%ssl-write (openssl-connection-ssl connection)
 							      (sb-alien:alien-sap buf)
 							      (min len 65536))))
@@ -531,17 +534,17 @@
         ;; Extract certificate details
         (let ((subject-name (ffi:%x509-get-subject-name x509))
               (issuer-name (ffi:%x509-get-issuer-name x509)))
-          
+
           (sb-alien:with-alien ((buf (sb-alien:array sb-alien:char 256)))
-			       (let ((subject-str (ffi:%x509-name-oneline subject-name 
+			       (let ((subject-str (ffi:%x509-name-oneline subject-name
 									  (sb-alien:alien-sap buf) 256))
 				     (issuer-str nil))
 				 (setf subject-str (sb-alien:cast subject-str sb-alien:c-string))
-				 
+
 				 (setf issuer-str (ffi:%x509-name-oneline issuer-name
 									  (sb-alien:alien-sap buf) 256))
 				 (setf issuer-str (sb-alien:cast issuer-str sb-alien:c-string))
-				 
+
 				 (prog1
 				     (make-x509-certificate :handle x509
 							    :subject subject-str

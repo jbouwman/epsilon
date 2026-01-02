@@ -13,8 +13,8 @@
    #:add-event
    #:wait-for-events
    #:with-kqueue
-   
-   ;; Re-export async operations  
+
+   ;; Re-export async operations
    #:async-operation
    #:async-read
    #:async-write
@@ -22,7 +22,7 @@
    #:async-connect
    #:ensure-async-system
    #:stop-async-system
-   
+
    ;; Module information
    #:version
    #:features))

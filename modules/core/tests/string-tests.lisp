@@ -1,6 +1,6 @@
 (defpackage :epsilon.string.tests
   (:use :cl :epsilon.test)
-  (:local-nicknames 
+  (:local-nicknames
    (:str :epsilon.string)
    (:seq :epsilon.sequence)))
 

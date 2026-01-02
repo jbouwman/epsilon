@@ -21,14 +21,14 @@
    #:parse-args
    #:print-help
    #:print-usage
-   
+
    ;; Parser accessors
    #:parser-command
    #:parser-description
    #:parser-epilog
    #:parser-handler
    #:parser-commands
-   
+
    ;; Argument types
    #:argument
    #:make-argument
@@ -41,7 +41,7 @@
    #:argument-choices
    #:argument-metavar
    #:argument-nargs
-   
+
    ;; Parsed results
    #:parsed-arguments
    #:parsed-command
@@ -49,7 +49,7 @@
    #:parsed-positionals
    #:parsed-remaining
    #:parsed-subresult
-   
+
    ;; Conditions
    #:argument-error
    #:error-message
@@ -164,11 +164,11 @@
 
 (defun add-command (parser name &key description help handler)
   "Add a subcommand to the parser"
-  (let ((subparser (make-parser :command name 
+  (let ((subparser (make-parser :command name
                                 :description (or description help)
                                 :handler handler)))
     (setf (parser-parent subparser) parser)
-    (setf (parser-commands parser) 
+    (setf (parser-commands parser)
           (map:assoc (parser-commands parser) name subparser))
     subparser))
 
@@ -209,14 +209,14 @@
   "Parse command line arguments"
   (let ((result (make-instance 'parsed-arguments))
         (remaining args))
-    
+
     ;; First pass: collect all arguments up to a potential subcommand
     (multiple-value-bind (pre-command post-command command-name)
         (split-at-command parser remaining)
-      
+
       ;; Parse pre-command arguments (global options and positionals)
       (setf remaining (parse-arguments parser pre-command result))
-      
+
       ;; Handle subcommand if present
       (when command-name
         (let ((subparser (map:get (parser-commands parser) command-name)))
@@ -232,19 +232,19 @@
                         (parsed-remaining sub-result))))
               ;; Unknown command - treat as positional
               (push command-name (parsed-positionals result))))))
-    
+
     ;; Validate required arguments
     (validate-required parser result)
-    
+
     ;; Validate no unknown options in remaining
     (validate-no-unknown-options parser result)
-    
+
     ;; Apply defaults
     (apply-defaults parser result)
-    
+
     ;; Reverse positionals since they were built with push
     (setf (parsed-positionals result) (nreverse (parsed-positionals result)))
-    
+
     result))
 
 (defun split-at-command (parser args)
@@ -261,10 +261,10 @@
 (defun parse-arguments (parser args result)
   "Parse a list of arguments, updating result"
   (let ((remaining '())
-        (positional-args (remove-if #'argument-is-option-p 
+        (positional-args (remove-if #'argument-is-option-p
                                    (parser-arguments parser)))
         (positional-index 0))
-    
+
     (loop while args
           for arg = (pop args)
           do (cond
@@ -272,7 +272,7 @@
                ((string= arg "--")
                 (setf remaining (append remaining args))
                 (return))
-               
+
                ;; Option argument
                ((str:starts-with-p arg "-")
                 (multiple-value-bind (consumed-args option-handled-p)
@@ -281,7 +281,7 @@
                       (dotimes (i consumed-args)
                         (pop args))
                       (push arg remaining))))
-               
+
                ;; Positional argument
                (t
                 (if (< positional-index (length positional-args))
@@ -292,7 +292,7 @@
                         ((or (eq nargs '*) (eq nargs '+))
                          (let ((values (list arg)))
                            ;; Collect all remaining positional arguments
-                           (loop while (and args 
+                           (loop while (and args
                                            (not (str:starts-with-p (first args) "-")))
                                  do (push (pop args) values))
                            (setf values (nreverse values))
@@ -315,7 +315,7 @@
                                            converted))
                            (incf positional-index)))))
                     (push arg remaining)))))
-    
+
     (setf (parsed-remaining result) (nreverse remaining))
     remaining))
 
@@ -328,10 +328,10 @@
          (option-value (when equals-pos
                         (subseq option (1+ equals-pos))))
          (argument (find-argument parser option-name)))
-    
+
     (unless argument
       (return-from parse-option (values 0 nil)))
-    
+
     (let ((key (argument-key argument))
           (action (argument-action argument)))
       ;; Normalize action symbol to handle package differences
@@ -339,34 +339,34 @@
         (:store-true
          (setf (parsed-options result) (map:assoc (parsed-options result) key t))
          (values 0 t))
-        
+
         (:store-false
          (setf (parsed-options result) (map:assoc (parsed-options result) key nil))
          (values 0 t))
-        
+
         (:store
          (let* ((nargs (argument-nargs argument))
                 (has-next-arg (and args (not (str:starts-with-p (first args) "-"))))
                 (value (or option-value
                           (when has-next-arg (first args)))))
-           
+
            ;; Handle nargs='? - optional argument
            (cond
              ((eq (intern (string nargs) :keyword) :?)
               ;; For optional arguments, if no value is provided, use empty string
               (let ((actual-value (or value "")))
                 (let ((converted (convert-value actual-value (argument-type argument))))
-                  (setf (parsed-options result) 
+                  (setf (parsed-options result)
                         (map:assoc (parsed-options result) key converted)))
                 (values (if (and has-next-arg value) 1 0) t)))
-             
+
              ;; Regular store - value is required
              (t
               (unless value
                 (error 'missing-argument-error
                        :message (format nil "Option ~A requires an argument" option-name)
                        :argument argument))
-              
+
               ;; Validate choice if specified
               (when (argument-choices argument)
                 (unless (member value (argument-choices argument) :test #'string=)
@@ -375,14 +375,14 @@
                                         value option-name (argument-choices argument))
                          :value value
                          :choices (argument-choices argument))))
-              
+
               ;; Convert type
               (let ((converted (convert-value value (argument-type argument))))
-                (setf (parsed-options result) 
+                (setf (parsed-options result)
                       (map:assoc (parsed-options result) key converted)))
-              
+
               (values (if option-value 0 1) t)))))
-        
+
         (:append
          (let ((value (or option-value
                          (when (and args (not (str:starts-with-p (first args) "-")))
@@ -391,23 +391,23 @@
              (error 'missing-argument-error
                     :message (format nil "Option ~A requires an argument" option-name)
                     :argument argument))
-           
+
            (let ((converted (convert-value value (argument-type argument)))
                  (current (map:get (parsed-options result) key '())))
              (setf (parsed-options result)
-                   (map:assoc (parsed-options result) key 
+                   (map:assoc (parsed-options result) key
                              (append current (list converted)))))
-           
+
            (values (if option-value 0 1) t)))
-        
+
         (otherwise
          ;; This shouldn't happen - return nil to indicate not handled
          (values 0 nil))))))
 
 (defun find-argument (parser name)
   "Find an argument by name"
-  (find name (parser-arguments parser) 
-        :key #'argument-name 
+  (find name (parser-arguments parser)
+        :key #'argument-name
         :test #'string=))
 
 (defun validate-required (parser result)
@@ -416,7 +416,7 @@
     (when (and (argument-required arg)
                (not (map:contains-p (parsed-options result) (argument-key arg))))
       (error 'missing-argument-error
-             :message (format nil "Required argument ~A not provided" 
+             :message (format nil "Required argument ~A not provided"
                             (argument-name arg))
              :argument arg))))
 
@@ -438,8 +438,8 @@
         ;; Don't auto-add nil defaults for store-true actions to keep options map clean
         (let ((default-value (argument-default arg))
               (action-keyword (intern (string (argument-action arg)) :keyword)))
-          (when (and default-value 
-                     (not (and (eq action-keyword :store-true) 
+          (when (and default-value
+                     (not (and (eq action-keyword :store-true)
                                (null default-value))))
             (setf (parsed-options result)
                   (map:assoc (parsed-options result) key default-value))))))))
@@ -450,29 +450,29 @@
   "Print help message for parser"
   (print-usage parser stream)
   (terpri stream)
-  
+
   ;; Description
   (when (parser-description parser)
     (format stream "~A~%~%" (parser-description parser)))
-  
+
   ;; Arguments sections
   (let ((positionals (remove-if #'argument-is-option-p (parser-arguments parser)))
         (options (remove-if-not #'argument-is-option-p (parser-arguments parser))))
-    
+
     ;; Positional arguments
     (when positionals
       (format stream "Arguments:~%")
       (dolist (arg (reverse positionals))
         (print-argument-help arg stream))
       (terpri stream))
-    
+
     ;; Optional arguments
     (when options
       (format stream "Options:~%")
       (dolist (arg (reverse options))
         (print-argument-help arg stream))
       (terpri stream))
-    
+
     ;; Subcommands
     (when (plusp (map:count (parser-commands parser)))
       (format stream "Commands:~%")
@@ -481,7 +481,7 @@
                           name (parser-description subparser)))
                 (parser-commands parser))
       (terpri stream)))
-  
+
   ;; Epilog
   (when (parser-epilog parser)
     (format stream "~A~%" (parser-epilog parser))))
@@ -493,7 +493,7 @@
     (loop for p = parser then (parser-parent p)
           while p
           do (push (parser-command p) chain))
-    
+
     ;; Handle special cases for proper usage display
     (cond
       ;; No chain means standalone command
@@ -513,22 +513,22 @@
        ;; We want: epsilon package list
        (let ((cmd-list (cons "epsilon" chain)))
          (format stream "Usage: ~{~A~^ ~}" cmd-list)))))
-  
+
   ;; Global options indicator
   (when (some #'argument-is-option-p (parser-arguments parser))
     (format stream " [options]"))
-  
+
   ;; Subcommand indicator
   (when (plusp (map:count (parser-commands parser)))
     (format stream " <command>"))
-  
+
   ;; Positional arguments
   (let ((positionals (remove-if #'argument-is-option-p (parser-arguments parser))))
     (dolist (arg (reverse positionals))
-      (format stream " ~:[~A~;<~A>~]" 
+      (format stream " ~:[~A~;<~A>~]"
               (argument-required arg)
               (or (argument-metavar arg) (argument-name arg)))))
-  
+
   ;; Trailing arguments indicator
   (format stream " [arguments]"))
 
@@ -537,18 +537,18 @@
   (let ((names (argument-name arg))
         (metavar (or (argument-metavar arg)
                     (string-upcase (argument-key arg)))))
-    
+
     ;; Argument name(s) and metavar
     (format stream "  ~A" names)
     (when (and (argument-is-option-p arg)
                (let ((action-keyword (intern (string (argument-action arg)) :keyword)))
                  (not (member action-keyword '(:store-true :store-false)))))
       (format stream " ~A" metavar))
-    
+
     ;; Help text
     (when (argument-help arg)
       (format stream "~48T~A" (argument-help arg)))
-    
+
     ;; Additional info
     (let ((info '()))
       (when (argument-choices arg)
@@ -557,7 +557,7 @@
         (push (format nil "default: ~A" (argument-default arg)) info))
       (when info
         (format stream " (~{~A~^; ~})" (nreverse info))))
-    
+
     (terpri stream)))
 
 ;;; Convenience Functions

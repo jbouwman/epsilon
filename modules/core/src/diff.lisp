@@ -41,12 +41,12 @@ Returns NIL if objects are equalp, otherwise returns a diff-result structure."
                                      :type :dimension-mismatch))
                   ((= (array-rank a) 1)
                    (loop for i from 0 below (length a)
-                         for diff = (compare (aref a i) (aref b i) 
+                         for diff = (compare (aref a i) (aref b i)
                                            (cons i path))
                          when diff return diff))
                   (t
                    (loop for i from 0 below (array-total-size a)
-                         for indices = (multiple-value-list 
+                         for indices = (multiple-value-list
                                        (floor i (reduce #'* (cdr (array-dimensions a)))))
                          for diff = (compare (apply #'aref a indices)
                                            (apply #'aref b indices)

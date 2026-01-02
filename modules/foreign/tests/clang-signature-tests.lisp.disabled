@@ -31,19 +31,19 @@
         ;; String functions
         (let ((headers (clang-sig:detect-function-headers "strlen")))
           (is (member "string.h" headers :test #'string=) "strlen should suggest string.h"))
-        
+
         ;; Memory functions
         (let ((headers (clang-sig:detect-function-headers "malloc")))
           (is (member "stdlib.h" headers :test #'string=) "malloc should suggest stdlib.h"))
-        
+
         ;; I/O functions
         (let ((headers (clang-sig:detect-function-headers "printf")))
           (is (member "stdio.h" headers :test #'string=) "printf should suggest stdio.h"))
-        
+
         ;; System functions
         (let ((headers (clang-sig:detect-function-headers "getpid")))
           (is (member "unistd.h" headers :test #'string=) "getpid should suggest unistd.h"))
-        
+
         ;; Unknown functions should get default headers
         (let ((headers (clang-sig:detect-function-headers "unknown_function")))
           (is (>= (length headers) 1) "Unknown functions should get default headers")))
@@ -57,7 +57,7 @@
           (is (stringp header) "Should generate string header")
           (is (search "#include <string.h>" header) "Should include string.h for strlen")
           (is (search "strlen" header) "Should mention the function name"))
-        
+
         (let ((header (clang-sig:generate-minimal-header "custom_func" '("custom.h"))))
           (is (search "#include <custom.h>" header) "Should include custom headers")))
       (format t "Skipping header generation test - clang signatures not available~%")))
@@ -75,11 +75,11 @@
         (is-eq (clang-sig:c-type-to-epsilon-type "char") :char)
         (is-eq (clang-sig:c-type-to-epsilon-type "float") :float)
         (is-eq (clang-sig:c-type-to-epsilon-type "double") :double)
-        
+
         ;; Special types
         (is-eq (clang-sig:c-type-to-epsilon-type "size_t") :unsigned-long)
         (is-eq (clang-sig:c-type-to-epsilon-type "ssize_t") :long)
-        
+
         ;; Type lists
         (is-eq (clang-sig:c-type-to-epsilon-type '("const" "char")) :char)
         (is-eq (clang-sig:c-type-to-epsilon-type '("static" "int")) :int))
@@ -93,15 +93,15 @@
         (is-eq (clang-sig:normalize-c-types '("unsigned" "int")) :unsigned-int)
         (is-eq (clang-sig:normalize-c-types '("unsigned" "long")) :unsigned-long)
         (is-eq (clang-sig:normalize-c-types '("unsigned" "char")) :unsigned-char)
-        
+
         ;; With qualifiers
         (is-eq (clang-sig:normalize-c-types '("const" "int")) :int)
         (is-eq (clang-sig:normalize-c-types '("static" "void")) :void)
         (is-eq (clang-sig:normalize-c-types '("extern" "const" "char")) :char)
-        
+
         ;; Long long
         (is-eq (clang-sig:normalize-c-types '("long" "long")) :long-long)
-        
+
         ;; Special POSIX types
         (is-eq (clang-sig:normalize-c-types '("size_t")) :size-t)
         (is-eq (clang-sig:normalize-c-types '("ssize_t")) :ssize-t))
@@ -145,14 +145,14 @@
              (progn
                ;; Clear database for testing
                (setf clang-sig:*signature-database* (make-hash-table :test 'equal))
-               
+
                ;; Test caching
                (let ((sig (clang-sig:make-function-signature
                            :name "test_func"
                            :return-type :int
                            :arg-types '(:int))))
                  (clang-sig:cache-signature "test_func" sig :library "libc")
-                 
+
                  ;; Test retrieval
                  (let ((retrieved (clang-sig:get-cached-signature "test_func" "libc")))
                    (is retrieved "Should retrieve cached signature")
@@ -206,10 +206,10 @@
               (clang-sig:clang-signature-pipeline fn)
             (error (e)
               (format t "Failed to extract signature for ~A: ~A~%" fn e))))
-        
+
         (let* ((end-time (get-internal-real-time))
                (elapsed (/ (- end-time start-time) internal-time-units-per-second)))
-          (format t "Extracted signatures for ~D functions in ~,3F seconds~%" 
+          (format t "Extracted signatures for ~D functions in ~,3F seconds~%"
                   (length function-list) elapsed)
           (is (< elapsed 5.0) "Should extract signatures reasonably quickly")))
       (format t "Skipping performance test - clang signatures not available~%")))
@@ -228,7 +228,7 @@
                   (is t "Should handle nonexistent functions gracefully")))
           (error (e)
             (is t "Should handle errors gracefully")))
-        
+
         ;; Test with invalid header content
         (handler-case
             (let ((sigs (clang-sig:parse-header-for-signatures "invalid C syntax {")))

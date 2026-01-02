@@ -268,7 +268,8 @@
    :generate (lambda (size rng)
                (funcall f (funcall (gen-generate generator) size rng)))
    :shrink (when (gen-shrink generator)
-             (lambda (value)
+             (lambda (_value)
+               (declare (ignore _value))
                ;; Note: shrinking mapped values is tricky
                ;; This is a simplified version
                nil))))

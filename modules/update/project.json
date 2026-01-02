@@ -1,0 +1,42 @@
+{
+  "name": "epsilon-update",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "epsilon/modules/update",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "./epsilon/epsilon --module epsilon.update --eval t"
+      },
+      "inputs": [
+        "{projectRoot}/**/*.lisp",
+        "{projectRoot}/module.lisp"
+      ],
+      "cache": true
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "./epsilon/epsilon --test epsilon.update"
+      },
+      "dependsOn": [
+        "build"
+      ],
+      "inputs": [
+        "{projectRoot}/**/*.lisp"
+      ],
+      "cache": true
+    }
+  },
+  "implicitDependencies": [
+    "epsilon-json",
+    "epsilon-http"
+  ],
+  "tags": [
+    "scope:epsilon",
+    "type:library"
+  ]
+}

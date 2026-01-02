@@ -1,10 +1,21 @@
+;;;; edn.lisp - EDN (Extensible Data Notation) support
+;;;;
+;;;; This module provides EDN data format support for Epsilon. It builds on
+;;;; the base literal syntax from epsilon.reader and adds EDN-specific features:
+;;;; - Namespaced keywords (:namespace/name)
+;;;; - Tagged literals (#inst, #uuid, custom tags)
+;;;; - EDN reading/writing functions
+;;;;
+;;;; Basic syntax like [1 2 3], {:a 1}, and #{1 2} are provided by epsilon.reader.
+
 (defpackage epsilon.edn
   (:use cl)
   (:local-nicknames
    (map epsilon.map)
    (str epsilon.string)
    (seq epsilon.sequence)
-   (set epsilon.set))
+   (set epsilon.set)
+   (reader epsilon.reader))
   (:export
    ;; Reading
    read-edn
@@ -35,73 +46,28 @@
 
 (in-package epsilon.edn)
 
-(defparameter *edn-readtable* nil)
+;;;; ==========================================================================
+;;;; EDN Readtable
+;;;; ==========================================================================
 
-(defun read-edn-map (stream char)
-  (declare (ignore char))
-  (let ((forms (read-delimited-list #\} stream t)))
-    (unless (evenp (length forms))
-      (error "Map literal must have an even number of forms"))
-    (apply #'map:make-map forms)))
+(defparameter *edn-readtable* nil
+  "The EDN readtable, based on epsilon.reader with EDN-specific extensions.")
 
-(defun read-edn-vector (stream char)
-  (declare (ignore char))
-  (let ((forms (read-delimited-list #\] stream t)))
-    (apply #'vector forms)))
-
-(defun read-edn-set (stream char)
-  (declare (ignore char))
-  (let ((forms (read-delimited-list #\} stream t)))
-    (apply #'set:make-set forms)))
-
-(defun read-edn-set-dispatch (stream char n)
-  (declare (ignore char n))
-  (read-edn-set stream #\{))
-
-(defun enable-edn-syntax ()
-  (setf *readtable* *edn-readtable*)
-  (set-macro-character #\{ #'read-edn-map nil *edn-readtable*)
-  (set-macro-character #\} (get-macro-character #\) nil) nil *edn-readtable*)
-  (set-macro-character #\[ #'read-edn-vector nil *edn-readtable*)
-  (set-macro-character #\] (get-macro-character #\) nil) nil *edn-readtable*)
-  (set-dispatch-macro-character #\# #\{ #'read-edn-set-dispatch *edn-readtable*)
-  t)
-
-(defun disable-edn-syntax ()
-  (setf *readtable* (copy-readtable nil))
-  t)
-
-(defun read-edn-from-string (string)
-  (let ((*readtable* *edn-readtable*))
-    (read-from-string string)))
-
-(defun read-edn (stream)
-  (let ((*readtable* *edn-readtable*))
-    (read stream)))
-
-(defun initialize-edn-readtable ()
-  (unless *edn-readtable*
-    (setf *edn-readtable* (copy-readtable nil))
-    (set-macro-character #\{ #'read-edn-map nil *edn-readtable*)
-    (set-macro-character #\} (get-macro-character #\) nil) nil *edn-readtable*)
-    (set-macro-character #\[ #'read-edn-vector nil *edn-readtable*)
-    (set-macro-character #\] (get-macro-character #\) nil) nil *edn-readtable*)
-    (set-dispatch-macro-character #\# #\{ #'read-edn-set-dispatch *edn-readtable*)))
-
-(initialize-edn-readtable)
+(defparameter *saved-readtable* nil
+  "Saved readtable for restoration when disabling EDN syntax.")
 
 ;;;; ==========================================================================
 ;;;; EDN Keywords and Symbols
 ;;;; ==========================================================================
 
 (defstruct (edn-keyword (:constructor %make-edn-keyword))
-  "EDN keyword type"
+  "EDN keyword type supporting namespaces like :namespace/name"
   namespace
   name)
 
 (defstruct (edn-symbol (:constructor %make-edn-symbol))
-  "EDN symbol type"
-  namespace  
+  "EDN symbol type supporting namespaces like namespace/name"
+  namespace
   name)
 
 (defun make-edn-keyword (name &optional namespace)
@@ -151,11 +117,11 @@
         (error "Unknown EDN tag: ~A" tag))))
 
 ;;;; ==========================================================================
-;;;; Enhanced Reader Functions
+;;;; EDN-Specific Reader Functions
 ;;;; ==========================================================================
 
 (defun read-edn-keyword (stream char)
-  "Read an EDN keyword"
+  "Read an EDN keyword, supporting namespaced forms like :namespace/name"
   (declare (ignore char))
   (let ((name (read stream t nil t)))
     (if (symbolp name)
@@ -166,6 +132,70 @@
                                   (subseq name-str 0 slash-pos)))
               (make-edn-keyword name-str)))
         (error "Invalid keyword syntax"))))
+
+(defun read-edn-nil-or-boolean (stream char)
+  "Read nil, true, or false"
+  (declare (ignore char))
+  (let ((symbol (read stream t nil t)))
+    (cond
+      ((eq symbol '|nil|) nil)
+      ((eq symbol '|true|) t)
+      ((eq symbol '|false|) nil)
+      (t symbol))))
+
+;;;; ==========================================================================
+;;;; Readtable Initialization
+;;;; ==========================================================================
+
+(defun initialize-edn-readtable ()
+  "Initialize the EDN readtable based on epsilon.reader's readtable.
+   Adds EDN-specific extensions for namespaced keywords and tagged literals."
+  (unless *edn-readtable*
+    ;; Start with the epsilon readtable as base (has vectors, maps, sets)
+    (setf *edn-readtable* (copy-readtable reader:*epsilon-readtable*))
+
+    ;; Add EDN-specific namespaced keyword support
+    (set-macro-character #\: #'read-edn-keyword nil *edn-readtable*)
+
+    ;; Add tagged literals using #_ dispatch
+    (set-dispatch-macro-character #\# #\_ #'read-edn-tagged *edn-readtable*)))
+
+;; Initialize the EDN readtable when loaded
+(initialize-edn-readtable)
+
+;;;; ==========================================================================
+;;;; Syntax Control
+;;;; ==========================================================================
+
+(defun enable-edn-syntax ()
+  "Enable EDN syntax extensions.
+   This enables the base epsilon syntax plus EDN-specific extensions like
+   namespaced keywords (:ns/name) and tagged literals (#inst, #uuid)."
+  (unless *saved-readtable*
+    (setf *saved-readtable* (copy-readtable *readtable*)))
+  (setf *readtable* *edn-readtable*)
+  t)
+
+(defun disable-edn-syntax ()
+  "Disable EDN syntax extensions, restoring the previous readtable."
+  (when *saved-readtable*
+    (setf *readtable* (copy-readtable *saved-readtable*))
+    (setf *saved-readtable* nil)
+    t))
+
+;;;; ==========================================================================
+;;;; Reading Functions
+;;;; ==========================================================================
+
+(defun read-edn-from-string (string)
+  "Read EDN data from a string"
+  (let ((*readtable* *edn-readtable*))
+    (read-from-string string)))
+
+(defun read-edn (stream)
+  "Read EDN data from a stream"
+  (let ((*readtable* *edn-readtable*))
+    (read stream)))
 
 ;;;; ==========================================================================
 ;;;; Writing Functions
@@ -207,7 +237,7 @@
     (#\Space (write-string "space" stream))
     (otherwise (write-char value stream))))
 
-;; Keywords
+;; EDN keywords (namespaced)
 (defmethod write-edn-value ((value edn-keyword) stream)
   (write-char #\: stream)
   (when (edn-keyword-namespace value)
@@ -225,6 +255,10 @@
 (defmethod write-edn-value ((value symbol) stream)
   (let ((name (symbol-name value)))
     (cond
+      ;; CL keywords become EDN keywords
+      ((keywordp value)
+       (write-char #\: stream)
+       (write-string (string-downcase name) stream))
       ((string= name "NIL") (write-string "nil" stream))
       ((string= name "T") (write-string "true" stream))
       (t (write-string (string-downcase name) stream)))))
@@ -244,7 +278,7 @@
     (write-edn-value (aref value i) stream))
   (write-char #\] stream))
 
-;; Maps (using epsilon.map)
+;; Maps (HAMT)
 (defmethod write-edn-value ((value map:hamt) stream)
   (write-char #\{ stream)
   (let ((first t))
@@ -257,7 +291,7 @@
               value))
   (write-char #\} stream))
 
-;; Hash tables (convert to EDN map notation) - legacy support
+;; Hash tables (legacy support)
 (defmethod write-edn-value ((value hash-table) stream)
   (write-char #\{ stream)
   (let ((first t))
@@ -270,20 +304,7 @@
              value))
   (write-char #\} stream))
 
-;; Epsilon maps (preferred)
-(defmethod write-edn-value ((value map:hamt) stream)
-  (write-char #\{ stream)
-  (let ((first t))
-    (map:each (lambda (k v)
-                (unless first (write-char #\Space stream))
-                (setf first nil)
-                (write-edn-value k stream)
-                (write-char #\Space stream)
-                (write-edn-value v stream))
-              value))
-  (write-char #\} stream))
-
-;; Sets (using epsilon.set)
+;; Sets (HAMT-SET)
 (defmethod write-edn-value ((value set:hamt-set) stream)
   (write-string "#{" stream)
   (let ((first t))
@@ -314,49 +335,6 @@
   "Write a value in EDN format to a string"
   (with-output-to-string (stream)
     (write-edn value stream)))
-
-;;;; ==========================================================================
-;;;; Enhanced Reading Functions
-;;;; ==========================================================================
-
-(defun read-edn-nil-or-boolean (stream char)
-  "Read nil, true, or false"
-  (declare (ignore char))
-  (let ((symbol (read stream t nil t)))
-    (cond
-      ((eq symbol '|nil|) nil)
-      ((eq symbol '|true|) t)
-      ((eq symbol '|false|) nil)
-      (t symbol))))
-
-;;;; ==========================================================================
-;;;; Initialize Enhanced Reader
-;;;; ==========================================================================
-
-(defun initialize-enhanced-edn-readtable ()
-  "Initialize the EDN readtable with all features"
-  (unless *edn-readtable*
-    (setf *edn-readtable* (copy-readtable nil)))
-  
-  ;; Basic EDN structures
-  (set-macro-character #\{ #'read-edn-map nil *edn-readtable*)
-  (set-macro-character #\} (get-macro-character #\) nil) nil *edn-readtable*)
-  (set-macro-character #\[ #'read-edn-vector nil *edn-readtable*)
-  (set-macro-character #\] (get-macro-character #\) nil) nil *edn-readtable*)
-  
-  ;; Sets
-  (set-dispatch-macro-character #\# #\{ #'read-edn-set-dispatch *edn-readtable*)
-  
-  ;; Keywords
-  (set-macro-character #\: #'read-edn-keyword nil *edn-readtable*)
-  
-  ;; Tagged literals
-  (set-dispatch-macro-character #\# #\_ #'read-edn-tagged *edn-readtable*)
-  
-  *edn-readtable*)
-
-;; Initialize the enhanced readtable
-(initialize-enhanced-edn-readtable)
 
 ;;;; ==========================================================================
 ;;;; Default Tagged Literal Handlers

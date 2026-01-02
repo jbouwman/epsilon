@@ -8,25 +8,25 @@
    #:make-callback
    #:call-callback
    #:callback-pointer
-   
+
    ;; Registry management
    #:register-callback
    #:unregister-callback
    #:get-callback
    #:list-callbacks
-   
+
    ;; Convenience macros
    #:defcallback
    #:with-callback
    #:with-callback-scope
-   
+
    ;; Types
    #:callback-info
    #:callback-info-p
    #:callback-info-function
    #:callback-info-signature
    #:callback-info-pointer
-   
+
    ;; libffi integration
    #:make-sbcl-callback
    #:*use-libffi*
@@ -121,7 +121,7 @@
     (:pointer `(or ,value-var (sb-sys:int-sap 0)))
     (t value-var))) ; Numeric types pass through
 
-(defun create-real-callback-or-dummy (function return-type arg-types 
+(defun create-real-callback-or-dummy (function return-type arg-types
                                       alien-return alien-args arg-names)
   "Create a real callback or return a dummy pointer if unavailable"
   (handler-case
@@ -129,7 +129,7 @@
       (let* ((typed-lambda-list (loop for name in arg-names
                                       for type in alien-args
                                       collect (list name type)))
-             (lambda-form `(sb-alien::alien-lambda 
+             (lambda-form `(sb-alien::alien-lambda
                            ,alien-return
                            ,typed-lambda-list
                            ,(build-callback-body function return-type arg-types arg-names)))
@@ -163,12 +163,12 @@
          (arg-names (loop for i from 0 below (length arg-types)
                          collect (intern (format nil "ARG~D" i))))
          ;; Try to create real callback or fall back to dummy
-         (callback-result (create-real-callback-or-dummy 
-                           function return-type arg-types 
+         (callback-result (create-real-callback-or-dummy
+                           function return-type arg-types
                            alien-return alien-args arg-names))
          (alien-cb (first callback-result))
          (pointer (second callback-result)))
-    
+
     ;; Create callback info
     (let ((info (make-callback-info :function function
                                     :return-type return-type
@@ -201,12 +201,12 @@
                 (handler-case
                     ,(if (eq return-type :void)
                          `(progn
-                            (funcall ,function 
+                            (funcall ,function
                                     ,@(loop for arg in arg-names
                                            for type in arg-types
                                            collect (convert-callback-arg-form arg type)))
                             (values))
-                         `(let ((result (funcall ,function 
+                         `(let ((result (funcall ,function
                                                ,@(loop for arg in arg-names
                                                       for type in arg-types
                                                       collect (convert-callback-arg-form arg type)))))
@@ -343,7 +343,7 @@
   (let ((callbacks (gensym "CALLBACKS")))
     `(let ((,callbacks nil))
        (flet ((make-callback (function return-type arg-types)
-                (let ((cb (epsilon.foreign.callback:make-callback 
+                (let ((cb (epsilon.foreign.callback:make-callback
                           function return-type arg-types)))
                   (push cb ,callbacks)
                   cb)))

@@ -58,7 +58,7 @@
 
 (deftest test-blake2b-binary-input
   "Test BLAKE2b with binary input"
-  (let* ((binary-data (make-array 256 
+  (let* ((binary-data (make-array 256
                                  :element-type '(unsigned-byte 8)
                                  :initial-contents (loop for i from 0 to 255 collect i)))
          (hash (blake2:blake2b binary-data :output-length 32)))
@@ -105,10 +105,10 @@
   (let ((data (make-array 1024
                           :element-type '(unsigned-byte 8)
                           :initial-element 0)))
-    
+
     (format t "~%Hash Function Performance Comparison:~%")
     (format t "=====================================~%")
-    
+
     ;; Benchmark BLAKE2b
     (let* ((iterations 1000)
            (start (get-internal-real-time)))
@@ -117,7 +117,7 @@
       (let ((elapsed (/ (* (- (get-internal-real-time) start) 1000.0)
                        internal-time-units-per-second)))
         (format t "BLAKE2b (32 bytes): ~,1Fms for ~D iterations~%" elapsed iterations)))
-    
+
     ;; Benchmark BLAKE2s
     (let* ((iterations 1000)
            (start (get-internal-real-time)))
@@ -126,7 +126,7 @@
       (let ((elapsed (/ (* (- (get-internal-real-time) start) 1000.0)
                        internal-time-units-per-second)))
         (format t "BLAKE2s (32 bytes): ~,1Fms for ~D iterations~%" elapsed iterations)))
-    
+
     ;; Compare with SHA-256 if available
     ;; (Note: SHA-256 comparison would go here if implemented)
     ))
@@ -162,7 +162,7 @@
   "Run all BLAKE2 tests"
   (format t "Running BLAKE2 Tests~%")
   (format t "===================~%")
-  
+
   ;; BLAKE2b tests
   (format t "~%Testing BLAKE2b...~%")
   (test-blake2b-basic)
@@ -170,20 +170,20 @@
   (test-blake2b-keyed)
   (test-blake2b-empty-input)
   (test-blake2b-binary-input)
-  
+
   ;; BLAKE2s tests
   (format t "~%Testing BLAKE2s...~%")
   (test-blake2s-basic)
   (test-blake2s-output-lengths)
   (test-blake2s-keyed)
-  
+
   ;; Error handling tests
   (format t "~%Testing error handling...~%")
   (test-blake2b-invalid-parameters)
   (test-blake2s-invalid-parameters)
-  
+
   ;; Performance benchmarks
   (format t "~%Running benchmarks...~%")
   (benchmark-blake2-vs-sha)
-  
+
   (format t "~%All BLAKE2 tests completed!~%"))

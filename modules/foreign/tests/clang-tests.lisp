@@ -53,15 +53,15 @@
 (deftest tokenize-keywords
   "Test tokenizing C keywords"
   (is-equal (token-types "int") '(:keyword))
-  (is-equal (token-types "typedef struct union enum") 
+  (is-equal (token-types "typedef struct union enum")
             '(:keyword :keyword :keyword :keyword))
-  (is-equal (token-values "void char short int long") 
+  (is-equal (token-values "void char short int long")
             '("void" "char" "short" "int" "long"))
-  (is-equal (token-values "float double signed unsigned") 
+  (is-equal (token-values "float double signed unsigned")
             '("float" "double" "signed" "unsigned"))
-  (is-equal (token-values "const volatile restrict") 
+  (is-equal (token-values "const volatile restrict")
             '("const" "volatile" "restrict"))
-  (is-equal (token-values "static extern auto register") 
+  (is-equal (token-values "static extern auto register")
             '("static" "extern" "auto" "register")))
 
 (deftest tokenize-numbers

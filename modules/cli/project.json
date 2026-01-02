@@ -1,0 +1,24 @@
+{
+  "name": "epsilon-cli",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "epsilon/modules/cli",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "./epsilon/epsilon --module epsilon.cli --eval t"
+      },
+      "inputs": [
+        "{projectRoot}/**/*.lisp",
+        "{projectRoot}/module.lisp"
+      ],
+      "cache": true
+    }
+  },
+  "tags": [
+    "scope:epsilon",
+    "type:library"
+  ]
+}

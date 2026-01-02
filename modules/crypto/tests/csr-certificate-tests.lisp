@@ -17,7 +17,7 @@
                    (:rsa (crypto:generate-rsa-key key-size))
                    (:ec (crypto:generate-ec-key :curve :p256))
                    (:ed25519 (crypto:generate-ed25519-key)))))
-    (crypto:create-certificate 
+    (crypto:create-certificate
      :key key
      :subject-cn "Test Certificate"
      :issuer-cn "Test CA"
@@ -56,7 +56,7 @@
          ;; Get public key only
          (public-pem (crypto:key-to-pem key :private-p nil))
          (public-key (crypto:key-from-pem public-pem :private-p nil)))
-    
+
     ;; Try to create CSR with public key only
     (handler-case
         (progn
@@ -70,7 +70,7 @@
 (deftest test-create-self-signed-certificate
   "Test creating a self-signed certificate"
   (format t "~%[TEST] Starting self-signed certificate test~%")
-  (let* ((key (progn 
+  (let* ((key (progn
                 (format t "[TEST] Generating RSA key...~%")
                 (crypto:generate-rsa-key :bits 2048))))
     (format t "[TEST] RSA key generated successfully: ~A~%" (crypto:crypto-key-p key))
@@ -104,10 +104,10 @@
 		:subject-cn "EC Certificate"
 		:serial 100
 		:days 365)))
-    
+
     (is (crypto:x509-certificate-p cert))
     (is (search "EC Certificate" (crypto:x509-certificate-subject cert)))
-    
+
     ;; Extract public key and verify it's EC
     (let ((pub-key (crypto:certificate-public-key cert)))
       (is (crypto:crypto-key-p pub-key))
@@ -120,7 +120,7 @@
 		:key key
 		:subject-cn "Validity Test"
 		:days 90)))
-    
+
     (is (crypto:x509-certificate-p cert))
     ;; Not-before should be around now (0)
     (is (numberp (crypto:x509-certificate-not-before cert)))
@@ -141,17 +141,17 @@
 			 :key key
 			 :subject-cn "Export Test"
 			 :serial 999)))
-    
+
     ;; Export to PEM
     (let ((cert-pem (crypto:save-certificate original-cert)))
       (is (stringp cert-pem))
       (is (search "-----BEGIN CERTIFICATE-----" cert-pem))
       (is (search "-----END CERTIFICATE-----" cert-pem))
-      
+
       ;; Import from PEM
       (let ((imported-cert (crypto:load-certificate cert-pem)))
 	(is (crypto:x509-certificate-p imported-cert))
-	(is (search "Export Test" 
+	(is (search "Export Test"
 		    (crypto:x509-certificate-subject imported-cert)))
 	(is (equal (crypto:x509-certificate-serial imported-cert) "999"))))))
 
@@ -173,13 +173,13 @@
 		:key key
 		:subject-cn "Key Extraction Test"))
 	 (extracted-key (crypto:certificate-public-key cert)))
-    
+
     (is (crypto:crypto-key-p extracted-key))
     (is (crypto:crypto-key-public-p extracted-key))
     (is (not (crypto:crypto-key-private-p extracted-key)))
     (is (eq (crypto:crypto-key-type extracted-key) :rsa))
     (is-= (crypto:crypto-key-bits extracted-key) 2048)
-    
+
     ;; Test that extracted key can verify signatures from original key
     (let* ((message "Test message for verification")
 	   (signature (crypto:sign-message key message)))
@@ -194,7 +194,7 @@
 		:key key
 		:subject-cn "Self Signed"
 		:issuer-cn "Self Signed")))
-    
+
     ;; Extract public key from certificate
     (let ((pub-key (crypto:certificate-public-key cert)))
       ;; Self-signed cert should verify with its own public key
@@ -207,7 +207,7 @@
 	 (cert (crypto:create-certificate
 		:key key1
 		:subject-cn "Test Cert")))
-    
+
     ;; Try to verify with wrong key
     (is (not (crypto:verify-certificate cert key2)))))
 
@@ -223,7 +223,7 @@
 		   :issuer-cn "Test Root CA"
 		   :serial 1
 		   :days 3650))
-	 
+
 	 ;; Create server key
 	 (server-key (crypto:generate-rsa-key :bits 2048))
 	 ;; In real scenario, CA would sign server's CSR
@@ -234,15 +234,15 @@
 		       :issuer-cn "Test Root CA"
 		       :serial 1000
 		       :days 365)))
-    
+
     ;; Verify CA cert is self-signed
     (let ((ca-pub-key (crypto:certificate-public-key ca-cert)))
       (is (crypto:verify-certificate ca-cert ca-pub-key)))
-    
+
     ;; In real scenario, server cert would be verified by CA's public key
     ;; Here we just verify structure
     (is (crypto:x509-certificate-p server-cert))
-    (is (search "server.example.com" 
+    (is (search "server.example.com"
 		(crypto:x509-certificate-subject server-cert)))
     (is (search "Test Root CA"
 		(crypto:x509-certificate-issuer server-cert)))))
@@ -257,24 +257,24 @@
 		:subject-cn "Pair Test"))
 	 (key-file "/tmp/test-key.pem")
 	 (cert-file "/tmp/test-cert.pem"))
-    
+
     ;; Save key and certificate
     (crypto:save-key-and-cert-pair key cert key-file cert-file)
-    
+
     ;; Check files were created
     (is (probe-file key-file))
     (is (probe-file cert-file))
-    
+
     ;; Load them back
     (multiple-value-bind (loaded-key loaded-cert)
 			 (crypto:load-key-and-cert-pair key-file cert-file)
-			 
+
 			 (is (crypto:crypto-key-p loaded-key))
 			 (is (crypto:crypto-key-private-p loaded-key))
 			 (is (crypto:x509-certificate-p loaded-cert))
-			 (is (search "Pair Test" 
+			 (is (search "Pair Test"
 				     (crypto:x509-certificate-subject loaded-cert))))
-    
+
     ;; Clean up
     (delete-file key-file)
     (delete-file cert-file)))
@@ -288,11 +288,11 @@
 		:key key
 		:subject-cn "Test Subject CN"
 		:issuer-cn "Test Issuer CN")))
-    
+
     ;; Check subject contains CN
-    (is (search "CN=Test Subject CN" 
+    (is (search "CN=Test Subject CN"
 		(crypto:x509-certificate-subject cert)))
-    
+
     ;; Check issuer contains CN
     (is (search "CN=Test Issuer CN"
 		(crypto:x509-certificate-issuer cert)))))
@@ -319,7 +319,7 @@
     ;; Measure CSR creation time
     (let ((start (get-internal-real-time)))
       (dotimes (i 10)
-	(crypto:create-csr key 
+	(crypto:create-csr key
 			   :subject-cn (format nil "csr~D.example.com" i)))
       (let ((elapsed (- (get-internal-real-time) start)))
 	;; Should create 10 CSRs quickly

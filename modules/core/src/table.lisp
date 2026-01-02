@@ -12,19 +12,19 @@
    #:print-table
    #:format-table
    #:simple-table
-   
+
    ;; Table creation
    #:create-table
    #:add-row
    #:add-column
-   
+
    ;; Column configuration
    #:make-column
    #:column-header
    #:column-width
    #:column-align
    #:column-formatter
-   
+
    ;; Table structure
    #:table
    #:table-columns
@@ -113,12 +113,12 @@
 
 (defun format-separator-line (widths separator-char column-spacing)
   "Format a separator line using the specified character"
-  (let ((separator-parts 
+  (let ((separator-parts
          (mapcar (lambda (width)
                    (make-string width :initial-element separator-char))
                  widths))
         (spacing-str (make-string column-spacing :initial-element #\Space)))
-    (format nil "~{~A~^~A~}" 
+    (format nil "~{~A~^~A~}"
             (loop for part in separator-parts
                   for i from 0
                   collect part
@@ -133,7 +133,7 @@
                      (format-cell formatted-content width (column-align column))))
                  row columns widths))
         (spacing-str (make-string column-spacing :initial-element #\Space)))
-    (format nil "~{~A~}" 
+    (format nil "~{~A~}"
             (loop for cell in formatted-cells
                   for i from 0
                   collect cell
@@ -147,24 +147,24 @@
   (let ((columns (table-columns table))
         (rows (table-rows table))
         (options (table-options table)))
-    
+
     (when (null columns)
       (return-from format-table ""))
-    
+
     (let* ((widths (calculate-column-widths table))
            (show-header (getf options :show-header t))
            (separator-char (getf options :separator-char #\-))
            (column-spacing (getf options :column-spacing 2))
            (spacing-str (make-string column-spacing :initial-element #\Space))
            (output '()))
-      
+
       ;; Header
       (when show-header
         (let* ((headers (mapcar #'column-header columns))
                (formatted-headers (mapcar (lambda (header width column)
                                            (format-cell header width (column-align column)))
                                          headers widths columns))
-               (header-line (format nil "~{~A~}" 
+               (header-line (format nil "~{~A~}"
                                            (loop for cell in formatted-headers
                                                  for i from 0
                                                  collect cell
@@ -173,7 +173,7 @@
                (separator-line (format-separator-line widths separator-char column-spacing)))
           (push header-line output)
           (push separator-line output)))
-      
+
       ;; Data rows
       (dolist (row rows)
         (let* ((formatted-cells (mapcar (lambda (cell column width)
@@ -187,7 +187,7 @@
                                       when (< i (1- (length formatted-cells)))
                                       collect spacing-str))))
           (push row-line output)))
-      
+
       ;; Output
       (let ((result (format nil "~{~A~%~}" (nreverse output))))
         (if stream

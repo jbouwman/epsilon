@@ -1,4 +1,4 @@
-;;;; Tests for the epsilon.net Linux implementation using public API only
+;;;; Tests for the Linux implementation of epsilon.net
 
 (defpackage epsilon.net.tests
   (:use
@@ -11,7 +11,7 @@
 (in-package epsilon.net.tests)
 
 ;;; ============================================================================
-;;; Basic Address and Socket Tests  
+;;; Basic Address and Socket Tests
 ;;; ============================================================================
 
 (deftest test-socket-address-creation ()
@@ -29,7 +29,7 @@
     (is-equal 3000 (net:socket-address-port addr1))
     (is-equal "localhost" (net:socket-address-ip addr2))
     (is-equal 8080 (net:socket-address-port addr2)))
-  
+
   ;; Test error on invalid format
   (is-thrown (error) (net:parse-address "invalid-address")))
 
@@ -64,7 +64,7 @@
         ;; Note: We can't access internal handles, so cleanup relies on GC
         t)
     (net:network-error (e)
-      (is nil (format nil "TCP bind failed with network error. Message: ~A" 
+      (is nil (format nil "TCP bind failed with network error. Message: ~A"
                       (if (slot-boundp e 'net::message)
                           (slot-value e 'net::message)
                           "No message available"))))
@@ -131,13 +131,13 @@
   ;; This is a simplified test using async functions
   (let* ((server-addr (net:make-socket-address "0.0.0.0" 0))
          (listener (net:tcp-bind server-addr)))
-    
+
     (let* ((local-addr (net:tcp-local-addr listener))
            (port (net:socket-address-port local-addr)))
-      
+
       ;; Use timeout-based connect which should handle async issues better
       (handler-case
-          (let ((client (net:tcp-connect 
+          (let ((client (net:tcp-connect
                          (net:make-socket-address "127.0.0.1" port) :timeout 1.0)))
 	    (when client
 	      ;; If connection succeeds, we have a tcp-stream
@@ -156,9 +156,9 @@
       (is (typep first-addr 'net:socket-address))
       (is (stringp (net:socket-address-ip first-addr)))
       (is-equal 8080 (net:socket-address-port first-addr))))
-  
+
   ;; Test resolution of invalid hostname - should now properly fail with DNS error
-  (is-thrown (net:network-error) 
+  (is-thrown (net:network-error)
     (net:resolve-address "this-should-not-exist.invalid" 8080)))
 
 
@@ -169,7 +169,7 @@
          (listener (net:tcp-bind server-addr))
          (port (net:socket-address-port (net:tcp-local-addr listener)))
          (test-message "Hello, TCP!"))
-    
+
     ;; This is a simplified test - proper implementation would need threading
     ;; Just test the basic API exists
     (handler-case
@@ -177,12 +177,12 @@
           ;; Test writing data
           (let ((bytes-written (net:tcp-write client test-message)))
 	    (is (> bytes-written 0)))
-          
+
           ;; Test reading data (will likely fail without server accept)
           (let ((buffer (make-array 100 :element-type '(unsigned-byte 8))))
 	    (handler-case
                 (net:tcp-read client buffer)
-	      (error () 
+	      (error ()
 		     ;; Expected in this simplified test
 		     t))))
         (error ()
@@ -199,17 +199,17 @@
         t)
       (let* ((addr (net:make-socket-address "0.0.0.0" 0))
              (listener (net:tcp-bind addr)))
-        
+
         ;; Test setting and getting socket options
         (handler-case
             (progn
               ;; Test reuse-address (should be set by default)
               (is (net:get-socket-option listener :reuse-address))
-              
+
               ;; Test setting keep-alive
               (net:set-socket-option listener :keep-alive t)
               (is (net:get-socket-option listener :keep-alive))
-              
+
               (net:set-socket-option listener :keep-alive nil)
               (is (not (net:get-socket-option listener :keep-alive))))
           (error (e)
@@ -255,7 +255,7 @@
   "Test basic epoll functionality"
   ;; First ensure any existing async system is stopped
   (ignore-errors (epsilon.async:stop-async-system))
-  
+
   (let ((epfd nil))
     (unwind-protect
          (handler-case
@@ -263,7 +263,7 @@
                (setf epfd (epoll:epoll-create1 epoll:+epoll-cloexec+))
                (is (integerp epfd))
                (is (>= epfd 0))
-               
+
                ;; Test waiting with timeout (should timeout)
                (let ((events (epoll:wait-for-events epfd 1 100))) ; 100ms timeout
                  (is (null events)))
@@ -278,7 +278,7 @@
   "Test epoll with actual socket integration"
   ;; First ensure any existing async system is stopped
   (ignore-errors (epsilon.async:stop-async-system))
-  
+
   (let ((epfd nil)
         (listener nil))
     (unwind-protect
@@ -287,7 +287,7 @@
                (let ((addr (net:make-socket-address "0.0.0.0" 0)))
                  (setf listener (net:tcp-bind addr))
                  (setf epfd (epoll:epoll-create1 epoll:+epoll-cloexec+))
-                 
+
                  ;; Add listener to epoll (this tests internal integration)
                  ;; We can't access internal handles, so just test that epoll works
                  (let ((events (epoll:wait-for-events epfd 1 0))) ; Non-blocking
@@ -300,7 +300,7 @@
         (ignore-errors (epoll:epoll-close epfd)))
       ;; Clean up listener if needed
       (when listener
-        (ignore-errors 
+        (ignore-errors
           ;; Close the listener socket if there's a method for it
           )))))
 
@@ -313,7 +313,7 @@
   (handler-case
       (let* ((addr (net:make-socket-address "0.0.0.0" 0))
              (listener (net:tcp-bind addr)))
-        
+
         ;; Should timeout since no connections are pending
         (handler-case
             (progn
@@ -331,7 +331,7 @@
 	 (listener (net:tcp-bind addr))
 	 (port (net:socket-address-port (net:tcp-local-addr listener)))
 	 (test-message "Async Hello!"))
-        
+
     ;; Start server thread
     (let ((server-thread
 	   (sb-thread:make-thread
@@ -348,27 +348,27 @@
 		(error (e)
 		  (format t "Server async error: ~A~%" e))))
             :name "async-server")))
-          
+
       (sleep 0.1)
-          
+
       ;; Connect and test async operations
       (let* ((connect-addr (net:make-socket-address "0.0.0.0" port))
              (client (net:tcp-connect connect-addr)))
-	    
+
 	;; Test async write
 	(let ((bytes-written (net:tcp-write client test-message :timeout 1.0)))
 	  (is (> bytes-written 0)))
-	    
+
 	;; Test async read
 	(let ((buffer (make-array 100 :element-type '(unsigned-byte 8))))
 	  (let ((bytes-read (net:tcp-read client buffer :timeout 1.0)))
             (when (> bytes-read 0)
-              (let ((response (sb-ext:octets-to-string 
+              (let ((response (sb-ext:octets-to-string
                                (subseq buffer 0 bytes-read))))
 		(is-equal test-message response)))))
-	
+
 	(net:tcp-shutdown client :how :both))
-      
+
       (sb-thread:join-thread server-thread :timeout 3))))
 
 ;;; ============================================================================
@@ -412,7 +412,7 @@
      (sleep 0.01))))
 
 ;;; ============================================================================
-;;; Comprehensive Tests
+;;; Tests
 ;;; ============================================================================
 
 (deftest test-tcp-echo-server-basic ()
@@ -423,10 +423,10 @@
          (test-message "Hello TCP Echo!")
          (server-error nil)
          (server-thread nil))
-    
+
     (unwind-protect
         (progn
-          ;; Start echo server thread  
+          ;; Start echo server thread
           (setf server-thread
                 (sb-thread:make-thread
                  (lambda ()
@@ -442,17 +442,17 @@
                      (error (e)
                        (setf server-error e))))
                  :name "tcp-echo-server"))
-          
+
           ;; Give server time to start
           (sleep 0.2)
-          
+
           ;; Connect client
           (let ((client-stream (net:tcp-connect (net:make-socket-address "127.0.0.1" port) :timeout 3.0)))
             (unwind-protect
                 (progn
                   ;; Send test message
                   (net:tcp-write-all client-stream test-message)
-                  
+
                   ;; Read echo response
                   (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
                     (let ((bytes-read (net:tcp-read client-stream buffer :timeout 3.0)))
@@ -460,15 +460,15 @@
                         (let ((response (sb-ext:octets-to-string (subseq buffer 0 bytes-read))))
                           (is (string= test-message response) "Echo mismatch"))))))
               (ignore-errors (net:tcp-shutdown client-stream :how :both))))
-          
+
           ;; Wait for server thread
           (when server-thread
             (sb-thread:join-thread server-thread :timeout 5.0))
-          
+
           ;; Check for server errors
           (when server-error
             (is nil (format nil "Server error: ~A" server-error))))
-      
+
       ;; Cleanup
       (when server-thread
         (ignore-errors (sb-thread:terminate-thread server-thread))))))
@@ -481,7 +481,7 @@
          (client-socket (net:udp-bind (net:make-socket-address "127.0.0.1" 0)))
          (test-message "Hello UDP!")
          (server-thread nil))
-    
+
     (unwind-protect
         (progn
           ;; Start UDP echo server with retry logic
@@ -506,14 +506,14 @@
                      (when (> bytes-received 0)
                        (net:udp-send-to server-socket buffer sender-addr :end bytes-received))))
                  :name "udp-echo-server"))
-          
+
           ;; Give server time to start
           (sleep 0.1)
-          
+
           ;; Send message
           (net:udp-send-to client-socket test-message
                           (net:make-socket-address "127.0.0.1" server-port))
-          
+
           ;; Receive echo with retry logic
           (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8)))
                 (bytes-received 0)
@@ -528,15 +528,15 @@
                          (setf bytes-received received))
                        (when (= bytes-received 0)
                          (sleep 0.1))))
-            
+
             (when (> bytes-received 0)
               (let ((response (sb-ext:octets-to-string (subseq buffer 0 bytes-received))))
                 (is (string= test-message response) "UDP echo mismatch"))))
-          
+
           ;; Wait for server thread
           (when server-thread
             (sb-thread:join-thread server-thread :timeout 5.0)))
-      
+
       ;; Cleanup
       (when server-thread
         (ignore-errors (sb-thread:terminate-thread server-thread))))))
@@ -550,7 +550,7 @@
          (server-thread nil)
          (client-threads '())
          (results (make-array num-clients :initial-element nil)))
-    
+
     (unwind-protect
         (progn
           ;; Start multi-client server
@@ -570,10 +570,10 @@
                                      (ignore-errors (net:tcp-shutdown client-stream :how :both))))
                                  :name "client-handler")))))
                  :name "multi-client-server"))
-          
+
           ;; Give server time to start
           (sleep 0.2)
-          
+
           ;; Create multiple client threads with proper closure capture
           (dotimes (i num-clients)
             (let ((client-id i)
@@ -582,8 +582,8 @@
                (sb-thread:make-thread
                 (lambda ()
                   (handler-case
-                      (let ((client-stream (net:tcp-connect 
-                                          (net:make-socket-address "127.0.0.1" port) 
+                      (let ((client-stream (net:tcp-connect
+                                          (net:make-socket-address "127.0.0.1" port)
                                           :timeout 5.0)))
                         (unwind-protect
                             (progn
@@ -591,29 +591,29 @@
                               (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
                                 (let ((bytes-read (net:tcp-read client-stream buffer :timeout 5.0)))
                                   (when (> bytes-read 0)
-                                    (let ((response (sb-ext:octets-to-string 
+                                    (let ((response (sb-ext:octets-to-string
                                                    (subseq buffer 0 bytes-read))))
-                                      (setf (aref results client-id) 
+                                      (setf (aref results client-id)
                                             (string= test-message response)))))))
                           (ignore-errors (net:tcp-shutdown client-stream :how :both))))
                     (error (e)
                       (setf (aref results client-id) (format nil "Error: ~A" e)))))
                 :name (format nil "test-client-~D" client-id))
                client-threads)))
-          
+
           ;; Wait for all client threads
           (dolist (thread client-threads)
             (sb-thread:join-thread thread :timeout 10.0))
-          
+
           ;; Wait for server thread
           (when server-thread
             (sb-thread:join-thread server-thread :timeout 10.0))
-          
+
           ;; Check results
           (dotimes (i num-clients)
-            (is (eq (aref results i) t) 
+            (is (eq (aref results i) t)
                 (format nil "Client ~D failed: ~A" i (aref results i)))))
-      
+
       ;; Cleanup
       (dolist (thread client-threads)
         (ignore-errors (sb-thread:terminate-thread thread)))
@@ -628,7 +628,7 @@
          (udp-port (net:socket-address-port (net:udp-local-addr udp-socket)))
          (tcp-success nil)
          (udp-success nil))
-    
+
     (unwind-protect
         (let ((tcp-server-thread
                (sb-thread:make-thread
@@ -644,7 +644,7 @@
                             (ignore-errors (net:tcp-shutdown stream :how :both)))))
                     (error () nil)))
                 :name "tcp-server"))
-              
+
               (udp-server-thread
                (sb-thread:make-thread
                 (lambda ()
@@ -660,14 +660,14 @@
                     (when (> bytes 0)
                       (net:udp-send-to udp-socket buffer addr :end bytes))))
                 :name "udp-server")))
-          
+
           ;; Give servers time to start
           (sleep 0.2)
-          
+
           ;; Test TCP
           (handler-case
-              (let ((tcp-client (net:tcp-connect 
-                               (net:make-socket-address "127.0.0.1" tcp-port) 
+              (let ((tcp-client (net:tcp-connect
+                               (net:make-socket-address "127.0.0.1" tcp-port)
                                :timeout 5.0)))
                 (unwind-protect
                     (progn
@@ -675,19 +675,19 @@
                       (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
                         (let ((bytes (net:tcp-read tcp-client buffer :timeout 5.0)))
                           (when (> bytes 0)
-                            (setf tcp-success 
-                                  (string= "TCP-Test" 
-                                          (sb-ext:octets-to-string 
+                            (setf tcp-success
+                                  (string= "TCP-Test"
+                                          (sb-ext:octets-to-string
                                            (subseq buffer 0 bytes))))))))
                   (ignore-errors (net:tcp-shutdown tcp-client :how :both))))
             (error (e)
               (is nil (format nil "TCP Error: ~A" e))))
-          
+
           ;; Test UDP
           (let ((udp-client (net:udp-bind (net:make-socket-address "127.0.0.1" 0))))
             (net:udp-send-to udp-client "UDP-Test"
                             (net:make-socket-address "127.0.0.1" udp-port))
-            
+
             (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8)))
                   (bytes 0))
               ;; Poll for response
@@ -697,19 +697,19 @@
                          (setf bytes b)
                          (when (> bytes 0) (return))
                          (sleep 0.1)))
-              
+
               (when (> bytes 0)
-                (setf udp-success 
-                      (string= "UDP-Test" 
+                (setf udp-success
+                      (string= "UDP-Test"
                               (sb-ext:octets-to-string (subseq buffer 0 bytes)))))))
-          
+
           ;; Wait for threads
           (sb-thread:join-thread tcp-server-thread :timeout 10.0)
           (sb-thread:join-thread udp-server-thread :timeout 10.0)
-          
+
           ;; Check results
           (is tcp-success "TCP operation failed")
           (is udp-success "UDP operation failed"))
-      
+
       ;; Cleanup happens automatically
       nil)))

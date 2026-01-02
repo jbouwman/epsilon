@@ -13,7 +13,7 @@
   (:export
    ;; Schema validator
    validate-module-metadata
-   
+
    ;; Individual validators
    validate-name
    validate-version
@@ -21,11 +21,11 @@
    validate-tests
    validate-requires
    validate-provides
-   
+
    ;; Filesystem validators
    directory-exists
    all-directories-exist
-   
+
    ;; Cross-field validators
    no-intersection
    validate-sources-tests-disjoint))
@@ -60,7 +60,7 @@
           (let ((results '()))
             (loop for dir in dirs
                   for index from 0
-                  do (push (v:validate dir-validator dir 
+                  do (push (v:validate dir-validator dir
                                       (format nil "[~D]" index))
                           results))
             (let ((combined (v:combine-results (nreverse results))))
@@ -90,7 +90,7 @@
                unless (stringp item)
                do (push (v:make-validation-error
                         :field (format nil "[~D]" index)
-                        :message (format nil "must be a string, got ~A" 
+                        :message (format nil "must be a string, got ~A"
                                         (type-of item))
                         :type :type-error)
                        errors))
@@ -110,7 +110,7 @@
               (v:make-failure
                (list (v:make-validation-error
                       :field (format nil "~A/~A" field1-name field2-name)
-                      :message (format nil "must not overlap, found common items: ~{~A~^, ~}" 
+                      :message (format nil "must not overlap, found common items: ~{~A~^, ~}"
                                       common)
                       :type :cross-field)))
               (v:make-success data)))))))
@@ -126,7 +126,7 @@
             (v:make-failure
              (list (v:make-validation-error
                     :field "sources/tests"
-                    :message (format nil "directories must not overlap, found: ~{~A~^, ~}" 
+                    :message (format nil "directories must not overlap, found: ~{~A~^, ~}"
                                     common)
                     :type :cross-field)))
             (v:make-success metadata))))))
@@ -139,7 +139,7 @@
    #'v:required
    #'v:string-type
    (v:min-length 1)
-   (v:satisfies-predicate 
+   (v:satisfies-predicate
     (lambda (name)
       ;; Module names should be valid package names
       (and (not (find #\Space name))
@@ -221,7 +221,7 @@
 (defun validate-module-metadata (metadata filepath)
   "Validate module.lisp metadata with multi-stage validation.
    Returns (values valid-p errors) where errors is a list of error strings."
-  
+
   (let* ((base-path (path:path-parent (path:make-path filepath)))
          ;; Define validation stages
          (stages (list
@@ -238,13 +238,13 @@
                                            :type :structure)
                                           (v:validation-errors result))))))
                            :continue-on-failure nil)
-                  
+
                   ;; Stage 2: Known keys validation
                   (v:stage "keys"
                            (lambda (data)
                              (let ((valid-keys '(:name :version :description :author :platform
                                                :sources :tests :benchmarks :examples :experiments
-                                               :docs :data :requires :provides))
+                                               :docs :data :requires :provides :source-type))
                                    (errors '()))
                                (loop for key in data by #'cddr
                                      unless (member key valid-keys)
@@ -258,7 +258,7 @@
                                    (v:make-failure (nreverse errors))
                                    (v:make-success data))))
                            :continue-on-failure t)
-                  
+
                   ;; Stage 3: Type validation
                   (v:stage "types"
                            (lambda (data)
@@ -286,13 +286,13 @@
                                        (v:make-success data)
                                        result)))))
                            :continue-on-failure t)
-                  
+
                   ;; Stage 4: Semantic validation (cross-field)
                   (v:stage "semantic"
                            (lambda (data)
                              (validate-sources-tests-disjoint data base-path))
                            :continue-on-failure t)
-                  
+
                   ;; Stage 5: Filesystem validation
                   (v:stage "filesystem"
                            (lambda (data)
@@ -305,10 +305,10 @@
                                        (dolist (error (v:validation-errors result))
                                          (let ((new-error (copy-structure error)))
                                            (setf (v:validation-error-field new-error)
-                                                 (format nil "sources~A" 
+                                                 (format nil "sources~A"
                                                         (or (v:validation-error-field error) "")))
                                            (push new-error errors)))))))
-                               
+
                                ;; Validate tests directories exist
                                (let ((tests (getf data :tests)))
                                  (when tests
@@ -320,15 +320,15 @@
                                                  (format nil "tests~A"
                                                         (or (v:validation-error-field error) "")))
                                            (push new-error errors)))))))
-                               
+
                                (if errors
                                    (v:make-failure (nreverse errors))
                                    (v:make-success data))))
                            :continue-on-failure nil)))
-         
+
          ;; Run validation
          (result (v:run-stages stages metadata)))
-    
+
     ;; Convert to legacy format for compatibility
     (if (v:validation-success-p result)
         (values t nil)

@@ -16,7 +16,7 @@
    #:make-socket-address
    #:parse-address
    #:resolve-address
-   
+
    ;; Sockaddr utilities
    #:make-sockaddr-in-into
    #:parse-sockaddr-in))
@@ -36,11 +36,11 @@
     ;; sin_family (2 bytes)
     (setf (sb-sys:sap-ref-16 sap 0) const:+af-inet+)
     ;; sin_port (network byte order)
-    (setf (sb-sys:sap-ref-16 sap 2) 
+    (setf (sb-sys:sap-ref-16 sap 2)
           (logior (ash (logand port #xff) 8)
                   (ash (logand port #xff00) -8)))
     ;; sin_addr (convert IP string to network byte order)
-    (let ((ip-parts (mapcar #'parse-integer 
+    (let ((ip-parts (mapcar #'parse-integer
                             (seq:realize (str:split #\. ip-address)))))
       ;; Store in network byte order (big-endian)
       (setf (sb-sys:sap-ref-8 sap 4) (first ip-parts))
@@ -93,18 +93,18 @@
           (every (lambda (c) (or (digit-char-p c) (char= c #\.)))
                  hostname-or-address))
      (list (make-socket-address hostname-or-address port)))
-    
+
     ;; If it's "localhost", resolve to 127.0.0.1
     ((string= hostname-or-address "localhost")
      (list (make-socket-address "127.0.0.1" port)))
-    
+
     ;; Otherwise use getaddrinfo for DNS resolution
     (t
      (handler-case
          (dns-resolve-hostname hostname-or-address port)
        (error (e)
-         (error 'errors:network-error 
-                :message (format nil "Failed to resolve ~A: ~A" 
+         (error 'errors:network-error
+                :message (format nil "Failed to resolve ~A: ~A"
                                  hostname-or-address e)))))))
 
 (defun dns-resolve-hostname (hostname port)
@@ -114,17 +114,17 @@
                                 (result-ptr :pointer :count 1))
         ;; Initialize hints structure to zero
         (loop for i from 0 below 48 do (setf (sb-sys:sap-ref-8 hints i) 0))
-        
+
         ;; Set hints: ai_family = AF_UNSPEC (0), ai_socktype = SOCK_STREAM (1)
         (setf (sb-sys:sap-ref-32 hints 0) 0)    ; ai_flags = 0
         (setf (sb-sys:sap-ref-32 hints 4) 0)    ; ai_family = AF_UNSPEC
         (setf (sb-sys:sap-ref-32 hints 8) const:+sock-stream+)  ; ai_socktype = SOCK_STREAM
         (setf (sb-sys:sap-ref-32 hints 12) 0)   ; ai_protocol = 0
-        
+
         ;; Call getaddrinfo
         (let* ((port-str (if port (format nil "~D" port) "0"))
                (result (lib:shared-call '("getaddrinfo" "libc")
-                                        :int 
+                                        :int
                                         '(:c-string :c-string :pointer :pointer)
                                         hostname port-str hints result-ptr)))
           (if (= result 0)
@@ -150,8 +150,8 @@
                     (ai-addr-ptr (sb-sys:sap-ref-sap current 24))) ; ai_addr at offset 24 on Linux
                ;; Check if ai_addr is valid
                (when (and ai-addr-ptr (not (sb-sys:sap= ai-addr-ptr (sb-sys:int-sap 0))))
-                 (let ((socket-addr 
-                        (cond 
+                 (let ((socket-addr
+                        (cond
                           ((= ai-family const:+af-inet+)
                            ;; Parse IPv4 address
                            (let* ((port-bytes (sb-sys:sap-ref-16 ai-addr-ptr 2))

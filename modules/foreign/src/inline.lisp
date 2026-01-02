@@ -51,7 +51,7 @@
   "Cache of inlined function definitions")
 
 (defmacro definline-foreign (name c-name library return-type &rest args)
-  "Define an inlined foreign function call"  
+  "Define an inlined foreign function call"
   (let ((arg-names (mapcar #'first args))
         (arg-types (mapcar #'second args)))
     `(progn
@@ -59,7 +59,7 @@
        (defmacro ,name ,arg-names
          `(sb-alien:alien-funcall
            (sb-alien:extern-alien ,,c-name
-                                 (sb-alien:function 
+                                 (sb-alien:function
                                   ,(lisp-type-to-alien-type ',return-type)
                                   ,@(mapcar #'lisp-type-to-alien-type ',arg-types)))
            ,,@arg-names))
@@ -71,7 +71,7 @@
   "Make an inline foreign function call"
   `(sb-alien:alien-funcall
     (sb-alien:extern-alien ,c-name
-                          (sb-alien:function 
+                          (sb-alien:function
                            ,(lisp-type-to-alien-type return-type)
                            ,@(mapcar #'lisp-type-to-alien-type arg-types)))
     ,@args))

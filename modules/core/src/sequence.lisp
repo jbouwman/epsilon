@@ -224,7 +224,7 @@ Returns no value."
   (values))
 
 (defun iterator (seq)
-  "Create an iterator function for the sequence. 
+  "Create an iterator function for the sequence.
    Returns a function that when called returns the next element or nil when exhausted."
   (let ((current seq))
     (lambda ()
@@ -308,4 +308,3 @@ Returns nil if no matching element is found. Uses early exit."
 (defun to-vector (seq)
   "Realizes the lazy sequence into a vector instead of a list."
   (coerce (realize seq) 'vector))
-

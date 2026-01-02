@@ -2,7 +2,7 @@
   (:use
    cl
    epsilon.syntax)
-  (:local-nicknames 
+  (:local-nicknames
    (p epsilon.parser)
    (lexer epsilon.lexer)
    (map epsilon.map)
@@ -254,8 +254,8 @@
   (p:bind ((spec (declaration-specifiers))
             (declarators (p:sep+ (struct-declarator) (comma)))
             (_ (semicolon)))
-    (p:return (list :field-declaration 
-                    :specifiers spec 
+    (p:return (list :field-declaration
+                    :specifiers spec
                     :declarators declarators))))
 
 (defun struct-declarator ()
@@ -347,7 +347,7 @@
   (p:choice
    (typedef-declaration)
    (struct-specifier)
-   (union-specifier) 
+   (union-specifier)
    (enum-specifier)
    (function-declaration)
    (variable-declaration)))
@@ -409,13 +409,13 @@
   (when (and (not (lexer:at-end-p lexer))
              (alpha-p (lexer:peek lexer)))
     (let ((word (lexer:consume-while lexer #'alphanum-p)))
-      (lexer:make-token lexer 
-                        (if (member word '("typedef" "struct" "union" "enum" "static" "inline" "const" "volatile" "restrict" "extern"
-                                           "void" "char" "short" "int" "long" "float" "double" "signed" "unsigned"
-                                           "_Bool" "_Complex" "_Imaginary" "auto" "register") :test #'string=)
-                            :keyword
-                            :identifier)
-                        word))))
+      (lexer:make-token-here lexer
+                             (if (member word '("typedef" "struct" "union" "enum" "static" "inline" "const" "volatile" "restrict" "extern"
+                                                "void" "char" "short" "int" "long" "float" "double" "signed" "unsigned"
+                                                "_Bool" "_Complex" "_Imaginary" "auto" "register") :test #'string=)
+                                 :keyword
+                                 :identifier)
+                             word))))
 
 (defun recognize-number (lexer)
   "Recognize numeric literal from lexer"
@@ -423,7 +423,7 @@
              (digit-char-p (lexer:peek lexer)))
     (let ((number (lexer:consume-while lexer (lambda (ch)
                                                (or (digit-char-p ch) (char= ch #\.))))))
-      (lexer:make-token lexer :number number))))
+      (lexer:make-token-here lexer :number number))))
 
 (defun recognize-string (lexer)
   "Recognize string literal from lexer"
@@ -442,7 +442,7 @@
                                            (write-char (lexer:next lexer) s)))))))
       (when (not (lexer:at-end-p lexer)) ; consume closing quote if present
         (lexer:next lexer))
-      (lexer:make-token lexer :string string-content))))
+      (lexer:make-token-here lexer :string string-content))))
 
 (defun recognize-single-char (lexer)
   "Recognize single character token from lexer"
@@ -464,7 +464,7 @@
                 (#\< :less)
                 (#\> :greater)
                 (t :other))))
-        (lexer:make-token lexer lexer:token-type (string ch))))))
+        (lexer:make-token-here lexer lexer:token-type (string ch))))))
 
 (defun tokenize (stream)
   "Split character stream into lazy sequence of tokens using epsilon.lexer"
@@ -477,15 +477,15 @@
                      ;; Identifiers and keywords
                      ((alpha-p ch)
                       (recognize-identifier-or-keyword lexer))
-                     
+
                      ;; Numeric literals
                      ((digit-char-p ch)
                       (recognize-number lexer))
-                     
+
                      ;; String literals
                      ((char= ch #\")
                       (recognize-string lexer))
-                     
+
                      ;; Single character tokens
                      (t
                       (recognize-single-char lexer))))))

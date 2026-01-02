@@ -39,7 +39,7 @@
         (trampoline2 (trampoline:get-or-create-trampoline :int '())))
     ;; Should return the same trampoline
     (is (eq trampoline1 trampoline2)))
-  
+
   (let ((trampoline1 (trampoline:get-or-create-trampoline :int '(:int)))
         (trampoline2 (trampoline:get-or-create-trampoline :int '(:int :int))))
     ;; Different signatures should give different trampolines
@@ -52,27 +52,27 @@
          (fn-addr (lib:lib-function lib-handle "getpid"))
          (trampoline (lib::make-ffi-trampoline :int '()))
          (iterations 10000))
-    
+
     ;; Warm up
     (dotimes (i 100)
       (funcall trampoline fn-addr))
-    
+
     ;; Test trampoline performance
     (let ((start (get-internal-real-time)))
       (dotimes (i iterations)
         (funcall trampoline fn-addr))
       (let ((trampoline-time (- (get-internal-real-time) start)))
-        
+
         ;; Test current eval-based approach
         (let ((start2 (get-internal-real-time)))
           (dotimes (i iterations)
             (lib:shared-call (list "getpid" "libc") :int '()))
           (let ((eval-time (- (get-internal-real-time) start2)))
-            
+
             ;; Trampoline should be faster
             (is (< trampoline-time eval-time))
             (format t "~%Trampoline: ~D ms, Eval: ~D ms, Speedup: ~,2Fx~%"
-                    trampoline-time eval-time 
+                    trampoline-time eval-time
                     (/ (float eval-time) trampoline-time))))))))
 
 (deftest test-type-descriptor
@@ -83,7 +83,7 @@
     (is (eq (lib::c-type-base int-type) :int))
     (is (= (lib::c-type-size int-type) 4))
     (is (= (lib::c-type-alignment int-type) 4)))
-  
+
   (let ((pointer-type (lib::get-c-type :pointer)))
     (is (lib::c-type-p pointer-type))
     (is (eq (lib::c-type-base pointer-type) :pointer))
@@ -105,12 +105,12 @@
       (is (= (sb-sys:sap-ref-8 sap 0) (char-code #\H)))
       (is (= (sb-sys:sap-ref-8 sap 1) (char-code #\e)))
       (is (= (sb-sys:sap-ref-8 sap 5) 0)))) ; Null terminator
-  
+
   ;; Integer conversion
   (let* ((lisp-int 42)
          (c-int (lib::convert-to-foreign lisp-int :int)))
     (is (= c-int 42)))
-  
+
   ;; Pointer conversion
   (let ((null-ptr (lib::convert-to-foreign nil :pointer)))
     (is (sb-sys:sap= null-ptr (sb-sys:int-sap 0)))))
@@ -120,7 +120,7 @@
   ;; Define a function using the new system
   (lib:defshared-fast test-strlen "strlen" "libc" :unsigned-long
     (str :string))
-  
+
   ;; Test it works
   (is (= (test-strlen "Hello") 5))
   (is (= (test-strlen "") 0))
@@ -168,11 +168,11 @@
   (skip "Signature registry system not yet implemented")
   ;; Clear registry first
   (lib::clear-signature-registry)
-  
+
   ;; Register some signatures
   (lib::register-signature 'my-getpid :int '())
   (lib::register-signature 'my-strlen :unsigned-long '(:string))
-  
+
   ;; Retrieve them
   (let ((sig1 (lib::get-signature 'my-getpid))
         (sig2 (lib::get-signature 'my-strlen)))

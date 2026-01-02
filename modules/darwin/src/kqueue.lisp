@@ -7,12 +7,12 @@
    kqueue
    kevent
    kqueue-close
-   
+
    ;; Event management
    add-event
    remove-event
    wait-for-events
-   
+
    ;; Event filters and flags
    +evfilt-read+
    +evfilt-write+
@@ -22,7 +22,7 @@
    +evfilt-vnode+
    +evfilt-proc+
    +evfilt-user+
-   
+
    +ev-add+
    +ev-delete+
    +ev-enable+
@@ -31,17 +31,17 @@
    +ev-clear+
    +ev-eof+
    +ev-error+
-   
+
    ;; High-level utilities
    with-kqueue
    poll-events
-   
+
    ;; Structure types
    kevent-struct
    timespec-struct
    make-kevent-struct
    make-timespec-struct
-   
+
    ;; kevent-struct accessors
    kevent-struct-ident
    kevent-struct-filter
@@ -49,7 +49,7 @@
    kevent-struct-fflags
    kevent-struct-data
    kevent-struct-udata
-   
+
    ;; timespec-struct accessors
    timespec-struct-tv-sec
    timespec-struct-tv-nsec))
@@ -85,10 +85,10 @@
   (lib:shared-call '("kqueue" "/usr/lib/libSystem.B.dylib") :int '()))
 
 ;; int kevent(int kq, const struct kevent *changelist, int nchanges,
-;;            struct kevent *eventlist, int nevents, 
+;;            struct kevent *eventlist, int nevents,
 ;;            const struct timespec *timeout);
 (defun %kevent (kq changelist nchanges eventlist nevents timeout)
-  (lib:shared-call '("kevent" "/usr/lib/libSystem.B.dylib") :int 
+  (lib:shared-call '("kevent" "/usr/lib/libSystem.B.dylib") :int
                    '(:int :pointer :int :pointer :int :pointer)
                    kq changelist nchanges eventlist nevents timeout))
 
@@ -110,7 +110,7 @@
 (defstruct kevent-struct
   ident    ; uintptr_t (use integer)
   filter   ; int16_t
-  flags    ; uint16_t  
+  flags    ; uint16_t
   fflags   ; uint32_t
   data     ; intptr_t (use integer)
   udata)   ; void* (use integer for pointer)
@@ -131,7 +131,7 @@
   (let* ((count (length kevent-list))
          (size (* count 32)) ; 32 bytes per kevent on 64-bit systems
          (memory (lib:foreign-alloc size)))
-    
+
     ;; Fill in the kevent structures using SAP operations
     (loop for i from 0
           for ke in kevent-list
@@ -144,7 +144,7 @@
                (setf (sb-sys:sap-ref-32 memory (+ offset 12)) (or (kevent-struct-fflags ke) 0))
                (setf (sb-sys:sap-ref-64 memory (+ offset 16)) (or (kevent-struct-data ke) 0))
                (setf (sb-sys:sap-ref-64 memory (+ offset 24)) (or (kevent-struct-udata ke) 0))))
-    
+
     (values memory count)))
 
 (defun parse-kevent-memory (memory count)
@@ -163,7 +163,7 @@
   "Allocate memory for timespec structure"
   (let ((memory (lib:foreign-alloc 16))) ; 16 bytes for timespec
     (setf (sb-sys:sap-ref-64 memory 0) seconds)      ; tv_sec
-    (setf (sb-sys:sap-ref-64 memory 8) nanoseconds)  ; tv_nsec  
+    (setf (sb-sys:sap-ref-64 memory 8) nanoseconds)  ; tv_nsec
     memory))
 
 ;;; Core kqueue operations
@@ -186,27 +186,27 @@
         (event-memory nil)
         (event-count (length eventlist))
         (timeout-memory nil))
-    
+
     (unwind-protect
          (progn
            ;; Prepare changelist if provided
            (when changelist
              (multiple-value-setq (change-memory change-count)
                (make-kevent-memory changelist)))
-           
+
            ;; Prepare eventlist memory
            (when (> event-count 0)
              (setf event-memory (lib:foreign-alloc (* event-count 32))))
-           
+
            ;; Prepare timeout if provided
            (when timeout-seconds
              (multiple-value-bind (sec nsec)
                  (truncate timeout-seconds)
                (setf nsec (truncate (* nsec 1000000000)))
                (setf timeout-memory (make-timespec-memory sec nsec))))
-           
+
            ;; Call kevent
-           (let ((result (%kevent kq 
+           (let ((result (%kevent kq
                                   (or change-memory 0)
                                   change-count
                                   (or event-memory 0)
@@ -216,7 +216,7 @@
                ((= result -1) (error "kevent failed"))
                ((= result 0) '()) ; Timeout
                (t (parse-kevent-memory event-memory result)))))
-      
+
       ;; Cleanup
       (when change-memory (lib:foreign-free change-memory))
       (when event-memory (lib:foreign-free event-memory))
@@ -271,15 +271,15 @@
   "Basic test of kqueue functionality"
   (with-kqueue (kq)
     (format t "Created kqueue: ~A~%" kq)
-    
+
     ;; Add stdin for reading
     (add-event kq 0 +evfilt-read+)
     (format t "Added stdin read event~%")
-    
+
     ;; Wait for events (non-blocking)
     (let ((events (poll-events kq :timeout 0)))
       (format t "Events: ~A~%" events))
-    
+
     ;; Remove the event
     (remove-event kq 0 +evfilt-read+)
     (format t "Removed stdin read event~%")))
@@ -289,7 +289,7 @@
   (with-kqueue (kq)
     (add-event kq socket-fd +evfilt-read+)
     (format t "Monitoring socket ~A for read events~%" socket-fd)
-    
+
     (loop
       (let ((events (wait-for-events kq 1 1.0))) ; 1 second timeout
         (if events

@@ -15,7 +15,7 @@
 
 (defmacro define-constant (name value &optional doc)
   "Define a constant that can be redefined if the new value is equalp to the old."
-  `(defconstant ,name 
+  `(defconstant ,name
      (if (boundp ',name)
          (let ((old (symbol-value ',name)))
            (if (equalp old ,value)

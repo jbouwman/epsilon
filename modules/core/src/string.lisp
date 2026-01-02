@@ -11,7 +11,8 @@
    :replace
    :reverse)
   (:local-nicknames
-   (:seq :epsilon.sequence))
+   (:seq :epsilon.sequence)
+   (:char :epsilon.char))
   (:export
    :concat
    :empty-p
@@ -65,7 +66,10 @@
    :string-list-to-simple-string
    ;; Byte conversion
    :string-to-octets
-   :octets-to-string))
+   :octets-to-string
+   ;; Output helpers
+   :display
+   :displayln))
 
 (in-package :epsilon.string)
 
@@ -74,7 +78,7 @@
   (cond
     ((zerop (length string))
      (seq:cons "" seq:*empty*))
-    ((and (>= (length string) 1) 
+    ((and (>= (length string) 1)
           (char= (char string 0) delimiter))
      (seq:cons "" (split delimiter (subseq string 1))))
     (t
@@ -195,14 +199,14 @@ PREFIX whereby the elements are compared using TEST."
   "A string of all characters which are considered to be whitespace.
 Same as Perl's [\\s].")
 
-(declaim (inline digit-char-p))  
+(declaim (inline digit-char-p))
 (defun digit-char-p (chr)
   "Tests whether a character is a decimal digit, i.e. the same as
 Perl's [\\d].  Note that this function shadows the standard Common
 Lisp function CL:DIGIT-CHAR-P."
   (char<= #\0 chr #\9))
 
-(declaim (inline word-char-p))  
+(declaim (inline word-char-p))
 (defun word-char-p (chr)
   "Tests whether a character is a \"word\" character.  In the ASCII
 charset this is equivalent to a-z, A-Z, 0-9, or _, i.e. the same as
@@ -464,13 +468,36 @@ match [\\s] in Perl."
                          (make-string right-padding :initial-element padding-char)))))))
 
 ;;;; Byte conversion functions
+;;;;
+;;;; These delegate to epsilon.char for proper UTF-8 and multi-byte encoding support.
+;;;; The epsilon.char module uses SBCL's built-in encoding facilities.
 
-(defun string-to-octets (string &key (encoding :utf-8))
-  "Convert a string to a byte array using the specified encoding."
-  (declare (ignore encoding)) ; For now, assume UTF-8
-  (map 'vector #'char-code string))
+(defun string-to-octets (string &key (encoding :utf-8) (start 0) end)
+  "Convert a string to a byte array using the specified encoding.
+   Delegates to epsilon.char:string-to-bytes for proper multi-byte support."
+  (char:string-to-bytes string :encoding encoding :start start :end end))
 
-(defun octets-to-string (octets &key (encoding :utf-8))
-  "Convert a byte array to a string using the specified encoding."
-  (declare (ignore encoding)) ; For now, assume UTF-8
-  (map 'string #'code-char octets))
+(defun octets-to-string (octets &key (encoding :utf-8) (start 0) end)
+  "Convert a byte array to a string using the specified encoding.
+   Delegates to epsilon.char:bytes-to-string for proper multi-byte support."
+  (char:bytes-to-string octets :encoding encoding :start start :end end))
+
+;;;; Output Helper Functions
+;;;;
+;;;; These functions simplify output when using string interpolation instead of format.
+;;;; Use with #~"..." syntax:
+;;;;   (display #~"Running ~{count} tests...")
+;;;; Instead of:
+;;;;   (format t "Running ~A tests...~%" count)
+
+(defun display (string &optional (stream *standard-output*))
+  "Write STRING to STREAM followed by a newline.
+   Useful for terminal output with string interpolation syntax."
+  (write-string string stream)
+  (terpri stream)
+  (values))
+
+(defun displayln (string &optional (stream *standard-output*))
+  "Write STRING to STREAM followed by a newline.
+   Alias for DISPLAY for naming consistency with other languages."
+  (display string stream))

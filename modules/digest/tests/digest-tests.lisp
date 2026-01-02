@@ -28,12 +28,12 @@
   (is (string=
        "da39a3ee5e6b4b0d3255bfef95601890afd80709"
        (string-downcase (digest:bytes-to-hex (digest:sha1 "")))))
-  
+
   ;; Test "abc": echo -n "abc" | sha1sum -> a9993e364706816aba3e25717850c26c9cd0d89d
   (is (string=
        "a9993e364706816aba3e25717850c26c9cd0d89d"
        (string-downcase (digest:bytes-to-hex (digest:sha1 "abc")))))
-  
+
   ;; Test longer string: echo -n "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq" | sha1sum
   ;; -> 84983e441c3bd26ebaae4aa1f95129e5e54670f1
   (is (string=
@@ -50,7 +50,7 @@
     (is (string=
          "a9993e364706816aba3e25717850c26c9cd0d89d"
          (string-downcase (digest:bytes-to-hex (digest:finalize hasher))))))
-  
+
   ;; Test reset functionality
   (let ((hasher (digest:make-sha1)))
     (digest:update hasher "abc")
@@ -68,7 +68,7 @@
     (is (string=
          "a9993e364706816aba3e25717850c26c9cd0d89d"
          (string-downcase (digest:bytes-to-hex (digest:sha1 data))))))
-  
+
   ;; Test with vector of integers
   (is (string=
        "a9993e364706816aba3e25717850c26c9cd0d89d"
@@ -97,18 +97,18 @@
   (is (string=
        "d41d8cd98f00b204e9800998ecf8427e"
        (string-downcase (digest:bytes-to-hex (digest:md5 "")))))
-  
+
   ;; Test "abc": echo -n "abc" | md5sum -> 900150983cd24fb0d6963f7d28e17f72
   (is (string=
        "900150983cd24fb0d6963f7d28e17f72"
        (string-downcase (digest:bytes-to-hex (digest:md5 "abc")))))
-  
+
   ;; Test "The quick brown fox jumps over the lazy dog"
   ;; echo -n "The quick brown fox jumps over the lazy dog" | md5sum -> 9e107d9d372bb6826bd81d3542a419d6
   (is (string=
        "9e107d9d372bb6826bd81d3542a419d6"
        (string-downcase (digest:bytes-to-hex (digest:md5 "The quick brown fox jumps over the lazy dog")))))
-  
+
   ;; Test longer string: echo -n "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq" | md5sum
   ;; -> 8215ef0796a20bcaaae116d3876c664a
   (is (string=
@@ -125,7 +125,7 @@
     (is (string=
          "900150983cd24fb0d6963f7d28e17f72"
          (string-downcase (digest:bytes-to-hex (digest:finalize hasher))))))
-  
+
   ;; Test reset functionality
   (let ((hasher (digest:make-md5)))
     (digest:update hasher "abc")
@@ -143,7 +143,7 @@
     (is (string=
          "900150983cd24fb0d6963f7d28e17f72"
          (string-downcase (digest:bytes-to-hex (digest:md5 data))))))
-  
+
   ;; Test with vector of integers
   (is (string=
        "900150983cd24fb0d6963f7d28e17f72"
@@ -166,13 +166,13 @@
   (is (string=
        "f96b697d7cb7938d525a2f31aaf161d0"
        (string-downcase (digest:bytes-to-hex (digest:md5 "message digest")))))
-  
+
   ;; Test "abcdefghijklmnopqrstuvwxyz"
   ;; echo -n "abcdefghijklmnopqrstuvwxyz" | md5sum -> c3fcd3d76192e4007dfb496cca67e13b
   (is (string=
        "c3fcd3d76192e4007dfb496cca67e13b"
        (string-downcase (digest:bytes-to-hex (digest:md5 "abcdefghijklmnopqrstuvwxyz")))))
-  
+
   ;; Test "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
   ;; echo -n "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789" | md5sum -> d174ab98d277d9f5a5611c2c9f419d9f
   (is (string=
@@ -185,12 +185,12 @@
   (is (string=
        "a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a"
        (string-downcase (digest:bytes-to-hex (digest:sha3-256 "")))))
-  
+
   ;; Test "abc": echo -n "abc" | sha3sum -a 256 -> 3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532
   (is (string=
        "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532"
        (string-downcase (digest:bytes-to-hex (digest:sha3-256 "abc")))))
-  
+
   ;; Test "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"
   ;; echo -n "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq" | sha3sum -a 256
   ;; -> 41c0dba2a9d6240849100376a8235e2c82e1b9998a999e21db32dd97496d3376
@@ -208,7 +208,7 @@
     (is (string=
          "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532"
          (string-downcase (digest:bytes-to-hex (digest:finalize hasher))))))
-  
+
   ;; Test reset functionality
   (let ((hasher (digest:make-sha3-256)))
     (digest:update hasher "abc")
@@ -226,7 +226,7 @@
     (is (string=
          "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532"
          (string-downcase (digest:bytes-to-hex (digest:sha3-256 data))))))
-  
+
   ;; Test with vector of integers
   (is (string=
        "3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532"
@@ -249,13 +249,13 @@
   (is (string=
        "69070dda01975c8c120c3aada1b282394e7f032fa9cf32f4cb2259a0897dfc04"
        (string-downcase (digest:bytes-to-hex (digest:sha3-256 "The quick brown fox jumps over the lazy dog")))))
-  
+
   ;; Test "message digest"
   ;; echo -n "message digest" | sha3sum -a 256 -> edcdb2069366e75243860c18c3a11465eca34bce6143d30c8665cefcfd32bffd
   (is (string=
        "edcdb2069366e75243860c18c3a11465eca34bce6143d30c8665cefcfd32bffd"
        (string-downcase (digest:bytes-to-hex (digest:sha3-256 "message digest")))))
-  
+
   ;; Test "abcdefghijklmnopqrstuvwxyz"
   ;; echo -n "abcdefghijklmnopqrstuvwxyz" | sha3sum -a 256 -> 7cab2dc765e21b241dbc1c255ce620b29f527c6d5e7f5f843e56288f0d707521
   (is (string=

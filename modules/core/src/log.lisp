@@ -9,42 +9,42 @@
   (:export
    ;; Main logging macros and log levels
    log trace debug info warn error fatal
-   
+
    ;; Structured logging macros
-   log-with-fields info-with-fields debug-with-fields 
+   log-with-fields info-with-fields debug-with-fields
    warn-with-fields error-with-fields
-   
+
    ;; Structured logging helpers
    fields
-   
+
    ;; Configuration
    configure configure-from-string reset-configuration
    set-level get-level logger-enabled-p logger-level
-   
+
    ;; Appenders
    add-appender remove-appender console-appender file-appender
    tee-appender logger-appenders appender append-log
    tee-appenders
-   
+
    ;; Convenience configuration
    configure-with-tee
-   
+
    ;; Internal types for testing
    logger log-record logger-name
    log-level log-message log-timestamp log-context
    log-fields log-thread log-package log-file log-line
    emit-log emit-log-with-context emit-log-with-fields
    logger-effective-level
-   
+
    ;; Structured logging context
    with-context add-context remove-context
-   
+
    ;; Loggers
    get-logger make-logger
-   
+
    ;; Utilities
    format-timestamp current-thread-name
-   
+
    ;; Source location
    with-source-location))
 
@@ -52,9 +52,9 @@
 
 ;;; Log Levels
 
-(defparameter *log-levels* 
+(defparameter *log-levels*
   (map:make-map :trace 0
-                :debug 1  
+                :debug 1
                 :info 2
                 :warn 3
                 :error 4
@@ -75,8 +75,8 @@
    (level :initarg :level :accessor logger-level :initform :info)
    (appenders :initarg :appenders :accessor logger-appenders :initform '())
    (parent :initarg :parent :accessor logger-parent :initform nil)
-   (inherit-appenders :initarg :inherit-appenders 
-                      :accessor logger-inherit-appenders 
+   (inherit-appenders :initarg :inherit-appenders
+                      :accessor logger-inherit-appenders
                       :initform t)))
 
 (defparameter *loggers* (map:make-map))
@@ -93,8 +93,8 @@
 (defun make-logger (name)
   "Create a new logger with proper parent hierarchy"
   (let* ((parent (find-parent-logger name))
-         (logger (make-instance 'logger 
-				:name name 
+         (logger (make-instance 'logger
+				:name name
 				:parent parent
 				:level (if parent (logger-level parent) :info))))
     ;; Apply any matching wildcard rules
@@ -139,7 +139,7 @@
 
 (defun remove-context (key)
   "Remove a key from current logging context"
-  (setf *log-context* 
+  (setf *log-context*
         (loop for (k v) on *log-context* by #'cddr
               unless (eql k key)
               collect k and collect v)))
@@ -216,7 +216,7 @@
   (:documentation "Write log record to appender"))
 
 (defmethod append-log ((appender console-appender) record)
-  (format (console-stream appender) "~A~%" 
+  (format (console-stream appender) "~A~%"
           (format-log-record record (appender-formatter appender)))
   (force-output (console-stream appender)))
 
@@ -230,7 +230,7 @@
                   :direction :output
                   :if-exists :append
                   :if-does-not-exist :create)))
-    (format (file-appender-stream appender) "~A~%" 
+    (format (file-appender-stream appender) "~A~%"
             (format-log-record record (appender-formatter appender)))
     (force-output (file-appender-stream appender))))
 
@@ -268,22 +268,22 @@
                            name)))
          (location (cond
                     ((and (log-file record) (log-line record))
-                     (format nil "~A:~A" 
+                     (format nil "~A:~A"
                              (if (> (length (log-file record)) 20)
-                                 (concatenate 'string "..." 
-                                              (subseq (log-file record) 
+                                 (concatenate 'string "..."
+                                              (subseq (log-file record)
                                                       (- (length (log-file record)) 17)))
                                (log-file record))
                              (log-line record)))
                     ((log-file record)
                      (if (> (length (log-file record)) 20)
-                         (concatenate 'string "..." 
-                                      (subseq (log-file record) 
+                         (concatenate 'string "..."
+                                      (subseq (log-file record)
                                               (- (length (log-file record)) 17)))
                        (log-file record)))
                     (t "")))
          (fields-str (when (log-fields record)
-                       (format nil " {~{~A:~A~^ ~}}" 
+                       (format nil " {~{~A:~A~^ ~}}"
                                (mapcan (lambda (pair)
                                          (if (consp pair)
                                              (list (car pair) (cdr pair))
@@ -300,7 +300,7 @@
 (defun format-simple (record)
   "Simple one-line format"
   (let ((fields-str (when (log-fields record)
-                      (format nil " ~{~A=~A~^ ~}" 
+                      (format nil " ~{~A=~A~^ ~}"
                               (mapcan (lambda (pair)
                                         (if (consp pair)
                                             (list (car pair) (cdr pair))
@@ -308,13 +308,13 @@
                                       (log-fields record)))))
         (location-str (cond
                        ((and (log-file record) (log-line record))
-                        (format nil " [~A:~A]" 
-                                (log-file record) 
+                        (format nil " [~A:~A]"
+                                (log-file record)
                                 (log-line record)))
                        ((log-file record)
                         (format nil " [~A]" (log-file record)))
                        (t ""))))
-    (format nil "[~A] ~A ~A~A: ~A~A" 
+    (format nil "[~A] ~A ~A~A: ~A~A"
             (format-timestamp (log-timestamp record))
             (string-upcase (log-level record))
             (logger-name (log-logger record))
@@ -327,7 +327,7 @@
   (let ((context-str (when (log-context record)
                        (format nil " ctx:{~{~A=~A~^ ~}}" (log-context record))))
         (fields-str (when (log-fields record)
-                      (format nil " fields:{~{~A=~A~^ ~}}" 
+                      (format nil " fields:{~{~A=~A~^ ~}}"
                               (mapcan (lambda (pair)
                                         (if (consp pair)
                                             (list (car pair) (cdr pair))
@@ -335,8 +335,8 @@
                                       (log-fields record)))))
         (location-str (cond
                        ((and (log-file record) (log-line record))
-                        (format nil " ~A:~A" 
-                                (log-file record) 
+                        (format nil " ~A:~A"
+                                (log-file record)
                                 (log-line record)))
                        ((log-file record)
                         (format nil " ~A" (log-file record)))
@@ -357,7 +357,7 @@
   (let ((context-json (when (log-context record)
                         (format nil ",\"context\":{~{~S:~S~^,~}}" (log-context record))))
         (fields-json (when (log-fields record)
-                       (format nil ",\"fields\":{~{\"~A\":~S~^,~}}" 
+                       (format nil ",\"fields\":{~{\"~A\":~S~^,~}}"
                                (mapcan (lambda (pair)
                                          (if (consp pair)
                                              (list (car pair) (cdr pair))
@@ -403,7 +403,7 @@
   "Send record to all applicable appenders"
   (dolist (appender (logger-appenders logger))
     (append-log appender record))
-  (when (and (logger-inherit-appenders logger) 
+  (when (and (logger-inherit-appenders logger)
              (logger-parent logger))
     (emit-to-appenders (logger-parent logger) record)))
 
@@ -411,7 +411,7 @@
 
 (defmacro with-source-location ((file-var line-var) &body body)
   "Capture source location at macro expansion time"
-  `(let ((,file-var ,(or (when *compile-file-pathname* 
+  `(let ((,file-var ,(or (when *compile-file-pathname*
                            (enough-namestring *compile-file-pathname*))
                          (when *load-pathname*
                            (enough-namestring *load-pathname*))
@@ -423,7 +423,7 @@
                         (when (and deep-pkg api-pkg)
                           (let ((location-var (find-symbol "*CURRENT-COMPILATION-LOCATION*" deep-pkg))
                                 (line-fn (find-symbol "SOURCE-LOCATION-LINE" api-pkg)))
-                            (when (and location-var line-fn 
+                            (when (and location-var line-fn
                                        (boundp location-var)
                                        (symbol-value location-var))
                               (funcall line-fn (symbol-value location-var)))))))))
@@ -526,7 +526,7 @@
                ;; No pattern means root logger
                ((or (null pattern) (string= pattern ""))
                 (setf (logger-level *root-logger*) level))
-               
+
                ;; Wildcard pattern
                ((position #\* pattern)
                 (let ((prefix (subseq pattern 0 (position #\* pattern))))
@@ -538,7 +538,7 @@
                             *loggers*)
                   ;; Also apply to new loggers that match (store the rule)
                   (push (cons prefix level) *wildcard-rules*)))
-               
+
                ;; Exact match
                (t
                 (let ((logger (get-logger pattern)))
@@ -574,31 +574,31 @@
   "Configure root logger with common options"
   (setf (logger-level *root-logger*) level)
   (setf (logger-appenders *root-logger*) '())
-  (add-appender *root-logger* (make-instance 'console-appender 
+  (add-appender *root-logger* (make-instance 'console-appender
                                              :formatter format))
   (when file
     (add-appender *root-logger* (make-instance 'file-appender
 					       :filename file
 					       :formatter format))))
 
-(defun configure-with-tee (&key (level :info) 
+(defun configure-with-tee (&key (level :info)
                                 (console-format :compact)
                                 (file nil)
                                 (file-format :detailed))
   "Configure root logger with tee appender for dual console/file output"
   (setf (logger-level *root-logger*) level)
   (setf (logger-appenders *root-logger*) '())
-  
-  (let ((appenders (list (make-instance 'console-appender 
+
+  (let ((appenders (list (make-instance 'console-appender
                                         :formatter console-format))))
     (when file
       (push (make-instance 'file-appender
                            :filename file
                            :formatter file-format)
             appenders))
-    
-    (add-appender *root-logger* 
-                  (make-instance 'tee-appender 
+
+    (add-appender *root-logger*
+                  (make-instance 'tee-appender
                                  :appenders appenders))))
 
 (defun add-appender (logger appender)
@@ -607,7 +607,7 @@
 
 (defun remove-appender (logger appender)
   "Remove appender from logger"
-  (setf (logger-appenders logger) 
+  (setf (logger-appenders logger)
         (remove appender (logger-appenders logger))))
 
 ;;; Utilities

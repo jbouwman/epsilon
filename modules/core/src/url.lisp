@@ -23,7 +23,7 @@
    :url-query
    :url-fragment
    :url-userinfo
-   
+
    ;; URL manipulation
    :url-join
    :url-resolve
@@ -31,13 +31,13 @@
    :url-equal
    :url-absolute-p
    :url-relative-p
-   
+
    ;; URL encoding/decoding
    :url-encode
    :url-decode
    :url-encode-component
    :url-decode-component
-   
+
    ;; Query parameter handling
    :parse-query-string
    :build-query-string
@@ -45,41 +45,41 @@
    :set-query-param
    :remove-query-param
    :query-params
-   
+
    ;; Path <-> URL conversion
    :path-to-url
    :url-to-path
    :file-url-p
-   
+
    ;; Protocol handlers
    :register-protocol-handler
    :unregister-protocol-handler
    :get-protocol-handler
    :supported-schemes
    :default-port
-   
+
    ;; Validation
    :valid-url-p
    :valid-scheme-p
    :valid-host-p
-   
+
    ;; Common schemes
    :http-url-p
    :https-url-p
    :ftp-url-p
    :mailto-url-p
-   
+
    ;; Protocol handling
    :handle-url
    :fetch-url
    :url-open
-   
+
    ;; Enhanced utilities
    :normalize-path
    :parse-authority
    :url-equivalence
    :enhanced-url-encode-component
-   
+
    ;; URL building
    :build-url
    :url-with-query
@@ -88,9 +88,9 @@
 (in-package :epsilon.url)
 
 ;;;; Platform detection
-(defparameter *platform* 
+(defparameter *platform*
   #+darwin :darwin
-  #+linux :linux  
+  #+linux :linux
   #+win32 :windows
   #-(or darwin linux win32) :unknown)
 
@@ -186,7 +186,7 @@
 (defparameter *protocol-handlers* map:+empty+
   "Registry of protocol handlers")
 
-(defparameter *default-ports* 
+(defparameter *default-ports*
   '(("http" . 80)
     ("https" . 443)
     ("ftp" . 21)
@@ -247,25 +247,25 @@
           (query nil)
           (fragment nil)
           (remaining url-string))
-      
+
       ;; Parse fragment
       (let ((fragment-pos (position #\# remaining)))
         (when fragment-pos
           (setf fragment (subseq remaining (1+ fragment-pos))
                 remaining (subseq remaining 0 fragment-pos))))
-      
+
       ;; Parse query
       (let ((query-pos (position #\? remaining)))
         (when query-pos
           (setf query (subseq remaining (1+ query-pos))
                 remaining (subseq remaining 0 query-pos))))
-      
+
       ;; Parse scheme
       (let ((scheme-pos (position #\: remaining)))
         (when (and scheme-pos (> scheme-pos 0))
           (setf scheme (subseq remaining 0 scheme-pos)
                 remaining (subseq remaining (1+ scheme-pos)))))
-      
+
       ;; Parse authority (//host:port or //userinfo@host:port)
       (when (and (>= (length remaining) 2)
                  (string= "//" remaining :end2 2))
@@ -276,13 +276,13 @@
                                remaining)))
             (when path-pos
               (setf path (subseq remaining path-pos)))
-            
+
             ;; Parse userinfo
             (let ((at-pos (position #\@ authority)))
               (when at-pos
                 (setf userinfo (subseq authority 0 at-pos)
                       authority (subseq authority (1+ at-pos)))))
-            
+
             ;; Parse host and port
             (let ((port-pos (position #\: authority :from-end t)))
               (if port-pos
@@ -292,19 +292,19 @@
                       (when (> (length port-str) 0)
                         (setf port (parse-integer port-str :junk-allowed t)))))
                   (setf host authority)))
-            
+
             ;; Clear remaining if no path was found
             (unless path-pos
               (setf remaining "")))))
-      
+
       ;; If no path was found in authority parsing, use remaining
       (unless path
         (setf path remaining))
-      
+
       ;; Default empty path to "/" only if we have a scheme and host
       (when (and (string= path "") scheme host)
         (setf path "/"))
-      
+
       (make-url :scheme scheme
                 :userinfo userinfo
                 :host host
@@ -321,7 +321,7 @@
                  (if scheme (concatenate 'string scheme ":") "")
                  ;; Authority
                  (if (or host userinfo)
-                     (concatenate 'string 
+                     (concatenate 'string
                                   "//"
                                   (if userinfo (concatenate 'string userinfo "@") "")
                                   (or host "")
@@ -451,7 +451,7 @@
               (normalized-segments '()))
           (loop for segment in segments do
             (cond
-              ((string= segment ".") 
+              ((string= segment ".")
                ;; Skip current directory
                )
               ((string= segment "..")
@@ -460,11 +460,11 @@
                  (setf normalized-segments (butlast normalized-segments))))
               (t
                (setf normalized-segments (append normalized-segments (list segment))))))
-          
+
           (setf path (if normalized-segments
                          (concatenate 'string "/" (reduce #'join-with-slash normalized-segments))
                          "/"))))
-      
+
       (make-url :scheme (url-scheme url)
                 :userinfo (url-userinfo url)
                 :host (url-host url)
@@ -527,8 +527,8 @@
 
 (defun path-to-url (path)
   "Convert filesystem path to file:// URL"
-  (let* ((path-obj (if (typep path 'path:path) 
-                       path 
+  (let* ((path-obj (if (typep path 'path:path)
+                       path
                        (path:make-path path)))
          (path-str (path:path-string path-obj))
          (is-absolute (path:path-absolute-p path-obj)))
@@ -639,7 +639,7 @@
           (normalized-segments '()))
       (loop for segment in segments do
         (cond
-          ((string= segment ".") 
+          ((string= segment ".")
            ;; Skip current directory
            )
           ((string= segment "..")
@@ -648,7 +648,7 @@
              (setf normalized-segments (butlast normalized-segments))))
           (t
            (setf normalized-segments (append normalized-segments (list segment))))))
-      
+
       (if normalized-segments
           (concatenate 'string "/" (reduce #'join-with-slash normalized-segments))
           "/"))))
@@ -664,13 +664,13 @@
           (host nil)
           (port nil)
           (remaining authority-string))
-      
+
       ;; Extract userinfo
       (let ((at-pos (position #\@ remaining)))
         (when at-pos
           (setf userinfo (subseq remaining 0 at-pos)
                 remaining (subseq remaining (1+ at-pos)))))
-      
+
       ;; Handle IPv6 addresses in brackets
       (if (and (> (length remaining) 0) (char= (char remaining 0) #\[))
           (let ((close-bracket (position #\] remaining)))
@@ -691,7 +691,7 @@
                     (when (> (length port-str) 0)
                       (setf port (parse-integer port-str :junk-allowed t)))))
                 (setf host remaining))))
-      
+
       (values userinfo host port))))
 
 ;;;; ==========================================================================
@@ -812,7 +812,7 @@
 
 (defun expand-url-template (template values)
   "Expand a simple URL template with values
-   Example: (expand-url-template \"/users/{id}/posts/{post-id}\" 
+   Example: (expand-url-template \"/users/{id}/posts/{post-id}\"
                                 '((\"id\" . \"123\") (\"post-id\" . \"456\")))"
   ;; Simplified implementation - just return template for now
   ;; Full implementation would need proper string replacement

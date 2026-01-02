@@ -8,7 +8,7 @@
    get-queued-completion-status
    post-queued-completion-status
    close-handle
-   
+
    ;; Overlapped I/O structures
    make-overlapped
    overlapped-internal
@@ -16,32 +16,32 @@
    overlapped-offset
    overlapped-offset-high
    overlapped-hevent
-   
+
    ;; IOCP constants
    +invalid-handle-value+
    +infinite+
    +wait-object-0+
    +wait-timeout+
    +wait-failed+
-   
+
    ;; Socket integration
    associate-socket
    async-read-socket
    async-write-socket
    async-accept-socket
    async-connect-socket
-   
+
    ;; High-level interface
    with-iocp
    wait-for-completion
    process-completions
-   
+
    ;; Completion key handling
    make-completion-key
    completion-key-socket
    completion-key-operation
    completion-key-data
-   
+
    ;; Event checking predicates
    completion-success-p
    completion-error-p
@@ -116,7 +116,7 @@
   :documentation "Listen for connections")
 
 (lib:defshared %wsa-recv "WSARecv" "ws2_32" :int
-  (socket :pointer) (buffers :pointer) (buffer-count :unsigned-long) 
+  (socket :pointer) (buffers :pointer) (buffer-count :unsigned-long)
   (bytes-received :pointer) (flags :pointer) (overlapped :pointer) (completion-routine :pointer)
   :documentation "Asynchronous receive")
 
@@ -126,7 +126,7 @@
   :documentation "Asynchronous send")
 
 (lib:defshared %wsa-accept "WSAAccept" "ws2_32" :pointer
-  (listen-socket :pointer) (addr :pointer) (addrlen :pointer) 
+  (listen-socket :pointer) (addr :pointer) (addrlen :pointer)
   (condition-func :pointer) (callback-data :pointer)
   :documentation "Accept connection with conditions")
 
@@ -157,7 +157,7 @@
 (defstruct overlapped
   "Represents a Windows OVERLAPPED structure"
   (internal 0 :type (unsigned-byte 64))        ; ULONG_PTR Internal
-  (internal-high 0 :type (unsigned-byte 64))   ; ULONG_PTR InternalHigh  
+  (internal-high 0 :type (unsigned-byte 64))   ; ULONG_PTR InternalHigh
   (offset 0 :type (unsigned-byte 32))          ; DWORD Offset
   (offset-high 0 :type (unsigned-byte 32))     ; DWORD OffsetHigh
   (hevent 0 :type (unsigned-byte 64)))         ; HANDLE hEvent (as integer)
@@ -209,7 +209,7 @@
 
 (defun create-io-completion-port (&optional file-handle existing-port completion-key (threads 0))
   "Create I/O completion port or associate file handle with existing port"
-  (let ((port (%create-io-completion-port 
+  (let ((port (%create-io-completion-port
                (or file-handle (sb-alien:null-alien))
                (or existing-port (sb-alien:null-alien))
                (or completion-key (sb-alien:null-alien))
@@ -260,7 +260,7 @@
 
 (defun create-tcp-socket ()
   "Create TCP socket for Windows"
-  (let ((sock (%wsa-socket +af-inet+ +sock-stream+ +ipproto-tcp+ 
+  (let ((sock (%wsa-socket +af-inet+ +sock-stream+ +ipproto-tcp+
                            (sb-alien:null-alien) 0 0)))
     (when (= (sb-alien:alien-sap sock) +invalid-handle-value+)
       (error "Failed to create TCP socket"))
@@ -294,12 +294,12 @@
                             (flags :unsigned-long :count 1))
     ;; Setup WSABUF
     (setf (sb-alien:sap-ref-32 (sb-alien:alien-sap wsabuf) 0) (length buffer))  ; len
-    (setf (sb-alien:sap-ref-64 (sb-alien:alien-sap wsabuf) 8) 
+    (setf (sb-alien:sap-ref-64 (sb-alien:alien-sap wsabuf) 8)
           (sb-alien:alien-sap buffer))  ; buf
-    
+
     (setf (sb-alien:deref flags 0) 0)
-    
-    (let ((result (%wsa-recv socket wsabuf 1 bytes-received flags overlapped 
+
+    (let ((result (%wsa-recv socket wsabuf 1 bytes-received flags overlapped
                              (sb-alien:null-alien))))
       (values result (sb-alien:deref bytes-received 0)))))
 
@@ -309,9 +309,9 @@
                             (bytes-sent :unsigned-long :count 1))
     ;; Setup WSABUF
     (setf (sb-alien:sap-ref-32 (sb-alien:alien-sap wsabuf) 0) (length buffer))  ; len
-    (setf (sb-alien:sap-ref-64 (sb-alien:alien-sap wsabuf) 8) 
+    (setf (sb-alien:sap-ref-64 (sb-alien:alien-sap wsabuf) 8)
           (sb-alien:alien-sap buffer))  ; buf
-    
+
     (let ((result (%wsa-send socket wsabuf 1 bytes-sent 0 overlapped
                              (sb-alien:null-alien))))
       (values result (sb-alien:deref bytes-sent 0)))))
@@ -321,8 +321,8 @@
   (lib:with-foreign-memory ((addr :char :count 64)  ; sockaddr storage
                             (addrlen :int :count 1))
     (setf (sb-alien:deref addrlen 0) 64)
-    
-    (let ((accept-socket (%wsa-accept listen-socket addr addrlen 
+
+    (let ((accept-socket (%wsa-accept listen-socket addr addrlen
                                       (sb-alien:null-alien) 0)))
       (if (= (sb-alien:alien-sap accept-socket) +invalid-handle-value+)
           (values nil addr)
@@ -354,7 +354,7 @@
           (logior (ash (logand port #xff) 8)
                   (ash (logand port #xff00) -8)))
     ;; sin_addr (4 bytes, network byte order)
-    (let ((ip-parts (mapcar #'parse-integer 
+    (let ((ip-parts (mapcar #'parse-integer
                             (split-string ip-address #\.))))
       (setf (sb-alien:sap-ref-32 (sb-alien:alien-sap addr) 4)
             (logior (ash (first ip-parts) 24)
@@ -405,6 +405,6 @@
 
 (defun completion-timeout-p (result)
   "Check if completion timed out"
-  (and (zerop result) 
+  (and (zerop result)
        ;; Would need to check GetLastError() for WAIT_TIMEOUT
        nil))

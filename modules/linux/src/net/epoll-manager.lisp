@@ -13,17 +13,17 @@
    #:get-epoll-manager
    #:shutdown-epoll-manager
    #:with-epoll-manager
-   
+
    ;; Socket registration
    #:register-socket
    #:unregister-socket
    #:modify-socket-events
-   
+
    ;; Event waiting
    #:wait-for-socket
    #:wait-for-any-socket
    #:poll-sockets
-   
+
    ;; Configuration
    #:*use-edge-triggered*
    #:*max-events*))
@@ -130,15 +130,15 @@
     (sb-thread:with-mutex ((epoll-manager-lock manager))
       (when (gethash fd (epoll-manager-registered-sockets manager))
         (error "Socket ~D is already registered" fd))
-      
+
       (let* ((event-mask (compute-epoll-events events))
              (event-mask (if *use-edge-triggered*
                             (logior event-mask epoll:+epollet+)
                             event-mask))
-             (epoll-event (epoll:make-epoll-event 
+             (epoll-event (epoll:make-epoll-event
                           :events event-mask
                           :data (or data fd))))
-        
+
         (handler-case
             (progn
               (epoll:epoll-ctl (epoll-manager-epfd manager)
@@ -171,16 +171,16 @@
       (let ((info (gethash fd (epoll-manager-registered-sockets manager))))
         (unless info
           (error "Socket ~D is not registered" fd))
-        
+
         (let* ((data (getf info :data))
                (event-mask (compute-epoll-events new-events))
                (event-mask (if *use-edge-triggered*
                               (logior event-mask epoll:+epollet+)
                               event-mask))
-               (epoll-event (epoll:make-epoll-event 
+               (epoll-event (epoll:make-epoll-event
                             :events event-mask
                             :data (or data fd))))
-          
+
           (handler-case
               (progn
                 (epoll:epoll-ctl (epoll-manager-epfd manager)
@@ -202,12 +202,12 @@
     ;; Ensure socket is registered
     (unless (gethash fd (epoll-manager-registered-sockets manager))
       (register-socket fd events))
-    
+
     ;; Modify events if needed
     (let ((current-info (gethash fd (epoll-manager-registered-sockets manager))))
       (unless (equal (getf current-info :events) events)
         (modify-socket-events fd events)))
-    
+
     ;; Wait for events
     (let ((events (epoll:wait-for-events (epoll-manager-epfd manager)
                                          *max-events*

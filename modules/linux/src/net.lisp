@@ -1,5 +1,5 @@
 ;;;; Linux Networking Implementation
-;;;; 
+;;;;
 ;;;; This module implements the epsilon.net interface for Linux systems
 ;;;; using epoll for event notification and async I/O.
 
@@ -14,12 +14,12 @@
    #:ipv4-address
    #:ipv6-address
    #:socket-address
-   
+
    ;; Socket types
    #:tcp-listener
    #:tcp-stream
    #:udp-socket
-   
+
    ;; TCP Listener operations
    #:tcp-bind
    #:tcp-accept
@@ -27,7 +27,7 @@
    #:tcp-try-accept
    #:tcp-poll-accept
    #:tcp-local-addr
-   
+
    ;; TCP Stream operations
    #:tcp-connect
    #:tcp-read
@@ -44,7 +44,7 @@
    #:tcp-stream-reader
    #:tcp-stream-writer
    #:tcp-stream-handle
-   
+
    ;; UDP operations
    #:udp-bind
    #:udp-connect
@@ -53,18 +53,18 @@
    #:udp-send-to
    #:udp-recv-from
    #:udp-local-addr
-   
+
    ;; Address resolution
    #:make-socket-address
    #:resolve-address
    #:socket-address-ip
    #:socket-address-port
    #:parse-address
-   
+
    ;; Socket options
    #:set-socket-option
    #:get-socket-option
-   
+
    ;; Error conditions
    #:network-error
    #:connection-refused
@@ -73,7 +73,7 @@
    #:timeout-error
    #:address-in-use
    #:would-block-error
-   
+
    ;; Status checks
    #:tcp-connected-p))
 
@@ -87,7 +87,7 @@
 (defconstant +af-inet+ 2)
 (defconstant +af-inet6+ 10)
 
-;; Socket types  
+;; Socket types
 (defconstant +sock-stream+ 1)
 (defconstant +sock-dgram+ 2)
 
@@ -115,7 +115,7 @@
 (defconstant +shut-wr+ 1)
 (defconstant +shut-rdwr+ 2)
 
-;; fcntl commands  
+;; fcntl commands
 (defconstant +f-getfl+ 3)
 (defconstant +f-setfl+ 4)
 (defconstant +o-nonblock+ #o4000)
@@ -124,7 +124,7 @@
 ;;; FFI Bindings
 ;;; ============================================================================
 
-(lib:defshared %socket "socket" "libc" :int 
+(lib:defshared %socket "socket" "libc" :int
 	       (domain :int) (type :int) (protocol :int)
 	       :documentation "Create socket")
 
@@ -228,8 +228,8 @@
 (defun get-errno ()
   "Get the current errno value"
   (handler-case
-      (let ((errno-ptr (sb-alien:alien-funcall 
-                        (sb-alien:extern-alien "__errno_location" 
+      (let ((errno-ptr (sb-alien:alien-funcall
+                        (sb-alien:extern-alien "__errno_location"
                                                (function (* sb-alien:int))))))
         (sb-alien:deref errno-ptr 0))
     (error ()
@@ -334,11 +334,11 @@
     ;; sin_family (2 bytes)
     (setf (sb-sys:sap-ref-16 sap 0) +af-inet+)
     ;; sin_port (network byte order)
-    (setf (sb-sys:sap-ref-16 sap 2) 
+    (setf (sb-sys:sap-ref-16 sap 2)
           (logior (ash (logand port #xff) 8)
                   (ash (logand port #xff00) -8)))
     ;; sin_addr (convert IP string to network byte order)
-    (let ((ip-parts (mapcar #'parse-integer 
+    (let ((ip-parts (mapcar #'parse-integer
                             (split-string ip-address #\.))))
       ;; Store in network byte order (big-endian) as individual bytes
       (setf (sb-sys:sap-ref-8 sap 4) (first ip-parts))
@@ -408,11 +408,11 @@
          (every (lambda (c) (or (digit-char-p c) (char= c #\.)))
                 hostname-or-address))
     (list (make-socket-address hostname-or-address port)))
-   
+
    ;; If it's "localhost", resolve to 127.0.0.1
    ((string= hostname-or-address "localhost")
     (list (make-socket-address "127.0.0.1" port)))
-   
+
    ;; Otherwise use getaddrinfo for DNS resolution
    (t
     (handler-case
@@ -427,17 +427,17 @@
                                 (result-ptr :pointer :count 1))
         ;; Initialize hints structure to zero
         (loop for i from 0 below 48 do (setf (sb-sys:sap-ref-8 hints i) 0))
-        
+
         ;; Set hints: ai_family = AF_UNSPEC (0), ai_socktype = SOCK_STREAM (1)
         (setf (sb-sys:sap-ref-32 hints 0) 0)    ; ai_flags = 0
         (setf (sb-sys:sap-ref-32 hints 4) 0)    ; ai_family = AF_UNSPEC
         (setf (sb-sys:sap-ref-32 hints 8) +sock-stream+)  ; ai_socktype = SOCK_STREAM
         (setf (sb-sys:sap-ref-32 hints 12) 0)   ; ai_protocol = 0
-        
+
         ;; Call getaddrinfo
         (let* ((port-str (if port (format nil "~D" port) "0"))
                (result (lib:shared-call '("getaddrinfo" "libc")
-                                        :int 
+                                        :int
                                         '(:c-string :c-string :pointer :pointer)
                                         hostname port-str hints result-ptr)))
           (if (= result 0)
@@ -463,8 +463,8 @@
                     (ai-addr-ptr (sb-sys:sap-ref-sap current 24))) ; ai_addr at offset 24 on Linux
                ;; Check if ai_addr is valid
                (when (and ai-addr-ptr (not (sb-sys:sap= ai-addr-ptr (sb-sys:int-sap 0))))
-                 (let ((socket-addr 
-                        (cond 
+                 (let ((socket-addr
+                        (cond
                           ((= ai-family +af-inet+)
                            ;; Parse IPv4 address
                            (let* ((port-bytes (sb-sys:sap-ref-16 ai-addr-ptr 2))
@@ -541,30 +541,30 @@
 			       (string (parse-address address))))
          (socket-fd (create-socket +af-inet+ +sock-stream+ +ipproto-tcp+))
          (epoll-instance (epoll:epoll-create1)))
-    
+
     (when reuse-addr
       (set-socket-reuse-addr socket-fd t))
-    
+
     (handler-case
         (progn
           ;; Bind socket to address
           (lib:with-foreign-memory ((sockaddr :char :count 16))
-				   (make-sockaddr-in-into sockaddr 
+				   (make-sockaddr-in-into sockaddr
 							  (socket-address-ip sock-addr)
 							  (socket-address-port sock-addr))
 				   (let ((result (%bind socket-fd sockaddr 16)))
 				     (check-error result "bind")))
-          
+
           ;; Listen for connections
           (let ((result (%listen socket-fd backlog)))
             (check-error result "listen"))
-          
+
           ;; Set to non-blocking mode
           (set-nonblocking socket-fd)
-          
+
           ;; Register with epoll for incoming connections
           (epoll:epoll-add epoll-instance socket-fd '(:in))
-          
+
           ;; Get actual bound address (in case port was 0)
           (let ((actual-addr (get-local-address socket-fd)))
             (make-instance 'tcp-listener
@@ -585,7 +585,7 @@
          (lib:with-foreign-memory ((peer-sockaddr :char :count 16)
                                    (addrlen :int :count 1))
 				  (setf (sb-sys:sap-ref-32 addrlen 0) 16)
-				  (let ((client-fd (%accept (tcp-listener-handle listener) 
+				  (let ((client-fd (%accept (tcp-listener-handle listener)
 							    peer-sockaddr addrlen)))
 				    (cond
 				      ((>= client-fd 0)
@@ -619,7 +619,7 @@
       (lib:with-foreign-memory ((peer-sockaddr :char :count 16)
                                 (addrlen :int :count 1))
 			       (setf (sb-sys:sap-ref-32 addrlen 0) 16)
-			       (let ((client-fd (%accept (tcp-listener-handle listener) 
+			       (let ((client-fd (%accept (tcp-listener-handle listener)
 							 peer-sockaddr addrlen)))
 				 (when (>= client-fd 0)
 				   (set-nonblocking client-fd)
@@ -695,15 +695,15 @@
 			       (socket-address address)
 			       (string (parse-address address))))
          (socket-fd (create-socket +af-inet+ +sock-stream+ +ipproto-tcp+)))
-    
+
     (handler-case
         (progn
           ;; Set to non-blocking mode before connecting for async support
           (set-nonblocking socket-fd)
-          
+
           ;; Try to connect
           (lib:with-foreign-memory ((sockaddr :char :count 16))
-				   (make-sockaddr-in-into sockaddr 
+				   (make-sockaddr-in-into sockaddr
 							  (socket-address-ip sock-addr)
 							  (socket-address-port sock-addr))
 				   (let ((result (%connect socket-fd sockaddr 16)))
@@ -725,7 +725,7 @@
 						   (epoll:epoll-close epoll-instance))))
 					   ;; Other error, check and signal appropriately
 					   (check-error result "connect"))))))
-          
+
           ;; Get local and peer addresses
           (let ((local-addr (get-local-address socket-fd))
                 (peer-addr (get-peer-address socket-fd)))
@@ -794,7 +794,7 @@
 			     (loop for i from start below actual-end
 				   for j from 0
 				   do (setf (sb-sys:sap-ref-8 buf j) (aref buffer i)))
-			     
+
 			     (let ((result (%send (tcp-stream-handle stream) buf (- actual-end start) 0)))
 			       (cond
 				((>= result 0) result)
@@ -909,21 +909,21 @@
 			       (socket-address address)
 			       (string (parse-address address))))
          (socket-fd (create-socket +af-inet+ +sock-dgram+ +ipproto-udp+)))
-    
+
     (handler-case
         (progn
           (set-socket-reuse-addr socket-fd t)
-          
+
           ;; Bind socket to address
           (lib:with-foreign-memory ((sockaddr :char :count 16))
-				   (make-sockaddr-in-into sockaddr 
+				   (make-sockaddr-in-into sockaddr
 							  (socket-address-ip sock-addr)
 							  (socket-address-port sock-addr))
 				   (let ((result (%bind socket-fd sockaddr 16)))
 				     (check-error result "UDP bind")))
-          
+
           (set-nonblocking socket-fd)
-          
+
           ;; Get actual bound address (in case port was 0)
           (let ((actual-addr (get-local-address socket-fd)))
             (make-instance 'udp-socket
@@ -940,7 +940,7 @@
 			      (string (parse-address address)))))
     (handler-case
         (lib:with-foreign-memory ((sockaddr :char :count 16))
-				 (make-sockaddr-in-into sockaddr 
+				 (make-sockaddr-in-into sockaddr
 							(socket-address-ip sock-addr)
 							(socket-address-port sock-addr))
 				 (let ((result (%connect (udp-socket-handle socket) sockaddr 16)))
@@ -961,7 +961,7 @@
 			     (loop for i from start below actual-end
 				   for j from 0
 				   do (setf (sb-sys:sap-ref-8 buf j) (aref buffer i)))
-			     
+
 			     (let ((result (%send (udp-socket-handle socket) buf (- actual-end start) 0)))
 			       (check-error result "UDP send")
 			       result))))
@@ -1002,12 +1002,12 @@
 			     (loop for i from start below actual-end
 				   for j from 0
 				   do (setf (sb-sys:sap-ref-8 buf j) (aref buffer i)))
-			     
+
 			     ;; Create destination address
-			     (make-sockaddr-in-into sockaddr 
+			     (make-sockaddr-in-into sockaddr
 						    (socket-address-ip sock-addr)
 						    (socket-address-port sock-addr))
-			     
+
 			     (let ((result (%sendto (udp-socket-handle socket) buf (- actual-end start) 0
 						    sockaddr 16)))
 			       (check-error result "UDP sendto")
@@ -1077,7 +1077,7 @@
 						  (:tcp-nodelay (%getsockopt handle +ipproto-tcp-level+ +tcp-nodelay+ optval optlen)))))
 			       (check-error result "getsockopt")
 			       (case option
-				     ((:reuse-address :keep-alive :tcp-nodelay) 
+				     ((:reuse-address :keep-alive :tcp-nodelay)
 				      (not (zerop (sb-sys:sap-ref-32 optval 0))))
 				     ((:recv-buffer :send-buffer)
 				      (sb-sys:sap-ref-32 optval 0)))))))

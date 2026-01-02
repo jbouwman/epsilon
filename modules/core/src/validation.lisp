@@ -22,21 +22,21 @@
    validation-failure-p
    validation-errors
    validation-value
-   
+
    ;; Error construction
    make-validation-error
    validation-error-field
    validation-error-message
    validation-error-type
    validation-error-context
-   
+
    ;; Combinators
    validate
    validate-all
    validate-map
    validate-when
    combine-results
-   
+
    ;; Core validators
    validator
    required
@@ -48,7 +48,7 @@
    boolean-type
    list-type
    plist-type
-   
+
    ;; Constraint validators
    min-length
    max-length
@@ -59,13 +59,13 @@
    one-of
    none-of
    satisfies-predicate
-   
+
    ;; Composite validators
    all-of
    any-of
    chain
    transform
-   
+
    ;; Multi-stage validation
    stage
    multi-stage
@@ -99,7 +99,7 @@
 
 (defun make-failure (errors)
   "Create a failed validation result"
-  (make-validation-failure 
+  (make-validation-failure
    :errors (if (listp errors) errors (list errors))))
 
 ;;;; Result Predicates
@@ -137,14 +137,14 @@
   (let ((result (funcall validator value)))
     ;; Add field context to errors if provided
     (when (and field-name (validation-failure-p result))
-      (setf result 
+      (setf result
             (make-failure
              (mapcar (lambda (error)
                        (if (validation-error-field error)
                            ;; Prepend field name to existing path
                            (let ((new-error (copy-structure error)))
                              (setf (validation-error-field new-error)
-                                   (format nil "~A.~A" field-name 
+                                   (format nil "~A.~A" field-name
                                           (validation-error-field error)))
                              new-error)
                            ;; Set field name if not already set
@@ -342,7 +342,7 @@
           ;; All failed, combine errors
           (make-failure
            (list (make-validation-error
-                  :message (format nil "none of ~D validators passed" 
+                  :message (format nil "none of ~D validators passed"
                                   (length validators))
                   :type :any-of
                   :context (mapcan #'validation-errors results))))))))

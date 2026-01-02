@@ -1,8 +1,6 @@
-;;;; config.lisp - Compiler configuration
+;;;; config.lisp
 ;;;;
-;;;; Provides structured configuration for compilation operations,
-;;;; replacing compile-file's limited keyword arguments with a
-;;;; comprehensive configuration object.
+;;;; Structured configuration for compilation operations.
 
 (defpackage :epsilon.compiler.config
   (:use :cl)

@@ -87,7 +87,7 @@
                       collect (cons i i)))
          (m (map::from-pairs pairs)))
     (is (= 1000 (map::hamt-count m)))
-    (is (every (lambda (i) (= i (map:get m i))) 
+    (is (every (lambda (i) (= i (map:get m i)))
                (range 0 999)))))
 
 (deftest map-seq
@@ -161,3 +161,52 @@
     (is (= count (map::hamt-count m)))
     (is (every (lambda (i) (= i (map:get m i)))
                (range 0 (1- count))))))
+
+;; Tests for multiple key-value pairs in assoc
+
+(deftest assoc-multiple-pairs
+  (let ((m (map:assoc map:+empty+ :a 1 :b 2 :c 3)))
+    (is (= 3 (map::hamt-count m)))
+    (is (= 1 (map:get m :a)))
+    (is (= 2 (map:get m :b)))
+    (is (= 3 (map:get m :c)))))
+
+(deftest assoc-multiple-pairs-with-updates
+  (let* ((m1 (map:assoc map:+empty+ :a 1 :b 2))
+         (m2 (map:assoc m1 :a 10 :c 3)))
+    (is (= 3 (map::hamt-count m2)))
+    (is (= 10 (map:get m2 :a)))
+    (is (= 2 (map:get m2 :b)))
+    (is (= 3 (map:get m2 :c)))
+    ;; Original unchanged
+    (is (= 1 (map:get m1 :a)))))
+
+(deftest assoc-single-pair-still-works
+  (let ((m (map:assoc map:+empty+ :x 42)))
+    (is (= 1 (map::hamt-count m)))
+    (is (= 42 (map:get m :x)))))
+
+;; Tests for multiple keys in dissoc
+
+(deftest dissoc-multiple-keys
+  (let* ((m1 (map:assoc map:+empty+ :a 1 :b 2 :c 3 :d 4))
+         (m2 (map:dissoc m1 :a :c)))
+    (is (= 2 (map::hamt-count m2)))
+    (is (null (map:get m2 :a)))
+    (is (= 2 (map:get m2 :b)))
+    (is (null (map:get m2 :c)))
+    (is (= 4 (map:get m2 :d)))))
+
+(deftest dissoc-multiple-keys-with-missing
+  (let* ((m1 (map:assoc map:+empty+ :a 1 :b 2))
+         (m2 (map:dissoc m1 :a :c :d)))
+    (is (= 1 (map::hamt-count m2)))
+    (is (null (map:get m2 :a)))
+    (is (= 2 (map:get m2 :b)))))
+
+(deftest dissoc-single-key-still-works
+  (let* ((m1 (map:assoc map:+empty+ :a 1 :b 2))
+         (m2 (map:dissoc m1 :a)))
+    (is (= 1 (map::hamt-count m2)))
+    (is (null (map:get m2 :a)))
+    (is (= 2 (map:get m2 :b)))))

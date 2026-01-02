@@ -417,4 +417,3 @@
      (make-lsp-work-done-progress token :end))
 
     (otherwise nil)))
-

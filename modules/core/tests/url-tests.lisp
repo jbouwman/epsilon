@@ -48,9 +48,9 @@
 
 (deftest test-make-url-complete
   "Test complete URL construction"
-  (let ((url (make-url :scheme "https" 
+  (let ((url (make-url :scheme "https"
                        :userinfo "user:pass"
-                       :host "example.com" 
+                       :host "example.com"
                        :port 8080
                        :path "/api/v1/test"
                        :query "param=value"
@@ -70,14 +70,14 @@
 
 (deftest test-url-string-complete
   "Test complete URL string generation"
-  (let ((url (make-url :scheme "https" 
+  (let ((url (make-url :scheme "https"
                        :userinfo "user:pass"
-                       :host "example.com" 
+                       :host "example.com"
                        :port 8080
                        :path "/api/v1/test"
                        :query "param=value&other=test"
                        :fragment "section")))
-    (is-equal "https://user:pass@example.com:8080/api/v1/test?param=value&other=test#section" 
+    (is-equal "https://user:pass@example.com:8080/api/v1/test?param=value&other=test#section"
               (url-string url))))
 
 (deftest test-url-string-default-ports
@@ -213,7 +213,7 @@
   (is (url-equal "http://example.com/test" "http://example.com/test"))
   (is-not (url-equal "http://example.com/test" "https://example.com/test"))
   (is-not (url-equal "http://example.com/test" "http://example.com/other"))
-  (is (url-equal (parse-url "http://example.com/test") 
+  (is (url-equal (parse-url "http://example.com/test")
                  (parse-url "http://example.com/test"))))
 
 (deftest test-url-normalize

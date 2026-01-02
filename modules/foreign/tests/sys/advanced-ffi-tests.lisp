@@ -16,7 +16,7 @@
 ;;     long   tv_nsec;
 ;; };
 
-(lib:defshared clock-gettime "clock_gettime" nil :int 
+(lib:defshared clock-gettime "clock_gettime" nil :int
   (clockid :int) (tp :pointer)
   :documentation "Get time from clock")
 
@@ -54,7 +54,7 @@
            (setf (sb-sys:sap-ref-32 array-ptr 8) 8)
            (setf (sb-sys:sap-ref-32 array-ptr 12) 1)
            (setf (sb-sys:sap-ref-32 array-ptr 16) 9)
-           
+
            ;; Verify initial values
            (is (= (sb-sys:sap-ref-32 array-ptr 0) 5))
            (is (= (sb-sys:sap-ref-32 array-ptr 12) 1)))
@@ -64,7 +64,7 @@
 (deftest test-callback-preparation
   "Test preparation for callback functionality"
   ;; For now, just test that we can create function pointers
-  ;; Full callback implementation will come later  
+  ;; Full callback implementation will come later
   ;; Use nil to access already-loaded libc symbols via default library
   (let ((fn-ptr (lib:lib-function (lib:lib-open nil) "strcmp")))
     (is (not (null fn-ptr)))
@@ -84,7 +84,7 @@
   ;; Set a test environment variable
   (let ((result (setenv "EPSILON_TEST_VAR" "test_value" 1)))
     (is (= result 0)) ; Success
-    
+
     ;; Get it back
     (let ((value-ptr (getenv "EPSILON_TEST_VAR")))
       (is (not (sb-sys:sap= value-ptr (sb-sys:int-sap 0)))) ; Should not be NULL

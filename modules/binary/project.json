@@ -1,0 +1,42 @@
+{
+  "tags": [
+    "scope:epsilon",
+    "type:library"
+  ],
+  "targets": {
+    "build": {
+      "options": {
+        "cwd": ".",
+        "command": "./epsilon/epsilon --module epsilon.binary --eval t"
+      },
+      "inputs": [
+        "{projectRoot}/**/*.lisp",
+        "{projectRoot}/module.lisp"
+      ],
+      "executor": "nx:run-commands",
+      "cache": true
+    },
+    "test": {
+      "options": {
+        "cwd": ".",
+        "command": "./epsilon/epsilon --test epsilon.binary"
+      },
+      "dependsOn": [
+        "build"
+      ],
+      "inputs": [
+        "{projectRoot}/**/*.lisp"
+      ],
+      "executor": "nx:run-commands",
+      "cache": true
+    }
+  },
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "epsilon-binary",
+  "sourceRoot": "epsilon/modules/binary",
+  "implicitDependencies": [
+    "epsilon-core",
+    "epsilon-io"
+  ],
+  "projectType": "library"
+}

@@ -1,0 +1,30 @@
+{
+  "name": "epsilon-install",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "epsilon/modules/install",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "./epsilon/epsilon --module epsilon.install --eval t"
+      },
+      "inputs": [
+        "{projectRoot}/**/*.lisp",
+        "{projectRoot}/module.lisp"
+      ],
+      "cache": true
+    }
+  },
+  "implicitDependencies": [
+    "epsilon-http",
+    "epsilon-json",
+    "epsilon-digest",
+    "epsilon-core"
+  ],
+  "tags": [
+    "scope:epsilon",
+    "type:library"
+  ]
+}

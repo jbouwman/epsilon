@@ -99,7 +99,7 @@
               (is t "Void callback created successfully"))
           (error (e)
             (is nil "Void callback creation failed: ~A" e)))
-        
+
         ;; Test multiple arguments
         (handler-case
             (let ((multi-func (lambda (x y) (+ x y))))
@@ -140,7 +140,7 @@
                  (is nil "Fallback callback creation failed: ~A" e)))))
       ;; Restore original setting
       (when (find-symbol "*USE-LIBFFI*" '#:epsilon.foreign.callback)
-        (setf (symbol-value (find-symbol "*USE-LIBFFI*" '#:epsilon.foreign.callback)) 
+        (setf (symbol-value (find-symbol "*USE-LIBFFI*" '#:epsilon.foreign.callback))
               original-use-libffi)))))
 
 ;;;; Registry and Memory Management Tests
@@ -171,7 +171,7 @@
             (handler-case
                 (call-libffi-function 'make-libffi-callback test-func :int '(:int))
               (error ()))))
-        
+
         ;; Test cleanup
         (handler-case
             (progn
@@ -191,12 +191,12 @@
   (if (libffi-available-p)
       (let ((test-func (lambda (x) x)))
         (is-thrown 'error
-                        (call-libffi-function 'make-libffi-callback 
+                        (call-libffi-function 'make-libffi-callback
                                               test-func :invalid-type '(:int))
                         "Should throw error for invalid return type")
-        
+
         (is-thrown 'error
-                        (call-libffi-function 'make-libffi-callback 
+                        (call-libffi-function 'make-libffi-callback
                                               test-func :int '(:invalid-type))
                         "Should throw error for invalid argument type"))
       (format t "libffi not available - skipping invalid types test~%")))
@@ -207,12 +207,12 @@
   (if (libffi-available-p)
       (progn
         (is-thrown 'error
-                        (call-libffi-function 'make-libffi-callback 
+                        (call-libffi-function 'make-libffi-callback
                                               "not-a-function" :int '(:int))
                         "Should throw error for non-function argument")
-        
+
         (is-thrown 'error
-                        (call-libffi-function 'make-libffi-callback 
+                        (call-libffi-function 'make-libffi-callback
                                               (lambda (x) x) :int "not-a-list")
                         "Should throw error for non-list arg-types"))
       (format t "libffi not available - skipping invalid arguments test~%")))
@@ -229,13 +229,13 @@
             (progn
               ;; Create 10 callbacks
               (dotimes (i 10)
-                (let ((cb (call-libffi-function 'make-libffi-callback 
+                (let ((cb (call-libffi-function 'make-libffi-callback
                                                 test-func :int '(:int))))
                   (push cb callbacks)))
-              
+
               (is (= (length callbacks) 10)
                        "Should create 10 callbacks successfully")
-              
+
               ;; Verify all callbacks are valid pointers
               (is (every (lambda (cb) (not (sb-alien:null-alien cb))) callbacks)
                        "All callbacks should be valid pointers"))
@@ -252,22 +252,22 @@
           (let* ((test-array (make-array 5 :element-type '(signed-byte 32)
                                          :initial-contents '(5 2 8 1 9)))
                  (compare-func (lambda (a b)
-                                (let ((val-a (sb-alien:deref 
+                                (let ((val-a (sb-alien:deref
                                               (sb-alien:cast a (* sb-alien:int)) 0))
-                                      (val-b (sb-alien:deref 
+                                      (val-b (sb-alien:deref
                                               (sb-alien:cast b (* sb-alien:int)) 0)))
                                   (cond ((< val-a val-b) -1)
                                         ((> val-a val-b) 1)
                                         (t 0)))))
                  (callback-ptr (foreign:make-callback compare-func :int '(:pointer :pointer))))
-            
+
             ;; Pin the array and call qsort
             (sb-sys:with-pinned-objects (test-array)
               (let ((array-sap (sb-sys:vector-sap test-array)))
                 (foreign:shared-call '("qsort" "libc") :void
                                      '(:pointer :unsigned-long :unsigned-long :pointer)
                                      array-sap 5 4 callback-ptr)))
-            
+
             ;; Check if array is sorted
             (is (equalp test-array #(1 2 5 8 9))
                      "Array should be sorted after qsort with libffi callback"))

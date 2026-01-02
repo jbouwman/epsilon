@@ -25,24 +25,24 @@
     (is-= 0 (cache:cache-size c))
     (is-eq nil (cache:cache-get c "missing"))
     (is-eq :default (cache:cache-get c "missing" :default))
-    
+
     ;; Test put and get
     (cache:cache-put c "key1" "value1")
     (is-equal "value1" (cache:cache-get c "key1"))
     (is-= 1 (cache:cache-size c))
-    
+
     ;; Test multiple puts
     (cache:cache-put c "key2" "value2")
     (cache:cache-put c "key3" "value3")
     (is-= 3 (cache:cache-size c))
     (is-equal "value2" (cache:cache-get c "key2"))
     (is-equal "value3" (cache:cache-get c "key3"))
-    
+
     ;; Test overwrite
     (cache:cache-put c "key1" "new-value1")
     (is-equal "new-value1" (cache:cache-get c "key1"))
     (is-= 3 (cache:cache-size c))
-    
+
     ;; Test remove
     (cache:cache-remove c "key2")
     (is-eq nil (cache:cache-get c "key2"))
@@ -56,10 +56,10 @@
     ;; Put value
     (cache:cache-put c "key1" "value1")
     (is-equal "value1" (cache:cache-get c "key1"))
-    
+
     ;; Wait for expiration
     (sleep 2)
-    
+
     ;; Value should be expired
     (is-eq nil (cache:cache-get c "key1"))
     (is-= 0 (cache:cache-size c))))
@@ -72,13 +72,13 @@
     (cache:cache-put c "key2" "value2")
     (cache:cache-put c "key3" "value3")
     (is-= 3 (cache:cache-size c))
-    
+
     ;; Adding more should trigger cleanup
     (cache:cache-put c "key4" "value4")
-    
+
     ;; Size should still be at most max-size
     (is (<= (cache:cache-size c) 3))
-    
+
     ;; New key should be present
     (is-equal "value4" (cache:cache-get c "key4"))))
 
@@ -92,18 +92,18 @@
     (is-= 2 (cache:cache-size c))
     (cache:cache-put c "key3" "value3")
     (is-= 3 (cache:cache-size c))
-    
+
     ;; Get one entry to generate a hit
     (cache:cache-get c "key1")
-    
+
     ;; Clear cache
     (cache:cache-clear c)
     (is-= 0 (cache:cache-size c))
-    
+
     ;; Stats should be reset after clear
     (is-= 0 (cache:cache-hits c))
     (is-= 0 (cache:cache-misses c))
-    
+
     ;; Verify cleared entries return nil
     (is-eq nil (cache:cache-get c "key1"))
     (is-eq nil (cache:cache-get c "key2"))
@@ -115,23 +115,23 @@
     ;; Initial stats
     (is-= 0 (cache:timed-cache-hits c))
     (is-= 0 (cache:timed-cache-misses c))
-    
+
     ;; Miss
     (cache:cache-get c "missing")
     (is-= 0 (cache:timed-cache-hits c))
     (is-= 1 (cache:timed-cache-misses c))
-    
+
     ;; Put and hit
     (cache:cache-put c "key1" "value1")
     (cache:cache-get c "key1")
     (is-= 1 (cache:timed-cache-hits c))
     (is-= 1 (cache:timed-cache-misses c))
-    
+
     ;; Another hit
     (cache:cache-get c "key1")
     (is-= 2 (cache:timed-cache-hits c))
     (is-= 1 (cache:timed-cache-misses c))
-    
+
     ;; Test hit rate
     (is-= 2/3 (cache:cache-hit-rate c))))
 
@@ -140,12 +140,12 @@
   (let ((c (cache:make-timed-cache)))
     ;; Empty cache
     (is-equal '() (cache:cache-keys c))
-    
+
     ;; Add entries
     (cache:cache-put c "key1" "value1")
     (cache:cache-put c "key2" "value2")
     (cache:cache-put c "key3" "value3")
-    
+
     ;; Check keys (order not guaranteed)
     (let ((keys (cache:cache-keys c)))
       (is-= 3 (length keys))
@@ -162,19 +162,19 @@
     (is-= 0 (cache:lru-cache-size c))
     (is-eq nil (cache:lru-get c "missing"))
     (is-eq :default (cache:lru-get c "missing" :default))
-    
+
     ;; Test put and get
     (cache:lru-put c "key1" "value1")
     (is-equal "value1" (cache:lru-get c "key1"))
     (is-= 1 (cache:lru-cache-size c))
-    
+
     ;; Test multiple puts
     (cache:lru-put c "key2" "value2")
     (cache:lru-put c "key3" "value3")
     (is-= 3 (cache:lru-cache-size c))
     (is-equal "value2" (cache:lru-get c "key2"))
     (is-equal "value3" (cache:lru-get c "key3"))
-    
+
     ;; Test overwrite
     (cache:lru-put c "key1" "new-value1")
     (is-equal "new-value1" (cache:lru-get c "key1"))
@@ -188,11 +188,11 @@
     (cache:lru-put c "key2" "value2")
     (cache:lru-put c "key3" "value3")
     (is-= 3 (cache:lru-cache-size c))
-    
+
     ;; Access key1 and key3 to make them more recent
     (cache:lru-get c "key1")
     (cache:lru-get c "key3")
-    
+
     ;; Add new key - should evict key2 (least recently used)
     (cache:lru-put c "key4" "value4")
     (is-= 3 (cache:lru-cache-size c))
@@ -209,17 +209,17 @@
     (cache:lru-put c "b" 2)
     (cache:lru-put c "c" 3)
     (cache:lru-put c "d" 4)
-    
+
     ;; Access 'b' to move it to head
     (cache:lru-get c "b")
-    
+
     ;; Access 'a' to move it to head
     (cache:lru-get c "a")
-    
+
     ;; Now order should be: a, b, d, c (most to least recent)
     ;; Adding new item should evict 'c'
     (cache:lru-put c "e" 5)
-    
+
     (is-eq nil (cache:lru-get c "c"))
     (is-equal 1 (cache:lru-get c "a"))
     (is-equal 2 (cache:lru-get c "b"))
@@ -233,13 +233,13 @@
     (cache:lru-put c "key1" "value1")
     (cache:lru-put c "key2" "value2")
     (cache:lru-put c "key3" "value3")
-    
+
     ;; Remove middle item
     (let ((removed (cache:lru-remove c "key2")))
       (is-equal "value2" removed)
       (is-= 2 (cache:lru-cache-size c))
       (is-eq nil (cache:lru-get c "key2")))
-    
+
     ;; Remove non-existent item
     (is-eq nil (cache:lru-remove c "missing"))
     (is-= 2 (cache:lru-cache-size c))))
@@ -252,7 +252,7 @@
     (cache:lru-put c "key2" "value2")
     (cache:lru-put c "key3" "value3")
     (is-= 3 (cache:lru-cache-size c))
-    
+
     ;; Clear
     (cache:lru-clear c)
     (is-= 0 (cache:lru-cache-size c))
@@ -266,12 +266,12 @@
   "Test cache statistics reporting"
   (let ((timed-c (cache:make-timed-cache :ttl 60 :max-size 10))
         (lru-c (cache:make-lru-cache :capacity 5)))
-    
+
     ;; Add some data to timed cache
     (cache:cache-put timed-c "key1" "value1")
     (cache:cache-get timed-c "key1")  ; hit
     (cache:cache-get timed-c "miss")  ; miss
-    
+
     ;; Check timed cache stats
     (let ((stats (cache:cache-stats timed-c)))
       (is-eq :timed (getf stats :type))
@@ -280,11 +280,11 @@
       (is-= 1 (getf stats :hits))
       (is-= 1 (getf stats :misses))
       (is-= 60 (getf stats :ttl)))
-    
+
     ;; Add some data to LRU cache
     (cache:lru-put lru-c "key1" "value1")
     (cache:lru-put lru-c "key2" "value2")
-    
+
     ;; Check LRU cache stats
     (let ((stats (cache:cache-stats lru-c)))
       (is-eq :lru (getf stats :type))
@@ -301,7 +301,7 @@
     (is-equal "value1" (cache:cache-get tc "key1"))
     (is (cache:timed-cache-p tc))
     (is-= 30 (cache:timed-cache-ttl tc)))
-  
+
   ;; Test with LRU cache
   (cache:with-cache (lc :type :lru :capacity 3)
     (cache:lru-put lc "key1" "value1")
@@ -317,16 +317,16 @@
     ;; Nil key
     (cache:cache-put c nil "nil-value")
     (is-equal "nil-value" (cache:cache-get c nil))
-    
+
     ;; Nil value
     (cache:cache-put c "nil-key" nil)
     (is-eq nil (cache:cache-get c "nil-key"))
-    
+
     ;; Complex keys
     (let ((complex-key '(1 2 3)))
       (cache:cache-put c complex-key "complex-value")
       (is-equal "complex-value" (cache:cache-get c complex-key)))
-    
+
     ;; Very large value
     (let ((large-value (make-string 10000 :initial-element #\x)))
       (cache:cache-put c "large" large-value)
@@ -338,12 +338,12 @@
     ;; Single capacity cache
     (cache:lru-put c "key1" "value1")
     (is-equal "value1" (cache:lru-get c "key1"))
-    
+
     ;; Should evict immediately
     (cache:lru-put c "key2" "value2")
     (is-eq nil (cache:lru-get c "key1"))
     (is-equal "value2" (cache:lru-get c "key2"))
-    
+
     ;; Zero capacity cache (if supported)
     (let ((zero-c (cache:make-lru-cache :capacity 0)))
       (cache:lru-put zero-c "key1" "value1")
@@ -357,20 +357,20 @@
   (let ((c (cache:make-timed-cache :ttl 60 :max-size 1000))
         (start-time nil)
         (elapsed nil))
-    
+
     ;; Measure insertion time
     (setf start-time (get-internal-real-time))
     (loop for i from 1 to 1000
           do (cache:cache-put c (format nil "key~D" i) i))
     (setf elapsed (- (get-internal-real-time) start-time))
     (is (< elapsed (* 1000 internal-time-units-per-second))) ; Should take less than 1 second
-    
+
     ;; Measure lookup time
     (setf start-time (get-internal-real-time))
     (loop for i from 1 to 1000
           do (cache:cache-get c (format nil "key~D" i)))
     (setf elapsed (- (get-internal-real-time) start-time))
     (is (< elapsed (* 100 internal-time-units-per-second))) ; Lookups should be very fast
-    
+
     ;; Verify all lookups were hits
     (is-= 1000 (cache:timed-cache-hits c))))

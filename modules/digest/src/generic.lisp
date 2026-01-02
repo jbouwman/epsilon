@@ -1,7 +1,6 @@
 (defpackage #:epsilon.digest.generic
   (:use
    #:cl
-   #:sb-gray
    #:epsilon.type
    #:epsilon.digest.common
    #:epsilon.symbol)
@@ -107,7 +106,7 @@ An error will be signaled if there is insufficient room in DIGEST."))
         (hi (if big-endian-p offset (1+ offset))))
     (setf (aref block lo) (ldb (byte 32 0) length)
           (aref block hi) (ldb (byte 32 32) length))))
-
+
 ;;; macros for "mid-level" functions
 
 (defmacro define-digest-registers ((digest-name &key (endian :big) (size 4) (digest-registers nil)) &rest registers)
@@ -213,7 +212,7 @@ An error will be signaled if there is insufficient room in DIGEST."))
                                    (make-array digest-size
                                                :element-type 'u8)
                                    0))))))))))
-
+
 ;;; common superclass (superstructure?) for MD5-style digest functions
 
 (defstruct (mdx
@@ -274,50 +273,3 @@ An error will be signaled if there is insufficient room in DIGEST."))
      (defmethod block-length ((digest ,name))
        ,block-length)))
 
-;;; digesting streams
-
-(defclass digesting-stream (fundamental-binary-output-stream)
-  ((digest :initarg :digest :reader stream-digest)
-   (buffer :initform (->u8 64)
-           :reader stream-buffer)
-   (position :initform 0
-             :reader stream-buffer-position)))
-
-(defmethod sb-gray::stream-element-type ((stream digesting-stream))
-  'u8)
-
-(defmethod sb-gray::stream-write-byte ((stream digesting-stream) byte)
-  (declare (type u8 byte))
-  (with-slots (digest buffer position) stream
-    (setf (aref buffer position) byte)
-    (when (= (incf position) 64)
-      (update-digest digest buffer :start 0 :end 64)
-      (setf position 0))
-    byte))
-
-(defmethod stream-write-sequence
-           ((stream digesting-stream) seq &optional (start 0) end)
-  (typecase seq
-    (->u8
-     (let ((end (or end (length seq))))
-       (unless (zerop (stream-buffer-position stream))
-         (update-digest (stream-digest stream) (stream-buffer stream) :end
-                        (stream-buffer-position stream))
-         (setf (slot-value stream 'position) 0))
-       (update-digest (stream-digest stream) seq :start start :end end)
-       seq))
-    (t (call-next-method))))
-
-(defmethod sb-gray::stream-clear-output ((stream digesting-stream))
-  (with-slots (digest position) stream
-    (setf position 0)
-    (reinitialize-instance digest)
-    nil))
-
-(defmethod produce-digest ((stream digesting-stream)
-                           &key digest (digest-start 0))
-  (with-slots ((%digest digest) buffer position) stream
-    (unless (zerop position)
-      (update-digest %digest buffer :start 0 :end position)
-      (setf position 0))
-    (produce-digest %digest :digest digest :digest-start digest-start)))

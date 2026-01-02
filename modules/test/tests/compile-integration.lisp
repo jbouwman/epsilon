@@ -48,7 +48,7 @@
                  (format stream "(format t \"Line 2\")~%")
                  (format stream "(defun test-func (x)~%")
                  (format stream "  (+ x 1))~%"))
-               
+
                ;; Test compilation with deep tracking
                (let ((result (compile:compile-file-with-tracking test-file :verbose nil)))
                  (is (not (null result)) "Should return a compilation result")
@@ -58,7 +58,7 @@
            (error (e)
              (warn "Line number extraction test failed with error: ~A" e)
              (is nil "Test should not error")))
-      
+
       ;; Cleanup
       (when (probe-file test-file) (delete-file test-file))
       (let ((fasl-file (concatenate 'string test-file ".fasl")))

@@ -5,8 +5,7 @@
 (defpackage :epsilon.crypto
   (:use :cl)
   (:local-nicknames
-   (#:map #:epsilon.map)
-   (#:stream #:epsilon.stream))
+   (#:map #:epsilon.map))
   (:import-from :epsilon.crypto.ffi
                 #:crypto-error
                 #:crypto-error-code
@@ -27,7 +26,7 @@
    #:load-cert-file
    #:load-key-file
    #:set-verify-mode
-   
+
    ;; TLS connection handling
    #:tls-connect
    #:tls-accept
@@ -39,11 +38,11 @@
    #:tls-connection-connected-p
    #:tls-connection-handshake-complete-p
    #:tls-connection-ssl-handle
-   
+
    ;; TLS Constants
    #:+tls-verify-none+
    #:+tls-verify-peer+
-   
+
    ;; TLS Utilities
    #:tls-handshake
    #:tls-version
@@ -53,7 +52,7 @@
    #:verify-peer-certificate
    #:get-certificate-subject
    #:get-certificate-issuer
-   
+
    ;;;; Public Key Cryptography
    ;; Key types and structures
    #:crypto-key
@@ -64,12 +63,12 @@
    #:crypto-key-public-p
    #:crypto-key-private-p
    #:crypto-key-handle
-   
+
    ;; Key generation
    #:generate-rsa-key
    #:generate-ec-key
    #:generate-ed25519-key
-   
+
    ;; Key management
    #:load-public-key
    #:load-private-key
@@ -78,25 +77,25 @@
    #:export-public-key
    #:import-public-key
    #:derive-public-key
-   
+
    ;; Key formats
    #:key-to-pem
    #:key-from-pem
    #:key-to-der
    #:key-from-der
-   
+
    ;; Digital signatures
    #:sign
    #:verify
    #:sign-message
    #:verify-message
-   
+
    ;; Encryption/Decryption
    #:encrypt
    #:decrypt
    #:seal
    #:open-sealed
-   
+
    ;; Message digests
    #:digest
    #:+digest-sha256+
@@ -104,7 +103,7 @@
    #:+digest-sha512+
    #:+digest-sha3-256+
    #:+digest-sha3-512+
-   
+
    ;; X.509 Certificates
    #:x509-certificate
    #:make-x509-certificate
@@ -120,13 +119,13 @@
    #:save-certificate
    #:certificate-public-key
    #:verify-certificate
-   
+
    ;; Certificate Signing Requests
    #:create-csr
    #:sign-csr
    #:load-csr
    #:save-csr
-   
+
    ;; Certificate generation utilities
    #:generate-self-signed-certificate
    #:generate-certificate-request
@@ -135,25 +134,25 @@
    #:make-certificate-pair
    #:verify-certificate-chain
    #:certificate-info
-   
+
    ;; Random number generation
    #:crypto-random-bytes
    #:crypto-random-integer
-   
+
    ;; Error handling
    #:crypto-error
    #:crypto-error-code
    #:crypto-error-string
    #:get-crypto-errors
-   
-   
+
+
    ;; Integration functions
    #:tls-context-set-key
    #:tls-context-set-certificate
    #:tls-get-peer-public-key
    #:load-key-and-cert-pair
    #:save-key-and-cert-pair
-   
+
    ;; OpenSSL implementation
    #:openssl-context
    #:make-openssl-context
@@ -177,7 +176,7 @@
    #:openssl-write
    #:openssl-stream
    #:create-openssl-context
-   
+
    ;; Test mocking (for TLS)
    #:with-mock-tls
    #:enable-mock-mode
@@ -188,7 +187,19 @@
    #:create-mock-connection
    #:mock-tls-connection-p
    #:mock-tls-connection-handshake-complete-p
-   
+
+   ;; IO Adapters (epsilon.io protocol implementations)
+   #:tls-reader
+   #:make-tls-reader
+   #:tls-reader-p
+   #:tls-reader-connection
+   #:tls-writer
+   #:make-tls-writer
+   #:tls-writer-p
+   #:tls-writer-connection
+   #:tls-connection-to-reader
+   #:tls-connection-to-writer
+
    ;; Constants
    #:+ssl-filetype-pem+
    #:+ssl-filetype-asn1+
@@ -256,11 +267,11 @@
 ;; TLS Context Structure
 (defstruct tls-context
   "TLS context for managing certificates, verification settings, and cipher configuration.
-   
+
    A TLS context encapsulates the configuration needed for TLS/SSL connections,
    including certificates, private keys, peer verification requirements, and
    allowed cipher suites. Contexts can be configured for either client or server use.
-   
+
    Security Notes:
    - Always use +TLS-VERIFY-PEER+ in production for proper certificate validation
    - Consider cipher-list restrictions to enforce strong cryptographic algorithms
@@ -275,11 +286,11 @@
 ;; TLS Connection Structure
 (defstruct tls-connection
   "Active TLS connection state wrapping an underlying network socket.
-   
+
    Represents an established or in-progress TLS connection. The connection
    tracks the underlying socket, associated TLS context, handshake state,
    and internal OpenSSL connection handle.
-   
+
    Lifecycle:
    1. Create connection with socket and context
    2. Perform TLS handshake (sets handshake-complete-p to t)
@@ -294,17 +305,17 @@
 ;; Crypto Key Structure
 (defstruct crypto-key
   "Cryptographic key for public key operations (RSA, EC, Ed25519).
-   
+
    Represents a public key, private key, or key pair for cryptographic operations
    including digital signatures, encryption/decryption, and key exchange. Keys
    may be generated, loaded from files, or derived from other keys.
-   
+
    Supported key types:
    - :RSA - RSA keys (2048, 3072, 4096 bits recommended)
    - :EC - Elliptic Curve keys (P-256, P-384, P-521, secp256k1)
    - :ED25519 - Edwards curve keys (signing only, 32 bytes)
    - :X25519 - Montgomery curve keys (ECDH only, 32 bytes)
-   
+
    Security Notes:
    - Private key material is stored in OpenSSL's secure memory when possible
    - Keys should be freed promptly after use to minimize exposure
@@ -318,20 +329,20 @@
 ;; X.509 Certificate Structure
 (defstruct x509-certificate
   "X.509 digital certificate for public key infrastructure (PKI).
-   
+
    Represents an X.509 certificate containing a public key, identity information,
    validity period, and digital signature from a Certificate Authority (CA).
    Certificates are used for authentication, encryption, and establishing trust
    in TLS connections and other cryptographic protocols.
-   
+
    Certificate Components:
    - Subject: Entity the certificate identifies (CN, O, OU, C fields)
-   - Issuer: Certificate Authority that signed this certificate  
+   - Issuer: Certificate Authority that signed this certificate
    - Serial: Unique identifier within the issuer's namespace
    - Validity: Time period during which certificate is valid
    - Public Key: Cryptographic public key for the subject
    - Signature: CA's digital signature over certificate contents
-   
+
    Security Notes:
    - Always verify certificate chain back to trusted root CA
    - Check validity dates and revocation status before trusting
@@ -346,11 +357,11 @@
 ;; OpenSSL Implementation Structures
 (defstruct openssl-context
   "Low-level OpenSSL SSL_CTX wrapper for advanced TLS configuration.
-   
+
    Provides direct access to OpenSSL's SSL context functionality for scenarios
    requiring fine-grained control over TLS parameters, certificate chain
    handling, or advanced SSL features not exposed by the high-level API.
-   
+
    Use the high-level TLS-CONTEXT structure for most applications.
    This structure is intended for advanced use cases requiring specific
    OpenSSL features or compatibility with existing OpenSSL-based code."
@@ -362,7 +373,7 @@
 
 (defstruct openssl-connection
   "Low-level OpenSSL SSL connection wrapper.
-   
+
    Provides direct access to OpenSSL's SSL connection object for advanced
    operations. Use the high-level TLS-CONNECTION structure for most applications."
   (ssl nil :type (or null sb-sys:system-area-pointer))
@@ -378,26 +389,26 @@
 
 (defun get-crypto-errors ()
   "Retrieve and clear all pending cryptographic errors from OpenSSL.
-   
+
    Returns a list of error descriptions as strings. This function is useful
    for debugging cryptographic operations that may have accumulated multiple
    errors in the OpenSSL error stack.
-   
+
    Returns:
      List of strings describing any pending OpenSSL errors.
-   
+
    Security Note:
      Error messages may contain sensitive information. Avoid logging them
      in production environments where logs might be accessible to unauthorized users."
   (declare (values list))
   (loop with errors = '()
-        for error-code = (sb-alien:alien-funcall 
-                          (sb-alien:extern-alien "ERR_get_error" 
+        for error-code = (sb-alien:alien-funcall
+                          (sb-alien:extern-alien "ERR_get_error"
                                                 (function sb-alien:unsigned-long)))
         while (not (zerop error-code))
         do (let ((error-string (sb-alien:alien-funcall
                                 (sb-alien:extern-alien "ERR_error_string"
-                                                      (function sb-alien:c-string 
+                                                      (function sb-alien:c-string
                                                                sb-alien:unsigned-long
                                                                sb-sys:system-area-pointer))
                                 error-code
@@ -409,29 +420,29 @@
 
 (defun crypto-random-bytes (n)
   "Generate cryptographically secure random bytes.
-   
+
    Uses OpenSSL's RAND_bytes function to generate cryptographically
    secure random data suitable for keys, IVs, nonces, and other
    security-critical values.
-   
+
    Parameters:
      n (integer): Number of random bytes to generate
-   
+
    Returns:
      Byte vector of length n containing random data
-   
+
    Security Notes:
      - Uses system entropy sources (e.g., /dev/urandom)
      - Automatically reseeds from system entropy
      - Thread-safe and fork-safe
      - Suitable for all cryptographic purposes
-   
+
    Example - Generate a 256-bit key:
      (crypto-random-bytes 32)  ; Returns 32 random bytes
-   
+
    Example - Generate a random IV:
      (crypto-random-bytes 16)  ; For AES block size
-   
+
    Errors:
      Signals CRYPTO-ERROR if random generation fails"
   (declare (type (integer 1 *) n))
@@ -445,16 +456,16 @@
 
 (defun crypto-random-integer (max)
   "Generate random integer from 0 to max-1.
-   
+
    Uses cryptographically secure random number generation
    to produce uniformly distributed integers.
-   
+
    Parameters:
      max (integer): Upper bound (exclusive)
-   
+
    Returns:
      Random integer in range [0, max)
-   
+
    Example:
      (crypto-random-integer 100)  ; Returns 0-99"
   (declare (type (integer 1 *) max))

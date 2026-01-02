@@ -13,7 +13,7 @@
    #:timestamp=
    #:timestamp<
    #:timestamp>
-   
+
    ;; Durations
    #:+nanosecond+
    #:+microsecond+
@@ -30,18 +30,18 @@
    #:duration<
    #:duration>
    #:duration=
-   
+
    ;; Time functions
    #:now
    #:since
    #:until
    #:add-duration
    #:subtract-duration
-   
+
    ;; Formatting
    #:format-timestamp
    #:parse-timestamp
-   
+
    ;; MessagePack compatibility
    #:encode-unix-timestamp
    #:decode-unix-timestamp
@@ -185,7 +185,7 @@
   "Format a timestamp according to the given format.
    Supported formats: :rfc3339, :unix, :iso8601"
   (multiple-value-bind (sec min hour day month year)
-      (decode-universal-time 
+      (decode-universal-time
        (+ 2208988800 ; Unix epoch offset (1970-01-01T00:00:00Z) from universal time epoch (1900-01-01T00:00:00Z)
           (timestamp-seconds timestamp))
        0) ; UTC timezone
@@ -194,7 +194,7 @@
        (format nil "~4,'0D-~2,'0D-~2,'0DT~2,'0D:~2,'0D:~2,'0D.~9,'0DZ"
                year month day hour min sec (timestamp-nanoseconds timestamp)))
       (:unix
-       (format nil "~D.~9,'0D" 
+       (format nil "~D.~9,'0D"
                (timestamp-seconds timestamp) (timestamp-nanoseconds timestamp)))
       (:iso8601
        (format nil "~4,'0D-~2,'0D-~2,'0D ~2,'0D:~2,'0D:~2,'0D"
@@ -224,7 +224,7 @@
             (nanoseconds (if (char= (char string 19) #\.)
                              (parse-integer string :start 20 :junk-allowed t)
                              0))
-            (universal-time (encode-universal-time 
+            (universal-time (encode-universal-time
                              second minute hour day month year 0)))
        (make-timestamp (- universal-time 2208988800) nanoseconds)))
     (:iso8601
@@ -235,7 +235,7 @@
             (hour (parse-integer string :start 11 :end 13))
             (minute (parse-integer string :start 14 :end 16))
             (second (parse-integer string :start 17 :end 19))
-            (universal-time (encode-universal-time 
+            (universal-time (encode-universal-time
                             second minute hour day month year 0)))
        (make-timestamp (- universal-time 2208988800) 0)))
     (otherwise
@@ -246,14 +246,14 @@
 (defun encode-unix-timestamp (timestamp &optional include-nanoseconds)
   "Convert a timestamp to a list representation for MessagePack encoding.
    Returns (:timestamp seconds nanoseconds) format."
-  (list :timestamp 
+  (list :timestamp
         (timestamp-seconds timestamp)
         (if include-nanoseconds (timestamp-nanoseconds timestamp) 0)))
 
 (defun decode-unix-timestamp (timestamp-list)
   "Convert a MessagePack encoded timestamp (as a list) to a timestamp object."
   (assert (eq (first timestamp-list) :timestamp))
-  (make-timestamp (cl:second timestamp-list) 
+  (make-timestamp (cl:second timestamp-list)
                  (if (>= (length timestamp-list) 3)
                      (third timestamp-list)
                      0)))

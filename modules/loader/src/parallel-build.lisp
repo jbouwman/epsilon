@@ -51,14 +51,14 @@
                               :build-input build-input
                               :requires requires
                               :status :pending
-                              :load-lock (sb-thread:make-mutex 
+                              :load-lock (sb-thread:make-mutex
                                          :name (format nil "load-~A" defines)))))
                   (when defines
                     (map:assoc! tasks defines task))))
               build-inputs)
-    
+
     ;; Group into batches
-    (loop while (seq:not-empty-p 
+    (loop while (seq:not-empty-p
                  (seq:filter (lambda (task)
                               (eq (compilation-task-status task) :pending))
                             (map:vals tasks)))
@@ -83,8 +83,8 @@
     (setf (loader::start-time result) (get-internal-real-time))
     (handler-case
         (progn
-          (fs:make-dirs (path:path-parent 
-                        (path:make-path 
+          (fs:make-dirs (path:path-parent
+                        (path:make-path
                          (path:path-from-uri (loader::target-uri build-input)))))
           (compile-file (path:path-from-uri (loader::source-uri build-input))
                        :output-file (path:path-from-uri (loader::target-uri build-input))
@@ -104,12 +104,12 @@
   (sb-thread:with-mutex ((compilation-task-load-lock task))
     (handler-case
         (progn
-          (load (path:path-from-uri 
+          (load (path:path-from-uri
                  (loader::target-uri (compilation-task-build-input task))))
           (setf (compilation-task-status task) :loaded)
           t)
       (error (e)
-       (log:error "Failed to load ~A: ~A" 
+       (log:error "Failed to load ~A: ~A"
                    (loader::source-uri (compilation-task-build-input task)) e)
         (setf (compilation-task-status task) :failed)
         nil))))
@@ -122,22 +122,22 @@
     (dolist (task tasks)
       (let ((thread (sb-thread:make-thread
                     (lambda ()
-                      (let ((result (compile-in-process 
+                      (let ((result (compile-in-process
                                     (compilation-task-build-input task))))
                         (setf (compilation-task-result task) result)
                         (if (loader::compilation-errors result)
                             (setf (compilation-task-status task) :failed)
                             (setf (compilation-task-status task) :compiled))))
-                    :name (format nil "compile-~A" 
-                                 (loader::source-info-defines 
-                                  (loader::source-info 
+                    :name (format nil "compile-~A"
+                                 (loader::source-info-defines
+                                  (loader::source-info
                                    (compilation-task-build-input task)))))))
         (push thread threads)))
-    
+
     ;; Wait for all compilations to complete
     (dolist (thread threads)
       (sb-thread:join-thread thread))
-    
+
     ;; Load compiled files in dependency order in main thread
     (dolist (task tasks)
       (when (eq (compilation-task-status task) :compiled)
@@ -162,20 +162,20 @@
         ;; Separate files that need compilation from those that just need loading
         (seq:each (lambda (build-input)
                    (if (or force
-                          (member (loader::build-input-status build-input) 
+                          (member (loader::build-input-status build-input)
                                   '(:target-missing :source-newer)))
                        (push build-input to-compile)
                        (push build-input to-load)))
                  build-inputs)
-        
+
         ;; Load already compiled files first
         (dolist (build-input (nreverse to-load))
           (push (loader::load-source environment build-input) results))
-        
+
         ;; Then compile remaining files in parallel
         (when to-compile
           (let ((batches (group-by-dependencies (seq:seq (nreverse to-compile)))))
-            (log:info "Parallel compilation: ~D files in ~D batches" 
+            (log:info "Parallel compilation: ~D files in ~D batches"
                      (length to-compile) (length batches))
             (dolist (batch batches)
               (if (> (length (compilation-batch-tasks batch)) 1)
@@ -185,7 +185,7 @@
             (dolist (batch batches)
               (dolist (task (compilation-batch-tasks batch))
                 (push (compilation-task-result task) results)))))
-        
+
         (nreverse results))
       ;; Sequential compilation (existing behavior)
       (seq:map (lambda (build-input)

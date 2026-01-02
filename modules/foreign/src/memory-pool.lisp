@@ -64,8 +64,8 @@
 
 (defun allocate-new-block (pool)
   "Allocate a new memory block for the pool"
-  (let ((ptr (sb-alien:alien-sap 
-              (sb-alien:make-alien (sb-alien:unsigned 8) 
+  (let ((ptr (sb-alien:alien-sap
+              (sb-alien:make-alien (sb-alien:unsigned 8)
                                    (memory-pool-block-size pool)))))
     (when *pool-statistics*
       (incf (memory-pool-total-allocated pool)))
@@ -75,11 +75,11 @@
   "Allocate memory from pool"
   (ensure-default-pool)
   (unless pool (setf pool *default-pool*))
-  
+
   (when (> size (memory-pool-block-size pool))
-    (error "Requested size ~D exceeds pool block size ~D" 
+    (error "Requested size ~D exceeds pool block size ~D"
            size (memory-pool-block-size pool)))
-  
+
   (sb-thread:with-mutex ((memory-pool-lock pool))
     (let ((ptr (or (pop (memory-pool-free-blocks pool))
                    (when (< (memory-pool-total-allocated pool)
@@ -108,7 +108,7 @@
   "Return memory to pool"
   (ensure-default-pool)
   (unless pool (setf pool *default-pool*))
-  
+
   (sb-thread:with-mutex ((memory-pool-lock pool))
     (setf (memory-pool-used-blocks pool)
           (delete ptr (memory-pool-used-blocks pool) :test #'sb-sys:sap=))

@@ -20,7 +20,7 @@
    #:stream-to-base64-stream
    #:integer-to-base64-string
    #:integer-to-base64-stream
-   
+
    ;; Convenience functions
    #:octets-to-base64
    #:base64-encode

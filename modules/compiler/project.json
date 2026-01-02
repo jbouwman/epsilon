@@ -1,0 +1,38 @@
+{
+  "name": "epsilon-compiler",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "epsilon/modules/compiler",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "./epsilon/epsilon --module epsilon.compiler --eval t"
+      },
+      "inputs": [
+        "{projectRoot}/**/*.lisp",
+        "{projectRoot}/module.lisp"
+      ],
+      "cache": true
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": ".",
+        "command": "./epsilon/epsilon --test epsilon.compiler"
+      },
+      "dependsOn": [
+        "build"
+      ],
+      "inputs": [
+        "{projectRoot}/**/*.lisp"
+      ],
+      "cache": true
+    }
+  },
+  "tags": [
+    "scope:epsilon",
+    "type:library"
+  ]
+}

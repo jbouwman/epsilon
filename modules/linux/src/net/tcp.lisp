@@ -51,11 +51,11 @@
    #:tcp-stream-reader
    #:tcp-stream-writer
    #:tcp-connected-p
-   
+
    ;; Value-added functions defined here
    #:tcp-write-line
    #:tcp-read-line
-   
+
    ;; Macros
    #:with-tcp-server
    #:with-tcp-connection))
@@ -81,7 +81,7 @@
   "Read a line from TCP stream"
   (declare (ignore timeout))
   (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8)))
-        (line-buffer (make-array 0 :element-type '(unsigned-byte 8) 
+        (line-buffer (make-array 0 :element-type '(unsigned-byte 8)
                                  :adjustable t :fill-pointer 0)))
     (loop
       (let ((bytes-read (tcp-read stream buffer :end 1024)))
@@ -94,7 +94,7 @@
         (loop for i from 0 below bytes-read
               for byte = (aref buffer i)
               do (if (= byte 10) ; newline
-                     (return-from tcp-read-line 
+                     (return-from tcp-read-line
                        (sb-ext:octets-to-string line-buffer))
                      (vector-push-extend byte line-buffer)))))))
 
@@ -103,7 +103,7 @@
 ;;; Convenience Macros
 ;;; ============================================================================
 
-(defmacro with-tcp-server ((server address &key (backlog 128) (reuse-addr t)) 
+(defmacro with-tcp-server ((server address &key (backlog 128) (reuse-addr t))
                            &body body)
   "Execute body with a TCP server bound to address"
   `(let ((,server (tcp-bind ,address :backlog ,backlog :reuse-addr ,reuse-addr)))
@@ -116,7 +116,7 @@
              ;; Ignore errors during cleanup
              nil))))))
 
-(defmacro with-tcp-connection ((connection address &key (timeout nil)) 
+(defmacro with-tcp-connection ((connection address &key (timeout nil))
                                &body body)
   "Execute body with a TCP connection to address"
   `(let ((,connection (tcp-connect ,address :timeout ,timeout)))

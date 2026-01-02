@@ -31,7 +31,7 @@
 
 (defun initialize-parser ()
   "Initialize the main argument parser"
-  (let ((parser (argparse:make-parser 
+  (let ((parser (argparse:make-parser
                  :command "epsilon"
                  :description "Epsilon development environment")))
     ;; Add global options
@@ -68,11 +68,16 @@
                            :action 'append
                            :metavar "DIRECTORY"
                            :help "Scan directory for modules (can be used multiple times)")
+    ;; Add workspace option
+    (argparse:add-argument parser "--workspace"
+                           :action 'append
+                           :metavar "PATH"
+                           :help "Load workspace and register its modules (can be used multiple times)")
     ;; Add exec option
     (argparse:add-argument parser "--exec"
                            :metavar "PACKAGE:FUNCTION"
                            :help "Execute a package function with remaining args")
-    ;; Add modules option  
+    ;; Add modules option
     (argparse:add-argument parser "--modules"
                            :action 'store-true
                            :help "List available modules")
@@ -85,6 +90,9 @@
     (argparse:add-argument parser "--run"
                            :metavar "FILE"
                            :help "Run a script file (auto-loads dependencies from package declaration)")
+    (argparse:add-argument parser "--start"
+                           :metavar "MODULE"
+                           :help "Start a module as an application (loads module and calls its main function)")
     ;; Add test option
     (argparse:add-argument parser "--test"
                            :action 'append
@@ -116,6 +124,9 @@
                            :action 'store-true
                            :help "List missing critical libraries")
     ;; Development tools
+    (argparse:add-argument parser "--repl"
+                           :action 'store-true
+                           :help "Start interactive REPL via ELS (Epsilon Language Server)")
     (argparse:add-argument parser "--init"
                            :action 'store-true
                            :help "Initialize a new project in current directory")
@@ -209,7 +220,7 @@
     ((and (listp main-spec) (stringp (first main-spec)))
      (parse-exec-spec (first main-spec)))
     ;; List like (epsilon.tool.repl main \"arg1\" \"arg2\")
-    ((and (listp main-spec) 
+    ((and (listp main-spec)
           (stringp (first main-spec))
           (stringp (second main-spec)))
      (values (first main-spec) (second main-spec)))
@@ -220,12 +231,9 @@
 
 (defun setup-build-environment ()
   "Create and configure a build environment.
-   Only adds auto-detected repositories (user dir + epsilon src).
-   --path arguments are handled separately."
-  (let ((env (loader:environment))
-        (epsilon-user (sb-ext:posix-getenv "EPSILON_USER")))
-    (loader:register-module env epsilon-user)
-    env))
+   Returns the environment with EPSILON_HOME modules loaded.
+   Additional modules can be added via --path arguments."
+  (loader:environment))
 
 (defun process-repository-options (environment parsed-options)
   "Process --repository, --path, and --module-dir options from parsed arguments.
@@ -233,21 +241,20 @@
   (let ((module-path (map:get parsed-options "path"))
         (module-dirs (map:get parsed-options "module_dir"))
         (errors nil))
-    
+
     ;; Handle --path option - register single module directory
     (when module-path
       ;; module-path is a string from the command line parser
-      ;; Resolve relative paths relative to user's original working directory
+      ;; Resolve relative paths relative to current working directory
       (let* ((is-absolute (or (char= (char module-path 0) #\/)
                               #+win32 (and (>= (length module-path) 3)
                                            (char= (char module-path 1) #\:))))
-             (user-dir (sb-ext:posix-getenv "EPSILON_USER"))
-             (base-dir (if user-dir (truename user-dir) (truename ".")))
+             (base-dir (truename "."))
              (resolved-path (if is-absolute
                                 (pathname module-path)
                                 (merge-pathnames (pathname module-path) base-dir)))
              ;; Normalize the resolved path to handle .. components
-             (normalized-path (handler-case 
+             (normalized-path (handler-case
                                   (truename resolved-path)
                                 (error ()
                                   ;; If truename fails, try parsing the path manually
@@ -256,20 +263,19 @@
           (push (format nil "Path does not exist: ~A" normalized-path) errors))
         (unless errors
           (loader:register-module environment (namestring normalized-path)))))
-    
+
     ;; Handle --module-dir option - scan directories for modules
     (when module-dirs
       (dolist (dir module-dirs)
         (let* ((is-absolute (or (char= (char dir 0) #\/)
                                 #+win32 (and (>= (length dir) 3)
                                              (char= (char dir 1) #\:))))
-               (user-dir (sb-ext:posix-getenv "EPSILON_USER"))
-               (base-dir (if user-dir (truename user-dir) (truename ".")))
+               (base-dir (truename "."))
                (resolved-dir (if is-absolute
                                  (pathname dir)
                                  (merge-pathnames (pathname dir) base-dir)))
                ;; Normalize the resolved path to handle .. components
-               (normalized-dir (handler-case 
+               (normalized-dir (handler-case
                                    (truename resolved-dir)
                                  (error ()
                                    ;; If truename fails, try parsing the path manually
@@ -278,7 +284,48 @@
             (push (format nil "Module directory does not exist: ~A" normalized-dir) errors))
           (unless errors
             (loader:scan-module-directory environment (namestring normalized-dir))))))
-    
+
+    errors))
+
+(defun process-workspace-options (environment parsed-options)
+  "Process --workspace options from parsed arguments.
+   Loads each workspace and registers its modules in the environment.
+   Relative paths are resolved from the user's original working directory
+   (EPSILON_CWD), not from EPSILON_HOME."
+  (let ((workspaces (map:get parsed-options "workspace"))
+        (errors nil))
+    (when workspaces
+      (dolist (ws-path workspaces)
+        (let* ((is-absolute (and (> (length ws-path) 0)
+                                 (char= (char ws-path 0) #\/)))
+               ;; Use EPSILON_CWD (user's original directory) for relative paths
+               (user-cwd (or (env:getenv "EPSILON_CWD") (namestring (truename "."))))
+               (base-dir (if (char= (char user-cwd (1- (length user-cwd))) #\/)
+                             user-cwd
+                             (concatenate 'string user-cwd "/")))
+               (resolved-path (if is-absolute
+                                  ws-path
+                                  (namestring (merge-pathnames ws-path base-dir))))
+               ;; Ensure path ends with / for proper merge
+               (dir-path (if (char= (char resolved-path (1- (length resolved-path))) #\/)
+                             resolved-path
+                             (concatenate 'string resolved-path "/"))))
+          ;; Check workspace exists
+          (unless (probe-file resolved-path)
+            (push (format nil "Workspace directory not found: ~A" resolved-path) errors)
+            (return-from process-workspace-options errors))
+          ;; Check for workspace.lisp
+          (let ((ws-file (concatenate 'string dir-path "workspace.lisp")))
+            (unless (probe-file ws-file)
+              (push (format nil "No workspace.lisp found in: ~A" resolved-path) errors)
+              (return-from process-workspace-options errors)))
+          ;; Load workspace modules
+          (handler-case
+              (progn
+                (log:info "Loading workspace from ~A" resolved-path)
+                (loader:load-workspace-modules environment resolved-path))
+            (error (e)
+              (push (format nil "Error loading workspace ~A: ~A" resolved-path e) errors))))))
     errors))
 
 (defun load-modules (environment modules)
@@ -300,7 +347,7 @@
 
 (defun test-modules (environment specs &key verbose)
   "Test multiple modules with result collection by delegating to epsilon.test."
-  (log:debug "test-modules called with environment: ~A, specs: ~A, verbose: ~A" 
+  (log:debug "test-modules called with environment: ~A, specs: ~A, verbose: ~A"
              environment specs verbose)
   (loader:load-module environment "epsilon.test")
   (let ((run-tests-fn (find-symbol "RUN-TESTS" (find-package "EPSILON.TEST"))))
@@ -314,7 +361,7 @@
   "Execute a Lisp expression with proper module loading."
   (when modules
     (load-modules environment modules))
-  
+
   ;; Read and evaluate the expression
   (let ((form (if (stringp expression)
                   (read-from-string expression)
@@ -328,24 +375,24 @@
                       *package*))
          (symbol (when package
                    (find-symbol (string-upcase function-spec) package))))
-    
+
     (unless package
-      (error "Package ~A not found.~%Make sure to load it with --module or that it's exported by a loaded module." 
+      (error "Package ~A not found.~%Make sure to load it with --module or that it's exported by a loaded module."
              package-spec))
-    
+
     (unless symbol
-      (error "Function ~A not found in package ~A.~%Available exports: ~{~A~^, ~}" 
+      (error "Function ~A not found in package ~A.~%Available exports: ~{~A~^, ~}"
              function-spec (package-name package)
              (let ((exports '()))
                (do-external-symbols (s package exports)
                  (push (symbol-name s) exports)))))
-    
+
     (unless (fboundp symbol)
       (error "Symbol ~A is not a function" symbol))
-    
+
     ;; Call the function with args
-    (log:info "Executing ~A:~A with args: ~S" 
-              (or package-spec (package-name *package*)) 
+    (log:info "Executing ~A:~A with args: ~S"
+              (or package-spec (package-name *package*))
               function-spec args)
     (apply symbol args)))
 
@@ -364,11 +411,11 @@
                 (loop while (and (< i (length args))
                                  (>= (length (nth i args)) 2)
                                  (string= "--" (subseq (nth i args) 0 2))
-                                 (not (member (nth i args) 
+                                 (not (member (nth i args)
                                               '("--load" "--eval" "--exec" "--module" "--test")
                                               :test #'string=)))
                       do (incf i 2))) ; Skip --key value pairs
-               (t 
+               (t
                 (push arg filtered-args)
                 (incf i))))
     (reverse filtered-args)))
@@ -399,7 +446,7 @@
                                      (>= (length (nth j args)) 2)
                                      (string= "--" (subseq (nth j args) 0 2))
                                      ;; Stop at other known flags
-                                     (not (member (nth j args) 
+                                     (not (member (nth j args)
                                                   '("--load" "--eval" "--exec" "--module" "--test")
                                                   :test #'string=)))
                           do (when (< (1+ j) (length args))
@@ -466,12 +513,14 @@
   (format t "  --eval EXPR                Evaluate expression and exit~%")
   (format t "  --load FILE                Load Lisp file (repeatable)~%")
   (format t "  --run FILE                 Run script (auto-loads package dependencies)~%")
+  (format t "  --start MODULE             Start module as application (calls MAIN)~%")
   (format t "  --exec PKG:FN              Execute function with remaining args~%")
   (format t "~%")
 
   (format t "Modules:~%")
   (format t "  --module MODULE            Load module before execution (repeatable)~%")
   (format t "  --modules                  List all available modules~%")
+  (format t "  --workspace PATH           Load workspace (repeatable)~%")
   (format t "  --path PATH                Set module search path~%")
   (format t "  --module-dir DIR           Add module directory (repeatable)~%")
   (format t "~%")
@@ -483,6 +532,7 @@
   (format t "~%")
 
   (format t "Development:~%")
+  (format t "  --repl                     Start ELS-based interactive REPL~%")
   (format t "  --init                     Initialize new project in current directory~%")
   (format t "  --new NAME                 Create new module from template~%")
   (format t "  --doctor                   Run environment diagnostics~%")
@@ -503,12 +553,14 @@
   (format t "~%")
 
   (format t "Examples:~%")
-  (format t "  epsilon                              Start REPL~%")
+  (format t "  epsilon                              Start basic REPL~%")
+  (format t "  epsilon --repl                       Start ELS REPL (with debugger)~%")
   (format t "  epsilon --eval \"(+ 1 2 3)\"           Evaluate expression~%")
   (format t "  epsilon --module epsilon.json        Load JSON module~%")
   (format t "  epsilon --test epsilon.core          Run core tests~%")
   (format t "  epsilon --load script.lisp           Load and run script~%")
   (format t "  epsilon --run examples/mtls.lisp     Run script with auto-deps~%")
+  (format t "  epsilon --start myapp                Start module as service~%")
   (format t "  epsilon --exec myapp:main -- args    Run app with arguments~%")
   (format t "~%")
 
@@ -526,7 +578,7 @@
   "Display all modules with their virtual capabilities mixed in."
   (let* ((modules (loader:query-modules environment))
          (module-data '()))
-    
+
     (dolist (module modules)
       (let* ((name (loader:module-name module))
              (metadata (loader:module-metadata module))
@@ -534,16 +586,16 @@
              (platform (getf metadata :platform))
              (status (if (loader:module-loaded-p module) "LOADED" "AVAILABLE"))
              (location (path:path-string (loader:module-location module))))
-        
+
         ;; Add to module list (skip platform-specific unless on that platform)
         (when (or (not platform)
                   (string-equal platform (string-downcase (symbol-name (env:platform)))))
           (push (list name version status location) module-data))))
-    
-    
+
+
     ;; Sort modules by name
     (setf module-data (sort module-data #'string< :key #'first))
-    
+
     ;; Display modules
     (format t "~%Modules~%")
     (format t "=======~%~%")
@@ -553,7 +605,7 @@
                     module-data)))
           (table:print-table tbl))
         (format t "No modules found.~%"))
-    
+
     ;; Summary
     (format t "~%Found ~D module~:P~%" (length module-data))))
 
@@ -565,7 +617,7 @@
     (error (e)
       (format *error-output* "Error loading test module: ~A~%" e)
       (return-from list-all-tests)))
-  
+
   ;; Load all test modules to populate the registry
   (let ((modules (loader:query-modules environment)))
     (dolist (module modules)
@@ -578,9 +630,9 @@
           ;; Ignore modules without tests or with errors
           (log:debug "Skipping tests for module: ~A" e)
           nil))))
-  
+
   ;; Get the list of tests with hashes
-  (let ((list-fn (find-symbol "LIST-ALL-TESTS-WITH-HASHES" 
+  (let ((list-fn (find-symbol "LIST-ALL-TESTS-WITH-HASHES"
                               (find-package "EPSILON.TEST.SUITE"))))
     (when list-fn
       (let ((tests (funcall list-fn)))
@@ -593,7 +645,7 @@
                   (declare (ignore test-id))
                   (let* ((package-name (package-name (symbol-package symbol)))
                          (test-name (symbol-name symbol)))
-                    (format t "~8A  ~35A  ~A~%" 
+                    (format t "~8A  ~35A  ~A~%"
                             hash package-name test-name)))))
             (format t "~&No tests registered.~%"))))))
 
@@ -602,6 +654,55 @@
   (format t "Epsilon REPL~%")
   (format t "Type (quit) or Ctrl+D to exit~%~%")
   (sb-impl::toplevel-init))
+
+(defvar *els-repl-port* 7889
+  "Port for the ELS REPL server (local connections only).")
+
+(defun start-els-repl (environment)
+  "Start the ELS-based interactive REPL.
+   Loads the ELS module, starts a server, and connects the terminal client."
+  ;; Load the ELS module
+  (handler-case
+      (loader:load-module environment "epsilon.els")
+    (error (e)
+      (format *error-output* "Error loading epsilon.els: ~A~%" e)
+      (sb-ext:exit :code 1)))
+
+  (let* (;; Get ELS functions
+         (els-pkg (find-package "EPSILON.ELS"))
+         (server-pkg (find-package "EPSILON.ELS.SERVER"))
+         (make-server-fn (fdefinition (find-symbol "MAKE-SERVER" server-pkg)))
+         (server-start-fn (fdefinition (find-symbol "SERVER-START" server-pkg)))
+         (server-stop-fn (fdefinition (find-symbol "SERVER-STOP" server-pkg)))
+         (setup-connection-fn (fdefinition (find-symbol "SETUP-CONNECTION" els-pkg)))
+         ;; Terminal client
+         (terminal-pkg (find-package "EPSILON.ELS.CLIENT.TERMINAL"))
+         (run-terminal-fn (fdefinition (find-symbol "RUN-TERMINAL" terminal-pkg))))
+
+    (unless (and els-pkg server-pkg make-server-fn server-start-fn terminal-pkg run-terminal-fn)
+      (format *error-output* "Error: ELS module not properly loaded~%")
+      (sb-ext:exit :code 1))
+
+    ;; Create and start server (localhost only for security)
+    (let ((server (funcall make-server-fn
+                           :host "127.0.0.1"
+                           :port *els-repl-port*
+                           :on-connection setup-connection-fn)))
+      (funcall server-start-fn server)
+
+      ;; Give server time to start accepting
+      (sleep 0.1)
+
+      ;; Run terminal client (this blocks until user quits)
+      (unwind-protect
+           (handler-case
+               (funcall run-terminal-fn
+                        :host "127.0.0.1"
+                        :port *els-repl-port*)
+             (error (e)
+               (format *error-output* "Terminal error: ~A~%" e)))
+        ;; Clean up server on exit
+        (funcall server-stop-fn server)))))
 
 (defun process-test-option (environment parsed-args)
   "Process --test and --list-tests options from parsed arguments.
@@ -615,14 +716,14 @@
       (error (e)
         (format *error-output* "Error listing tests: ~A~%" e)
         (return-from process-test-option t))))
-  
+
   ;; Handle --test
   (let ((modules-to-test (map:get (argparse:parsed-options parsed-args) "test"))
         (verbose (map:get (argparse:parsed-options parsed-args) "verbose")))
     (when modules-to-test
       (test-modules environment modules-to-test :verbose verbose)
       ;; Check if we should exit
-      (let ((has-other-actions 
+      (let ((has-other-actions
              (or (and (map:get (argparse:parsed-options parsed-args) "eval")
                       (not (eq (map:get (argparse:parsed-options parsed-args) "eval") :not-provided)))
                  (map:get (argparse:parsed-options parsed-args) "exec")
@@ -642,7 +743,7 @@
       (error (e)
         (format *error-output* "Error loading module ~A: ~A~%" module e)
         (sb-ext:exit :code 1))))
-  
+
   ;; Evaluate expression(s)
   (handler-case
       (with-input-from-string (stream expression-string)
@@ -677,7 +778,7 @@
                          (when (or (search "/" module-name) (search "\\" module-name))
                            (pathname module-name)))))
     (loop for path in possible-paths
-          when (and path 
+          when (and path
                     (probe-file path)
                     (probe-file (merge-pathnames "module.lisp" path)))
             return (namestring path))))
@@ -710,6 +811,30 @@
                     (list (string (first spec)) (string (second spec)))
                     (list (string spec) nil)))
               (cdr imports-clause)))))
+
+(defun extract-package-shadow (package-form)
+  "Extract shadow specs from a (package name (shadow ...)) form.
+   Returns a list of symbols to shadow."
+  (let ((shadow-clause (find-if (lambda (clause)
+                                  (and (consp clause)
+                                       (symbolp (first clause))
+                                       (string-equal "SHADOW" (symbol-name (first clause)))))
+                                (cddr package-form))))
+    (when shadow-clause
+      (cdr shadow-clause))))
+
+(defun extract-package-use (package-form)
+  "Extract use specs from a (package name (use ...)) form.
+   Returns a list of package names to use."
+  (let ((use-clause (find-if (lambda (clause)
+                               (and (consp clause)
+                                    (symbolp (first clause))
+                                    (string-equal "USE" (symbol-name (first clause)))))
+                             (cddr package-form))))
+    (when use-clause
+      (mapcar (lambda (pkg)
+                (string pkg))
+              (cdr use-clause)))))
 
 (defun package-name-to-module-name (package-name)
   "Derive module name from a package name.
@@ -758,15 +883,23 @@
   "Transform a (package name (import ...)) form into defpackage + in-package forms."
   (let* ((name (second package-form))
          (imports (extract-package-imports package-form))
+         (shadows (extract-package-shadow package-form))
+         (uses (extract-package-use package-form))
          (local-nicknames (mapcar (lambda (spec)
                                     (let ((pkg-name (first spec))
                                           (nickname (second spec)))
                                       (list (intern (string-upcase nickname))
                                             (intern (string-upcase pkg-name) :keyword))))
-                                  (remove-if-not #'second imports))))
+                                  (remove-if-not #'second imports)))
+         ;; Build the :use list - always include CL, plus any user-specified packages
+         (use-list (cons 'cl (mapcar (lambda (pkg)
+                                       (intern (string-upcase pkg) :keyword))
+                                     uses))))
     `(progn
        (defpackage ,name
-         (:use cl)
+         (:use ,@use-list)
+         ,@(when shadows
+             `((:shadow ,@shadows)))
          ,@(when local-nicknames
              `((:local-nicknames ,@local-nicknames))))
        (in-package ,name))))
@@ -788,42 +921,77 @@
 
    Usage:
      (package my-package
+       (use epsilon.test)
        (import (epsilon.http.simple http)
-               (epsilon.json json)))
+               (epsilon.json json))
+       (shadow byte stream))
 
    Each import specifies a package and an optional local nickname.
+   The use clause lists packages whose exported symbols should be inherited.
+   The shadow clause lists symbols to shadow from used packages.
    The system automatically loads the modules that provide these packages
    before defining the package.
 
-   This expands to a standard DEFPACKAGE with :local-nicknames."
+   This expands to a standard DEFPACKAGE with :use, :local-nicknames and :shadow."
   (let* ((form (list* 'package name clauses))
          (imports (extract-package-imports form))
-         (module-loads (mapcar (lambda (spec)
-                                 (let ((module-name (package-name-to-module-name (first spec))))
-                                   (when module-name
-                                     `(when (and (boundp 'loader:*environment*)
-                                                 loader:*environment*)
-                                        (let ((env loader:*environment*))
-                                          (unless (loader:module-loaded-p
-                                                   (or (loader:get-module env ,module-name)
-                                                       (loader:get-module env "epsilon.core")))
-                                            (loader:load-module env
-                                              (if (loader:get-module env ,module-name)
-                                                  ,module-name
-                                                  "epsilon.core"))))))))
-                               imports))
+         (shadows (extract-package-shadow form))
+         (uses (extract-package-use form))
+         ;; Module loads for imports
+         ;; Skip if package already exists (internal dependency already compiled)
+         (import-module-loads (mapcar (lambda (spec)
+                                        (let ((module-name (package-name-to-module-name (first spec)))
+                                              (pkg-name (string (first spec))))
+                                          (when module-name
+                                            `(unless (find-package ,pkg-name)
+                                               (when (and (boundp 'loader:*environment*)
+                                                          loader:*environment*)
+                                                 (let ((env loader:*environment*))
+                                                   (unless (loader:module-loaded-p
+                                                            (or (loader:get-module env ,module-name)
+                                                                (loader:get-module env "epsilon.core")))
+                                                     (loader:load-module env
+                                                       (if (loader:get-module env ,module-name)
+                                                           ,module-name
+                                                           "epsilon.core")))))))))
+                                      imports))
+         ;; Module loads for used packages
+         ;; Skip if package already exists (internal dependency already compiled)
+         (use-module-loads (mapcar (lambda (pkg-name)
+                                     (let ((module-name (package-name-to-module-name pkg-name))
+                                           (pkg-name-str (string pkg-name)))
+                                       (when module-name
+                                         `(unless (find-package ,pkg-name-str)
+                                            (when (and (boundp 'loader:*environment*)
+                                                       loader:*environment*)
+                                              (let ((env loader:*environment*))
+                                                (unless (loader:module-loaded-p
+                                                         (or (loader:get-module env ,module-name)
+                                                             (loader:get-module env "epsilon.core")))
+                                                  (loader:load-module env
+                                                    (if (loader:get-module env ,module-name)
+                                                        ,module-name
+                                                        "epsilon.core")))))))))
+                                   uses))
          (local-nicknames (mapcar (lambda (spec)
                                     (let ((pkg-name (first spec))
                                           (nickname (second spec)))
                                       (when nickname
                                         (list (intern (string-upcase nickname))
                                               (intern (string-upcase pkg-name) :keyword)))))
-                                  imports)))
+                                  imports))
+         ;; Build :use list - always CL plus user-specified packages
+         (use-list (cons 'cl (mapcar (lambda (pkg)
+                                       (intern (string-upcase pkg) :keyword))
+                                     uses))))
     `(progn
        (eval-when (:compile-toplevel :load-toplevel :execute)
-         ,@(remove nil module-loads))
+         ,@(remove nil import-module-loads)
+         ,@(remove nil use-module-loads))
        (defpackage ,name
-         (:use cl)
+         (:use ,@use-list)
+         ,@(when shadows
+             `((:shadow ,@shadows)))
          ,@(when (remove nil local-nicknames)
              `((:local-nicknames ,@(remove nil local-nicknames)))))
        (in-package ,name))))
@@ -831,17 +999,11 @@
 (defun run-script (environment filepath passthrough-args)
   "Run a script file with automatic dependency loading.
    Parses the (package ...) form, loads required modules, then evaluates the file."
-  (let* ((user-dir (sb-ext:posix-getenv "EPSILON_USER"))
-         (resolved-path (if (and (> (length filepath) 0)
+  (let* ((resolved-path (if (and (> (length filepath) 0)
                                  (char= (char filepath 0) #\/))
                             filepath
-                            (if user-dir
-                                ;; Ensure user-dir ends with / for proper merge
-                                (let ((dir (if (char= (char user-dir (1- (length user-dir))) #\/)
-                                               user-dir
-                                               (concatenate 'string user-dir "/"))))
-                                  (namestring (merge-pathnames filepath dir)))
-                                filepath))))
+                            ;; Resolve relative paths from current directory
+                            (namestring (merge-pathnames filepath (truename "."))))))
     (unless (probe-file resolved-path)
       (format *error-output* "Error: Script file not found: ~A~%" resolved-path)
       (sb-ext:exit :code 1))
@@ -893,6 +1055,32 @@
                     (apply main-fn passthrough-args)
                     (funcall main-fn))))))))))
 
+(defun start-module (environment module-name passthrough-args)
+  "Start a module as an application.
+   Loads the module and calls its MAIN function with passthrough args."
+  ;; Load the module
+  (log:info "Loading module ~A" module-name)
+  (loader:load-module environment module-name)
+
+  ;; Find the module's package (conventionally same name as module)
+  (let* ((pkg-name (string-upcase module-name))
+         (package (find-package pkg-name)))
+    (unless package
+      (error "Package ~A not found after loading module ~A" pkg-name module-name))
+
+    ;; Find and call MAIN function
+    (let ((main-fn (find-symbol "MAIN" package)))
+      (unless main-fn
+        (error "No MAIN function found in package ~A" pkg-name))
+      (unless (fboundp main-fn)
+        (error "MAIN is not a function in package ~A" pkg-name))
+
+      (log:info "Starting ~A" module-name)
+      ;; Call with passthrough args if any
+      (if passthrough-args
+          (apply main-fn passthrough-args)
+          (funcall main-fn)))))
+
 (defun run (args)
   "Dispatch to the appropriate command handler"
   (let* ((arg-parser (initialize-parser))
@@ -911,20 +1099,25 @@
             (setf exec-args (append exec-args (list action)))))
         ;; Filter out exec and related args for argparse
         (let* ((filtered-args (remove-exec-args epsilon-args))
-               (parsed-args (argparse:parse-args arg-parser filtered-args)))
+               (parsed-args (handler-case
+                                (argparse:parse-args arg-parser filtered-args)
+                              (argparse:argument-error (e)
+                                (format *error-output* "Error: ~A~%" e)
+                                (format *error-output* "~%Try 'epsilon --help' for usage information.~%")
+                                (sb-ext:exit :code 1)))))
         ;; Check global options
         (when (map:get (argparse:parsed-options parsed-args) "quiet")
           ;; Set minimal logging and suppress warnings
           (map:assoc! (loader:environment-config environment) :warning-behavior :muffle)
           (log:configure-from-string "warn"))
-        
+
         (when (map:get (argparse:parsed-options parsed-args) "log")
           (log:configure-from-string (map:get (argparse:parsed-options parsed-args) "log")))
-            
+
         ;; Handle --help
         (when (map:get (argparse:parsed-options parsed-args) "help")
           (show-help-and-exit arg-parser))
-            
+
         ;; Handle --version and --version-json
         (when (map:get (argparse:parsed-options parsed-args) "version_json")
           (format t "~A~%" (format-version-json))
@@ -932,29 +1125,37 @@
         (when (map:get (argparse:parsed-options parsed-args) "version")
           (format t "~A~%" (format-version-table))
           (sb-ext:exit :code 0))
-            
+
         ;; Process --path and --repository flags to set up environment
-        (let ((errors (process-repository-options environment 
+        (let ((errors (process-repository-options environment
                                                   (argparse:parsed-options parsed-args))))
           (when errors
             (dolist (error errors)
               (format *error-output* "Error: ~A~%" error))
             (sb-ext:exit :code 1)))
-            
+
+        ;; Process --workspace flags to load additional workspaces
+        (let ((errors (process-workspace-options environment
+                                                  (argparse:parsed-options parsed-args))))
+          (when errors
+            (dolist (error errors)
+              (format *error-output* "Error: ~A~%" error))
+            (sb-ext:exit :code 1)))
+
         ;; Process --module flags to load specific modules
         (let ((modules-to-load (map:get (argparse:parsed-options parsed-args) "module")))
           (when modules-to-load
             (load-modules environment modules-to-load)))
-            
+
         ;; STEP 3: Process --test flag separately (not part of action sequence)
         (when (process-test-option environment parsed-args)
           (sb-ext:exit :code 0))
-            
+
         ;; Handle --modules (can be processed anytime after environment setup)
         (when (map:get (argparse:parsed-options parsed-args) "modules")
           (display-modules environment)
           (sb-ext:exit :code 0))
-        
+
         ;; Handle library diagnostic commands
         (when (map:get (argparse:parsed-options parsed-args) "check_libraries")
           (handler-case
@@ -970,7 +1171,7 @@
             (error (e)
               (format *error-output* "Error checking libraries: ~A~%" e)))
           (sb-ext:exit :code 0))
-        
+
         (when (map:get (argparse:parsed-options parsed-args) "library_info")
           (handler-case
               (progn
@@ -993,7 +1194,7 @@
             (error (e)
               (format *error-output* "Error getting library info: ~A~%" e)))
           (sb-ext:exit :code 0))
-        
+
         (when (map:get (argparse:parsed-options parsed-args) "available_libraries")
           (handler-case
               (progn
@@ -1008,7 +1209,7 @@
             (error (e)
               (format *error-output* "Error listing available libraries: ~A~%" e)))
           (sb-ext:exit :code 0))
-        
+
         (when (map:get (argparse:parsed-options parsed-args) "missing_libraries")
           (handler-case
               (progn
@@ -1067,6 +1268,11 @@
             (error (e)
               (format *error-output* "Error running diagnostics: ~A~%" e)
               (sb-ext:exit :code 1)))
+          (sb-ext:exit :code 0))
+
+        ;; Handle --repl (ELS-based REPL)
+        (when (map:get (argparse:parsed-options parsed-args) "repl")
+          (start-els-repl environment)
           (sb-ext:exit :code 0))
 
         ;; Handle --install (ad-hoc module installation)
@@ -1128,17 +1334,34 @@
               (sb-ext:exit :code 1)))
           (sb-ext:exit :code 0))
 
+        ;; Handle --start (start module as application)
+        (when (map:get (argparse:parsed-options parsed-args) "start")
+          (handler-case
+              (start-module environment
+                            (map:get (argparse:parsed-options parsed-args) "start")
+                            passthrough-args)
+            (error (e)
+              (format *error-output* "Error starting module: ~A~%" e)
+              (sb-ext:exit :code 1)))
+          (sb-ext:exit :code 0))
+
         ;; STEP 4: Process --load, --eval, and --exec in order of appearance
         (when ordered-actions
           (process-ordered-actions environment ordered-actions passthrough-args)
           (sb-ext:exit :code 0))
-            
+
         ;; No command, no positionals, no eval - start REPL
         (start-interactive-repl))))))
 
 (defun cli-run (&optional args)
   "Main entry point from from epsilon script"
   (declare (ignore args))
+  ;; Enable epsilon reader syntax at the top level.
+  ;; This must be done here (not in epsilon.lisp) because SBCL's --load
+  ;; dynamically binds *readtable*, so changes made inside loaded files
+  ;; don't persist. Since cli-run is called via --eval at the top level,
+  ;; readtable changes here DO persist.
+  (epsilon.reader:enable-epsilon-syntax)
   (let ((posix-args (rest sb-ext:*posix-argv*)))
     (when (string-equal "--" (car posix-args))
       (pop posix-args))

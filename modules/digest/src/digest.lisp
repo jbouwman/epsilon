@@ -14,17 +14,17 @@
    #:sha3-256
    #:sha1
    #:crc32
-   
+
    ;; Streaming hash interface (Go-style)
    #:make-md5
    #:make-sha256
    #:make-sha3-256
-   #:make-sha1  
+   #:make-sha1
    #:make-crc32
    #:update
    #:finalize
    #:reset
-   
+
    ;; Utility
    #:bytes-to-hex))
 
@@ -36,13 +36,13 @@
   "Convert various input types to (simple-array (unsigned-byte 8) (*))"
   (etypecase data
     ((simple-array (unsigned-byte 8) (*)) data)
-    (string 
+    (string
      (map '(simple-array (unsigned-byte 8) (*)) #'char-code data))
-    (vector 
+    (vector
      (if (every (lambda (x) (typep x '(unsigned-byte 8))) data)
          (coerce data '(simple-array (unsigned-byte 8) (*)))
          (error "Vector contains non-byte values")))
-    (list 
+    (list
      (if (every (lambda (x) (typep x '(unsigned-byte 8))) data)
          (coerce data '(simple-array (unsigned-byte 8) (*)))
          (error "List contains non-byte values")))))
@@ -117,7 +117,7 @@
   (let ((bytes (normalize-input data)))
     (case (hasher-algorithm hasher)
       ((:md5 :sha256 :sha1 :sha3-256 :crc32)
-       (generic:update-digest (hasher-digest hasher) bytes 
+       (generic:update-digest (hasher-digest hasher) bytes
                              :start 0 :end (length bytes))))
     nil))
 

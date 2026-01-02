@@ -13,7 +13,7 @@
   ;; Test strlen optimization
   (let ((result (ffi:shared-call '("strlen" "libc") :unsigned-long '(:string) "hello")))
     (is (= result 5) "strlen should return correct length"))
-  
+
   ;; Test with optimization explicitly
   (let ((result (opt:%strlen-optimized "hello world")))
     (is (= result 11) "Optimized strlen should work")))
@@ -22,10 +22,10 @@
   "Test enabling/disabling optimizations"
   (opt:enable-ffi-optimizations)
   (is opt:*optimization-enabled* "Optimizations should be enabled")
-  
+
   (opt:disable-ffi-optimizations)
   (is (not opt:*optimization-enabled*) "Optimizations should be disabled")
-  
+
   ;; Re-enable for other tests
   (opt:enable-ffi-optimizations))
 
@@ -42,23 +42,23 @@
   (skip)
   (let ((test-string "This is a test string for performance measurement")
         (iterations 10000))
-    
+
     ;; Time regular call (with trampolines)
     (let ((start (get-internal-real-time)))
       (dotimes (i iterations)
         (ffi:shared-call-fast '("strlen" "libc") :unsigned-long '(:string) test-string))
       (let ((regular-time (- (get-internal-real-time) start)))
-        
+
         ;; Time optimized call
         (setf start (get-internal-real-time))
         (dotimes (i iterations)
           (opt:%strlen-optimized test-string))
         (let ((optimized-time (- (get-internal-real-time) start)))
-          
+
           ;; Optimized should be faster (or at least not slower)
           (is (<= optimized-time (* regular-time 1.1))
               "Optimized call should not be significantly slower than regular")
-          
+
           ;; Report speedup
           (when (> regular-time 0)
             (format t "~%  Speedup: ~,2fx (regular: ~D, optimized: ~D)~%"

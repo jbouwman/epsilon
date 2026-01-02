@@ -8,15 +8,15 @@
    ;; Address families
    +af-inet+
    +af-inet6+
-   
+
    ;; Socket types
    +sock-stream+
    +sock-dgram+
-   
+
    ;; Protocols
    +ipproto-tcp+
    +ipproto-udp+
-   
+
    ;; Socket options
    +sol-socket+
    +so-reuseaddr+
@@ -27,25 +27,25 @@
    +so-sndbuf+
    +so-rcvtimeo+
    +so-sndtimeo+
-   
+
    ;; TCP options
    +ipproto-tcp-level+
    +tcp-nodelay+
-   
+
    ;; Shutdown options
    +shut-rd+
    +shut-wr+
    +shut-rdwr+
-   
+
    ;; IPv6 constants
    +ipv6-addr-size+
    +sockaddr-in6-size+
-   
+
    ;; File control
    +f-getfl+
    +f-setfl+
    +o-nonblock+
-   
+
    ;; FFI functions
    %socket
    %bind
@@ -74,7 +74,7 @@
 (defconstant +af-inet+ 2)
 (defconstant +af-inet6+ 30)
 
-;; Socket types  
+;; Socket types
 (defconstant +sock-stream+ 1)
 (defconstant +sock-dgram+ 2)
 
@@ -115,7 +115,7 @@
 ;;; FFI Bindings
 ;;; ============================================================================
 
-(lib:defshared %socket "socket" "libc" :int 
+(lib:defshared %socket "socket" "libc" :int
   (domain :int) (type :int) (protocol :int)
   :documentation "Create socket")
 

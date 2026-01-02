@@ -31,7 +31,7 @@
 (defun wait-for-process-state (subprocess target-state &key (timeout-seconds 5))
   "Wait for a subprocess to reach a target state using polling.
    Target state can be :running or :stopped."
-  (poll-until 
+  (poll-until
    (lambda ()
      (ecase target-state
        (:running (process:running-p subprocess))
@@ -57,11 +57,11 @@
 
 (deftest test-build-command-line ()
   "Test command line building"
-  (is-equal "echo 'hello'" 
+  (is-equal "echo 'hello'"
             (process:build-command-line "echo" '("hello") :shell :posix))
-  (is-equal "ls 'file with spaces.txt'" 
+  (is-equal "ls 'file with spaces.txt'"
             (process:build-command-line "ls" '("file with spaces.txt") :shell :posix))
-  (is-equal "grep 'pattern' 'file1.txt' 'file2.txt'" 
+  (is-equal "grep 'pattern' 'file1.txt' 'file2.txt'"
             (process:build-command-line "grep" '("pattern" "file1.txt" "file2.txt") :shell :posix)))
 
 (deftest test-find-executable ()
@@ -71,7 +71,7 @@
     (is (or (null ls-path) (stringp ls-path)))
     (when ls-path
       (is (probe-file ls-path))))
-  
+
   ;; Test command that doesn't exist
   (is (null (process:find-executable "this-command-does-not-exist-hopefully"))))
 
@@ -106,10 +106,10 @@
 (deftest test-command-not-found ()
   "Test command not found error"
   (handler-case
-      (process:run-sync "this-command-definitely-does-not-exist" 
+      (process:run-sync "this-command-definitely-does-not-exist"
                         :check-executable t)
     (process:command-not-found (e)
-      (is (search "this-command-definitely-does-not-exist" 
+      (is (search "this-command-definitely-does-not-exist"
                   (process:process-error-command e))))
     (:no-error ()
       (is nil "Should have raised command-not-found error"))))
@@ -121,7 +121,7 @@
 (deftest test-stream-output-callback ()
   "Test stream output processing with callback"
   (let ((received-lines '()))
-    (process:run-sync "printf" 
+    (process:run-sync "printf"
                       :args '("line1\\nline2\\nline3\\n")
                       :stream-output (lambda (line)
                                        (push line received-lines)))
@@ -134,7 +134,7 @@
   "Test merging error stream into output"
   ;; This test uses a command that writes to both stdout and stderr
   (multiple-value-bind (output error-output exit-code)
-      (process:run-sync "sh" 
+      (process:run-sync "sh"
                         :args '("-c" "echo stdout; echo stderr >&2")
                         :merge-error t
                         :error-on-failure nil)
@@ -151,7 +151,7 @@
 (deftest test-shell-execution ()
   "Test running commands through shell"
   (multiple-value-bind (output error-output exit-code)
-      (process:run-sync "sh" 
+      (process:run-sync "sh"
                         :args '("-c" "echo $HOME")
                         :shell nil
                         :error-on-failure nil)
@@ -170,37 +170,37 @@
   ;; The echo command is POSIX standard and exists in most shells
   (let* ((cmd "echo")
          (args '("test"))
-         (subprocess (handler-case 
+         (subprocess (handler-case
                          (process:make-subprocess cmd :args args)
                        (error (e)
                          ;; If echo doesn't exist, skip the test
                          (skip (format nil "Cannot create subprocess: ~A" e))
                          (return-from test-subprocess-lifecycle)))))
-    
+
     (is (typep subprocess 'process:subprocess))
     (is-equal cmd (process:subprocess-command subprocess))
     (is-equal args (process:subprocess-args subprocess))
-    
+
     ;; Start the process
     (handler-case
         (process:start subprocess :wait nil)
       (error (e)
         (skip (format nil "Cannot start subprocess: ~A" e))
         (return-from test-subprocess-lifecycle)))
-    
+
     ;; For echo, the process might complete immediately
     ;; So we check if it's either running or already completed
-    (let ((started-or-completed 
-           (poll-until 
+    (let ((started-or-completed
+           (poll-until
             (lambda ()
               (or (process:running-p subprocess)
                   (numberp (process:process-exit-code subprocess))))
             :timeout-seconds 2)))
       (is started-or-completed "Process neither started nor completed within timeout"))
-    
+
     ;; Wait for completion
     (process:wait-for-process subprocess 5)
-    
+
     ;; Now verify the process has completed
     (is (not (process:running-p subprocess)))
     (is-equal 0 (process:process-exit-code subprocess))))
@@ -211,7 +211,7 @@
   ;; This is more portable than sleep
   (let* ((cmd "cat")
          (args '())  ; No args, will read from stdin
-         (subprocess (handler-case 
+         (subprocess (handler-case
                          (process:make-subprocess cmd :args args)
                        (error (e)
                          ;; If cat doesn't exist, try sh -c read
@@ -220,24 +220,24 @@
                            (error (e2)
                              (skip (format nil "Cannot create long-running subprocess: ~A, ~A" e e2))
                              (return-from test-terminate-gracefully)))))))
-    
+
     (handler-case
         (process:start subprocess :wait nil)
       (error (e)
         (skip (format nil "Cannot start subprocess: ~A" e))
         (return-from test-terminate-gracefully)))
-    
+
     ;; Poll until process is running
     (is (wait-for-process-state subprocess :running :timeout-seconds 2)
         "Process did not start within timeout")
-    
+
     ;; Terminate it gracefully
     (process:terminate-gracefully subprocess :timeout 1)
-    
+
     ;; Poll until process stops
     (is (wait-for-process-state subprocess :stopped :timeout-seconds 3)
         "Process did not terminate within timeout")
-    
+
     (is (not (process:running-p subprocess)))))
 
 ;;; ============================================================================
@@ -282,7 +282,7 @@
   ;; Simulate what epsilon.release might do
   (let ((progress-count 0))
     (multiple-value-bind (output error-output exit-code)
-        (process:run-sync "find" 
+        (process:run-sync "find"
                           :args '("/tmp" "-name" "*.tmp" "-type" "f")
                           :stream-output (lambda (line)
                                            (incf progress-count)
@@ -297,7 +297,7 @@
   "Test environment variable handling"
   (let ((test-env (list "TEST_VAR=test_value")))
     (multiple-value-bind (output error-output exit-code)
-        (process:run-sync "sh" 
+        (process:run-sync "sh"
                           :args '("-c" "echo $TEST_VAR")
                           :environment test-env
                           :shell nil
@@ -310,7 +310,7 @@
   "Test working directory change"
   (multiple-value-bind (output error-output exit-code)
       (process:run-sync "pwd"
-                        :working-directory "/tmp" 
+                        :working-directory "/tmp"
                         :error-on-failure nil)
     (declare (ignore error-output))
     (is-equal 0 exit-code)

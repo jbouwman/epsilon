@@ -25,16 +25,16 @@
   "Test basic RSA encryption and decryption"
   (let ((key (crypto:generate-rsa-key :bits 2048))
         (plaintext "Secret message!"))
-    
+
     ;; Encrypt with public key
     (let ((ciphertext (crypto:encrypt key plaintext)))
       (is (typep ciphertext '(vector (unsigned-byte 8))))
       ;; RSA ciphertext should be key-size/8 bytes
       (is-= (length ciphertext) 256)  ; 2048 bits / 8
-      
+
       ;; Ciphertext should be different from plaintext
       (is (not (equal (map 'string #'code-char ciphertext) plaintext)))
-      
+
       ;; Decrypt with private key
       (let ((decrypted (crypto:decrypt key ciphertext)))
         (is (stringp decrypted))
@@ -55,7 +55,7 @@
   (let* ((key (crypto:generate-rsa-key :bits 2048))
          ;; Max plaintext size for RSA-2048 with PKCS1 padding is ~245 bytes
          (max-plaintext (make-string 200 :initial-element #\X)))
-    
+
     (let* ((ciphertext (crypto:encrypt key max-plaintext))
            (decrypted (crypto:decrypt key ciphertext)))
       (is (string= decrypted max-plaintext)))))
@@ -65,13 +65,13 @@
   (let ((key1 (crypto:generate-rsa-key :bits 2048))
         (key2 (crypto:generate-rsa-key :bits 2048))
         (plaintext "Secret"))
-    
+
     (let ((ciphertext (crypto:encrypt key1 plaintext)))
       ;; Decrypting with wrong key should either fail or produce garbage
       (handler-case
           (let ((result (crypto:decrypt key2 ciphertext)))
             ;; If it doesn't throw an error, the result should NOT match the plaintext
-            (is (not (string= result plaintext)) 
+            (is (not (string= result plaintext))
                 "Decryption with wrong key should not produce original plaintext"))
         (crypto:crypto-error ()
             ;; This is also acceptable - some OpenSSL versions fail cleanly
@@ -83,7 +83,7 @@
         (binary-data (make-array 100 :element-type '(unsigned-byte 8)
                                  :initial-contents (loop for i from 0 below 100
                                                          collect (mod i 256)))))
-    
+
     (let* ((ciphertext (crypto:encrypt key binary-data))
            (decrypted (crypto:decrypt key ciphertext)))
       ;; Decrypted might be string, convert for comparison
@@ -96,7 +96,7 @@
   "Test that non-RSA keys cannot be used for encryption"
   (let ((ec-key (crypto:generate-ec-key :curve :p256))
         (ed-key (crypto:generate-ed25519-key)))
-    
+
     ;; EC key should not support encryption
     (handler-case
         (progn
@@ -104,7 +104,7 @@
 	  (is nil "EC key should not support encryption"))
       (error ()
 	     (is t "Correctly rejected EC key for encryption")))
-    
+
     ;; Ed25519 key should not support encryption
     (handler-case
         (progn
@@ -123,12 +123,12 @@
       (let ((bytes (crypto:crypto-random-bytes size)))
 	(is (typep bytes '(vector (unsigned-byte 8))))
 	(is-= (length bytes) size)))
-    
+
     ;; Test that successive calls produce different results
     (let ((bytes1 (crypto:crypto-random-bytes 32))
 	  (bytes2 (crypto:crypto-random-bytes 32)))
       (is (not (equalp bytes1 bytes2))))
-    
+
     ;; Test maximum size limit
     (handler-case
 	(progn
@@ -144,7 +144,7 @@
     (dotimes (i 100)
       (let ((n (crypto:crypto-random-integer 100)))
 	(is (and (>= n 0) (< n 100)))))
-    
+
     ;; Test different ranges
     (let ((small (crypto:crypto-random-integer 10))
 	  (medium (crypto:crypto-random-integer 1000))
@@ -152,11 +152,11 @@
       (is (< small 10))
       (is (< medium 1000))
       (is (< large 1000000)))
-    
+
     ;; Test edge case: max = 1
     (let ((n (crypto:crypto-random-integer 1)))
       (is-= n 0))
-    
+
     ;; Test distribution (basic check)
     (let ((counts (make-array 10 :initial-element 0)))
       (dotimes (i 1000)
@@ -183,7 +183,7 @@
     ;; Count occurrences of each byte value
     (loop for byte across bytes
 	  do (incf (aref counts byte)))
-    
+
     ;; Check that all byte values appear at least once
     ;; (statistically very likely with 1000 bytes)
     (let ((zeros 0))
@@ -202,11 +202,11 @@
 	 (public-pem (crypto:key-to-pem key :private-p nil))
 	 (public-key (crypto:key-from-pem public-pem :private-p nil))
 	 (plaintext "Public key encryption test"))
-    
+
     ;; Should be able to encrypt with public key
     (let ((ciphertext (crypto:encrypt public-key plaintext)))
       (is (typep ciphertext '(vector (unsigned-byte 8))))
-      
+
       ;; Should NOT be able to decrypt with public key
       (handler-case
 	  (progn
@@ -214,7 +214,7 @@
 	    (is nil "Should not decrypt without private key"))
 	(error ()
 	       (is t "Correctly failed to decrypt without private key")))
-      
+
       ;; Original key with private part should decrypt
       (let ((decrypted (crypto:decrypt key ciphertext)))
 	(is (string= decrypted plaintext))))))
@@ -225,16 +225,16 @@
   "Test encryption/decryption with exported/imported keys"
   (let* ((original-key (crypto:generate-rsa-key :bits 2048))
 	 (plaintext "Cross-key test message"))
-    
+
     ;; Export and reimport the full key
     (let* ((private-pem (crypto:key-to-pem original-key :private-p t))
 	   (reimported-key (crypto:key-from-pem private-pem :private-p t)))
-      
+
       ;; Encrypt with original, decrypt with reimported
       (let* ((ciphertext (crypto:encrypt original-key plaintext))
 	     (decrypted (crypto:decrypt reimported-key ciphertext)))
 	(is (string= decrypted plaintext)))
-      
+
       ;; Encrypt with reimported, decrypt with original
       (let* ((ciphertext (crypto:encrypt reimported-key plaintext))
 	     (decrypted (crypto:decrypt original-key ciphertext)))
@@ -246,7 +246,7 @@
   "Test performance of encryption operations"
   (let ((key (crypto:generate-rsa-key :bits 2048))
 	(plaintext "Performance test message"))
-    
+
     ;; Measure encryption time
     (let ((start (get-internal-real-time)))
       (dotimes (i 100)
@@ -254,7 +254,7 @@
       (let ((elapsed (- (get-internal-real-time) start)))
 	;; 100 encryptions should be reasonably fast
 	(is (< elapsed (* 2 internal-time-units-per-second)))))
-    
+
     ;; Measure decryption time
     (let ((ciphertext (crypto:encrypt key plaintext))
 	  (start (get-internal-real-time)))
@@ -274,7 +274,7 @@
       (let ((elapsed (- (get-internal-real-time) start)))
 	;; Should generate 1000 random values quickly
 	(is (< elapsed internal-time-units-per-second))))
-    
+
     ;; Random integer generation
     (let ((start (get-internal-real-time)))
       (dotimes (i 10000)

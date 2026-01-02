@@ -13,12 +13,12 @@
    #:*capture-compilation-output*
    #:*current-compilation-messages*
    #:*current-compilation-statistics*
-   
+
    #:with-compilation-capture
    #:capture-compiler-condition
    #:extract-source-location
    #:extract-compiler-context
-   
+
    #:compiler-hook-handler
    #:style-warning-hook-handler
    #:warning-hook-handler
@@ -56,31 +56,31 @@
           (column nil)
           (form-number nil)
           (toplevel-form nil))
-      
+
       ;; Try to extract file information
       (when (and (boundp 'sb-c::*compile-file-pathname*)
                  sb-c::*compile-file-pathname*)
         (setf file (namestring sb-c::*compile-file-pathname*)))
-      
+
       ;; Try to extract position information from compiler context
       (when (typep context 'sb-c::compiler-error-context)
         (let ((file-name (sb-c::compiler-error-context-file-name context))
               (file-position (sb-c::compiler-error-context-file-position context))
               (original-source-path (sb-c::compiler-error-context-original-source-path context)))
-          
+
           (when (and file-name (not (eq file-name :lisp)))
             (setf file (if (pathnamep file-name)
                           (namestring file-name)
                           file-name)))
-          
+
           ;; Try to convert file position to line number
           (when (and file file-position)
             (setf line (estimate-line-number file file-position)))
-          
+
           ;; Extract form number from source path
           (when original-source-path
             (setf form-number (length original-source-path)))))
-      
+
       (api:make-source-location
        :file file
        :line line
@@ -113,13 +113,13 @@
     ((and (boundp 'sb-c::*compiler-error-context*)
           sb-c::*compiler-error-context*)
      (extract-source-location-from-context sb-c::*compiler-error-context*))
-    
+
     ;; Fall back to basic file information
     ((and (boundp 'sb-c::*compile-file-pathname*)
           sb-c::*compile-file-pathname*)
      (api:make-source-location
       :file (namestring sb-c::*compile-file-pathname*)))
-    
+
     ;; No location information available
     (t nil)))
 
@@ -130,22 +130,22 @@
   (let ((context nil)
         (source-path nil)
         (enclosing-forms nil))
-    
+
     ;; Extract from compiler error context if available
     (when (and (boundp 'sb-c::*compiler-error-context*)
                sb-c::*compiler-error-context*
                (typep sb-c::*compiler-error-context* 'sb-c::compiler-error-context))
       (let ((error-context sb-c::*compiler-error-context*))
         (setf context (sb-c::compiler-error-context-context error-context))
-        (setf enclosing-forms 
+        (setf enclosing-forms
               (append (sb-c::compiler-error-context-enclosing-source error-context)
                       (sb-c::compiler-error-context-source error-context)))))
-    
+
     ;; Extract current path if available
     (when (and (boundp 'sb-c::*current-path*)
                sb-c::*current-path*)
       (setf source-path sb-c::*current-path*))
-    
+
     (values context source-path enclosing-forms)))
 
 ;;; Condition handlers

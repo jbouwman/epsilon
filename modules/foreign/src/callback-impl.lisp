@@ -11,7 +11,7 @@
 (defun test-callback-apis ()
   "Test what callback APIs are available"
   (format t "~%=== SBCL Callback API Exploration ===~%")
-  
+
   ;; Check SB-ALIEN exports
   (format t "~%SB-ALIEN exports related to callbacks/functions:~%")
   (let ((alien-exports (loop for sym being the external-symbols of :sb-alien
@@ -21,13 +21,13 @@
                             collect (symbol-name sym))))
     (dolist (sym (sort alien-exports #'string<))
       (format t "  ~A~%" sym)))
-  
+
   ;; Check for specific symbols we need
   (format t "~%Checking for specific callback symbols:~%")
   (dolist (sym-name '("ALIEN-LAMBDA" "ALIEN-CALLBACK" "CALLBACK" "MAKE-CALLBACK"))
     (let ((sym (find-symbol sym-name :sb-alien)))
       (format t "  ~A in SB-ALIEN: ~A~%" sym-name (if sym "YES" "NO"))))
-  
+
   ;; Check SB-IMPL for callback support
   (format t "~%SB-IMPL callback symbols:~%")
   (let ((impl-symbols (loop for sym being the symbols of "SB-IMPL"
@@ -35,10 +35,10 @@
                            collect (symbol-name sym))))
     (dolist (sym (sort impl-symbols #'string<))
       (format t "  ~A~%" sym)))
-  
+
   ;; Try to create a simple callback using available APIs
   (format t "~%Testing callback creation approaches:~%")
-  
+
   ;; Approach 1: Try sb-alien:define-alien-callable (if it exists)
   (let ((callable-sym (find-symbol "DEFINE-ALIEN-CALLABLE" :sb-alien)))
     (if callable-sym
@@ -52,7 +52,7 @@
             (error (e)
               (format t "    ERROR: ~A~%" e))))
         (format t "  DEFINE-ALIEN-CALLABLE not found~%")))
-  
+
   ;; Approach 2: Try using sb-alien internal mechanisms
   (format t "~%Attempting direct callback creation...~%")
   (handler-case
@@ -65,24 +65,24 @@
               (format t "  Cannot get function code address~%"))))
     (error (e)
       (format t "  Error getting function info: ~A~%" e)))
-  
+
   t)
 
 (defun create-real-callback (function return-type arg-types)
   "Attempt to create a real callback using SBCL internals"
   (format t "~%Attempting to create real callback...~%")
-  
+
   ;; Try different SBCL callback mechanisms
-  (or 
+  (or
    ;; Method 1: Try alien-callable if available
    (try-alien-callable function return-type arg-types)
-   
+
    ;; Method 2: Try internal callback creation
    (try-internal-callback function return-type arg-types)
-   
+
    ;; Method 3: Use assembly-level callback (advanced)
    (try-asm-callback function return-type arg-types)
-   
+
    ;; Fallback: Return dummy pointer but log the attempt
    (progn
      (format t "  All callback methods failed - using dummy~%")

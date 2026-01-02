@@ -87,7 +87,7 @@
   ;; Test empty list
   (is (zerop (second (multiple-value-list (kqueue::make-kevent-memory '()))))
       "Empty list should return count of 0")
-  
+
   ;; Test single kevent
   (let* ((kevent (kqueue:make-kevent-struct
                   :ident 123
@@ -111,7 +111,7 @@
              (is (= 456 (sb-sys:sap-ref-64 memory 16)) "data should be 456")
              (is (= 789 (sb-sys:sap-ref-64 memory 24)) "udata should be 789"))
         (when memory (lib:foreign-free memory)))))
-  
+
   ;; Test multiple kevents
   (let* ((kevent1 (kqueue:make-kevent-struct :ident 1 :filter -1 :flags 1 :fflags 0 :data 10 :udata 20))
          (kevent2 (kqueue:make-kevent-struct :ident 2 :filter -2 :flags 2 :fflags 0 :data 30 :udata 40))
@@ -126,7 +126,7 @@
              ;; Check second kevent (offset by 32 bytes)
              (is (= 2 (sb-sys:sap-ref-64 memory 32)) "Second ident should be 2"))
         (when memory (lib:foreign-free memory)))))
-  
+
   ;; Test with nil values in kevent
   (let* ((kevent (kqueue:make-kevent-struct :ident nil :filter nil :flags nil))
          (kevents (list kevent)))
@@ -153,7 +153,7 @@
            (setf (sb-sys:sap-ref-32 memory 12) 2)    ; fflags
            (setf (sb-sys:sap-ref-64 memory 16) 200)  ; data
            (setf (sb-sys:sap-ref-64 memory 24) 300)  ; udata
-           
+
            ;; Write second kevent
            (setf (sb-sys:sap-ref-64 memory 32) 400)  ; ident
            (setf (sb-sys:signed-sap-ref-16 memory 40) -2) ; filter
@@ -161,11 +161,11 @@
            (setf (sb-sys:sap-ref-32 memory 44) 4)    ; fflags
            (setf (sb-sys:sap-ref-64 memory 48) 500)  ; data
            (setf (sb-sys:sap-ref-64 memory 56) 600)  ; udata
-           
+
            ;; Parse the memory
            (let ((kevents (kqueue::parse-kevent-memory memory 2)))
              (is (= 2 (length kevents)) "Should parse 2 kevents")
-             
+
              ;; Check first kevent
              (let ((ke1 (first kevents)))
                (is (= 100 (kqueue:kevent-struct-ident ke1)) "First ident")
@@ -174,7 +174,7 @@
                (is (= 2 (kqueue:kevent-struct-fflags ke1)) "First fflags")
                (is (= 200 (kqueue:kevent-struct-data ke1)) "First data")
                (is (= 300 (kqueue:kevent-struct-udata ke1)) "First udata"))
-             
+
              ;; Check second kevent
              (let ((ke2 (second kevents)))
                (is (= 400 (kqueue:kevent-struct-ident ke2)) "Second ident")
@@ -194,7 +194,7 @@
            (is (= 0 (sb-sys:sap-ref-64 memory 0)) "Zero seconds")
            (is (= 0 (sb-sys:sap-ref-64 memory 8)) "Zero nanoseconds"))
       (lib:foreign-free memory)))
-  
+
   ;; Test with actual values
   (let ((memory (kqueue::make-timespec-memory 10 500000000)))
     (unwind-protect
@@ -202,7 +202,7 @@
            (is (= 10 (sb-sys:sap-ref-64 memory 0)) "10 seconds")
            (is (= 500000000 (sb-sys:sap-ref-64 memory 8)) "500000000 nanoseconds"))
       (lib:foreign-free memory)))
-  
+
   ;; Test with large values
   (let ((memory (kqueue::make-timespec-memory 9999999 999999999)))
     (unwind-protect
@@ -226,7 +226,7 @@
   (is (= kqueue:+evfilt-vnode+ -4) "EVFILT_VNODE")
   (is (= kqueue:+evfilt-proc+ -5) "EVFILT_PROC")
   (is (= kqueue:+evfilt-user+ -10) "EVFILT_USER")
-  
+
   ;; Event flags
   (is (= kqueue:+ev-add+ #x0001) "EV_ADD")
   (is (= kqueue:+ev-delete+ #x0002) "EV_DELETE")
@@ -251,14 +251,14 @@
            (progn
              ;; Add read event for pipe
              (kqueue:add-event kq read-fd kqueue:+evfilt-read+)
-             
+
              ;; Initially, no events should be available
              (let ((events (kqueue:poll-events kq :timeout 0)))
                (is (null events) "No events initially"))
-             
+
              ;; Write to pipe
              (write-to-pipe write-fd "test")
-             
+
              ;; Now we should get a read event
              (let ((events (kqueue:poll-events kq :timeout 0.1)))
                (is (= 1 (length events)) "Should get one event")
@@ -266,10 +266,10 @@
                  (let ((event (first events)))
                    (is (= read-fd (kqueue:kevent-struct-ident event)) "Event for correct fd")
                    (is (= kqueue:+evfilt-read+ (kqueue:kevent-struct-filter event)) "Read filter"))))
-             
+
              ;; Remove the event
              (kqueue:remove-event kq read-fd kqueue:+evfilt-read+)
-             
+
              ;; Write again and verify no events (since we removed the filter)
              (write-to-pipe write-fd "test2")
              (let ((events (kqueue:poll-events kq :timeout 0)))
@@ -287,15 +287,15 @@
                ;; Add events for both pipes
                (kqueue:add-event kq read-fd1 kqueue:+evfilt-read+)
                (kqueue:add-event kq read-fd2 kqueue:+evfilt-read+)
-               
+
                ;; Write to both pipes
                (write-to-pipe write-fd1 "pipe1")
                (write-to-pipe write-fd2 "pipe2")
-               
+
                ;; Should get two events
                (let ((events (kqueue:poll-events kq :max-events 10 :timeout 0.1)))
                  (is (= 2 (length events)) "Should get two events")
-                 
+
                  ;; Check both fds are represented
                  (let ((fds (mapcar #'kqueue:kevent-struct-ident events)))
                    (is (member read-fd1 fds) "First pipe should have event")
@@ -318,19 +318,19 @@
                                       :data 0
                                       :udata 0))))
                (kqueue:kevent kq changelist '()))
-             
+
              ;; Write twice
              (write-to-pipe write-fd "test1")
              (write-to-pipe write-fd "test2")
-             
+
              ;; First poll should get event
              (let ((events (kqueue:poll-events kq :timeout 0.1)))
                (is (= 1 (length events)) "Should get one event"))
-             
+
              ;; Second poll should get nothing (oneshot consumed)
              (let ((events (kqueue:poll-events kq :timeout 0)))
                (is (null events) "Oneshot event should be consumed"))
-             
+
              ;; Test EV_CLEAR flag
              (let ((changelist (list (kqueue:make-kevent-struct
                                       :ident read-fd
@@ -340,7 +340,7 @@
                                       :data 0
                                       :udata 0))))
                (kqueue:kevent kq changelist '()))
-             
+
              ;; Write and check
              (write-to-pipe write-fd "test3")
              (let ((events (kqueue:poll-events kq :timeout 0.1)))
@@ -357,7 +357,7 @@
         (let ((elapsed (/ (- (get-internal-real-time) start-time)
                          internal-time-units-per-second)))
           (is (< elapsed 0.1) "Should return immediately"))))
-    
+
     ;; Test short timeout
     (let ((start-time (get-internal-real-time)))
       (let ((events (kqueue:wait-for-events kq 10 0.05)))
@@ -366,7 +366,7 @@
                          internal-time-units-per-second)))
           (is (>= elapsed 0.04) "Should wait at least 0.04 seconds")
           (is (< elapsed 0.2) "Should not wait too long"))))
-    
+
     ;; Test nil timeout (would block forever if there were no events)
     ;; We'll add a self-triggering event for this test
     (multiple-value-bind (read-fd write-fd) (create-pipe)
@@ -387,7 +387,7 @@
         (is nil "Should have thrown an error for invalid kqueue"))
     (error (e)
       (is t (format nil "Got expected error: ~A" e))))
-  
+
   ;; Test adding event to closed kqueue
   (let ((kq (kqueue:kqueue)))
     (kqueue:kqueue-close kq)
@@ -432,13 +432,13 @@
                                         (return t)))))
                        (error () nil)))
                    :name "socket-monitor")))
-             
+
              ;; Give monitor time to start
              (sleep 0.05)
-             
+
              ;; Write to trigger the monitor
              (write-to-pipe write-fd "trigger")
-             
+
              ;; Wait for thread to complete
              (let ((result (sb-thread:join-thread monitor-thread :timeout 1)))
                (is (not (null result)) "Monitor should detect the event"))))

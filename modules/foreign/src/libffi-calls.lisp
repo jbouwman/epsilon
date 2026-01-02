@@ -11,12 +11,12 @@
   "Unified shared-call using libffi for all FFI calls"
   ;; Validate inputs
   (validate-call-signature return-type arg-types args)
-  
+
   ;; Resolve function address
   (let ((function-address (resolve-function-address function-designator)))
     (unless function-address
       (error "Could not find function ~A" function-designator))
-    
+
     ;; Use libffi for the call - note: args is already a list from &rest
     (libffi-call function-address return-type arg-types args)))
 
@@ -26,12 +26,12 @@
     (string
      ;; String function name, assume libc
      (lib-function (lib-open "libc") function-designator))
-    (symbol 
+    (symbol
      (lib-function (lib-open "libc") (string function-designator)))
-    (list 
+    (list
      (destructuring-bind (fn-name lib-name) function-designator
        (lib-function (lib-open lib-name) (string fn-name))))
-    (integer 
+    (integer
      function-designator))) ; Already an address
 
 ;;; Type validation helpers
@@ -39,9 +39,9 @@
 (defun validate-call-signature (return-type arg-types args)
   "Validate that call signature is consistent"
   (unless (= (length arg-types) (length args))
-    (error "Argument count mismatch: expected ~D, got ~D" 
+    (error "Argument count mismatch: expected ~D, got ~D"
            (length arg-types) (length args)))
-  
+
   ;; Type-specific validation
   (loop for arg in args
         for type in arg-types
@@ -123,7 +123,7 @@
   (format t "  Arg Types: ~A~%" arg-types)
   (format t "  Args: ~A~%" args)
   (format t "  libffi Available: ~A~%" (and (boundp '*libffi-library*) *libffi-library* t))
-  
+
   ;; Validate signature
   (handler-case
       (progn
@@ -131,11 +131,11 @@
         (format t "  Signature: Valid~%"))
     (error (e)
       (format t "  Signature: Invalid - ~A~%" e)))
-  
+
   ;; Check function resolution
   (handler-case
       (let ((addr (resolve-function-address function-designator)))
-        (format t "  Function Address: ~A~%" 
+        (format t "  Function Address: ~A~%"
                 (if addr (format nil "0x~X" addr) "Not found")))
     (error (e)
       (format t "  Function Resolution: Failed - ~A~%" e))))
@@ -145,16 +145,16 @@
 (defun test-libffi-integration ()
   "Test basic libffi integration"
   (format t "Testing libffi integration...~%")
-  
+
   ;; Test simple function calls
   (handler-case
       (progn
         (let ((result (shared-call-unified "getpid" :int '())))
           (format t "getpid() = ~A~%" result))
-        
+
         (let ((result (shared-call-unified "strlen" :unsigned-long '(:string) "hello")))
           (format t "strlen(\"hello\") = ~A~%" result))
-        
+
         (format t "libffi integration tests passed~%")
         t)
     (error (e)

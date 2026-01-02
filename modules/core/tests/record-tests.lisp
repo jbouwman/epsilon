@@ -152,8 +152,8 @@
   (let ((p (make-person :name "Grace" :age 28 :city "Austin")))
     (is (person-p p))
     (is-equal "Grace" (person-name p)))
-  
-  ;; Test comparable protocol - simplified  
+
+  ;; Test comparable protocol - simplified
   (let ((pt1 (make-point :x 5 :y 10)))
     (is (point-p pt1))
     (is-= 5 (point-x pt1))
@@ -168,17 +168,17 @@
 
 (deftest test-nested-records
   "Test records containing other records"
-  (let* ((addr (make-address :street "123 Main St" 
-                             :city "Portland" 
-                             :state "OR" 
+  (let* ((addr (make-address :street "123 Main St"
+                             :city "Portland"
+                             :state "OR"
                              :zip "97201"))
-         (cust (make-customer :name "Ivy" 
-                              :email "ivy@example.com" 
+         (cust (make-customer :name "Ivy"
+                              :email "ivy@example.com"
                               :address addr)))
     (is (customer-p cust))
     (is (address-p (customer-address cust)))
     (is-equal "Portland" (address-city (customer-address cust)))
-    
+
     ;; Test updating nested record
     (let* ((new-addr (record:record-assoc addr :zip "97202"))
            (new-cust (record:record-assoc cust :address new-addr)))
@@ -202,7 +202,7 @@
     (is (null (person-name p)))
     (is (null (person-age p)))
     (is-equal "Unknown" (person-city p))
-    
+
     ;; Update nil field
     (let ((p2 (record:record-assoc p :name "Kate")))
       (is-equal "Kate" (person-name p2)))))
@@ -213,9 +213,9 @@
     (is (point-p pt))
     (is-= 100 (point-x pt))
     (is-= 200 (point-y pt)))
-  
+
   ;; Test with invalid type
-  (handler-case 
+  (handler-case
       (progn (record:make-record 'nonexistent :foo 1) nil)
     (error () t)))
 
@@ -229,4 +229,4 @@
     (is-= 65000 (employee-salary emp2))
     (is-= 70000 (employee-salary emp3))
     (is-equal "Management" (employee-department emp4))
-    (is-equal "Leo" (employee-name emp4)))) 
+    (is-equal "Leo" (employee-name emp4))))

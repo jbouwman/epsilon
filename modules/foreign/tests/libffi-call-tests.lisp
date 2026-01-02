@@ -65,7 +65,7 @@
               (is t "Valid signature should pass validation"))
           (error (e)
             (is nil "Valid signature failed: ~A" e)))
-        
+
         ;; Invalid signature should error
         (handler-case
             (progn
@@ -87,7 +87,7 @@
               (is t "Valid argument types should pass"))
           (error (e)
             (is nil "Valid argument types failed: ~A" e)))
-        
+
         ;; Invalid types
         (handler-case
             (progn
@@ -109,7 +109,7 @@
               (is (and (integerp pid) (> pid 0)) "getpid should return positive integer"))
           (error (e)
             (format t "getpid test failed: ~A~%" e)))
-        
+
         ;; Test strlen() - function with string argument
         (handler-case
             (let ((len (call-libffi-function 'shared-call-unified "strlen" :unsigned-long '(:string) "hello")))
@@ -127,7 +127,7 @@
             (let ((original-result (foreign:shared-call "getpid" :int '()))
                   (libffi-result (call-libffi-function 'shared-call-unified "getpid" :int '())))
               ;; PIDs might differ due to timing, but both should be positive
-              (is (and (integerp original-result) (> original-result 0)) 
+              (is (and (integerp original-result) (> original-result 0))
                   "Original implementation should work")
               (is (and (integerp libffi-result) (> libffi-result 0))
                   "libffi implementation should work"))
@@ -147,7 +147,7 @@
                ;; Disable libffi temporarily
                (when (find-symbol "*USE-LIBFFI-CALLS*" '#:epsilon.foreign)
                  (setf (symbol-value (find-symbol "*USE-LIBFFI-CALLS*" '#:epsilon.foreign)) nil))
-               
+
                (handler-case
                    (let ((result (call-libffi-function 'shared-call-unified "getpid" :int '())))
                      (is (and (integerp result) (> result 0))
@@ -156,7 +156,7 @@
                    (format t "Fallback test failed: ~A~%" e))))
           ;; Restore original setting
           (when (find-symbol "*USE-LIBFFI-CALLS*" '#:epsilon.foreign)
-            (setf (symbol-value (find-symbol "*USE-LIBFFI-CALLS*" '#:epsilon.foreign)) 
+            (setf (symbol-value (find-symbol "*USE-LIBFFI-CALLS*" '#:epsilon.foreign))
                   original-use-libffi))))
       (format t "Skipping fallback test - libffi not available~%")))
 
@@ -172,18 +172,18 @@
                ;; Enable performance tracking
                (when (find-symbol "*TRACK-CALL-PERFORMANCE*" '#:epsilon.foreign)
                  (setf (symbol-value (find-symbol "*TRACK-CALL-PERFORMANCE*" '#:epsilon.foreign)) t))
-               
+
                ;; Make some calls
                (dotimes (i 5)
                  (call-libffi-function 'shared-call-unified "getpid" :int '()))
-               
+
                ;; Check statistics
                (let ((stats (call-libffi-function 'get-call-statistics '("getpid" "libc"))))
                  (when stats
                    (is (>= (getf stats :count) 5) "Should track at least 5 calls"))))
           ;; Restore original setting
           (when (find-symbol "*TRACK-CALL-PERFORMANCE*" '#:epsilon.foreign)
-            (setf (symbol-value (find-symbol "*TRACK-CALL-PERFORMANCE*" '#:epsilon.foreign)) 
+            (setf (symbol-value (find-symbol "*TRACK-CALL-PERFORMANCE*" '#:epsilon.foreign))
                   original-tracking))))
       (format t "Skipping performance tracking test - libffi not available~%")))
 
@@ -195,10 +195,10 @@
       (handler-case
           (progn
             (format t "Running complete libffi integration test...~%")
-            
+
             ;; Test the integration function
             (call-libffi-function 'test-libffi-integration)
-            
+
             (is t "Complete integration test passed"))
         (error (e)
           (format t "Integration test failed: ~A~%" e)

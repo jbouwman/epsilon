@@ -41,7 +41,7 @@
                    (lambda (x) (sqrt x))
                    :double '(:double))))
     (is (< (abs (- (callback:call-callback float-op 4.0) 2.0)) 0.001)))
-  
+
   ;; String length callback
   (let ((strlen-cb (callback:make-callback
                     (lambda (s) (length s))
@@ -60,7 +60,7 @@
                                 ((> a b) 1)
                                 (t 0))))
                       :int '(:pointer :pointer))))
-    
+
     ;; Create array to sort
     (let ((array (make-array 5 :element-type '(signed-byte 32)
                               :initial-contents '(5 2 8 1 9))))
@@ -74,7 +74,7 @@
                                                    sb-alien:size-t
                                                    sb-alien:system-area-pointer))
          ptr 5 4 int-compare))
-      
+
       ;; Check array is sorted
       (is (equalp array #(1 2 5 8 9))))))
 
@@ -95,7 +95,7 @@
   (let ((callback-name (gensym "MY-CALLBACK-")))
     ;; Clean up any pre-existing callback (defensive)
     (ignore-errors (callback:unregister-callback callback-name))
-    
+
     (unwind-protect
          (progn
            ;; Register a callback
@@ -104,7 +104,7 @@
                          (lambda (x) (* x x))
                          :int '(:int))))
              (is (integerp cb-id))
-             
+
              ;; Get callback by ID with retry
              (let ((cb-ptr nil)
                    (retries 3))
@@ -115,7 +115,7 @@
                (when cb-ptr
                  (is (sb-sys:system-area-pointer-p cb-ptr))
                  (is (= (callback:call-callback cb-ptr 4) 16))))
-             
+
              ;; Get callback by name with retry
              (let ((cb-ptr nil)
                    (retries 3))
@@ -159,14 +159,14 @@
   (struct:define-c-struct 'point-cb
     '((x :int)
       (y :int)))
-  
+
   ;; Callback that takes struct pointer
   (let ((point-sum (callback:make-callback
                     (lambda (pt-ptr)
                       (+ (sb-sys:signed-sap-ref-32 pt-ptr 0)   ; x
                          (sb-sys:signed-sap-ref-32 pt-ptr 4)))  ; y
                     :int '(:pointer))))
-    
+
     (struct:with-c-struct (pt point-cb)
       (setf (struct:struct-ref pt 'x) 10)
       (setf (struct:struct-ref pt 'y) 20)
@@ -177,7 +177,7 @@
   (let* ((counter 0)
          (lock (sb-thread:make-mutex))
          (increment-cb (callback:make-callback
-                        (lambda () 
+                        (lambda ()
                           (sb-thread:with-mutex (lock)
                             (incf counter)))
                         :int '()))
@@ -210,7 +210,7 @@
                     (lambda (signum)
                       (setf signal-received signum))
                     :void '(:int))))
-      
+
       ;; Skip this test as it requires signal handling
       ;; which is complex and not critical for FFI testing
       (is t "Skipping signal handler test - too complex for current FFI"))))
@@ -253,7 +253,7 @@
     (let ((val-a (sb-sys:signed-sap-ref-32 a 0))
           (val-b (sb-sys:signed-sap-ref-32 b 0)))
       (- val-a val-b)))
-  
+
   ;; Get the callback pointer
   (let ((cb-ptr (callback:callback-pointer 'my-comparator)))
     (is (sb-sys:system-area-pointer-p cb-ptr))
@@ -261,7 +261,7 @@
     (let ((array (make-array 2 :element-type '(signed-byte 32)
                               :initial-contents '(10 5))))
       (marshalling:with-pinned-array (ptr array)
-        (let ((result (callback:call-callback cb-ptr 
-                                         ptr 
+        (let ((result (callback:call-callback cb-ptr
+                                         ptr
                                          (sb-sys:sap+ ptr 4))))
           (is (= result 5)))))))

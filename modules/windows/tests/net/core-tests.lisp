@@ -23,7 +23,7 @@
   (let ((addr (net:parse-address "192.168.1.1:3000")))
     (is-equal "192.168.1.1" (net:socket-address-ip addr))
     (is-equal 3000 (net:socket-address-port addr)))
-  
+
   ;; Test error on invalid format
   (is-thrown 'error (net:parse-address "invalid-address")))
 
@@ -34,7 +34,7 @@
       (is (typep listener 'net:tcp-listener))
       (is-equal "127.0.0.1" (net:socket-address-ip (net:tcp-local-addr listener)))
       (is (plusp (net:socket-address-port (net:tcp-local-addr listener))))
-      
+
       ;; Clean up
       (sb-bsd-sockets:socket-close (net:tcp-listener-handle listener))
       (net:iocp-close (net:tcp-listener-iocp listener)))))
@@ -63,7 +63,7 @@
     (is (typep socket 'net:udp-socket))
     (is-equal "127.0.0.1" (net:socket-address-ip (net:udp-local-addr socket)))
     (is (plusp (net:socket-address-port (net:udp-local-addr socket))))
-    
+
     ;; Clean up
     (sb-bsd-sockets:socket-close (net:udp-socket-handle socket))))
 
@@ -73,25 +73,25 @@
          (addr2 (net:make-socket-address "127.0.0.1" 0))
          (socket1 (net:udp-bind addr1))
          (socket2 (net:udp-bind addr2)))
-    
+
     (unwind-protect
         (let* ((local-addr1 (net:udp-local-addr socket1))
                (local-addr2 (net:udp-local-addr socket2))
                (test-data #(72 101 108 108 111))) ; "Hello"
-          
+
           ;; Send from socket1 to socket2
           (net:udp-send-to socket1 test-data local-addr2)
-          
+
           ;; Try to receive on socket2 (may not work without proper event loop)
           ;; This is a simplified test - in practice we'd need proper async handling
           (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
             ;; Just test that the function exists and can be called
             (handler-case
                 (net:udp-recv socket2 buffer)
-              (error () 
+              (error ()
                 ;; Expected - socket operations may fail without proper setup
                 t))))
-      
+
       ;; Clean up
       (sb-bsd-sockets:socket-close (net:udp-socket-handle socket1))
       (sb-bsd-sockets:socket-close (net:udp-socket-handle socket2)))))
@@ -102,11 +102,11 @@
   ;; Full integration testing would require proper async handling
   (let* ((server-addr (net:make-socket-address "127.0.0.1" 0))
          (listener (net:tcp-bind server-addr)))
-    
+
     (unwind-protect
         (let* ((local-addr (net:tcp-local-addr listener))
                (port (net:socket-address-port local-addr)))
-          
+
           ;; Try to connect - this should work since we're listening
           (handler-case
               (let ((client (net:tcp-connect (net:make-socket-address "127.0.0.1" port))))
@@ -118,7 +118,7 @@
               ;; Connection might fail due to timing or async issues
               ;; That's OK for this basic test
               t)))
-      
+
       ;; Clean up server
       (sb-bsd-sockets:socket-close (net:tcp-listener-handle listener))
       (net:iocp-close (net:tcp-listener-iocp listener)))))
@@ -132,9 +132,9 @@
     (let ((first-addr (first addresses)))
       (is (stringp (net:socket-address-ip first-addr)))
       (is-equal 8080 (net:socket-address-port first-addr))))
-  
+
   ;; Test resolving invalid hostname
-  (is-thrown 'net:network-error 
+  (is-thrown 'net:network-error
              (net:resolve-address "this-hostname-should-not-exist.invalid" 8080)))
 
 (deftest test-error-conditions ()
@@ -152,6 +152,6 @@
   (let* ((addr (net:make-socket-address "127.0.0.1" 0))
          (socket (net:udp-bind addr)))
     (is (typep socket 'net:udp-socket))
-    
+
     ;; Clean up
     (sb-bsd-sockets:socket-close (net:udp-socket-handle socket))))

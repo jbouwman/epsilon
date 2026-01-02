@@ -17,7 +17,8 @@
    tcp-bind tcp-accept tcp-incoming tcp-try-accept tcp-poll-accept tcp-local-addr tcp-close
    tcp-connect tcp-read tcp-write tcp-write-all tcp-flush
    tcp-try-read tcp-try-write tcp-poll-read tcp-poll-write
-   tcp-peer-addr tcp-shutdown tcp-stream-reader tcp-stream-writer tcp-connected-p
+   tcp-peer-addr tcp-shutdown tcp-stream-reader tcp-stream-writer
+   tcp-stream-byte-reader tcp-stream-byte-writer tcp-connected-p
    udp-bind udp-connect udp-send udp-recv udp-send-to udp-recv-from
    udp-local-addr udp-try-send udp-try-recv udp-poll-send udp-poll-recv)
   (:export
@@ -26,12 +27,12 @@
    ipv4-address
    ipv6-address
    socket-address
-   
+
    ;; Socket types
    tcp-listener
    tcp-stream
    udp-socket
-   
+
    ;; TCP Listener operations
    tcp-bind
    tcp-accept
@@ -40,7 +41,7 @@
    tcp-poll-accept
    tcp-local-addr
    tcp-close
-   
+
    ;; TCP Stream operations
    tcp-connect
    tcp-read
@@ -55,8 +56,10 @@
    tcp-shutdown
    tcp-stream-reader
    tcp-stream-writer
+   tcp-stream-byte-reader
+   tcp-stream-byte-writer
    tcp-stream-handle
-   
+
    ;; UDP operations
    udp-bind
    udp-connect
@@ -69,7 +72,7 @@
    udp-try-recv
    udp-poll-send
    udp-poll-recv
-   
+
    ;; Address resolution
    make-socket-address
    resolve-address
@@ -77,11 +80,11 @@
    socket-address-port
    socket-address-family
    parse-address
-   
+
    ;; Socket options
    set-socket-option
    get-socket-option
-   
+
    ;; Error conditions
    network-error
    connection-refused
@@ -90,7 +93,7 @@
    timeout-error
    address-in-use
    would-block-error
-   
+
    ;; Status checks
    tcp-connected-p))
 

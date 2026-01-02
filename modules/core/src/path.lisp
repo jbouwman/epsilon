@@ -13,7 +13,7 @@
    :path-absolute-p
    :path-segments
    :path-drive
-   
+
    ;; Path manipulation
    :path-parent
    :path-name
@@ -22,30 +22,30 @@
    :path-join
    :path-equal
    :path-normalize
-   
+
    ;; Path queries
    :path-exists-p
    :path-file-p
    :path-directory-p
    :path-type
-   
+
    ;; System paths
    :current-directory
    :temp-directory
    :home-directory
    :make-temp-path
-   
+
    ;; Directory operations
    :list-directory
    :walk-directory
    :find-files
    :matches-pattern
    :glob-match
-   
+
    ;; Utilities
    :normalize-separators
    :with-temp-path
-   
+
    ;; URI integration functions
    :path-from-uri
    :path-merge
@@ -55,9 +55,9 @@
 (in-package :epsilon.path)
 
 ;;;; Platform detection
-(defparameter *platform* 
+(defparameter *platform*
   #+darwin :darwin
-  #+linux :linux  
+  #+linux :linux
   #+win32 :windows
   #-(or darwin linux win32) :unknown)
 
@@ -103,7 +103,7 @@
            (absolute-p nil)
            (drive nil)
            (segments nil))
-      
+
       ;; Check for Windows drive letter
       #+win32
       (when (and (>= (length normalized) 3)
@@ -112,13 +112,13 @@
         (setf drive (string (char normalized 0))
               normalized (subseq normalized 2)
               absolute-p t))
-      
+
       ;; Check for absolute Unix path
       (when (and (> (length normalized) 0)
                  (char= (char normalized 0) #\/))
         (setf absolute-p t
               normalized (subseq normalized 1)))
-      
+
       ;; Split into segments, filtering empty ones
       (setf segments (remove-if (lambda (s) (or (null s) (string= s "")))
                                 (if (string= normalized "")
@@ -127,7 +127,7 @@
                                           for pos = (position #\/ normalized :start start)
                                           collect (subseq normalized start pos)
                                           while pos))))
-      
+
       (make-instance 'path
                      :segments segments
                      :absolute-p absolute-p
@@ -148,7 +148,7 @@
                      ""))))
 
 (defun ensure-path (path-or-string)
-  "Coerce input to a path object. If already a path, return as-is. 
+  "Coerce input to a path object. If already a path, return as-is.
    If a string, convert to path. If NIL, return NIL."
   (cond
     ((null path-or-string) nil)
@@ -197,7 +197,7 @@
   (let ((result-segments '())
         (result-absolute-p nil)
         (result-drive nil))
-    
+
     (loop for component in components do
       (let ((component-path (cond
                              ((typep component 'path) component)
@@ -212,7 +212,7 @@
                     result-drive drive))
             ;; Append segments
             (setf result-segments (append result-segments segments))))))
-    
+
     (when (or result-absolute-p result-segments)
       (make-instance 'path
                      :segments result-segments
@@ -235,7 +235,7 @@
       (let ((normalized-segments '()))
         (loop for segment in (path-segments p) do
           (cond
-            ((string= segment ".") 
+            ((string= segment ".")
              ;; Skip current directory references
              )
             ((string= segment "..")
@@ -246,7 +246,7 @@
                    (setf normalized-segments (append normalized-segments (list segment))))))
             (t
              (setf normalized-segments (append normalized-segments (list segment))))))
-        
+
         (make-instance 'path
                        :segments normalized-segments
                        :absolute-p (path-absolute-p p)
@@ -272,7 +272,7 @@
   "Get the type of string path: :file, :directory, or :none"
   (cond
     ((not (probe-file path-string)) :none)
-    (t 
+    (t
      ;; Use portable directory detection
      (let ((truename (probe-file path-string)))
        (if (and (null (pathname-name truename))
@@ -295,16 +295,13 @@
 
 (defun current-directory ()
   "Get current working directory as path"
-  (make-path 
+  (make-path
    #+win32 (namestring (truename "."))
    #-win32 (namestring (truename "."))))
 
 (defun user-directory ()
-  (let ((home (sb-ext:posix-getenv "EPSILON_USER")))
-    (cond (home
-           (make-path home))
-          (t
-           (current-directory)))))
+  "Get the user's working directory (current directory)."
+  (current-directory))
 
 (defun temp-directory ()
   "Get system temporary directory as path"
@@ -319,7 +316,7 @@
   "Get user home directory as path"
   (make-path
    #+win32 (or (sb-ext:posix-getenv "USERPROFILE")
-               (concatenate 'string 
+               (concatenate 'string
                            (or (sb-ext:posix-getenv "HOMEDRIVE") "")
                            (or (sb-ext:posix-getenv "HOMEPATH") "")))
    #-win32 (or (sb-ext:posix-getenv "HOME") "/tmp")))
@@ -327,7 +324,7 @@
 (defun make-temp-path (&key (suffix ".tmp") (prefix "epsilon-"))
   "Create a temporary file path with optional prefix and suffix"
   (path-join (temp-directory)
-             (concatenate 'string prefix 
+             (concatenate 'string prefix
                          (write-to-string (random 1000000))
                          suffix)))
 
@@ -340,7 +337,7 @@
   (unless case-sensitive
     (setf pattern (string-downcase pattern)
           string (string-downcase string)))
-  
+
   (labels ((match-chars (p s)
              (cond
                ((null p) (null s))
@@ -405,15 +402,15 @@
 
 (defun walk-directory (root-path &key recursive (type :all) filter)
   "Walk directory tree yielding path objects. FILTER is a function of path -> boolean"
-  (let ((to-visit (list (if (typep root-path 'path) 
-                            root-path 
+  (let ((to-visit (list (if (typep root-path 'path)
+                            root-path
                             (make-path root-path))))
         (results '()))
-    
+
     (loop while to-visit do
       (let* ((current (pop to-visit))
              (current-type (path-type current)))
-        
+
         ;; Add current path if it matches criteria
         (when (and current
                    (or (eq type :all)
@@ -421,21 +418,21 @@
                        (and (eq type :directories) (eq current-type :directory)))
                    (or (null filter) (funcall filter current)))
           (push current results))
-        
+
         ;; If recursive and current is a directory, add children to visit
         (when (and recursive (eq current-type :directory))
           (let ((children (list-directory current :type :all)))
             ;; Add children to front of queue for depth-first traversal
             (setf to-visit (append children to-visit))))))
-    
+
     (nreverse results)))
 
 (defun matches-pattern (path pattern &key case-sensitive)
   "Check if path matches glob pattern (*, ?, etc.)"
   (when (null case-sensitive)
     (setf case-sensitive (eq *platform* :linux))) ; Case-sensitive on Linux, not on others
-  
-  (let ((name (if (typep path 'path) 
+
+  (let ((name (if (typep path 'path)
                   (path-name path)
                   (path-name (make-path path)))))
     (when name
@@ -449,7 +446,7 @@
                     :type :files
                     :filter (lambda (path)
                               (some (lambda (pattern)
-                                      (matches-pattern path pattern 
+                                      (matches-pattern path pattern
                                                       :case-sensitive case-sensitive))
                                     pattern-list)))))
 
@@ -481,7 +478,7 @@
           (let ((needs-separator (and (> (length result) 0)
                                       (not (char= (char result (1- (length result))) #\/))
                                       (not (char= (char component 0) #\/)))))
-            (setf result (concatenate 'string 
+            (setf result (concatenate 'string
                                       result
                                       (if needs-separator "/" "")
                                       component)))))

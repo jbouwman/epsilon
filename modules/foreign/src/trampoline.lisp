@@ -7,7 +7,7 @@
    #:make-ffi-trampoline
    #:get-or-create-trampoline
    #:clear-trampoline-cache
-   
+
    ;; Signature management
    #:ffi-signature
    #:ffi-signature-p
@@ -19,7 +19,7 @@
    #:get-signature
    #:clear-signature-registry
    #:register-c-type
-   
+
    ;; Type system
    #:c-type
    #:c-type-p
@@ -28,11 +28,11 @@
    #:c-type-alignment
    #:c-type-signed-p
    #:get-c-type
-   
+
    ;; Type conversion
    #:convert-to-foreign
    #:convert-from-foreign
-   
+
    ;; Integration
    #:call-with-trampoline))
 
@@ -266,7 +266,7 @@
                 (declare (optimize (speed 3) (safety 0) (debug 0)))
                 (let ((result
                        (sb-alien:alien-funcall
-                        (sb-alien:sap-alien 
+                        (sb-alien:sap-alien
                          (sb-sys:int-sap fn-addr)
                          (sb-alien:function ,alien-return-type ,@alien-arg-types))
                         ,@converter-forms)))

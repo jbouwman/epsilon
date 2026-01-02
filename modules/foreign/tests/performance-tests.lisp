@@ -57,7 +57,7 @@
         (inline-time
          (measure-time ()
            (inline:%strlen "hello world"))))
-    
+
     (report-speedup baseline-time inline-time "Inline strlen")
     (is (< inline-time baseline-time) "Inline should be faster")))
 
@@ -69,17 +69,17 @@
          (dst (lib:foreign-alloc :char :count 100))
          (baseline-time
           (measure-time ()
-            (lib:shared-call '("memcpy" "libc") :pointer 
+            (lib:shared-call '("memcpy" "libc") :pointer
                             '(:pointer :pointer :unsigned-long)
                             dst src 100)))
          ;; Inline memcpy
          (inline-time
           (measure-time ()
             (inline:%memcpy dst src 100))))
-    
+
     (lib:foreign-free src)
     (lib:foreign-free dst)
-    
+
     (report-speedup baseline-time inline-time "Inline memcpy")
     (is (< inline-time baseline-time) "Inline memcpy should be faster")))
 
@@ -100,9 +100,9 @@
            (pool:with-pooled-memory (ptr 256 :pool pool)
              ;; Use memory to prevent optimization
              (setf (sb-sys:sap-ref-8 ptr 0) 42)))))
-    
+
     (pool:pool-destroy pool)
-    
+
     (report-speedup baseline-time pooled-time "Memory pooling (256 bytes)")
     (is (< pooled-time baseline-time) "Pooled allocation should be faster")))
 
@@ -120,15 +120,15 @@
            (measure-time (:iterations 1000)
              (pool:with-pooled-memory (ptr 1024 :pool pool)
                (setf (sb-sys:sap-ref-32 ptr 0) 42)))))
-      
+
       (report-speedup cold-time warm-time "Pool reuse benefit")
-      
+
       ;; Check pool statistics
       (let ((stats (pool:pool-statistics pool)))
         (format t "~%Pool statistics:~%")
         (format t "  Reuse ratio: ~,1f%~%" (* 100 (getf stats :reuse-ratio)))
         (is (> (getf stats :reuse-ratio) 0.5) "Pool should have good reuse ratio"))
-      
+
       (pool:pool-destroy pool))))
 
 ;;; Batch operations benchmarks
@@ -148,7 +148,7 @@
            (batch:with-foreign-batch ()
              (dolist (s strings)
                (batch:batch-call '("strlen" "libc") :unsigned-long '(:string) s))))))
-    
+
     (report-speedup baseline-time batched-time "Batch string operations")
     (is (<= batched-time baseline-time) "Batched calls should not be slower")))
 
@@ -159,7 +159,7 @@
          (copies 10)
          (src-list (loop repeat copies collect (lib:foreign-alloc :char :count size)))
          (dst-list (loop repeat copies collect (lib:foreign-alloc :char :count size))))
-    
+
     ;; Individual memory copies
     (let ((baseline-time
            (measure-time (:iterations 1000)
@@ -177,9 +177,9 @@
                      do (batch:batch-call '("memcpy" "libc") :pointer
                                          '(:pointer :pointer :unsigned-long)
                                          dst src size))))))
-      
+
       (report-speedup baseline-time batched-time "Batch memory copies")
-      
+
       ;; Cleanup
       (mapc #'lib:foreign-free src-list)
       (mapc #'lib:foreign-free dst-list))))
@@ -192,7 +192,7 @@
   ;; Scenario: Process array of strings
   (let ((strings (loop repeat 100 collect "test string for processing"))
         (pool (pool:create-pool :block-size 256 :max-blocks 100)))
-    
+
     ;; Baseline: No optimizations
     (let ((baseline-time
            (measure-time (:iterations 100)
@@ -201,7 +201,7 @@
                       (buf (lib:foreign-alloc :char :count (1+ len))))
                  (lib:shared-call '("strcpy" "libc") :pointer '(:pointer :string) buf s)
                  (lib:foreign-free buf)))))
-          
+
           ;; Optimized: All techniques
           (optimized-time
            (measure-time (:iterations 100)
@@ -211,12 +211,12 @@
                         (buf (pool:pool-allocate (1+ len) pool)))
                    (batch:batch-call '("strcpy" "libc") :pointer '(:pointer :string) buf s)
                    (pool:pool-free buf pool)))))))
-      
+
       (report-speedup baseline-time optimized-time "Combined optimizations")
       (pool:pool-destroy pool)
-      
+
       ;; Expect significant improvement
-      (is (< (* optimized-time 1.5) baseline-time) 
+      (is (< (* optimized-time 1.5) baseline-time)
           "Combined optimizations should provide significant speedup"))))
 
 ;;; Trampoline performance (from Phase 1)
@@ -228,8 +228,8 @@
   (let* ((strlen-trampoline (lib::get-or-create-trampoline :unsigned-long '(:string)))
          (trampoline-time
           (measure-time ()
-            (funcall strlen-trampoline 
-                    (sb-alien:extern-alien "strlen" 
+            (funcall strlen-trampoline
+                    (sb-alien:extern-alien "strlen"
                                           (sb-alien:function sb-alien:unsigned-long
                                                             sb-alien:c-string))
                     "test string")))
@@ -241,7 +241,7 @@
                                          (sb-alien:function sb-alien:unsigned-long
                                                            sb-alien:c-string))
                    "test string")))))
-    
+
     (report-speedup eval-time trampoline-time "Compiled trampolines (Phase 1)")
     (is (< trampoline-time eval-time) "Trampolines should be faster than eval")))
 
@@ -263,7 +263,7 @@
   (format t "FFI Performance Benchmarks~%")
   (format t "========================================~%")
   (format t "Iterations: ~D~%" *benchmark-iterations*)
-  
+
   (run-tests 'benchmark-inline-expansion
              'benchmark-inline-multiple-args
              'benchmark-memory-pooling
@@ -273,7 +273,7 @@
              'benchmark-combined-optimizations
              'benchmark-trampoline-vs-eval
              'test-no-performance-regression)
-  
+
   (format t "~%========================================~%")
   (format t "Benchmark Summary Complete~%")
   (format t "========================================~%"))

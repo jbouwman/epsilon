@@ -17,12 +17,12 @@
    #:extract-function-signature
    #:extract-function-signatures
    #:parse-header-for-signatures
-   
+
    ;; Header generation
    #:generate-minimal-header
    #:detect-function-headers
    #:compile-header-to-ast
-   
+
    ;; Signature manipulation
    #:normalize-signature
    #:normalize-c-types
@@ -31,7 +31,7 @@
    #:signature-function-name
    #:c-type-to-epsilon-type
    #:signature-to-epsilon-types
-   
+
    ;; Database
    #:*signature-database*
    #:cache-signature
@@ -43,7 +43,7 @@
    #:function-signature-name
    #:function-signature-return-type
    #:function-signature-arg-types
-   
+
    ;; Integration
    #:clang-signature-pipeline))
 
@@ -73,13 +73,13 @@
     ("memcpy" . ("string.h"))
     ("memset" . ("string.h"))
     ("memcmp" . ("string.h"))
-    
+
     ;; Memory management
     ("malloc" . ("stdlib.h"))
     ("calloc" . ("stdlib.h"))
     ("realloc" . ("stdlib.h"))
     ("free" . ("stdlib.h"))
-    
+
     ;; I/O functions
     ("printf" . ("stdio.h"))
     ("fprintf" . ("stdio.h"))
@@ -89,7 +89,7 @@
     ("fclose" . ("stdio.h"))
     ("fread" . ("stdio.h"))
     ("fwrite" . ("stdio.h"))
-    
+
     ;; System calls
     ("open" . ("fcntl.h" "sys/stat.h" "sys/types.h"))
     ("close" . ("unistd.h"))
@@ -99,7 +99,7 @@
     ("getpid" . ("unistd.h"))
     ("getuid" . ("unistd.h"))
     ("getgid" . ("unistd.h"))
-    
+
     ;; Math functions
     ("sin" . ("math.h"))
     ("cos" . ("math.h"))
@@ -108,13 +108,13 @@
     ("pow" . ("math.h"))
     ("exp" . ("math.h"))
     ("log" . ("math.h"))
-    
+
     ;; Time functions
     ("time" . ("time.h"))
     ("clock" . ("time.h"))
     ("gmtime" . ("time.h"))
     ("localtime" . ("time.h"))
-    
+
     ;; Network functions (POSIX)
     ("socket" . ("sys/socket.h"))
     ("bind" . ("sys/socket.h"))
@@ -140,7 +140,7 @@
       (dolist (header headers)
         (format s "#include <~A>~%" header))
       (terpri s)
-      
+
       ;; Function declaration (just the name to ensure it's found)
       ;; We'll let clang provide the actual signature
       (format s "// Function: ~A~%" function-name))))
@@ -156,7 +156,7 @@
                                                 :test #'string=))
                             c-type-spec)))
        (c-type-to-epsilon-type (first specs))))
-    
+
     ;; Single type specifier
     ((stringp c-type-spec)
      (cond
@@ -172,18 +172,18 @@
        ((string= c-type-spec "size_t") :unsigned-long)
        ((string= c-type-spec "ssize_t") :long)
        (t :pointer)))  ; Default unknown types to pointer
-    
-    ;; Symbol type specifier  
+
+    ;; Symbol type specifier
     ((symbolp c-type-spec)
      (c-type-to-epsilon-type (string c-type-spec)))
-    
+
     ;; Default
     (t :pointer)))
 
 (defun normalize-c-types (type-specs)
   "Normalize C type specifiers to standard forms"
   (when type-specs
-    (let ((cleaned (remove-if (lambda (x) 
+    (let ((cleaned (remove-if (lambda (x)
                                (member x '("static" "extern" "inline" "const" "volatile" "restrict")
                                       :test #'string=))
                              type-specs)))
@@ -201,11 +201,11 @@
         ((and (member "unsigned" cleaned :test #'string=)
               (member "short" cleaned :test #'string=))
          :unsigned-short)
-        
+
         ;; Handle long long
         ((and (= (count "long" cleaned :test #'string=) 2))
          :long-long)
-        
+
         ;; Single types
         ((member "void" cleaned :test #'string=) :void)
         ((member "char" cleaned :test #'string=) :char)
@@ -214,11 +214,11 @@
         ((member "long" cleaned :test #'string=) :long)
         ((member "float" cleaned :test #'string=) :float)
         ((member "double" cleaned :test #'string=) :double)
-        
+
         ;; Special types
         ((member "size_t" cleaned :test #'string=) :size-t)
         ((member "ssize_t" cleaned :test #'string=) :ssize-t)
-        
+
         ;; Default to first type if unknown combination
         (t (c-type-to-epsilon-type (first cleaned)))))))
 
@@ -303,8 +303,8 @@
                  (list function-name library)
                  function-name)))
     (setf (gethash key *signature-database*)
-          (list :signature signature 
-                :library library 
+          (list :signature signature
+                :library library
                 :headers headers
                 :timestamp (get-universal-time)))))
 
@@ -363,7 +363,7 @@
 (defun test-signature-extraction ()
   "Test signature extraction for common functions"
   (format t "Testing signature extraction...~%")
-  
+
   (dolist (fn-name '("strlen" "malloc" "getpid" "printf"))
     (format t "Testing ~A: " fn-name)
     (let ((signature (clang-signature-pipeline fn-name)))

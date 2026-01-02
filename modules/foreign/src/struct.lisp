@@ -11,7 +11,7 @@
    #:define-c-struct-auto
    #:define-c-union
    #:parse-c-struct
-   
+
    ;; Layout management
    #:struct-layout-p
    #:get-struct-layout
@@ -21,7 +21,7 @@
    #:struct-field-type
    #:struct-field-size
    #:struct-has-field-p
-   
+
    ;; Instance creation and access
    #:with-c-struct
    #:with-c-union
@@ -33,7 +33,7 @@
    #:struct-pointer
    #:foreign-alloc
    #:foreign-free
-   
+
    ;; Serialization
    #:struct-to-bytes
    #:bytes-to-struct
@@ -483,7 +483,7 @@
                     (when (and (consp field-type) (eq (first field-type) :array))
                       (let ((index (first subfields))
                             (elem-type (second field-type)))
-                        (read-value-at ptr 
+                        (read-value-at ptr
                                       (+ (field-info-offset info)
                                          (* index (first (get-type-info elem-type))))
                                       elem-type))))))))
@@ -542,7 +542,7 @@
                                          (ash (logand value mask) bit-offset)))
                   (setf (sb-sys:sap-ref-32 ptr offset) container))
                 ;; Regular field
-                (write-value-at ptr (field-info-offset info) 
+                (write-value-at ptr (field-info-offset info)
                                (field-info-type info) value)))))
     value))
 

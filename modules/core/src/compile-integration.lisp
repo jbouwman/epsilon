@@ -12,19 +12,19 @@
    #:*real-time-source-tracking*
    #:*current-compilation-location*
    #:*form-position-map*
-   
+
    #:install-compiler-hooks
    #:uninstall-compiler-hooks
    #:with-source-tracking
-   
+
    #:get-real-time-source-location
    #:track-form-processing
    #:enhanced-process-toplevel-form
-   
+
    #:sbcl-source-path-to-location
    #:extract-line-from-form-number
    #:build-form-position-cache
-   
+
    ;; File info structure and functions
    #:compilation-file-info
    #:compilation-file-info-p
@@ -32,10 +32,10 @@
    #:compilation-file-info-line-positions
    #:compilation-file-info-form-positions
    #:position-to-line-column
-   
+
    ;; Integration functions
    #:enhance-logging-with-compilation-context
-   
+
    ;; SBCL source path analysis
    #:extract-line-from-sbcl-source-path
    #:file-position-to-line-number))
@@ -75,14 +75,14 @@
   "Build a cache of form positions within a file."
   (let ((positions (make-hash-table :test 'eq))
         (line-starts (make-array 1000 :adjustable t :fill-pointer 0)))
-    
+
     ;; Record line start positions
     (vector-push-extend 0 line-starts)
-    
+
     (with-open-file (stream pathname :direction :input)
       (let ((char-pos 0)
             (*read-suppress* nil))
-        
+
         ;; First pass: collect line starts
         (file-position stream 0)
         (loop for char = (read-char stream nil nil)
@@ -91,7 +91,7 @@
                    (when (char= char #\Newline)
                      (vector-push-extend (1+ char-pos) line-starts))
                    (incf char-pos)))
-        
+
         ;; Second pass: map forms to positions
         (file-position stream 0)
         (let ((form-start-pos 0))
@@ -103,7 +103,7 @@
                     (return))
                   (setf (gethash form positions) form-start-pos)))
             (error () nil))))) ; Ignore read errors
-    
+
     (make-compilation-file-info
      :pathname (pathname pathname)
      :line-positions (coerce line-starts 'simple-vector)
@@ -120,7 +120,7 @@
               (values (1+ line-num)
                       (1+ (- char-position (aref line-positions (1- line-num)))))
               (values (length line-positions)
-                      (1+ (- char-position 
+                      (1+ (- char-position
                              (aref line-positions (1- (length line-positions))))))))))))
 
 ;;; SBCL integration functions
@@ -128,16 +128,16 @@
 (defun enhanced-process-toplevel-form (form path compile-time-too)
   "Enhanced version of SBCL's process-toplevel-form with source tracking."
   (declare (list path))
-  
+
   ;; Track current form processing and extract line numbers
   (when *real-time-source-tracking*
     (track-form-processing form path)
-    
+
     ;; NEW: Extract and set current compilation location
     (let ((location (extract-location-from-sbcl-state form path)))
       (when location
         (setf *current-compilation-location* location))))
-  
+
   ;; Call original function
   (funcall *original-process-toplevel-form* form path compile-time-too))
 
@@ -146,7 +146,7 @@
   (when *real-time-source-tracking*
     ;; Extract position information if we have current file info
     (when (and *current-file-info* form)
-      (let ((char-pos (gethash form 
+      (let ((char-pos (gethash form
                               (compilation-file-info-form-positions *current-file-info*))))
         (when char-pos
           (multiple-value-bind (line column)
@@ -158,7 +158,7 @@
                    :column column
                    :form-number (length path)
                    :toplevel-form (when (< (length path) 2) form))))))))
-  
+
   ;; Call original function
   (funcall *original-sub-find-source-paths* form path))
 
@@ -169,7 +169,7 @@
     (let ((location (extract-location-from-sbcl-state form path)))
       (when location
         (setf *current-compilation-location* location)
-        
+
         ;; Location is now available for logging system to use
         nil))))
 
@@ -180,7 +180,7 @@
         (column nil)
         (form-number (length path))
         (toplevel-form nil))
-    
+
     ;; Get file from compiler state
     (setf file (cond
                  ((and (boundp 'sb-c::*compile-file-pathname*)
@@ -190,26 +190,26 @@
                        (compilation-file-info-pathname *current-file-info*))
                   (namestring (compilation-file-info-pathname *current-file-info*)))
                  (t nil)))
-    
+
     ;; NEW: Extract line numbers from SBCL source path system
     (multiple-value-bind (extracted-line extracted-column)
         (extract-line-from-sbcl-source-path path)
       (when extracted-line
         (setf line extracted-line
               column extracted-column)))
-    
+
     ;; Fallback: Extract line/column from our enhanced tracking
     (when (and (not line) *current-file-info* form)
-      (let ((char-pos (gethash form 
+      (let ((char-pos (gethash form
                               (compilation-file-info-form-positions *current-file-info*))))
         (when char-pos
           (multiple-value-setq (line column)
             (position-to-line-column *current-file-info* char-pos)))))
-    
+
     ;; Determine toplevel form
     (when (< form-number 2)
       (setf toplevel-form form))
-    
+
     (when file
       (api:make-source-location
        :file file
@@ -227,22 +227,22 @@
     (sb-ext:unlock-package :sb-c)
     (sb-ext:unlock-package :sb-int)
     (sb-ext:unlock-package :sb-kernel)
-    
+
     ;; Save original functions
-    (setf *original-process-toplevel-form* 
+    (setf *original-process-toplevel-form*
           (symbol-function 'sb-c::process-toplevel-form))
     (setf *original-sub-find-source-paths*
           (symbol-function 'sb-c::sub-find-source-paths))
-    
+
     ;; Replace with enhanced versions
     (setf (symbol-function 'sb-c::process-toplevel-form)
           #'enhanced-process-toplevel-form)
     (setf (symbol-function 'sb-c::sub-find-source-paths)
           #'enhanced-sub-find-source-paths)
-    
+
     ;; Enable real-time source tracking
     (setf *real-time-source-tracking* t)
-    
+
     (log:debug "SBCL compiler hooks installed")))
 
 (defun uninstall-compiler-hooks ()
@@ -252,16 +252,16 @@
     (sb-ext:unlock-package :sb-c)
     (sb-ext:unlock-package :sb-int)
     (sb-ext:unlock-package :sb-kernel)
-    
+
     ;; Restore original functions
     (setf (symbol-function 'sb-c::process-toplevel-form)
           *original-process-toplevel-form*)
     (setf (symbol-function 'sb-c::sub-find-source-paths)
           *original-sub-find-source-paths*)
-    
+
     (setf *original-process-toplevel-form* nil)
     (setf *original-sub-find-source-paths* nil)
-    
+
     ;; Re-lock packages for safety (optional)
     (handler-case
         (progn
@@ -269,7 +269,7 @@
           (sb-ext:lock-package :sb-int)
           (sb-ext:lock-package :sb-kernel))
       (error () nil))  ; Ignore errors if already locked
-    
+
     (log:debug "SBCL compiler hooks uninstalled")))
 
 ;;; High-level interface
@@ -294,7 +294,7 @@
       ;; Fallback to SBCL state extraction
       (when (and (boundp 'sb-c::*current-path*)
                  sb-c::*current-path*)
-        (extract-location-from-sbcl-state 
+        (extract-location-from-sbcl-state
          (car sb-c::*current-path*)
          sb-c::*current-path*))))
 
@@ -305,12 +305,12 @@
   (when source-path
     (let ((form-number (length source-path))
           (file nil))
-      
+
       ;; Get file from compilation state
       (when (and (boundp 'sb-c::*compile-file-pathname*)
                  sb-c::*compile-file-pathname*)
         (setf file (namestring sb-c::*compile-file-pathname*)))
-      
+
       (api:make-source-location
        :file file
        :line nil  ; Would need file position to calculate
@@ -328,7 +328,7 @@
                                       (if (listp (first path)) path (list path)))))
       (when source-start-node
         (let ((form-index (third source-start-node))) ; (ORIGINAL-SOURCE-START 0 form-index)
-          (when (and form-index 
+          (when (and form-index
                      (numberp form-index)
                      (boundp 'sb-c::*source-info*)
                      sb-c::*source-info*)
@@ -336,10 +336,10 @@
             (let ((file-info (when (fboundp 'sb-c::source-info-file-info)
                               (sb-c::source-info-file-info sb-c::*source-info*))))
               (when file-info
-                ;; Get form positions array  
+                ;; Get form positions array
                 (let ((positions (when (fboundp 'sb-c::file-info-positions)
                                   (sb-c::file-info-positions file-info))))
-                  (when (and positions 
+                  (when (and positions
                              (< form-index (length positions)))
                     ;; Get character position of this form
                     (let ((char-pos (aref positions form-index)))

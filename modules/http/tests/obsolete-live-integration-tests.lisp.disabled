@@ -22,7 +22,7 @@
 (defparameter *test-server-port* 18090
   "Port for test server")
 
-(defparameter *external-test-urls* 
+(defparameter *external-test-urls*
   '(("http://httpbin.org/get" . :get)
     ("http://httpbin.org/post" . :post)
     ("https://httpbin.org/get" . :https))
@@ -39,7 +39,7 @@
   "Start test server for integration tests"
   (when *test-server*
     (server:stop-server *test-server*))
-  
+
   (setf *test-server*
         (server:start-server
          (lambda (req)
@@ -47,7 +47,7 @@
                  (method (request:request-method req))
                  (headers (request:request-headers req))
                  (body (request:request-body req)))
-             
+
              (cond
                ;; Echo endpoint
                ((string= path "/echo")
@@ -58,30 +58,30 @@
                   "headers" headers
                   "body" (or body "")
                   "request_id" (format nil "~D" (get-universal-time)))))
-               
+
                ;; Delay endpoint
                ((str:starts-with-p path "/delay/")
                 (let ((seconds (parse-integer (subseq path 7) :junk-allowed t)))
                   (sleep (min seconds 5)) ; Max 5 second delay
-                  (response:text-response 
+                  (response:text-response
                    (format nil "Delayed response after ~D seconds" seconds))))
-               
+
                ;; Large response
                ((string= path "/large")
-                (let ((size (or (ignore-errors 
-                                  (parse-integer 
+                (let ((size (or (ignore-errors
+                                  (parse-integer
                                    (map:get (request:request-params req) "size")))
                                 1024)))
                   (response:text-response
                    (make-string (min size 100000) :initial-element #\A))))
-               
+
                ;; Stream response (chunked)
                ((string= path "/stream")
                 (let ((resp (response:text-response "")))
                   (response:set-header resp "Transfer-Encoding" "chunked")
                   (response:set-header resp "Content-Type" "text/plain")
                   resp))
-               
+
                ;; Connection test
                ((string= path "/connection-info")
                 (response:json-response
@@ -89,25 +89,25 @@
                   "connection" (map:get headers "connection")
                   "user_agent" (map:get headers "user-agent")
                   "host" (map:get headers "host"))))
-               
+
                ;; Keep-alive test
                ((string= path "/keepalive")
                 (let ((resp (response:text-response "Keep-alive response")))
                   (response:set-header resp "Connection" "keep-alive")
                   (response:set-header resp "Keep-Alive" "timeout=5, max=1000")
                   resp))
-               
+
                ;; Error responses
                ((str:starts-with-p path "/status/")
                 (let ((code (parse-integer (subseq path 8) :junk-allowed t)))
-                  (response:text-response 
+                  (response:text-response
                    (format nil "Status ~D response" code)
                    :status code)))
-               
+
                ;; Default
                (t (response:text-response "Test server response")))))
          :port *test-server-port*))
-  
+
   ;; Give server time to start
   (sleep 0.1))
 
@@ -153,7 +153,7 @@
              (client:http-get (format nil "http://localhost:~D/echo" *test-server-port*))
            (is-equal 200 status)
            (is (search "\"method\":\"GET\"" body)))
-         
+
          ;; POST
          (multiple-value-bind (status headers body)
              (client:http-post (format nil "http://localhost:~D/echo" *test-server-port*)
@@ -161,14 +161,14 @@
            (is-equal 200 status)
            (is (search "\"method\":\"POST\"" body))
            (is (search "test post data" body)))
-         
+
          ;; PUT
          (multiple-value-bind (status headers body)
              (client:http-put (format nil "http://localhost:~D/echo" *test-server-port*)
                               :body "test put data")
            (is-equal 200 status)
            (is (search "\"method\":\"PUT\"" body)))
-         
+
          ;; DELETE
          (multiple-value-bind (status headers body)
              (client:http-delete (format nil "http://localhost:~D/echo" *test-server-port*))
@@ -180,7 +180,7 @@
   "Test HTTP header handling"
   (start-test-server)
   (unwind-protect
-       (let ((custom-headers (map:make-map 
+       (let ((custom-headers (map:make-map
                               "X-Test-Header" "test-value"
                               "Authorization" "Bearer token123")))
          (multiple-value-bind (status headers body)
@@ -198,7 +198,7 @@
   (unwind-protect
        (dolist (code '(200 201 204 400 401 404 500))
          (multiple-value-bind (status headers body)
-             (client:http-get (format nil "http://localhost:~D/status/~D" 
+             (client:http-get (format nil "http://localhost:~D/status/~D"
                                       *test-server-port* code))
            (is-equal code status)))
     (stop-test-server)))
@@ -220,13 +220,13 @@
          ;; Make multiple requests to same host
          (dotimes (i 5)
            (multiple-value-bind (status headers body)
-               (pooled:pooled-http-get 
-                (format nil "http://localhost:~D/echo?request=~D" 
+               (pooled:pooled-http-get
+                (format nil "http://localhost:~D/echo?request=~D"
                         *test-server-port* i)
                 :pool test-pool)
              (is-equal 200 status)
              (is (search (format nil "\"request\":\"~D\"" i) body))))
-         
+
          ;; Check pool statistics
          (let ((stats (pooled:pool-statistics test-pool)))
            (is (> (getf stats :connections-created) 0))
@@ -240,10 +240,10 @@
        (pooled:with-connection-pool (test-pool :max-size 2)
          ;; Make requests to same host
          (dotimes (i 10)
-           (pooled:pooled-http-get 
+           (pooled:pooled-http-get
             (format nil "http://localhost:~D/connection-info" *test-server-port*)
             :pool test-pool))
-         
+
          ;; Should have reused connections
          (let ((stats (pooled:pool-statistics test-pool)))
            (is (< (getf stats :connections-created) 10))
@@ -258,25 +258,25 @@
   (unwind-protect
        (let ((threads '())
              (results (make-array 10 :initial-element nil)))
-         
+
          ;; Launch concurrent requests
          (dotimes (i 10)
            (push (sb-thread:make-thread
                   (lambda (index)
                     (multiple-value-bind (status headers body)
-                        (client:http-get 
-                         (format nil "http://localhost:~D/echo?thread=~D" 
+                        (client:http-get
+                         (format nil "http://localhost:~D/echo?thread=~D"
                                  *test-server-port* index))
-                      (setf (aref results index) 
+                      (setf (aref results index)
                             (list status (search (format nil "\"thread\":\"~D\"" index) body)))))
                   :arguments (list i)
                   :name (format nil "test-thread-~D" i))
                  threads))
-         
+
          ;; Wait for all threads
          (dolist (thread threads)
            (sb-thread:join-thread thread))
-         
+
          ;; Verify all requests succeeded
          (dotimes (i 10)
            (let ((result (aref results i)))
@@ -289,7 +289,7 @@
   (start-test-server)
   (unwind-protect
        (multiple-value-bind (status headers body)
-           (client:http-get (format nil "http://localhost:~D/large?size=50000" 
+           (client:http-get (format nil "http://localhost:~D/large?size=50000"
                                     *test-server-port*))
          (is-equal 200 status)
          (is-equal 50000 (length body))
@@ -313,7 +313,7 @@
        ;; This might timeout or succeed depending on system
        (handler-case
            (multiple-value-bind (status headers body)
-               (client:http-get (format nil "http://localhost:~D/delay/3" 
+               (client:http-get (format nil "http://localhost:~D/delay/3"
                                         *test-server-port*))
              ;; If it succeeds, should get proper response
              (is-equal 200 status)
@@ -371,16 +371,16 @@
        (pooled:with-connection-pool (test-pool :max-size 2 :max-idle-time 1)
          ;; Create some connections
          (dotimes (i 5)
-           (pooled:pooled-http-get 
+           (pooled:pooled-http-get
             (format nil "http://localhost:~D/echo" *test-server-port*)
             :pool test-pool))
-         
+
          ;; Wait for cleanup
          (sleep 2)
-         
+
          ;; Force cleanup
          (pool:clear-connection-pool test-pool)
-         
+
          ;; Pool should be empty
          (is-equal 0 (pool:pool-active-count test-pool)))
     (stop-test-server)))
@@ -394,7 +394,7 @@
   (format t "Test server port: ~D~%" *test-server-port*)
   (when external-tests
     (format t "External tests enabled~%"))
-  
+
   (unwind-protect
        (progn
          (format t "~%Running integration test suite...~%")

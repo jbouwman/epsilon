@@ -22,12 +22,12 @@
   "Set up test HTTP handlers"
   ;; Simple echo handler
   (server:define-handler (:get "/echo") (req)
-    (response:json-response 
-     (map:make-map 
+    (response:json-response
+     (map:make-map
       "method" (request:request-method req)
       "path" (request:request-path req)
       "tls" "true")))
-  
+
   ;; POST handler that echoes body
   (server:define-handler (:post "/echo") (req)
     (response:json-response
@@ -36,21 +36,21 @@
       "path" (request:request-path req)
       "body" (or (request:request-body req) "")
       "tls" "true")))
-  
+
   ;; Large response handler
   (server:define-handler (:get "/large") (req)
     (response:text-response (make-string 1000 :initial-element #\A)))
-  
+
   ;; Headers test handler
   (server:define-handler (:get "/headers") (req)
-    (response:make-response 
+    (response:make-response
      :status 200
-     :headers (map:make-map 
+     :headers (map:make-map
                "Content-Type" "text/plain"
                "X-Custom-Header" "test-value"
                "X-TLS-Server" "true")
      :body "Headers test over TLS"))
-  
+
   ;; Error handler
   (server:define-handler (:get "/error") (req)
     (response:make-response :status 500
@@ -61,17 +61,17 @@
   "Start a test HTTPS server for integration testing"
   (when *test-server*
     (server:stop-server *test-server*))
-  
+
   ;; Create TLS context for testing
   (let ((tls-ctx (tls:create-tls-context :server-p t)))
     (tls:set-verify-mode tls-ctx tls:+tls-verify-none+)
-    
+
     ;; Start server with TLS support (stubbed - no real certs needed)
-    (setf *test-server* 
+    (setf *test-server*
           (server:start-server :port *test-tls-port*
                               :tls-context tls-ctx
                               :ssl-p t))
-    
+
     ;; Wait for server to be ready
     (sleep 0.1)))
 
@@ -164,7 +164,7 @@
       (client::parse-url "http://example.com/insecure")
     (is-equal "http" scheme1)
     (is-equal 80 port1))
-  
+
   (multiple-value-bind (scheme2 host2 port2 path2 query2)
       (client::parse-url "https://example.com/secure")
     (is-equal "https" scheme2)
@@ -175,12 +175,12 @@
   (let ((ctx (tls:create-tls-context :server-p t)))
     (is (tls:tls-context-p ctx))
     (is (tls:tls-context-server-p ctx))
-    
+
     ;; Test loading certificate and key files (stub implementation)
     (tls:load-cert-file ctx "/test/cert.pem")
-    (tls:load-key-file ctx "/test/key.pem") 
+    (tls:load-key-file ctx "/test/key.pem")
     (tls:set-verify-mode ctx tls:+tls-verify-none+)
-    
+
     (is-equal "/test/cert.pem" (tls:tls-context-cert-file ctx))
     (is-equal "/test/key.pem" (tls:tls-context-key-file ctx))
     (is-equal tls:+tls-verify-none+ (tls:tls-context-verify-mode ctx))))
@@ -190,7 +190,7 @@
   ;; Test server with explicit TLS context
   (let ((ctx (tls:create-tls-context :server-p t)))
     (tls:set-verify-mode ctx tls:+tls-verify-none+)
-    
+
     ;; Should not throw error when creating server with TLS context
     (is-not (handler-case
                 (let ((srv (server:start-server :port (+ *test-tls-port* 1)
@@ -199,7 +199,7 @@
                   (server:stop-server srv)
                   nil) ; Return nil if successful
               (error (e) e)))) ; Return error if failed
-  
+
   ;; Test server with cert/key files
   (is-not (handler-case
               (let ((srv (server:start-server :port (+ *test-tls-port* 2)

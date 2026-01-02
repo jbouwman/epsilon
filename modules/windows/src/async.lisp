@@ -9,24 +9,28 @@
    ;; Async operation types
    #:async-operation
    #:async-operation-p
+   #:make-async-operation
    #:async-operation-fd
    #:async-operation-type
    #:async-operation-buffer
+   #:async-operation-start
+   #:async-operation-end
    #:async-operation-callback
    #:async-operation-error-callback
-   
+   #:async-operation-result
+
    ;; Async system management
    #:ensure-async-system
    #:stop-async-system
    #:submit-async-operation
    #:poll-completions
-   
+
    ;; Async operations
    #:async-read
    #:async-write
    #:async-accept
    #:async-connect
-   
+
    ;; Utilities
    #:set-nonblocking))
 
@@ -41,8 +45,11 @@
   (fd nil :type (or null fixnum))
   (type nil :type keyword)
   (buffer nil)
+  (start 0 :type fixnum)
+  (end nil :type (or null fixnum))
   (callback nil :type (or null function))
-  (error-callback nil :type (or null function)))
+  (error-callback nil :type (or null function))
+  (result nil))
 
 ;;; ============================================================================
 ;;; Windows IOCP-based Async System (stub implementation)
@@ -83,23 +90,29 @@
 ;;; High-Level Async Operations (stub implementation)
 ;;; ============================================================================
 
-(defun async-read (fd buffer &key on-complete on-error)
-  "Perform async read operation"
+(defun async-read (fd buffer &key (start 0) (end (length buffer)) on-complete on-error)
+  "Perform async read operation.
+   START and END specify the region of BUFFER to read into."
   (let ((operation (make-async-operation
                     :fd fd
                     :type :read
                     :buffer buffer
+                    :start start
+                    :end end
                     :callback on-complete
                     :error-callback on-error)))
     (submit-async-operation operation)
     operation))
 
-(defun async-write (fd buffer &key on-complete on-error)
-  "Perform async write operation"
+(defun async-write (fd buffer &key (start 0) (end (length buffer)) on-complete on-error)
+  "Perform async write operation.
+   START and END specify the region of BUFFER to write from."
   (let ((operation (make-async-operation
                     :fd fd
                     :type :write
                     :buffer buffer
+                    :start start
+                    :end end
                     :callback on-complete
                     :error-callback on-error)))
     (submit-async-operation operation)

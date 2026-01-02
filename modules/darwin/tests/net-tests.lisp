@@ -14,7 +14,7 @@
 (in-package epsilon.net.darwin.tests)
 
 ;;; ============================================================================
-;;; Basic Address and Socket Tests  
+;;; Basic Address and Socket Tests
 ;;; ============================================================================
 
 (deftest test-socket-address-creation ()
@@ -42,7 +42,7 @@
       (is (typep first-addr 'net:socket-address))
       (is (stringp (net:socket-address-ip first-addr)))
       (is-equal 8080 (net:socket-address-port first-addr))))
-  
+
   ;; Test resolution of invalid hostname - Darwin implementation doesn't check DNS
   ;; It just parses the string, so this won't throw an error
   (let ((addresses (net:resolve-address "this-should-not-exist.invalid:8080")))
@@ -67,7 +67,7 @@
         ;; Note: We can't access internal handles, so cleanup relies on GC
         t)
     (net:network-error (e)
-      (is nil (format nil "TCP bind failed with network error. Message: ~A" 
+      (is nil (format nil "TCP bind failed with network error. Message: ~A"
                       (if (slot-boundp e 'net::message)
                           (slot-value e 'net::message)
                           "No message available"))))
@@ -160,7 +160,7 @@
   (is (fboundp 'net:resolve-address))
   (is (fboundp 'net:socket-address-ip))
   (is (fboundp 'net:socket-address-port))
-  
+
   ;; TCP functions
   (is (fboundp 'net:tcp-bind))
   (is (fboundp 'net:tcp-accept))
@@ -170,7 +170,7 @@
   (is (fboundp 'net:tcp-local-addr))
   (is (fboundp 'net:tcp-peer-addr))
   (is (fboundp 'net:tcp-shutdown))
-  
+
   ;; UDP functions
   (is (fboundp 'net:udp-bind))
   (is (fboundp 'net:udp-connect))
@@ -179,11 +179,11 @@
   (is (fboundp 'net:udp-send-to))
   (is (fboundp 'net:udp-recv-from))
   (is (fboundp 'net:udp-local-addr))
-  
+
   ;; Socket options
   (is (fboundp 'net:set-socket-option))
   (is (fboundp 'net:get-socket-option))
-  
+
   ;; Note: Darwin implementation uses tcp-shutdown for cleanup, no explicit close functions
   (is (fboundp 'net:tcp-shutdown)))
 
@@ -197,9 +197,9 @@
       (let* ((addr (net:make-socket-address "0.0.0.0" 0))
              (listener (net:tcp-bind addr))
              (port (net:socket-address-port (net:tcp-local-addr listener))))
-        
+
         ;; Start accepting thread
-        (let ((accept-thread 
+        (let ((accept-thread
                (sb-thread:make-thread
                 (lambda ()
                   (handler-case
@@ -209,17 +209,17 @@
                     (error (e)
                       (is nil (format nil "Accept failed: ~A" e)))))
                 :name "accept-thread")))
-          
+
           ;; Give accept thread time to start
           (sleep 0.1)
-          
+
           ;; Connect to the listener
           (let* ((connect-addr (net:make-socket-address "0.0.0.0" port))
                  (client (net:tcp-connect connect-addr)))
             (is (typep client 'net:tcp-stream))
             (is (net:tcp-connected-p client))
             (net:tcp-shutdown client))
-          
+
           ;; Wait for accept thread to finish
           (sb-thread:join-thread accept-thread :timeout 2))
         t)
@@ -240,7 +240,7 @@
       (is t "Got expected connection-refused error"))
     (net:network-error (e)
       ;; Also acceptable - might get timeout or other error
-      (is t (format nil "Got network error (acceptable): ~A" 
+      (is t (format nil "Got network error (acceptable): ~A"
                     (if (slot-boundp e 'net::message)
                         (slot-value e 'net::message)
                         "No message"))))
@@ -255,9 +255,9 @@
              (listener (net:tcp-bind addr))
              (port (net:socket-address-port (net:tcp-local-addr listener)))
              (test-message "Hello, TCP!"))
-        
+
         ;; Start echo server thread
-        (let ((server-thread 
+        (let ((server-thread
                (sb-thread:make-thread
                 (lambda ()
                   (handler-case
@@ -271,27 +271,27 @@
                     (error (e)
                       (is nil (format nil "Server error: ~A" e)))))
                 :name "echo-server")))
-          
+
           ;; Give server time to start
           (sleep 0.1)
-          
+
           ;; Connect and send data
           (let* ((connect-addr (net:make-socket-address "0.0.0.0" port))
                  (client (net:tcp-connect connect-addr)))
-            
+
             ;; Send message
             (net:tcp-write client test-message)
-            
+
             ;; Read response
             (let ((buffer (make-array 100 :element-type '(unsigned-byte 8))))
               (let ((bytes-read (net:tcp-read client buffer)))
                 (is (> bytes-read 0))
-                (let ((response (sb-ext:octets-to-string 
+                (let ((response (sb-ext:octets-to-string
                                  (subseq buffer 0 bytes-read))))
                   (is-equal test-message response))))
-            
+
             (net:tcp-shutdown client))
-          
+
           ;; Wait for server thread
           (sb-thread:join-thread server-thread :timeout 2))
         t)
@@ -333,14 +333,14 @@
         (let ((dest-addr (net:make-socket-address "127.0.0.1" port2)))
           (let ((bytes-sent (net:udp-send socket1 test-message dest-addr)))
             (is (> bytes-sent 0))))
-        
+
         ;; Receive on socket2
         (let ((buffer (make-array 100 :element-type '(unsigned-byte 8))))
           (multiple-value-bind (bytes-read sender-addr)
               (net:udp-recv socket2 buffer)
             (when (and bytes-read (> bytes-read 0))
               (is (> bytes-read 0))
-              (let ((received (sb-ext:octets-to-string 
+              (let ((received (sb-ext:octets-to-string
                                (subseq buffer 0 bytes-read))))
                 (is-equal test-message received))
               (is (typep sender-addr 'net:socket-address)))))
@@ -357,23 +357,23 @@
   (handler-case
       (let* ((addr (net:make-socket-address "0.0.0.0" 0))
              (listener (net:tcp-bind addr)))
-        
+
         ;; Test reuse-address (should be set by default)
         (is (net:get-socket-option listener :reuse-address))
-        
+
         ;; Test setting and getting keep-alive
         (net:set-socket-option listener :keep-alive t)
         (is (net:get-socket-option listener :keep-alive))
-        
+
         (net:set-socket-option listener :keep-alive nil)
         (is (not (net:get-socket-option listener :keep-alive)))
-        
+
         ;; Test buffer sizes
         (let ((recv-buf (net:get-socket-option listener :recv-buffer))
               (send-buf (net:get-socket-option listener :send-buffer)))
           (is (> recv-buf 0))
           (is (> send-buf 0)))
-        
+
         t)
     (error (e)
       (is nil (format nil "Socket options test failed: ~A" e)))))
@@ -388,11 +388,11 @@
       (let ((kq (epsilon.kqueue:kqueue)))
         (is (integerp kq))
         (is (>= kq 0))
-        
+
         ;; Test waiting with timeout (should timeout)
         (let ((events (epsilon.kqueue:wait-for-events kq 1 0.1)))
           (is (null events)))
-        
+
         (epsilon.kqueue:kqueue-close kq)
         t)
     (error (e)
@@ -410,7 +410,7 @@
 ;;
 ;; 2. FIXED: Tests no longer access internal handles like:
 ;;    - (net:tcp-listener-handle listener)
-;;    - (net:udp-socket-handle socket) 
+;;    - (net:udp-socket-handle socket)
 ;;    - (net:tcp-stream-handle stream)
 ;;
 ;; 3. FIXED: Tests no longer call sb-posix:close directly on handles
@@ -465,7 +465,7 @@
          (listener (net:tcp-bind addr)))
     (setf (server-listener fixture) listener)
     (setf (server-port fixture) (net:socket-address-port (net:tcp-local-addr listener)))
-    
+
     ;; Start server thread
     (setf (server-thread fixture)
           (sb-thread:make-thread
@@ -485,12 +485,12 @@
                               (error () nil))))
                (error () nil)))
            :name "test-tcp-server"))
-    
+
     ;; Wait for server to be ready
     (loop for i from 0 below 50
           until (server-ready-p fixture)
           do (sleep 0.01))
-    
+
     fixture))
 
 (defun stop-tcp-server (fixture)
@@ -550,17 +550,17 @@
   (let ((addr (net:parse-address "192.168.1.1")))
     (is-equal "192.168.1.1" (net:socket-address-ip addr))
     (is-equal 80 (net:socket-address-port addr)))
-  
+
   ;; Test with IPv6-like format (though not fully supported)
   (let ((addr (net:parse-address "[::1]:8080")))
     (is-equal "[::1]" (net:socket-address-ip addr))
     (is-equal 8080 (net:socket-address-port addr)))
-  
+
   ;; Test with multiple colons
   (let ((addr (net:parse-address "host:name:8080")))
     (is-equal "host:name" (net:socket-address-ip addr))
     (is-equal 8080 (net:socket-address-port addr)))
-  
+
   ;; Test with empty string before colon
   (let ((addr (net:parse-address ":8080")))
     (is-equal "" (net:socket-address-ip addr))
@@ -572,13 +572,16 @@
   (let* ((sock-addr (net:make-socket-address "127.0.0.1" 3000))
          (resolved (net:resolve-address sock-addr)))
     (is (listp resolved))
-    (is (eq (first resolved) sock-addr)))
-  
+    ;; Check that resolved address has same values (not necessarily same object)
+    (let ((first-resolved (first resolved)))
+      (is-equal "127.0.0.1" (net:socket-address-ip first-resolved))
+      (is-equal 3000 (net:socket-address-port first-resolved))))
+
   ;; Test with string
   (let ((resolved (net:resolve-address "localhost:8080")))
     (is (listp resolved))
     (is (typep (first resolved) 'net:socket-address)))
-  
+
   ;; Test with list (host port)
   (let ((resolved (net:resolve-address '("192.168.1.1" 9000))))
     (is (listp resolved))
@@ -600,7 +603,7 @@
          (listener1 (net:tcp-bind addr1)))
     ;; Close the first listener (using internal handle since no close method for listener)
     (net::%close (net::tcp-listener-handle listener1))
-    
+
     ;; Try to bind again to the same port (should work with SO_REUSEADDR)
     (handler-case
         (let ((listener2 (net:tcp-bind addr1)))
@@ -619,13 +622,13 @@
     (let* ((addr (net:make-socket-address "127.0.0.1" (server-port fixture)))
            (client (net:tcp-connect addr)))
       (is (net:tcp-connected-p client))
-      
+
       ;; Wait for server to accept
       (sleep 0.1)
-      
+
       ;; Check that connection was accepted
       (is (not (null (client-connections fixture))))
-      
+
       (net:tcp-shutdown client))))
 
 (deftest test-tcp-try-accept-non-blocking
@@ -637,18 +640,18 @@
     ;; Try accept with no connections
     (let ((result (net:tcp-try-accept listener)))
       (is (eq result :would-block) "Should return :would-block with no connections"))
-    
+
     ;; Connect a client
     (let* ((port (net:socket-address-port (net:tcp-local-addr listener)))
            (client-addr (net:make-socket-address "127.0.0.1" port))
            (client (net:tcp-connect client-addr)))
-      
+
       ;; Now try-accept should succeed
       (let ((result (net:tcp-try-accept listener)))
         (is (typep result 'net:tcp-stream) "Should accept the connection")
         (when (typep result 'net:tcp-stream)
           (net:tcp-shutdown result)))
-      
+
       (net:tcp-shutdown client))))
 
 (deftest test-tcp-poll-accept
@@ -658,22 +661,22 @@
   (let* ((addr (net:make-socket-address "0.0.0.0" 0))
          (listener (net:tcp-bind addr))
          (waker nil))  ; Waker not implemented yet
-    
+
     ;; Poll with no connections
     (let ((result (net:tcp-poll-accept listener waker)))
       (is (eq result :pending) "Should return :pending with no connections"))
-    
+
     ;; Connect a client
     (let* ((port (net:socket-address-port (net:tcp-local-addr listener)))
            (client-addr (net:make-socket-address "127.0.0.1" port))
            (client (net:tcp-connect client-addr)))
-      
+
       ;; Poll should now return the connection
       (let ((result (net:tcp-poll-accept listener waker)))
         (is (typep result 'net:tcp-stream) "Should return the connection")
         (when (typep result 'net:tcp-stream)
           (net:tcp-shutdown result)))
-      
+
       (net:tcp-shutdown client))))
 
 (deftest test-tcp-incoming
@@ -695,24 +698,24 @@
   (with-tcp-fixture (fixture)
     (let* ((addr (net:make-socket-address "127.0.0.1" (server-port fixture)))
            (client (net:tcp-connect addr)))
-      
+
       ;; Give server time to accept
       (sleep 0.1)
-      
+
       ;; Get reader stream
       (let ((reader (net:tcp-stream-reader client)))
         (is (streamp reader) "Should return a stream")
         (is (input-stream-p reader) "Should be an input stream")
         ;; Second call should return same stream
         (is (eq reader (net:tcp-stream-reader client)) "Should cache reader"))
-      
+
       ;; Get writer stream
       (let ((writer (net:tcp-stream-writer client)))
         (is (streamp writer) "Should return a stream")
         (is (output-stream-p writer) "Should be an output stream")
         ;; Second call should return same stream
         (is (eq writer (net:tcp-stream-writer client)) "Should cache writer"))
-      
+
       (net:tcp-shutdown client))))
 
 (deftest test-tcp-write-all
@@ -723,13 +726,13 @@
     (let* ((addr (net:make-socket-address "127.0.0.1" (server-port fixture)))
            (client (net:tcp-connect addr))
            (test-data "This is a test message that will be written completely"))
-      
+
       ;; Give server time to accept
       (sleep 0.1)
-      
+
       ;; Write all data
       (net:tcp-write-all client test-data)
-      
+
       ;; Read it back from echo server
       (sleep 0.1)  ; Give server time to echo
       (let ((buffer (make-array 100 :element-type '(unsigned-byte 8))))
@@ -737,7 +740,7 @@
           (is (= bytes-read (length test-data)) "Should read all bytes")
           (let ((received (sb-ext:octets-to-string (subseq buffer 0 bytes-read))))
             (is-equal test-data received "Should receive same data"))))
-      
+
       (net:tcp-shutdown client))))
 
 (deftest test-tcp-flush
@@ -762,20 +765,20 @@
   (with-tcp-fixture (fixture)
     (let* ((addr (net:make-socket-address "127.0.0.1" (server-port fixture)))
            (client (net:tcp-connect addr)))
-      
+
       ;; Try read with no data available
       (let ((buffer (make-array 10 :element-type '(unsigned-byte 8))))
         (let ((result (net:tcp-try-read client buffer)))
           (is (or (eq result :would-block) (zerop result))
               "Should return :would-block or 0 with no data")))
-      
+
       ;; Try write (should usually succeed)
       (let ((result (net:tcp-try-write client "test")))
         (is (or (numberp result) (eq result :would-block))
             "Should return bytes written or :would-block")
         (when (numberp result)
           (is (> result 0) "Should write some bytes")))
-      
+
       (net:tcp-shutdown client))))
 
 (deftest test-tcp-poll-operations
@@ -786,16 +789,16 @@
     (let* ((addr (net:make-socket-address "127.0.0.1" (server-port fixture)))
            (client (net:tcp-connect addr))
            (waker nil))  ; Waker not implemented
-      
+
       ;; Poll for write (should be ready)
       (let ((result (net:tcp-poll-write client waker)))
         (is (eq result :ready) "Write should be ready"))
-      
+
       ;; Poll for read (might be pending)
       (let ((result (net:tcp-poll-read client waker)))
         (is (or (eq result :pending) (numberp result))
             "Read should return :pending or data"))
-      
+
       (net:tcp-shutdown client))))
 
 (deftest test-tcp-shutdown-modes
@@ -809,13 +812,13 @@
         (net:tcp-shutdown client1 :how :read)
         (is (not (net:tcp-connected-p client1)) "Should mark as disconnected")
         (net:tcp-shutdown client1 :how :write))
-      
+
       ;; Test shutdown write
       (let ((client2 (net:tcp-connect addr)))
         (sleep 0.05)  ; Give server time to accept
         (net:tcp-shutdown client2 :how :write)
         (net:tcp-shutdown client2 :how :read))
-      
+
       ;; Test shutdown both
       (let ((client3 (net:tcp-connect addr)))
         (sleep 0.05)  ; Give server time to accept
@@ -849,17 +852,17 @@
          (socket1 (net:udp-bind addr1))
          (addr2 (net:make-socket-address "0.0.0.0" 0))
          (socket2 (net:udp-bind addr2)))
-    
+
     ;; Connect socket1 to socket2
     (let ((connect-addr (net:make-socket-address "127.0.0.1"
                                                   (net:socket-address-port
                                                    (net:udp-local-addr socket2)))))
       (net:udp-connect socket1 connect-addr)
-      
+
       ;; Check connected peer is set
       (is (typep (net::udp-socket-connected-peer socket1) 'net:socket-address)
           "Should have connected peer")
-      
+
       ;; After connect, can use send without address
       (let ((bytes-sent (net:udp-send socket1 "connected message" connect-addr)))
         (is (> bytes-sent 0) "Should send data")))))
@@ -873,12 +876,12 @@
          (socket1 (net:udp-bind addr1))
          (socket2 (net:udp-bind addr2))
          (port2 (net:socket-address-port (net:udp-local-addr socket2))))
-    
+
     ;; Test send-to (alias for send)
     (let* ((dest (net:make-socket-address "127.0.0.1" port2))
            (bytes (net:udp-send-to socket1 "test" dest)))
       (is (> bytes 0) "send-to should work"))
-    
+
     ;; Test recv-from (alias for recv)
     (let ((buffer (make-array 100 :element-type '(unsigned-byte 8))))
       (multiple-value-bind (bytes addr)
@@ -894,34 +897,34 @@
   "Test all socket option types"
   (let* ((addr (net:make-socket-address "0.0.0.0" 0))
          (listener (net:tcp-bind addr)))
-    
+
     ;; Test boolean options
     (net:set-socket-option listener :broadcast t)
     (is (net:get-socket-option listener :broadcast) "Broadcast should be set")
-    
+
     ;; Test buffer size options
     (net:set-socket-option listener :recv-buffer 65536)
     (let ((size (net:get-socket-option listener :recv-buffer)))
       (is (>= size 65536) "Receive buffer should be at least requested size"))
-    
+
     (net:set-socket-option listener :send-buffer 65536)
     (let ((size (net:get-socket-option listener :send-buffer)))
       (is (>= size 65536) "Send buffer should be at least requested size"))
-    
+
     ;; Test timeout options
     (net:set-socket-option listener :recv-timeout 1000)  ; 1 second
     (let ((timeout (net:get-socket-option listener :recv-timeout)))
       (is (>= timeout 900) "Receive timeout should be approximately 1000ms"))
-    
+
     (net:set-socket-option listener :send-timeout 2000)  ; 2 seconds
     (let ((timeout (net:get-socket-option listener :send-timeout)))
       (is (>= timeout 1900) "Send timeout should be approximately 2000ms"))
-    
+
     ;; Test linger option
     (net:set-socket-option listener :linger 5)
     (let ((linger (net:get-socket-option listener :linger)))
       (is (= linger 5) "Linger should be 5 seconds"))
-    
+
     ;; Disable linger
     (net:set-socket-option listener :linger nil)
     (is (null (net:get-socket-option listener :linger)) "Linger should be disabled")))
@@ -932,25 +935,25 @@
   (with-tcp-fixture (fixture)
     (let* ((addr (net:make-socket-address "127.0.0.1" (server-port fixture)))
            (client (net:tcp-connect addr)))
-      
+
       ;; Give server time to accept
       (sleep 0.05)
-      
+
       ;; Set TCP_NODELAY
       (net:set-socket-option client :nodelay t)
       (is (net:get-socket-option client :nodelay) "TCP_NODELAY should be set")
-      
+
       ;; Disable TCP_NODELAY
       (net:set-socket-option client :nodelay nil)
       (is (not (net:get-socket-option client :nodelay)) "TCP_NODELAY should be disabled")
-      
+
       (net:tcp-shutdown client))))
 
 (deftest test-socket-option-errors
   "Test socket option error handling"
   (let* ((addr (net:make-socket-address "0.0.0.0" 0))
          (listener (net:tcp-bind addr)))
-    
+
     ;; Test unknown option
     (handler-case
         (progn
@@ -958,7 +961,7 @@
           (is nil "Should have thrown error for unknown option"))
       (error ()
         (is t "Got expected error for unknown option")))
-    
+
     ;; Test getting unknown option
     (handler-case
         (progn
@@ -990,7 +993,7 @@
   (is (stringp (net::errno-to-string 60)) "ETIMEDOUT string")
   (is (stringp (net::errno-to-string 61)) "ECONNREFUSED string")
   (is (stringp (net::errno-to-string 999)) "Unknown error string")
-  
+
   ;; Test get-errno (should return a number)
   (let ((errno (net::get-errno)))
     (is (numberp errno) "get-errno should return a number")))
@@ -1006,7 +1009,7 @@
                  (make-condition 'net:timeout-error :message "test")
                  (make-condition 'net:address-in-use :message "test")
                  (make-condition 'net:would-block-error :message "test"))))
-    
+
     (dolist (err errors)
       (is (typep err 'net:network-error) "All should be network-error subtype")
       (is (typep err 'error) "All should be error subtype"))))
@@ -1048,7 +1051,7 @@
   (lib:with-foreign-memory ((addr :char :count 16))
     ;; Create a sockaddr_in structure
     (net::make-sockaddr-in-into addr "10.20.30.40" 12345)
-    
+
     ;; Parse it back
     (let ((parsed (net::parse-sockaddr-in addr)))
       (is (typep parsed 'net:socket-address))
@@ -1072,12 +1075,12 @@
                (let* ((addr (net:make-socket-address "127.0.0.1" (server-port fixture)))
                       (client (net:tcp-connect addr)))
                  (push client clients)))
-             
+
              ;; Send data from each client
              (loop for client in clients
                    for i from 0
                    do (net:tcp-write client (format nil "client~D" i)))
-             
+
              ;; Read responses
              (sleep 0.2)  ; Give server time to process
              (loop for client in clients
@@ -1102,10 +1105,10 @@
            (client (net:tcp-connect addr))
            ;; Create 10KB of data
            (large-data (make-string 10000 :initial-element #\X)))
-      
+
       ;; Send large data
       (net:tcp-write-all client large-data)
-      
+
       ;; Read it back (may come in chunks)
       (let ((buffer (make-array 20000 :element-type '(unsigned-byte 8)))
             (total-read 0))
@@ -1115,11 +1118,11 @@
                    (when (zerop bytes-read)
                      (return))
                    (incf total-read bytes-read)))
-        
+
         (is (= total-read (length large-data)) "Should read all data")
         (let ((received (sb-ext:octets-to-string (subseq buffer 0 total-read))))
           (is-equal large-data received "Should receive same data")))
-      
+
       (net:tcp-shutdown client))))
 
 ;;; ============================================================================
@@ -1133,16 +1136,16 @@
   (with-tcp-fixture (fixture)
     (let* ((addr (net:make-socket-address "127.0.0.1" (server-port fixture)))
            (client (net:tcp-connect addr)))
-      
+
       ;; Write zero bytes
       (let ((result (net:tcp-write client "")))
         (is (zerop result) "Writing empty string should return 0"))
-      
+
       ;; Read into zero-length buffer
       (let ((buffer (make-array 0 :element-type '(unsigned-byte 8))))
         (let ((result (net:tcp-read client buffer)))
           (is (zerop result) "Reading into empty buffer should return 0")))
-      
+
       (net:tcp-shutdown client))))
 
 (deftest test-address-edge-cases
@@ -1150,11 +1153,11 @@
   ;; Test with maximum port number
   (let ((addr (net:make-socket-address "127.0.0.1" 65535)))
     (is-equal 65535 (net:socket-address-port addr)))
-  
+
   ;; Test with minimum port number
   (let ((addr (net:make-socket-address "127.0.0.1" 0)))
     (is-equal 0 (net:socket-address-port addr)))
-  
+
   ;; Test with special IP addresses
   (let ((addrs (list
                 (net:make-socket-address "0.0.0.0" 8080)
@@ -1177,11 +1180,11 @@
              (port (net:socket-address-port (net:tcp-local-addr listener)))
              (waker-called nil)
              (waker-function (lambda () (setf waker-called t))))
-        
+
         ;; Test polling when no connection is available - should return :pending
         (let ((result (net:tcp-poll-accept listener waker-function)))
           (is (eq result :pending) "Should return :pending when no connection available"))
-        
+
         ;; Start a connection in a separate thread
         (let ((connect-thread
                 (sb-thread:make-thread
@@ -1191,18 +1194,18 @@
                           (client (net:tcp-connect connect-addr)))
                      (net:tcp-shutdown client)))
                  :name "connect-thread")))
-          
+
           ;; Wait for waker to be called or timeout
           (loop for i from 0 below 50 ; 5 second timeout
                 while (not waker-called)
                 do (sleep 0.1))
-          
+
           ;; Now polling should succeed
           (let ((result (net:tcp-try-accept listener)))
             (unless (eq result :would-block)
               (is (typep (first (multiple-value-list result)) 'net:tcp-stream)
                   "Should return TCP stream after connection")))
-          
+
           (sb-thread:join-thread connect-thread :timeout 2))
         t)
     (error (e)
@@ -1219,7 +1222,7 @@
              (test-data "Hello async read!")
              (waker-called nil)
              (waker-function (lambda () (setf waker-called t))))
-        
+
         ;; Set up connection
         (let ((accept-thread
                 (sb-thread:make-thread
@@ -1232,26 +1235,26 @@
                      (error (e)
                        (format t "Accept thread error: ~A~%" e))))
                  :name "accept-thread")))
-          
+
           (sleep 0.05) ; Let accept thread start
-          
+
           (let* ((connect-addr (net:make-socket-address "127.0.0.1" port))
                  (client (net:tcp-connect connect-addr)))
-            
+
             ;; Test polling before data is available
             (let ((result (net:tcp-poll-read client waker-function)))
               (is (eq result :pending) "Should return :pending when no data available"))
-            
+
             ;; Wait for data to arrive and waker to be called
             (loop for i from 0 below 50 ; 5 second timeout
                   while (not waker-called)
                   do (sleep 0.1))
-            
+
             ;; Now reading should succeed
             (let* ((buffer (make-array (length test-data) :element-type '(unsigned-byte 8)))
                    (bytes-read (net:tcp-read client buffer)))
               (is (> bytes-read 0) "Should read some data after polling indicates ready"))
-            
+
             (net:tcp-shutdown client)
             (sb-thread:join-thread accept-thread :timeout 2)))
         t)
@@ -1268,7 +1271,7 @@
              (port (net:socket-address-port (net:tcp-local-addr listener)))
              (waker-called nil)
              (waker-function (lambda () (setf waker-called t))))
-        
+
         ;; Set up connection
         (let ((accept-thread
                 (sb-thread:make-thread
@@ -1280,17 +1283,17 @@
                      (error (e)
                        (format t "Accept thread error: ~A~%" e))))
                  :name "accept-thread")))
-          
+
           (sleep 0.05) ; Let accept thread start
-          
+
           (let* ((connect-addr (net:make-socket-address "127.0.0.1" port))
                  (client (net:tcp-connect connect-addr)))
-            
+
             ;; Test write polling - should typically be :ready immediately
             (let ((result (net:tcp-poll-write client waker-function)))
               (is (or (eq result :ready) (eq result :pending))
                   "Should return :ready or :pending for write polling"))
-            
+
             (net:tcp-shutdown client)
             (sb-thread:join-thread accept-thread :timeout 2)))
         t)
@@ -1307,24 +1310,24 @@
              (port (net:socket-address-port (net:udp-local-addr socket)))
              (waker-called nil)
              (waker-function (lambda () (setf waker-called t))))
-        
+
         ;; Test UDP write polling
         (let ((result (net:udp-poll-send socket waker-function)))
           (is (or (eq result :ready) (eq result :pending))
               "UDP send polling should return :ready or :pending"))
-        
+
         ;; Test UDP read polling when no data available
         (let ((result (net:udp-poll-recv socket waker-function)))
           (is (eq result :pending) "Should return :pending when no UDP data available"))
-        
+
         ;; Send data to ourselves
         (let ((test-data "UDP test data")
               (target-addr (net:make-socket-address "127.0.0.1" port)))
           (net:udp-send socket test-data target-addr)
-          
+
           ;; Brief wait for data to arrive
           (sleep 0.1)
-          
+
           ;; Now reading should work
           (let* ((buffer (make-array 100 :element-type '(unsigned-byte 8)))
                  (result (net:udp-try-recv socket buffer)))
@@ -1345,7 +1348,7 @@
           (is (> (length addresses) 0) "Should have at least one address")
           (let ((first-addr (first addresses)))
             (is (typep first-addr 'net:socket-address) "Should return socket addresses")))
-        
+
         ;; Test resolving IP address (should pass through)
         (let ((addresses (net:resolve-address "127.0.0.1:8080")))
           (is (listp addresses) "Should return list for IP address")
@@ -1353,11 +1356,11 @@
           (let ((addr (first addresses)))
             (is-equal "127.0.0.1" (net:socket-address-ip addr))
             (is-equal 8080 (net:socket-address-port addr))))
-        
+
         ;; Test IPv6 address parsing
         (let ((addresses (net:resolve-address "[::1]:9000")))
           (is (listp addresses) "Should handle IPv6 address format"))
-        
+
         t)
     (error (e)
       (is nil (format nil "DNS resolution test failed: ~A" e)))))
@@ -1372,12 +1375,12 @@
           (is-equal "::1" (net:socket-address-ip addr))
           (is-equal 8080 (net:socket-address-port addr))
           (is-equal :ipv6 (net:socket-address-family addr)))
-        
+
         ;; Test full IPv6 address
         (let ((addr (net:make-socket-address "2001:db8::1" 443)))
           (is (typep addr 'net:socket-address) "Should create full IPv6 address")
           (is-equal :ipv6 (net:socket-address-family addr)))
-        
+
         t)
     (error (e)
       (is nil (format nil "IPv6 address parsing test failed: ~A" e)))))
@@ -1393,14 +1396,14 @@
                (socket (net:udp-bind addr))
                (waker-called nil)
                (waker-function (lambda () (setf waker-called t))))
-          
+
           ;; This should initialize the async system
           (net:udp-poll-recv socket waker-function)
-          
+
           ;; System should now be running
           (is (boundp 'net::*global-kqueue*) "Global kqueue should be defined")
           (is (boundp 'net::*async-running*) "Async running flag should be defined"))
-        
+
         t)
     (error (e)
       (is nil (format nil "Async system lifecycle test failed: ~A" e)))))

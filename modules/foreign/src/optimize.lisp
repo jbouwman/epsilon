@@ -70,7 +70,7 @@
   (cond
     ;; Case 1: Everything is constant - generate direct alien-funcall
     ((and (constantp function-designator)
-          (constantp return-type) 
+          (constantp return-type)
           (constantp arg-types)
           (listp (eval function-designator))
           (stringp (first (eval function-designator)))
@@ -89,7 +89,7 @@
              ,@args)
            ;; For other libraries, still use shared-call (library loading needed)
            form)))
-    
+
     ;; Case 2: Function name and types constant, but args not - still optimize structure
     ((and (constantp function-designator)
           (constantp return-type)
@@ -110,7 +110,7 @@
                                      (sb-alien:function ,alien-ret-type ,@alien-arg-types))
                ,@args))
            form)))
-    
+
     ;; Default: use original form
     (t form)))
 

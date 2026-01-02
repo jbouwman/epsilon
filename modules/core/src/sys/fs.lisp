@@ -26,7 +26,7 @@
    :relative-path
    :normalize-path
    :clean-path
-   
+
    ;; File/directory tests
    :dir-p
    :file-p
@@ -35,7 +35,7 @@
    :directory-exists-p
    :is-absolute
    :is-relative
-   
+
    ;; Directory operations
    :home-dir
    :list-dir
@@ -48,7 +48,7 @@
    :copy-directory
    :change-directory
    :current-directory
-   
+
    ;; File operations
    :replace-extension
    :copy-file
@@ -57,7 +57,7 @@
    :read-file-bytes
    :write-file-string
    :write-file-bytes
-   
+
    :create-symbolic-link
    :delete-directory
    :delete-file*
@@ -113,7 +113,7 @@
          (normalized (normalize-separators path-str))
          (absolute-p (and (> (length normalized) 0)
                           (char= (char normalized 0) #\/)))
-         (components (remove-if #'str:empty-p 
+         (components (remove-if #'str:empty-p
 				(seq:realize (str:split #\/ normalized))))
          (cleaned '()))
     ;; Process components
@@ -122,7 +122,7 @@
         ((string= comp ".")  ; Skip current directory
          nil)
         ((string= comp "..") ; Go up one level if possible
-         (when (and cleaned 
+         (when (and cleaned
                     (not (string= (car cleaned) "..")))
            (pop cleaned)))
         (t
@@ -147,7 +147,7 @@
              (setf result path))
             ;; Otherwise append
             (t
-             (setf result 
+             (setf result
                    (if (and (> (length result) 0)
                             (not (char= (char result (1- (length result))) #\/))
                             (not (char= (char result (1- (length result))) #\\)))
@@ -264,7 +264,7 @@
   #+(or linux darwin)
   (sb-unix:uid-homedir (sb-unix:unix-getuid))
   #+(or windows win32)
-  (or (env:getenv "USERPROFILE") 
+  (or (env:getenv "USERPROFILE")
       (str:concat (env:getenv "HOMEDRIVE") (env:getenv "HOMEPATH"))))
 
 (defmacro with-temp-file ((name) &body body)
@@ -331,7 +331,7 @@
   #-win32 (cond ((sb-posix:s-isreg (sb-posix:stat-mode stat)) :file)
                 ((sb-posix:s-isdir (sb-posix:stat-mode stat)) :directory)
                 ((sb-posix:s-islnk (sb-posix:stat-mode stat)) :link))
-  #+win32 (if (listp stat) 
+  #+win32 (if (listp stat)
               (getf stat :type)
               :file))
 
@@ -365,20 +365,22 @@
 
 (defun %walk-dir (dirpath f)
   #+(or linux darwin)
-  (let (dir)
-    (unwind-protect
-         (progn
-           (setf dir (sb-posix:opendir dirpath))
-           (when dir
-             (loop :for ent := (sb-posix:readdir dir)
-                   :until (sb-alien:null-alien ent)
-                   :for name := (sb-posix:dirent-name ent)
-                   :when (and (not (string= name "."))
-                              (not (string= name "..")))
-                   :do (funcall f
-                                (path:string-path-join dirpath name)))))
-      (when dir
-        (sb-posix:closedir dir))))
+  (locally
+    (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+    (let (dir)
+      (unwind-protect
+           (progn
+             (setf dir (sb-posix:opendir dirpath))
+             (when dir
+               (loop :for ent := (sb-posix:readdir dir)
+                     :until (sb-alien:null-alien ent)
+                     :for name := (sb-posix:dirent-name ent)
+                     :when (and (not (string= name "."))
+                                (not (string= name "..")))
+                     :do (funcall f
+                                  (path:string-path-join dirpath name)))))
+        (when dir
+          (sb-posix:closedir dir)))))
   #+(or windows win32)
   ;; Windows implementation using directory()
   (let ((pattern (if (and (> (length dirpath) 0)
@@ -435,9 +437,9 @@
 (defun read-file-bytes (filename)
   "Read file contents as a simple byte array compatible with digest functions"
   (with-open-file (stream filename :direction :input :element-type '(unsigned-byte 8))
-    (let ((contents (make-array (file-length stream) 
-                                :element-type '(unsigned-byte 8) 
-                                :fill-pointer nil 
+    (let ((contents (make-array (file-length stream)
+                                :element-type '(unsigned-byte 8)
+                                :fill-pointer nil
                                 :adjustable nil)))
       (read-sequence contents stream)
       contents)))
@@ -476,7 +478,7 @@
                 (sb-posix:mkdir current #o775)
                 #+(or windows win32)
                 (ensure-directories-exist (pathname current))))))))
-  
+
 (defun list-files (path-string extension)
   (let (files)
     (walk-path path-string
@@ -496,19 +498,21 @@
 
 (defun list-dir (directory)
   #+(or linux darwin)
-  (let (dir)
-    (unwind-protect
-         (progn
-           (setf dir (sb-posix:opendir directory))
-           (when dir
-             (loop :for ent := (sb-posix:readdir dir)
-                   :until (sb-alien:null-alien ent)
-                   :for name := (sb-posix:dirent-name ent)
-                   :when (and (not (string= name "."))
-			      (not (string= name "..")))
-                   :collect name)))
-      (when dir
-        (sb-posix:closedir dir))))
+  (locally
+    (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+    (let (dir)
+      (unwind-protect
+           (progn
+             (setf dir (sb-posix:opendir directory))
+             (when dir
+               (loop :for ent := (sb-posix:readdir dir)
+                     :until (sb-alien:null-alien ent)
+                     :for name := (sb-posix:dirent-name ent)
+                     :when (and (not (string= name "."))
+                                (not (string= name "..")))
+                     :collect name)))
+        (when dir
+          (sb-posix:closedir dir)))))
   #+(or windows win32)
   ;; Windows implementation using directory()
   (let* ((normalized-dir (normalize-separators directory))
@@ -617,7 +621,7 @@
 
 (defun list-dirs (path)
   "List only directories in path"
-  (remove-if-not #'dir-p 
+  (remove-if-not #'dir-p
                  (mapcar (lambda (name) (join-paths path name))
                          (list-dir path))))
 

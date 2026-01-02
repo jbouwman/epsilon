@@ -64,13 +64,13 @@
                      (process-error-command condition)
                      (process-error-exit-code condition))
              (when (process-error-working-directory condition)
-               (format stream " in directory ~A" 
+               (format stream " in directory ~A"
                        (process-error-working-directory condition))))))
 
 (define-condition command-not-found (process-error-condition)
   ()
   (:report (lambda (condition stream)
-             (format stream "Command not found: ~A" 
+             (format stream "Command not found: ~A"
                      (process-error-command condition)))))
 
 (define-condition process-timeout-error (process-error-condition)
@@ -97,7 +97,7 @@
    (shell :initarg :shell :reader subprocess-shell :initform nil))
   (:documentation "Represents a subprocess with full control over execution."))
 
-(defun make-subprocess (command &key args environment working-directory 
+(defun make-subprocess (command &key args environment working-directory
                                input output error)
   "Create a new subprocess object."
   (make-instance 'subprocess
@@ -138,7 +138,7 @@
          ;; For absolute paths, use as-is with :search nil
          (actual-cmd cmd)
          (use-search (not is-absolute-path)))
-    
+
     ;; sb-ext:run-program behaves differently based on output/error settings:
     ;; - When :output/:error are :stream, it returns multiple values: (output-stream error-stream process)
     ;; - When :output/:error are not :stream, it returns just the process
@@ -147,7 +147,7 @@
           (error-setting (subprocess-error subprocess)))
       (if (and (eq output-setting :stream) (eq error-setting :stream))
           ;; Case 1: Both output and error are streams - process has the streams
-          (let ((process (apply #'sb-ext:run-program 
+          (let ((process (apply #'sb-ext:run-program
                                 actual-cmd args
                                 `(:directory ,wd
                                   :input ,(subprocess-input subprocess)
@@ -157,11 +157,11 @@
                                   :search ,use-search
                                   ,@(when env `(:environment ,env))))))
             (unless process
-              (error 'process-error-condition 
+              (error 'process-error-condition
                      :command cmd
                      :exit-code -1
                      :output ""
-                     :error-output (format nil "sb-ext:run-program returned NIL for command: ~A~%Args: ~A~%Working directory: ~A~%Environment: ~A~%~%This typically means:~%1. Command not found in PATH or at specified location~%2. Permission denied (file not executable)~%3. Invalid working directory~%4. Memory/resource limits reached" 
+                     :error-output (format nil "sb-ext:run-program returned NIL for command: ~A~%Args: ~A~%Working directory: ~A~%Environment: ~A~%~%This typically means:~%1. Command not found in PATH or at specified location~%2. Permission denied (file not executable)~%3. Invalid working directory~%4. Memory/resource limits reached"
                                            actual-cmd args wd env)))
             (setf (subprocess-process subprocess) process
                   (subprocess-output-stream subprocess) (sb-ext:process-output process)
@@ -171,7 +171,7 @@
                     (sb-ext:process-exit-code process)))
             subprocess)
           ;; Case 2: Other output/error settings - returns just the process
-          (let ((process (apply #'sb-ext:run-program 
+          (let ((process (apply #'sb-ext:run-program
                                 actual-cmd args
                                 `(:directory ,wd
                                   :input ,(subprocess-input subprocess)
@@ -181,11 +181,11 @@
                                   :search ,use-search
                                   ,@(when env `(:environment ,env))))))
             (unless process
-              (error 'process-error-condition 
+              (error 'process-error-condition
                      :command cmd
                      :exit-code -1
                      :output ""
-                     :error-output (format nil "sb-ext:run-program returned NIL for command: ~A~%Args: ~A~%Working directory: ~A~%Environment: ~A~%~%This typically means:~%1. Command not found in PATH or at specified location~%2. Permission denied (file not executable)~%3. Invalid working directory~%4. Memory/resource limits reached" 
+                     :error-output (format nil "sb-ext:run-program returned NIL for command: ~A~%Args: ~A~%Working directory: ~A~%Environment: ~A~%~%This typically means:~%1. Command not found in PATH or at specified location~%2. Permission denied (file not executable)~%3. Invalid working directory~%4. Memory/resource limits reached"
                                            actual-cmd args wd env)))
             (setf (subprocess-process subprocess) process
                   (subprocess-output-stream subprocess) nil
@@ -241,7 +241,7 @@
                     do (signal 'sb-ext:timeout)
                   do (sleep 0.1)))
           (sb-ext:process-wait process))
-      
+
       (setf (subprocess-exit-code subprocess)
             (sb-ext:process-exit-code process)))
     subprocess))
@@ -249,7 +249,7 @@
 (defun terminate-gracefully (subprocess &key (timeout 5))
   "Terminate a subprocess gracefully, using SIGTERM then SIGKILL if needed."
   (when (and (subprocess-process subprocess) (running-p subprocess))
-    (handler-case 
+    (handler-case
         (progn
           ;; First try SIGTERM
           (kill-process subprocess #+unix sb-unix:sigterm #-unix 15)
@@ -261,7 +261,7 @@
           ;; If still running, force kill
           (when (running-p subprocess)
             (kill-process subprocess #+unix sb-unix:sigkill #-unix 9)))
-      (error () 
+      (error ()
         ;; Process might already be dead
         nil)))
   subprocess)
@@ -280,8 +280,8 @@
           while line
           do (vector-push-extend line buffer))))
 
-(defun monitor-process (subprocess &key 
-                        on-stdout on-stderr 
+(defun monitor-process (subprocess &key
+                        on-stdout on-stderr
                         on-exit timeout)
   "Monitor a running process with callbacks for output and completion."
   (when (running-p subprocess)
@@ -296,7 +296,7 @@
                          (when line
                            (funcall on-stdout line)))
                      (end-of-file ())))
-                 
+
                  ;; Check stderr
                  (when (and on-stderr (process-error subprocess))
                    (handler-case
@@ -304,15 +304,15 @@
                          (when line
                            (funcall on-stderr line)))
                      (end-of-file ())))
-                 
+
                  ;; Check timeout
                  (when (and timeout (> (- (get-universal-time) start-time) timeout))
                    (terminate-gracefully subprocess)
                    (return))
-                 
+
                  ;; Small delay to prevent busy waiting
                  (sleep 0.01)))
-      
+
       ;; Process completed, call exit callback if provided
       (when on-exit
         (funcall on-exit (process-exit-code subprocess)))))
@@ -337,7 +337,7 @@
      ;; For POSIX shells, single quotes are safest
      ;; We need to handle existing single quotes specially
      (if (position #\' arg)
-         (format nil "'~A'" 
+         (format nil "'~A'"
                  (with-output-to-string (s)
                    (loop for char across arg
                          do (if (char= char #\')
@@ -346,7 +346,7 @@
          (format nil "'~A'" arg)))
     (:windows
      ;; For Windows, use double quotes and escape special chars
-     (format nil "\"~A\"" 
+     (format nil "\"~A\""
              (with-output-to-string (s)
                (loop for char across arg
                      do (case char
@@ -379,7 +379,7 @@
             (let ((full-path (merge-pathnames name (pathname (concatenate 'string dir "/")))))
               (when (and (probe-file full-path)
                          #+unix (let ((stat (sb-posix:stat (namestring full-path))))
-                                  (not (zerop (logand (sb-posix:stat-mode stat) 
+                                  (not (zerop (logand (sb-posix:stat-mode stat)
                                                       #o111)))))
                 (return-from find-executable (namestring full-path))))))
         ;; On Windows, also check with common extensions
@@ -393,7 +393,7 @@
                   (return-from find-executable (namestring full-path))))))))))
   nil)
 
-(defun run-sync (command &key args environment working-directory 
+(defun run-sync (command &key args environment working-directory
                          input timeout (error-on-failure t)
                          (stream-output nil)
                          (merge-error nil)
@@ -405,7 +405,7 @@
    - merge-error: if true, merge stderr into stdout
    - shell: if true, run command through shell
    - check-executable: if true, verify command exists before running"
-  
+
   ;; Check if command exists if requested
   (when (and check-executable (not shell))
     (unless (or (position #\/ command) ;; absolute path
@@ -417,7 +417,7 @@
              :output ""
              :error-output ""
              :working-directory working-directory)))
-  
+
   ;; Handle shell execution
   (let ((actual-command command)
         (actual-args args))
@@ -427,7 +427,7 @@
         (setf actual-command shell-cmd
               actual-args (list #+windows "/c" #-windows "-c"
                                 (build-command-line command args)))))
-    
+
     (let ((subprocess (make-subprocess actual-command
                                        :args actual-args
                                        :environment environment
@@ -435,7 +435,7 @@
                                        :input input
                                        :output :stream
                                        :error (if merge-error :output :stream))))
-      
+
       (setf (subprocess-start-time subprocess) (get-universal-time))
       (start subprocess :wait (not stream-output))
 
@@ -466,11 +466,11 @@
                   (when (subprocess-process subprocess)
                     (setf (subprocess-exit-code subprocess)
                           (sb-ext:process-exit-code (subprocess-process subprocess)))))
-                
+
                 (let ((output (format nil "~{~A~%~}" (nreverse output-lines)))
                       (error-output (format nil "~{~A~%~}" (nreverse error-lines)))
                       (exit-code (process-exit-code subprocess)))
-                  
+
                   (log:debug "C")
                   (when (and error-on-failure (not (zerop exit-code)))
                     (error 'process-error-condition
@@ -479,30 +479,30 @@
                            :output output
                            :error-output error-output
                            :working-directory working-directory))
-                  
+
                   (values output error-output exit-code)))
-              
+
               ;; Non-streaming mode (original behavior)
               (progn
                 (wait-for-process subprocess timeout)
                 (log:debug "D")
-                
+
                 (let ((output "")
                       (error-output "")
                       (exit-code (process-exit-code subprocess)))
-                  
+
                   (when (process-output subprocess)
                     (setf output (with-output-to-string (s)
                                    (loop for line = (read-line (process-output subprocess) nil)
                                          while line
                                          do (write-line line s)))))
-                  
+
                   (when (and (not merge-error) (process-error subprocess))
                     (setf error-output (with-output-to-string (s)
                                          (loop for line = (read-line (process-error subprocess) nil)
                                                while line
                                                do (write-line line s)))))
-                  
+
                   (when (and error-on-failure (not (zerop exit-code)))
                     (error 'process-error-condition
                            :command (format nil "~A ~{~A~^ ~}" command args)
@@ -510,9 +510,9 @@
                            :output output
                            :error-output error-output
                            :working-directory working-directory))
-                  
+
                   (values output error-output exit-code))))
-        
+
         (sb-ext:timeout ()
           (when (running-p subprocess)
             (kill-process subprocess))
@@ -536,13 +536,13 @@
     (start subprocess :wait nil)
     subprocess))
 
-(defun run (command &key args environment working-directory 
+(defun run (command &key args environment working-directory
                    input timeout (error-on-failure t) (async nil))
   "Run a command either synchronously or asynchronously."
   (if async
-      (run-async command :args args :environment environment 
+      (run-async command :args args :environment environment
                          :working-directory working-directory :input input)
-      (run-sync command :args args :environment environment 
+      (run-sync command :args args :environment environment
                         :working-directory working-directory :input input
                         :timeout timeout :error-on-failure error-on-failure)))
 
@@ -577,10 +577,10 @@
                (start subprocess :wait nil)
                (push subprocess processes)
                (setf current-input (process-output subprocess))))
-           
+
            (dolist (process (reverse processes))
              (wait-for-process process))
-           
+
            (let ((final-process (first processes)))
              (values (process-output final-process)
                      (process-error final-process)
@@ -595,12 +595,12 @@
                                      :input (when input-file
                                               (open input-file :direction :input))
                                      :output (when output-file
-                                               (open output-file 
+                                               (open output-file
                                                      :direction :output
                                                      :if-exists (if append :append :supersede)
                                                      :if-does-not-exist :create))
                                      :error (when error-file
-                                              (open error-file 
+                                              (open error-file
                                                     :direction :output
                                                     :if-exists (if append :append :supersede)
                                                     :if-does-not-exist :create)))))

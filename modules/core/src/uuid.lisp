@@ -14,22 +14,23 @@
    #:uuid
    #:uuid-p
    #:valid-uuid-p
-   
+
    ;; UUID creation
    #:make-v1
    #:make-v3
    #:make-v4
    #:make-v5
+   #:make-v7
    #:make-nil
    #:make-from-string
    #:make-from-bytes
-   
+
    ;; UUID conversion
    #:to-string
    #:to-bytes
    #:to-integer
    #:from-integer
-   
+
    ;; UUID components
    #:uuid-time-low
    #:uuid-time-mid
@@ -39,13 +40,16 @@
    #:uuid-node
    #:uuid-version
    #:uuid-variant
-   
+
+   ;; UUIDv7 timestamp extraction
+   #:uuid-v7-timestamp-ms
+
    ;; Predefined namespace UUIDs (RFC 4122)
    #:+namespace-dns+
    #:+namespace-url+
    #:+namespace-oid+
    #:+namespace-x500+
-   
+
    ;; Nil UUID
    #:+nil-uuid+))
 
@@ -239,6 +243,62 @@
     ;; Set variant to RFC 4122
     (setf (aref hash 8) (logior (logand (aref hash 8) #x3F) #x80))
     (make-from-bytes hash)))
+
+;;; UUID Creation - Version 7 (Time-ordered with Unix timestamp)
+
+(defun unix-timestamp-ms ()
+  "Get current Unix timestamp in milliseconds."
+  (multiple-value-bind (seconds microseconds)
+      (sb-ext:get-time-of-day)
+    (+ (* seconds 1000) (floor microseconds 1000))))
+
+(defun make-v7 (&optional timestamp-ms)
+  "Create a version 7 (time-ordered) UUID.
+   UUIDv7 uses a Unix timestamp in milliseconds for time-ordering.
+   Optional TIMESTAMP-MS parameter allows specifying a custom timestamp.
+
+   Layout (128 bits total):
+   - 48 bits: Unix timestamp in milliseconds
+   - 4 bits: version (7)
+   - 12 bits: random (rand_a)
+   - 2 bits: variant (binary 10)
+   - 62 bits: random (rand_b)"
+  (let* ((ts (or timestamp-ms (unix-timestamp-ms)))
+         (rand-bytes (random-bytes 10))
+         ;; Extract timestamp components
+         ;; time-low: bits 16-47 of timestamp (32 bits)
+         (time-low (logand (ash ts -16) #xFFFFFFFF))
+         ;; time-mid: bits 0-15 of timestamp (16 bits)
+         (time-mid (logand ts #xFFFF))
+         ;; time-hi-and-version: 4 bits version (7) + 12 bits random
+         (rand-a (logior (ash (aref rand-bytes 0) 4)
+                         (ash (aref rand-bytes 1) -4)))
+         (time-hi-and-version (logior #x7000 (logand rand-a #x0FFF)))
+         ;; clock-seq-hi-and-reserved: 2 bits variant (10) + 6 bits random
+         (clock-seq-hi-and-reserved (logior #x80 (logand (aref rand-bytes 2) #x3F)))
+         ;; clock-seq-low: 8 bits random
+         (clock-seq-low (aref rand-bytes 3))
+         ;; node: 48 bits random
+         (node (logior (ash (aref rand-bytes 4) 40)
+                       (ash (aref rand-bytes 5) 32)
+                       (ash (aref rand-bytes 6) 24)
+                       (ash (aref rand-bytes 7) 16)
+                       (ash (aref rand-bytes 8) 8)
+                       (aref rand-bytes 9))))
+    (%make-uuid :time-low time-low
+                :time-mid time-mid
+                :time-hi-and-version time-hi-and-version
+                :clock-seq-hi-and-reserved clock-seq-hi-and-reserved
+                :clock-seq-low clock-seq-low
+                :node node)))
+
+(defun uuid-v7-timestamp-ms (uuid)
+  "Extract the Unix timestamp in milliseconds from a UUIDv7.
+   Returns NIL if the UUID is not version 7."
+  (when (= (uuid-version uuid) 7)
+    ;; Reconstruct timestamp from time-low (bits 16-47) and time-mid (bits 0-15)
+    (logior (ash (uuid-time-low uuid) 16)
+            (uuid-time-mid uuid))))
 
 ;;; UUID Creation - Nil UUID
 

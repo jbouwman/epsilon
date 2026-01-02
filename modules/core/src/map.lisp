@@ -107,10 +107,19 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
   key
   value)
 
-(defstruct (collision-node 
+(defstruct (collision-node
             (:constructor make-collision-node (hash entries)))
   (hash 0 :type fixnum)
   entries)
+
+(defmethod make-load-form ((self leaf-node) &optional environment)
+  (make-load-form-saving-slots self :environment environment))
+
+(defmethod make-load-form ((self bitmap-node) &optional environment)
+  (make-load-form-saving-slots self :environment environment))
+
+(defmethod make-load-form ((self collision-node) &optional environment)
+  (make-load-form-saving-slots self :environment environment))
 
 (declaim (inline get-index bitmap-present-p bitmap-index))
 
@@ -158,7 +167,7 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
     (labels ((collect (node)
                (etypecase node
                  (null nil)
-                 (leaf-node 
+                 (leaf-node
                   (push (cons (leaf-node-key node)
                               (leaf-node-value node))
                         result))
@@ -195,7 +204,7 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
   (if *print-readably*
       (print-map-pairs map stream)
       (print-unreadable-object (map stream :type t)
-        (print-map-pairs map stream :format-fn 
+        (print-map-pairs map stream :format-fn
                          (lambda (obj s) (format s "~S" obj))))))
 
 ;;; leaf-node operations
@@ -209,7 +218,7 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
     (cond
       ;; Check for hash collision
       ((and (= h1 h2) (>= shift 32))
-       (make-collision-node 
+       (make-collision-node
         h1
         (append (if (typep node1 'collision-node)
                     (collision-node-entries node1)
@@ -248,7 +257,7 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
     ;; Insert new element
     (setf (aref new-array index) new-child)
     ;; Copy elements after insertion point
-    (replace new-array old-array 
+    (replace new-array old-array
              :start1 (1+ index) :start2 index)
     (make-bitmap-node :bitmap (logior bitmap bit)
                       :array new-array)))
@@ -326,7 +335,7 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
                           entries)))
              nil)
             (values
-             (make-collision-node 
+             (make-collision-node
               hash
               (cons (cons key value) entries))
              t)))  ; new insertion
@@ -403,7 +412,7 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
     ;; Copy elements before the removed index
     (replace new-array old-array :end1 index :end2 index)
     ;; Copy elements after the removed index
-    (replace new-array old-array 
+    (replace new-array old-array
              :start1 index :start2 (1+ index)
              :end2 (length old-array))
     (make-bitmap-node :bitmap new-bitmap
@@ -439,19 +448,28 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
 
 ;;; Public functions
 
-(defun assoc (map key value)
-  "Return a new map with key-value pair added/updated"
-  (let ((hash (sxhash key)))
-    (multiple-value-bind (new-root inserted)
-        (if (hamt-root map)
-            (node-assoc (hamt-root map) hash 0 key value)
-            (values (make-leaf-node :hash hash :key key :value value) t))
-      (make-hamt new-root (+ (hamt-count map)
-                             (if inserted 1 0))))))
+(defun assoc (map key value &rest more-kvs)
+  "Return a new map with key-value pairs added/updated.
+   Accepts multiple key-value pairs: (assoc m :a 1 :b 2 :c 3)
+   Example: (assoc +empty+ :name \"Alice\" :age 30) => {:name \"Alice\" :age 30}"
+  (when (oddp (length more-kvs))
+    (error "assoc requires an even number of additional arguments (key-value pairs)"))
+  (let* ((hash (sxhash key))
+         (result
+           (multiple-value-bind (new-root inserted)
+               (if (hamt-root map)
+                   (node-assoc (hamt-root map) hash 0 key value)
+                   (values (make-leaf-node :hash hash :key key :value value) t))
+             (make-hamt new-root (+ (hamt-count map)
+                                    (if inserted 1 0))))))
+    (if more-kvs
+        (apply #'assoc result more-kvs)
+        result)))
 
-(defun put (map key value)
-  "Return a new map with key-value pair added/updated (alias for assoc)"
-  (assoc map key value))
+(defun put (map key value &rest more-kvs)
+  "Return a new map with key-value pairs added/updated (alias for assoc).
+   Accepts multiple key-value pairs: (put m :a 1 :b 2 :c 3)"
+  (apply #'assoc map key value more-kvs))
 
 (defun assoc-in (map keys value)
   "Associate a value in a nested map structure, where keys is a sequence of keys
@@ -480,7 +498,7 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
           +empty+))
 
 (defun each (fn map)
-  "Apply FN to each key-value pair in MAP for side effects. 
+  "Apply FN to each key-value pair in MAP for side effects.
    FN should take two arguments: key and value. Returns nil."
   (reduce (lambda (acc k v)
             (declare (ignore acc))
@@ -538,15 +556,20 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
                 (assoc m k v)))
           map1))
 
-(defun dissoc (map key)
-  "Return a new map with key removed"
-  (unless (contains-p map key)
-    ;; if key doesn't exist, return unchanged map
-    (return-from dissoc map))
-  (let* ((hash (sxhash key))
-         (new-root (and (hamt-root map)
-                        (node-dissoc (hamt-root map) hash 0 key nil))))
-    (make-hamt new-root (1- (hamt-count map)))))
+(defun dissoc (map key &rest more-keys)
+  "Return a new map with keys removed.
+   Accepts multiple keys: (dissoc m :a :b :c)
+   Example: (dissoc (assoc +empty+ :a 1 :b 2 :c 3) :a :b) => {:c 3}"
+  (let ((result
+          (if (contains-p map key)
+              (let* ((hash (sxhash key))
+                     (new-root (and (hamt-root map)
+                                    (node-dissoc (hamt-root map) hash 0 key nil))))
+                (make-hamt new-root (1- (hamt-count map))))
+              map)))
+    (if more-keys
+        (apply #'dissoc result more-keys)
+        result)))
 
 (defun keys (map)
   "Return a list of all keys in the map"
@@ -632,13 +655,15 @@ Returns (values new-node inserted) where inserted is true for new insertions."))
 
 ;; Destructive update macros
 
-(defmacro assoc! (place key value)
-  "Destructively associate KEY with VALUE in the map at PLACE"
-  `(setf ,place (assoc ,place ,key ,value)))
+(defmacro assoc! (place key value &rest more-kvs)
+  "Destructively associate key-value pairs in the map at PLACE.
+   Accepts multiple key-value pairs: (assoc! m :a 1 :b 2 :c 3)"
+  `(setf ,place (assoc ,place ,key ,value ,@more-kvs)))
 
-(defmacro dissoc! (place key)
-  "Destructively remove KEY from the map at PLACE"
-  `(setf ,place (dissoc ,place ,key)))
+(defmacro dissoc! (place key &rest more-keys)
+  "Destructively remove keys from the map at PLACE.
+   Accepts multiple keys: (dissoc! m :a :b :c)"
+  `(setf ,place (dissoc ,place ,key ,@more-keys)))
 
 (defmacro update! (place key function &rest args)
   "Destructively update the value at KEY in the map at PLACE using FUNCTION"

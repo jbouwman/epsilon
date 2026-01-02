@@ -14,7 +14,7 @@
    #:timed-cache-max-size
    #:timed-cache-hits
    #:timed-cache-misses
-   
+
    ;; Cache operations
    #:cache-get
    #:cache-put
@@ -22,12 +22,12 @@
    #:cache-clear
    #:cache-size
    #:cache-keys
-   
+
    ;; Cache management
    #:cache-cleanup
    #:cache-expired-p
    #:with-cache
-   
+
    ;; LRU Cache
    #:lru-cache
    #:lru-cache-p
@@ -38,7 +38,7 @@
    #:lru-put
    #:lru-remove
    #:lru-clear
-   
+
    ;; Cache statistics
    #:cache-stats
    #:cache-hits
@@ -87,7 +87,7 @@
   (when (>= (hash-table-count (timed-cache-table cache))
             (timed-cache-max-size cache))
     (cache-cleanup cache))
-  
+
   (setf (gethash key (timed-cache-table cache))
         (make-cache-entry value (get-universal-time)))
   value)
@@ -165,7 +165,7 @@
 
 (defun make-lru-cache (&key (capacity 100))
   "Create a new LRU cache with given capacity"
-  (let ((cache (%make-lru-cache 
+  (let ((cache (%make-lru-cache
                 :table (make-hash-table :test 'equal)
                 :capacity (max 0 capacity)  ; Ensure non-negative capacity
                 :size 0)))
@@ -214,14 +214,14 @@
   ;; Handle zero capacity edge case
   (when (zerop (lru-cache-capacity cache))
     (return-from lru-put value))
-  
+
   (let ((node (gethash key (lru-cache-table cache))))
     (cond
       ;; Key exists, update value and move to head
       (node
        (setf (lru-node-value node) value)
        (lru-move-to-head cache node))
-      
+
       ;; New key
       (t
        (let ((new-node (make-lru-node :key key :value value)))
@@ -230,7 +230,7 @@
            (let ((tail (lru-remove-tail cache)))
              (remhash (lru-node-key tail) (lru-cache-table cache))
              (decf (lru-cache-size cache))))
-         
+
          ;; Add new node
          (lru-add-to-head cache new-node)
          (setf (gethash key (lru-cache-table cache)) new-node)

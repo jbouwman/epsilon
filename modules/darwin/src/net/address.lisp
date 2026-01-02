@@ -19,22 +19,27 @@
    parse-sockaddr-in
    make-sockaddr-in6-into
    parse-sockaddr-in6
-   
+
    ;; IP address parsing
    parse-ipv4-address
    parse-ipv6-address
    expand-ipv6-address
-   
+
    ;; Address resolution
    make-socket-address
    resolve-address
    parse-address
    normalize-address
-   
+
    ;; Utilities
    detect-address-family
    detect-ip-address
-   dns-resolve-hostname))
+   dns-resolve-hostname
+
+   ;; Unified address handling
+   fill-sockaddr-for-address
+   sockaddr-size-for-family
+   socket-family-constant))
 
 (in-package epsilon.net.address)
 
@@ -50,22 +55,22 @@
                  (sb-alien:alien-sap addr))))
     (log:debug "make-sockaddr-in-into: Setting up address ~A:~D~%" ip-address port)
     (finish-output)
-    
+
     ;; sin_len
     (setf (sb-sys:sap-ref-8 sap 0) 16)
     (log:debug "make-sockaddr-in-into: Set sin_len=16~%")
-    
-    ;; sin_family 
+
+    ;; sin_family
     (setf (sb-sys:sap-ref-8 sap 1) +af-inet+)
     (log:debug "make-sockaddr-in-into: Set sin_family=~D~%" +af-inet+)
-    
+
     ;; sin_port (network byte order - set bytes directly)
     ;; For port 6379 (0x18EB): we need bytes 0x18 0xEB in memory
     (setf (sb-sys:sap-ref-8 sap 2) (ash (logand port #xFF00) -8))  ; high byte
     (setf (sb-sys:sap-ref-8 sap 3) (logand port #xFF))             ; low byte
-    (log:debug "make-sockaddr-in-into: Set sin_port=~D (bytes: ~2,'0X ~2,'0X)~%" 
+    (log:debug "make-sockaddr-in-into: Set sin_port=~D (bytes: ~2,'0X ~2,'0X)~%"
                port (sb-sys:sap-ref-8 sap 2) (sb-sys:sap-ref-8 sap 3))
-    
+
     ;; sin_addr (network byte order - write bytes individually)
     ;; Network byte order is big-endian, and we must write bytes directly
     ;; to avoid native byte order issues on ARM64 (little-endian)
@@ -78,7 +83,7 @@
       (setf (sb-sys:sap-ref-8 sap 7) (fourth ip-parts))
       (log:debug "make-sockaddr-in-into: Set sin_addr=~D.~D.~D.~D~%"
                  (first ip-parts) (second ip-parts) (third ip-parts) (fourth ip-parts)))
-    
+
     ;; sin_zero (8 bytes of zeros)
     (loop for i from 8 to 15
           do (setf (sb-sys:sap-ref-8 sap i) 0))
@@ -194,11 +199,11 @@
 
 (defun parse-ipv4-address (ip-string)
   "Parse IPv4 address string into octets"
-  (let ((parts (mapcar #'parse-integer 
+  (let ((parts (mapcar #'parse-integer
                        (seq:realize (str:split "." ip-string)))))
     (when (and (= (length parts) 4)
                (every (lambda (x) (and (>= x 0) (<= x 255))) parts))
-      (make-instance 'ipv4-address 
+      (make-instance 'ipv4-address
                      :octets (coerce parts '(vector (unsigned-byte 8) 4))))))
 
 (defun parse-ipv6-address (ip-string)
@@ -219,8 +224,8 @@
              (left (if (first parts) (seq:realize (str:split ":" (first parts))) '()))
              (right (if (second parts) (seq:realize (str:split ":" (second parts))) '()))
              (missing (- 8 (length left) (length right))))
-        (format nil "~{~A~^:~}" 
-                (append left 
+        (format nil "~{~A~^:~}"
+                (append left
                         (make-list missing :initial-element "0000")
                         right)))
       ip-string))
@@ -235,15 +240,23 @@
 (defun make-socket-address (host port)
   "Create a socket address from host and port"
   (let ((family (detect-address-family host)))
-    (make-instance 'socket-address 
-                   :ip host 
+    (make-instance 'socket-address
+                   :ip host
                    :port port
                    :family (if (eq family :hostname) :ipv4 family))))
 
 (defun resolve-address (address-spec)
   "Resolve an address specification to socket addresses"
   (etypecase address-spec
-    (socket-address (list address-spec))
+    (socket-address
+     ;; Check if the socket-address already has a resolved IP or needs DNS lookup
+     (let ((host (socket-address-ip address-spec))
+           (port (socket-address-port address-spec)))
+       (if (or (detect-ip-address host) (null host))
+           ;; It's already an IP address or localhost
+           (list address-spec)
+           ;; Need DNS resolution
+           (dns-resolve-hostname host port))))
     (string
      (let* ((addr (parse-address address-spec))
             (host (socket-address-ip addr))
@@ -270,15 +283,15 @@
                                   (result-ptr :pointer :count 1))
           ;; Initialize hints structure
           (loop for i from 0 below 48 do (setf (sb-sys:sap-ref-8 hints i) 0))
-          
+
           ;; Set hints: ai_family = AF_UNSPEC (0), ai_socktype = SOCK_STREAM (1)
           (setf (sb-sys:sap-ref-32 hints 4) 0)    ; ai_family = AF_UNSPEC
           (setf (sb-sys:sap-ref-32 hints 8) +sock-stream+)  ; ai_socktype
-          
+
           ;; Call getaddrinfo
           (let* ((port-str (if port (format nil "~D" port) "0"))
                  (result (lib:shared-call '("getaddrinfo" "/usr/lib/libSystem.B.dylib")
-                                          :int 
+                                          :int
                                           '(:c-string :c-string :pointer :pointer)
                                           hostname port-str hints result-ptr)))
             (if (= result 0)
@@ -306,10 +319,10 @@
                  ;; Check if ai_addr is null before dereferencing
                  (when (and ai-addr-ptr (not (sb-sys:sap= ai-addr-ptr (sb-sys:int-sap 0))))
                    (let* ((ai-family (sb-sys:sap-ref-8 ai-addr-ptr 1))  ; sa_family is a single byte at offset 1
-                          (socket-addr (cond 
-                                         ((= ai-family +af-inet+) 
+                          (socket-addr (cond
+                                         ((= ai-family +af-inet+)
                                           (parse-sockaddr-in ai-addr-ptr))
-                                         ((= ai-family +af-inet6+) 
+                                         ((= ai-family +af-inet6+)
                                           (parse-sockaddr-in6 ai-addr-ptr))
                                          (t nil))))
                      (when socket-addr
@@ -328,3 +341,33 @@
                    (parse-integer (subseq string (1+ colon-pos)))
                    80)))
     (make-socket-address host port)))
+
+;;; ============================================================================
+;;; Unified Address Handling
+;;; ============================================================================
+
+(defun socket-family-constant (family)
+  "Convert socket-address family keyword to AF_* constant"
+  (ecase family
+    (:ipv4 +af-inet+)
+    (:ipv6 +af-inet6+)))
+
+(defun sockaddr-size-for-family (family)
+  "Return the sockaddr structure size for the given address family"
+  (ecase family
+    (:ipv4 16)             ; sizeof(sockaddr_in)
+    (:ipv6 +sockaddr-in6-size+)))  ; sizeof(sockaddr_in6) = 28
+
+(defun fill-sockaddr-for-address (addr socket-addr)
+  "Fill sockaddr buffer ADDR for SOCKET-ADDR, using appropriate IPv4/IPv6 format.
+   Returns the size of the sockaddr structure."
+  (let ((family (socket-address-family socket-addr))
+        (ip (socket-address-ip socket-addr))
+        (port (socket-address-port socket-addr)))
+    (ecase family
+      (:ipv4
+       (make-sockaddr-in-into addr ip port)
+       16)
+      (:ipv6
+       (make-sockaddr-in6-into addr ip port)
+       +sockaddr-in6-size+))))

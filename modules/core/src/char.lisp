@@ -6,11 +6,11 @@
    ;; Core types
    :unicode-char
    :code-point
-   
+
    ;; Main string/byte conversion functions
    :string-to-bytes
    :bytes-to-string
-   
+
    ;; Error handling
    :*suppress-character-coding-errors*
    :character-coding-error
@@ -56,21 +56,21 @@
 
 ;;;; String/Byte Conversion using SBCL's built-in support
 
-(defun string-to-bytes (string &key (encoding :utf-8) (start 0) end 
+(defun string-to-bytes (string &key (encoding :utf-8) (start 0) end
                               (errorp (not *suppress-character-coding-errors*)))
   "Convert STRING to U8 vector using ENCODING (defaults to UTF-8).
 Uses SBCL's built-in SB-EXT:STRING-TO-OCTETS for efficiency."
   (handler-case
-      (let ((octets (sb-ext:string-to-octets string 
+      (let ((octets (sb-ext:string-to-octets string
                                              :external-format encoding
-                                             :start start 
+                                             :start start
                                              :end end)))
         (coerce octets '(simple-array (unsigned-byte 8) (*))))
     (error (e)
       (declare (ignore e))
       (if errorp
-          (error 'character-encoding-error 
-                 :encoding encoding 
+          (error 'character-encoding-error
+                 :encoding encoding
                  :position (or start 0))
           ;; Return replacement bytes when error suppression is enabled
           (coerce #(63) '(simple-array (unsigned-byte 8) (*)))))))
@@ -82,15 +82,14 @@ Uses SBCL's built-in SB-EXT:OCTETS-TO-STRING for efficiency."
   (handler-case
       (sb-ext:octets-to-string (coerce octets '(vector (unsigned-byte 8)))
                                :external-format encoding
-                               :start start 
+                               :start start
                                :end end)
     (error (e)
       (declare (ignore e))
       (if errorp
-          (error 'character-decoding-error 
-                 :encoding encoding 
+          (error 'character-decoding-error
+                 :encoding encoding
                  :octets octets
                  :position (or start 0))
           ;; Return a replacement character string when error suppression is enabled
           (string #\?)))))
-

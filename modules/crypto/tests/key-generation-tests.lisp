@@ -14,10 +14,10 @@
 (defun with-test-key (type &rest args)
   "Create a test key of specified type for testing"
   (case type
-        (:rsa (if args 
+        (:rsa (if args
                   (crypto:generate-rsa-key :bits (first args))
                   (crypto:generate-rsa-key)))
-        (:ec (if args 
+        (:ec (if args
                  (crypto:generate-ec-key :curve (first args))
                  (crypto:generate-ec-key)))
         (:ed25519 (crypto:generate-ed25519-key))
@@ -63,7 +63,7 @@
         (is nil "Should have thrown error for 1024-bit key"))
     (crypto:crypto-error ()
       (is t "Correctly rejected 1024-bit key")))
-  
+
   (handler-case
       (progn
         (crypto:generate-rsa-key :bits 512)
@@ -181,20 +181,20 @@
         (is (stringp private-pem))
         (is (search "-----BEGIN PRIVATE KEY-----" private-pem))
         (is (search "-----END PRIVATE KEY-----" private-pem))
-        
+
         ;; Import back and verify
         (let ((imported (crypto:key-from-pem private-pem :private-p t)))
           (is (crypto:crypto-key-p imported))
           (is (eq (crypto:crypto-key-type imported) :rsa))
           (is (crypto:crypto-key-private-p imported))
           (is-= (crypto:crypto-key-bits imported) 2048)))
-      
+
       ;; Export public key only
       (let ((public-pem (crypto:key-to-pem original-key :private-p nil)))
         (is (stringp public-pem))
         (is (search "-----BEGIN PUBLIC KEY-----" public-pem))
         (is (search "-----END PUBLIC KEY-----" public-pem))
-        
+
         ;; Import back and verify
         (let ((imported (crypto:key-from-pem public-pem :private-p nil)))
           (is (crypto:crypto-key-p imported))
@@ -213,7 +213,7 @@
         (is (crypto:crypto-key-p imported))
         (is (eq (crypto:crypto-key-type imported) :ec))
         (is (crypto:crypto-key-private-p imported)))
-      
+
       ;; Export and reimport public key
       (let* ((public-pem (crypto:key-to-pem original-key :private-p nil))
              (imported (crypto:key-from-pem public-pem :private-p nil)))
@@ -232,7 +232,7 @@
         (is (eq (crypto:crypto-key-type imported) :ed25519))
         (is (crypto:crypto-key-private-p imported))
         (is-= (crypto:crypto-key-bits imported) 256))
-      
+
       ;; Export and reimport public key
       (let* ((public-pem (crypto:key-to-pem original-key :private-p nil))
              (imported (crypto:key-from-pem public-pem :private-p nil)))
@@ -260,13 +260,13 @@
   (let ((rsa-key (with-test-key :rsa 2048))
         (ec-key (with-test-key :ec :p256))
         (ed-key (with-test-key :ed25519)))
-    
+
     (when rsa-key
       (is (eq (crypto:crypto-key-type rsa-key) :rsa)))
-    
+
     (when ec-key
       (is (eq (crypto:crypto-key-type ec-key) :ec)))
-    
+
     (when ed-key
       (is (eq (crypto:crypto-key-type ed-key) :ed25519)))))
 
@@ -281,7 +281,7 @@
       (let ((elapsed (- (get-internal-real-time) start-time)))
         ;; Should complete in less than 5 seconds
         (is (< elapsed (* 5 internal-time-units-per-second)))))
-    
+
     ;; Ed25519 should be very fast
     (let ((start-time (get-internal-real-time)))
       (crypto:generate-ed25519-key)
@@ -309,7 +309,7 @@
       ;; First get a public-only key
       (let* ((public-pem (crypto:key-to-pem key :private-p nil))
              (public-key (crypto:key-from-pem public-pem :private-p nil)))
-        
+
         ;; Try to export as private - should fail
         (handler-case
             (progn

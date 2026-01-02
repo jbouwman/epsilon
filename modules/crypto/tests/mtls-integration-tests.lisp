@@ -71,7 +71,7 @@
 (deftest test-basic-certificate-generation
   "Test basic self-signed certificate generation"
   (multiple-value-bind (cert-pem key-pem)
-      (epsilon.crypto.certificates:generate-self-signed-certificate 
+      (epsilon.crypto.certificates:generate-self-signed-certificate
        "test.example.com"
        :key-bits 2048
        :days 30)

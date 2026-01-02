@@ -59,24 +59,24 @@
 
 (defmacro defrecord (name fields &body options)
   "Define a functional record type with named fields.
-   
+
    Creates an immutable record type with:
    - A constructor function (make-NAME)
    - A type predicate (NAME-p)
    - Field accessors (NAME-FIELD)
    - Functional update operations
-   
+
    Options can include protocol implementations:
    (:implements protocol-name
      (method-name (self ...) body)
      ...)
-   
+
    Example:
    (defrecord person (name age)
      (:implements printable
        (print-object (self stream)
-         (format stream \"#<person ~A ~A>\" 
-                 (person-name self) 
+         (format stream \"#<person ~A ~A>\"
+                 (person-name self)
                  (person-age self)))))"
   (let* ((constructor (intern (format nil "MAKE-~A" name)))
          (predicate (intern (format nil "~A-P" name)))
@@ -87,14 +87,14 @@
          (field-keywords (mapcar (fn:pipe #'string (fn:rcurry #'intern :keyword))
                                  fields))
          (implementations '()))
-    
+
     ;; Parse options for protocol implementations
     (dolist (option options)
       (when (and (listp option) (eq (first option) :implements))
         (let ((protocol-name (second option))
               (methods (cddr option)))
           (push (cons protocol-name methods) implementations))))
-    
+
     `(progn
        ;; Define the record class
        (defclass ,class-name ()
@@ -104,7 +104,7 @@
                              :type t))
                   fields field-keywords)
          (:documentation ,(format nil "Record type ~A" name)))
-       
+
        ;; Register the record type
        (register-record-type
         (make-instance 'record-type
@@ -113,7 +113,7 @@
                        :constructor ',constructor
                        :predicate ',predicate
                        :accessors ',accessors))
-       
+
        ;; Constructor function
        (defun ,constructor (&key ,@fields)
          ,(format nil "Create a new ~A record" name)
@@ -121,30 +121,30 @@
                         ,@(loop for field in fields
                                 for keyword in field-keywords
                                 append `(,keyword ,field))))
-       
+
        ;; Type predicate
        (defun ,predicate (obj)
          ,(format nil "Check if OBJ is a ~A record" name)
          (typep obj ',class-name))
-       
+
        ;; Generic record operations
        (defmethod record-p ((obj ,class-name))
          t)
-       
+
        (defmethod record-type ((obj ,class-name))
          ',name)
-       
+
        (defmethod record-fields ((obj ,class-name))
          ',fields)
-       
+
        (defmethod record-get ((obj ,class-name) field)
          (case field
            ,@(mapcar (lambda (field accessor)
                        `(,field (,accessor obj)))
                      fields accessors)
            (otherwise nil)))
-       
-       
+
+
        (defmethod record->map ((obj ,class-name))
          (reduce (lambda (m field)
                    (map:assoc m
@@ -152,14 +152,14 @@
                               (record-get obj field)))
                  ',fields
                  :initial-value map:+empty+))
-       
+
        ;; Protocol implementations
        ,@(loop for (protocol-name . methods) in implementations
                append (loop for (method-name lambda-list . body) in methods
-                            collect (let* ((typed-lambda-list 
+                            collect (let* ((typed-lambda-list
                                             (mapcar (lambda (param)
-                                                      (cond 
-                                                        ((and (symbolp param) (string= (symbol-name param) "SELF")) 
+                                                      (cond
+                                                        ((and (symbolp param) (string= (symbol-name param) "SELF"))
                                                          `(,param ,class-name))
                                                         ((and (listp param) (string= (symbol-name (first param)) "SELF"))
                                                          `(,(first param) ,class-name ,@(cddr param)))
@@ -167,7 +167,7 @@
                                                     lambda-list)))
                                       `(defmethod ,method-name ,typed-lambda-list
                                          ,@body))))
-       
+
        ;; Return the record type name
        ',name)))
 
@@ -191,7 +191,7 @@
 
 (defgeneric record-assoc (obj &rest kvs)
   (:documentation "Return a new record with updated field values")
-  (:method (obj &rest kvs) 
+  (:method (obj &rest kvs)
     (declare (ignore kvs))
     obj)
   (:method ((obj standard-object) &rest kvs)
@@ -216,7 +216,7 @@
 
 (defgeneric record-dissoc (obj &rest keys)
   (:documentation "Return a new record with fields removed")
-  (:method (obj &rest keys) 
+  (:method (obj &rest keys)
     (declare (ignore keys))
     obj)
   (:method ((obj standard-object) &rest keys)
@@ -232,7 +232,7 @@
 
 (defgeneric record-update (obj field fn &rest args)
   (:documentation "Return a new record with FIELD updated by applying FN")
-  (:method (obj field fn &rest args) 
+  (:method (obj field fn &rest args)
     (declare (ignore field fn args))
     obj)
   (:method ((obj standard-object) field fn &rest args)

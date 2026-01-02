@@ -284,7 +284,7 @@
        (values (mod32- temp 1) (if (< y x) 1 0)))
       (t
        (values temp (logxor (if (< x y) 1 0) 1))))))
-
+
 ;;; efficient 8-byte -> 32-byte buffer copy routines, mostly used by
 ;;; the hash functions.  we provide big-endian and little-endian
 ;;; versions.

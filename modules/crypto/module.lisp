@@ -3,5 +3,6 @@
  :description "Cryptographic operations, TLS/SSL support, and X.509 certificates using OpenSSL"
  :requires ("epsilon.foreign"
             "epsilon.net"
-            "epsilon.library")
+            "epsilon.library"
+            "epsilon.io")
  :benchmarks ("benchmarks"))

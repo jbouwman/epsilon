@@ -113,7 +113,7 @@
                                         (aref block (- i 16)))))))
     (values)))
 
-
+
 ;;; mid-level
 
 (defstruct (sha256

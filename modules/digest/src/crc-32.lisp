@@ -105,8 +105,8 @@
   "Compute CRC-32 checksum of sequence, return as integer"
   (let* ((octets (make-array (length sequence) :element-type '(unsigned-byte 8)))
          (i 0))
-    (map nil (lambda (x) 
+    (map nil (lambda (x)
                (setf (aref octets i) x)
-               (incf i)) 
+               (incf i))
          sequence)
     (crc32 octets)))

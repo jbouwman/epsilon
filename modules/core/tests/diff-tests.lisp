@@ -25,12 +25,12 @@
     (is-equal 42 (diff:diff-result-expected result1))
     (is-equal 43 (diff:diff-result-actual result1))
     (is-equal :value-mismatch (diff:diff-result-type result1))
-    
+
     (is (diff:diff-result-p result2))
     (is-equal '() (diff:diff-result-path result2))
     (is-equal "hello" (diff:diff-result-expected result2))
     (is-equal "world" (diff:diff-result-actual result2))
-    
+
     (is (diff:diff-result-p result3))
     (is-equal '() (diff:diff-result-path result3))
     (is-equal 'foo (diff:diff-result-expected result3))
@@ -84,11 +84,11 @@
     (is (diff:diff-result-p result1))
     (is-equal '() (diff:diff-result-path result1))
     (is-equal :type-mismatch (diff:diff-result-type result1))
-    
+
     (is (diff:diff-result-p result2))
     (is-equal '() (diff:diff-result-path result2))
     (is-equal :type-mismatch (diff:diff-result-type result2))
-    
+
     (is (diff:diff-result-p result3))
     (is-equal '() (diff:diff-result-path result3))
     (is-equal :type-mismatch (diff:diff-result-type result3))))

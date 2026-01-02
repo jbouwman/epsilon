@@ -8,26 +8,26 @@
    #:infer-function-signature
    #:register-known-signature
    #:*known-signatures*
-   
+
    ;; Array handling
    #:with-pinned-array
    #:with-string-array
    #:with-output-array
-   
+
    ;; Enum support
    #:define-enum
    #:enum-value
    #:enum-keyword
-   
+
    ;; Type definitions
    #:define-c-type
-   
-   ;; Error handling  
+
+   ;; Error handling
    #:foreign-error
    #:foreign-error-p
    #:foreign-error-code
    #:foreign-error-function
-   
+
    ;; Converters
    #:bool-to-foreign
    #:foreign-to-bool))
@@ -75,18 +75,18 @@
   "Try to extract and register a function signature"
   (declare (ignore library)) ; For now
   ;; Try multiple methods to get the signature
-  (let ((signature 
+  (let ((signature
          (or
           ;; Method 1: Try parsing from cached headers
           (extract-from-parsed-headers function-name)
-          
+
           ;; Method 2: Fall back to pattern matching
           (let ((pattern-sig (infer-from-name-pattern function-name)))
             (when pattern-sig
-              (trampoline:make-ffi-signature 
+              (trampoline:make-ffi-signature
                :return-type (getf pattern-sig :return-type)
                :arg-types (getf pattern-sig :arg-types)))))))
-    
+
     (when signature
       (setf *known-signatures* (map:assoc *known-signatures* function-name signature))
       signature)))
@@ -118,7 +118,7 @@
                           (trampoline:make-ffi-signature :return-type :int :arg-types '(:string :string))))
     (setf sigs (map:assoc sigs "strcat"
                           (trampoline:make-ffi-signature :return-type :string :arg-types '(:string :string))))
-    
+
     ;; Memory functions from stdlib.h
     (setf sigs (map:assoc sigs "malloc"
                           (trampoline:make-ffi-signature :return-type :pointer :arg-types '(:size-t))))
@@ -126,7 +126,7 @@
                           (trampoline:make-ffi-signature :return-type :void :arg-types '(:pointer))))
     (setf sigs (map:assoc sigs "memcpy"
                           (trampoline:make-ffi-signature :return-type :pointer :arg-types '(:pointer :pointer :size-t))))
-    
+
     ;; I/O functions from stdio.h
     (setf sigs (map:assoc sigs "printf"
                           (trampoline:make-ffi-signature :return-type :int :arg-types '(:string &rest))))
@@ -134,13 +134,13 @@
                           (trampoline:make-ffi-signature :return-type :int :arg-types '(:string))))
     (setf sigs (map:assoc sigs "getchar"
                           (trampoline:make-ffi-signature :return-type :int :arg-types '())))
-    
+
     ;; System functions
     (setf sigs (map:assoc sigs "getpid"
                           (trampoline:make-ffi-signature :return-type :pid-t :arg-types '())))
     (setf sigs (map:assoc sigs "getenv"
                           (trampoline:make-ffi-signature :return-type :string :arg-types '(:string))))
-    
+
     sigs))
 
 (defun extract-from-parsed-headers (function-name)
@@ -178,7 +178,7 @@
                         (let ((sig (extract-signature-from-ast parsed)))
                           (when sig
                             (setf sigs (map:assoc sigs (first sig) (second sig)))))))))))
-          (error (e) 
+          (error (e)
 		 (declare (ignore e))
 		 nil))))
     sigs))
@@ -193,7 +193,7 @@
 		 (params (mapcar #'ast-param-to-ffi (getf ast :parameters))))
              (when name
                (list name
-                     (trampoline:make-ffi-signature 
+                     (trampoline:make-ffi-signature
                       :return-type return-type
                       :arg-types params)))))
 	  (otherwise nil))))
@@ -207,7 +207,7 @@
    ((listp type-spec)
     (let ((type-str (if (every #'stringp type-spec)
                         (format nil "~{~A~^ ~}" type-spec)
-                      (format nil "~{~A~^ ~}" 
+                      (format nil "~{~A~^ ~}"
                               (mapcar #'ast-token-to-string type-spec)))))
       (c-string-to-ffi-type type-str)))
    (t :pointer)))
@@ -255,7 +255,7 @@
      ((search "cat" name) '(:return-type :pointer :arg-types (:pointer :string)))
      ((search "chr" name) '(:return-type :pointer :arg-types (:string :int)))
      (t '(:return-type :pointer :arg-types (:pointer)))))
-   
+
    ;; Memory functions
    ((search "mem" name)
     (cond
@@ -263,13 +263,13 @@
      ((search "set" name) '(:return-type :pointer :arg-types (:pointer :int :size-t)))
      ((search "cmp" name) '(:return-type :int :arg-types (:pointer :pointer :size-t)))
      (t '(:return-type :pointer :arg-types (:pointer :size-t)))))
-   
+
    ;; Allocation functions
    ((or (string= name "malloc") (string= name "calloc"))
     '(:return-type :pointer :arg-types (:size-t)))
    ((string= name "free")
     '(:return-type :void :arg-types (:pointer)))
-   
+
    ;; I/O functions
    ((string= name "puts")
     '(:return-type :int :arg-types (:string)))
@@ -277,27 +277,27 @@
     '(:return-type :string :arg-types (:pointer)))
    ((search "printf" name)
     '(:return-type :int :arg-types (:string &rest)))
-   
+
    ;; Math functions
    ((or (member name '("sin" "cos" "tan" "exp" "log" "sqrt") :test #'string=))
     '(:return-type :double :arg-types (:double)))
    ((string= name "pow")
     '(:return-type :double :arg-types (:double :double)))
-   
+
    ;; System functions
    ((string= name "getpid")
     '(:return-type :pid-t :arg-types ()))
    ((string= name "getenv")
     '(:return-type :string :arg-types (:string)))
-   
+
    ;; Predicates
    ((and (> (length name) 2) (string= (subseq name 0 2) "is"))
     '(:return-type :int :arg-types (:int)))
-   
+
    ;; Conversion functions
    ((and (> (length name) 2) (string= (subseq name 0 2) "to"))
     '(:return-type :int :arg-types (:int)))
-   
+
    ;; Default - unknown
    (t nil)))
 
@@ -442,7 +442,7 @@
       (cond
        ;; Functions starting with 'is' usually return int (boolean)
        ((and (>= (length name) 2) (string= (subseq name 0 2) "is"))
-        (trampoline:make-ffi-signature :return-type :int 
+        (trampoline:make-ffi-signature :return-type :int
                                        :arg-types '(:int)))
        ;; Functions starting with 'str' usually work with strings
        ((and (>= (length name) 3) (string= (subseq name 0 3) "str"))
@@ -453,7 +453,7 @@
         (trampoline:make-ffi-signature :return-type :pointer
                                        :arg-types '(:pointer :pointer :size-t)))
        ;; Functions ending with 'printf' are variadic
-       ((and (>= (length name) 6) 
+       ((and (>= (length name) 6)
              (string= (subseq name (- (length name) 6)) "printf"))
         (trampoline:make-ffi-signature :return-type :int
                                        :arg-types '(:string &rest)))
@@ -483,12 +483,12 @@
              do (let ((alien-str (sb-alien:make-alien-string string)))
                   (setf (aref ,string-ptrs i) alien-str)
                   ;; Store the SAP address in the sap-array
-                  (setf (sb-sys:sap-ref-sap 
+                  (setf (sb-sys:sap-ref-sap
                          (sb-sys:vector-sap ,sap-array)
                          (* i ,sb-vm:n-word-bytes))
                         (sb-alien:alien-sap alien-str))))
        ;; Add NULL terminator
-       (setf (sb-sys:sap-ref-sap 
+       (setf (sb-sys:sap-ref-sap
               (sb-sys:vector-sap ,sap-array)
               (* ,count ,sb-vm:n-word-bytes))
              (sb-sys:int-sap 0))
@@ -503,7 +503,7 @@
 (defmacro with-output-array ((var count type) &body body)
   "Create an array for output parameters"
   (let ((array (gensym "ARRAY")))
-    `(let ((,array (make-array ,count 
+    `(let ((,array (make-array ,count
                                :element-type ',(case type
                                                     (:int '(signed-byte 32))
                                                     (:uint '(unsigned-byte 32))
@@ -516,15 +516,15 @@
        ;; After the body, extract values from the array
        (loop for i from 0 below ,count
              collect (ecase ,type
-                           (:int (sb-sys:signed-sap-ref-32 
+                           (:int (sb-sys:signed-sap-ref-32
                                   (sb-sys:vector-sap ,array) (* i 4)))
-                           (:uint (sb-sys:sap-ref-32 
+                           (:uint (sb-sys:sap-ref-32
                                    (sb-sys:vector-sap ,array) (* i 4)))
-                           (:long (sb-sys:signed-sap-ref-64 
+                           (:long (sb-sys:signed-sap-ref-64
                                    (sb-sys:vector-sap ,array) (* i 8)))
-                           (:ulong (sb-sys:sap-ref-64 
+                           (:ulong (sb-sys:sap-ref-64
                                     (sb-sys:vector-sap ,array) (* i 8)))
-                           (:pointer (sb-sys:sap-ref-sap 
+                           (:pointer (sb-sys:sap-ref-sap
                                       (sb-sys:vector-sap ,array) (* i 8))))))))
 
 ;;; Enum support

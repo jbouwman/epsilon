@@ -1,5 +1,5 @@
 ;;;; Windows Networking Implementation
-;;;; 
+;;;;
 ;;;; This module implements the epsilon.net interface for Windows systems
 ;;;; using IOCP (I/O Completion Ports) for event notification and async I/O.
 
@@ -14,12 +14,12 @@
    #:ipv4-address
    #:ipv6-address
    #:socket-address
-   
+
    ;; Socket types
    #:tcp-listener
    #:tcp-stream
    #:udp-socket
-   
+
    ;; TCP Listener operations
    #:tcp-bind
    #:tcp-accept
@@ -27,7 +27,7 @@
    #:tcp-try-accept
    #:tcp-poll-accept
    #:tcp-local-addr
-   
+
    ;; TCP Stream operations
    #:tcp-connect
    #:tcp-read
@@ -43,7 +43,7 @@
    #:tcp-close
    #:tcp-stream-reader
    #:tcp-stream-writer
-   
+
    ;; UDP operations
    #:udp-bind
    #:udp-connect
@@ -52,18 +52,18 @@
    #:udp-send-to
    #:udp-recv-from
    #:udp-local-addr
-   
+
    ;; Address resolution
    #:make-socket-address
    #:resolve-address
    #:socket-address-ip
    #:socket-address-port
    #:parse-address
-   
+
    ;; Socket options
    #:set-socket-option
    #:get-socket-option
-   
+
    ;; Error conditions
    #:network-error
    #:connection-refused
@@ -72,7 +72,7 @@
    #:timeout-error
    #:address-in-use
    #:would-block-error
-   
+
    ;; Status checks
    #:tcp-connected-p))
 
@@ -259,18 +259,18 @@
   (let* ((socket (make-socket sb-bsd-sockets:af-inet sb-bsd-sockets:sock-stream))
          (addr (sb-bsd-sockets:make-inet-address (socket-address-ip address)))
          (iocp-handle (iocp:iocp-create)))
-    
+
     (when reuse-addr
       (set-socket-reuseaddr socket))
-    
+
     (handler-case
         (progn
           (sb-bsd-sockets:socket-bind socket addr (socket-address-port address))
           (sb-bsd-sockets:socket-listen socket backlog)
-          
+
           ;; Associate socket with IOCP
           (iocp:iocp-associate iocp-handle socket 0)
-          
+
           (make-instance 'tcp-listener
                          :handle socket
                          :local-address address
@@ -349,11 +349,11 @@
   (declare (ignore timeout)) ; TODO: Implement connection timeout
   (let* ((socket (make-socket sb-bsd-sockets:af-inet sb-bsd-sockets:sock-stream))
          (addr (sb-bsd-sockets:make-inet-address (socket-address-ip address))))
-    
+
     (handler-case
         (progn
           (sb-bsd-sockets:socket-connect socket addr (socket-address-port address))
-          
+
           (let ((local-port (sb-bsd-sockets:socket-name socket)))
             (make-instance 'tcp-stream
                           :handle socket
@@ -483,12 +483,12 @@
   "Create a UDP socket bound to address"
   (let* ((socket (make-socket sb-bsd-sockets:af-inet sb-bsd-sockets:sock-dgram))
          (addr (sb-bsd-sockets:make-inet-address (socket-address-ip address))))
-    
+
     (handler-case
         (progn
           (set-socket-reuseaddr socket)
           (sb-bsd-sockets:socket-bind socket addr (socket-address-port address))
-          
+
           (make-instance 'udp-socket
                          :handle socket
                          :local-address address))

@@ -15,7 +15,7 @@
    #:timeout-error
    #:address-in-use
    #:would-block-error
-   
+
    ;; Error utilities
    #:get-errno
    #:errno-to-string
@@ -65,8 +65,8 @@
 (defun get-errno ()
   "Get the current errno value"
   (handler-case
-      (let ((errno-ptr (sb-alien:alien-funcall 
-                        (sb-alien:extern-alien "__errno_location" 
+      (let ((errno-ptr (sb-alien:alien-funcall
+                        (sb-alien:extern-alien "__errno_location"
                                                (function (* sb-alien:int))))))
         (sb-alien:deref errno-ptr 0))
     (error ()

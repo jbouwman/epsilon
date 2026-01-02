@@ -22,7 +22,7 @@
    #:compilation-result-warnings-p
    #:compilation-result-failure-p
    #:compilation-result-duration
-   
+
    ;; Message structures
    #:compilation-message
    #:make-compilation-message
@@ -33,7 +33,7 @@
    #:compilation-message-context
    #:compilation-message-source-path
    #:compilation-message-enclosing-forms
-   
+
    ;; Location structures
    #:source-location
    #:make-source-location
@@ -43,7 +43,7 @@
    #:source-location-column
    #:source-location-form-number
    #:source-location-toplevel-form
-   
+
    ;; Statistics
    #:compilation-statistics
    #:make-compilation-statistics
@@ -54,7 +54,7 @@
    #:compilation-statistics-bytes-consed
    #:compilation-statistics-cpu-time
    #:compilation-statistics-real-time
-   
+
    ;; Severity levels
    #:severity-level
    #:error-severity
@@ -62,7 +62,7 @@
    #:style-warning-severity
    #:note-severity
    #:info-severity
-   
+
    ;; Utility functions
    #:count-messages-by-severity
    #:get-errors
@@ -166,7 +166,7 @@
   (failure-p nil :type boolean)
   (duration 0.0 :type single-float))
 
-(defun make-compilation-result (&key file output-file messages statistics 
+(defun make-compilation-result (&key file output-file messages statistics
                                       (success-p t) warnings-p failure-p
                                       (duration 0.0))
   "Create a compilation result structure."

@@ -17,14 +17,14 @@
    #:channel-p
    #:close-channel
    #:channel-closed-p
-   
+
    ;; Channel operations
    #:send
    #:receive
    #:try-send
    #:try-receive
    #:select
-   
+
    ;; Stream abstraction
    #:data-stream
    #:make-data-stream
@@ -32,7 +32,7 @@
    #:stream-next
    #:stream-close
    #:stream-closed-p
-   
+
    ;; Stream operations (inspired by Rust Iterator trait)
    #:map-stream
    #:filter-stream
@@ -44,18 +44,18 @@
    #:zip-stream
    #:merge-streams
    #:split-stream
-   
+
    ;; Backpressure and flow control
    #:with-backpressure
    #:throttle-stream
    #:buffer-stream
    #:batch-stream
-   
+
    ;; Error handling
    #:channel-error
    #:channel-closed-error
    #:channel-timeout-error
-   
+
    ;; Utilities
    #:from-sequence
    #:to-sequence
@@ -96,7 +96,7 @@
   ()
   (:documentation "Channel is closed")
   (:report (lambda (condition stream)
-             (format stream "Channel ~A is closed" 
+             (format stream "Channel ~A is closed"
                      (channel-error-channel condition)))))
 
 (define-condition channel-timeout-error (channel-error)
@@ -130,7 +130,7 @@
 
 (defun make-channel (&key (capacity 0))
   "Create a new channel with optional capacity validation
-  
+
   - CAPACITY: Maximum buffer size (0 = unbounded, 1 = synchronous)"
   (when (< capacity 0)
     (error "Channel capacity must be non-negative, got ~A" capacity))
@@ -140,13 +140,13 @@
   "Close a channel, waking all waiting operations"
   (sb-thread:with-mutex ((channel-lock channel))
     (setf (channel-closed-p channel) t)
-    
+
     ;; Wake up all waiting senders and receivers
     (dolist (sender (channel-senders channel))
       (sb-thread:condition-notify (cdr sender)))
     (dolist (receiver (channel-receivers channel))
       (sb-thread:condition-notify receiver))
-    
+
     (setf (channel-senders channel) '()
           (channel-receivers channel) '())))
 
@@ -154,11 +154,11 @@
 
 (defun send (channel value &key timeout)
   "Send a value to channel, blocking if buffer is full
-  
+
   Returns T on success, signals error if channel is closed."
   (when (channel-closed-p channel)
     (error 'channel-closed-error :channel channel))
-  
+
   (let ((deadline (when timeout (+ (get-universal-time) timeout))))
     (sb-thread:with-mutex ((channel-lock channel))
       (loop
@@ -166,7 +166,7 @@
         (when (channel-closed-p channel)
           (incf (channel-stats-closed-sends (channel-stats channel)))
           (error 'channel-closed-error :channel channel))
-        
+
         ;; Try to send immediately
         (cond
           ;; Receiver is waiting
@@ -175,35 +175,35 @@
              (incf (channel-stats-sends (channel-stats channel)))
              (sb-thread:condition-notify receiver)
              (return t)))
-          
+
           ;; Buffer has space
           ((or (zerop (channel-capacity channel)) ; unbounded
                (< (channel-size channel) (channel-capacity channel)))
-           (setf (channel-buffer channel) 
+           (setf (channel-buffer channel)
                  (append (channel-buffer channel) (list value)))
            (incf (channel-size channel))
            (incf (channel-stats-sends (channel-stats channel)))
            (return t))
-          
+
           ;; Need to wait
           (t
            (when (and deadline (<= deadline (get-universal-time)))
              (incf (channel-stats-timeouts (channel-stats channel)))
              (error 'channel-timeout-error :channel channel :timeout timeout))
-           
+
            (let ((condition (sb-thread:make-waitqueue)))
              (push (cons value condition) (channel-senders channel))
              (sb-thread:condition-wait condition (channel-lock channel)
-                                       :timeout (when deadline 
+                                       :timeout (when deadline
                                                  (- deadline (get-universal-time)))))))))))
 
 (defun try-send (channel value)
   "Try to send value without blocking
-  
+
   Returns T if sent, NIL if would block, error if closed."
   (when (channel-closed-p channel)
     (error 'channel-closed-error :channel channel))
-  
+
   (sb-thread:with-mutex ((channel-lock channel))
     (cond
       ;; Receiver waiting
@@ -212,7 +212,7 @@
          (incf (channel-stats-sends (channel-stats channel)))
          (sb-thread:condition-notify receiver)
          t))
-      
+
       ;; Buffer has space
       ((or (zerop (channel-capacity channel))
            (< (channel-size channel) (channel-capacity channel)))
@@ -221,13 +221,13 @@
        (incf (channel-size channel))
        (incf (channel-stats-sends (channel-stats channel)))
        t)
-      
+
       ;; Would block
       (t nil))))
 
 (defun receive (channel &key timeout)
   "Receive a value from channel, blocking if empty
-  
+
   Returns (values value t) on success, (values nil nil) if closed and empty."
   (let ((deadline (when timeout (+ (get-universal-time) timeout))))
     (sb-thread:with-mutex ((channel-lock channel))
@@ -239,7 +239,7 @@
            (let ((value (pop (channel-buffer channel))))
              (decf (channel-size channel))
              (incf (channel-stats-receives (channel-stats channel)))
-             
+
              ;; Wake up waiting sender if any
              (when (channel-senders channel)
                (let ((sender (pop (channel-senders channel))))
@@ -247,19 +247,19 @@
                        (append (channel-buffer channel) (list (car sender))))
                  (incf (channel-size channel))
                  (sb-thread:condition-notify (cdr sender))))
-             
+
              (return (values value t))))
-          
+
           ;; Channel closed and empty
           ((channel-closed-p channel)
            (return (values nil nil)))
-          
+
           ;; Need to wait
           (t
            (when (and deadline (<= deadline (get-universal-time)))
              (incf (channel-stats-timeouts (channel-stats channel)))
              (error 'channel-timeout-error :channel channel :timeout timeout))
-           
+
            (let ((condition (sb-thread:make-waitqueue)))
              (push condition (channel-receivers channel))
              (sb-thread:condition-wait condition (channel-lock channel)
@@ -268,7 +268,7 @@
 
 (defun try-receive (channel)
   "Try to receive value without blocking
-  
+
   Returns (values value t) if received, (values nil nil) if empty/closed."
   (sb-thread:with-mutex ((channel-lock channel))
     (cond
@@ -277,7 +277,7 @@
        (let ((value (pop (channel-buffer channel))))
          (decf (channel-size channel))
          (incf (channel-stats-receives (channel-stats channel)))
-         
+
          ;; Wake up waiting sender if any
          (when (channel-senders channel)
            (let ((sender (pop (channel-senders channel))))
@@ -285,9 +285,9 @@
                    (append (channel-buffer channel) (list (car sender))))
              (incf (channel-size channel))
              (sb-thread:condition-notify (cdr sender))))
-         
+
          (values value t)))
-      
+
       ;; Empty or closed
       (t (values nil nil)))))
 
@@ -301,11 +301,11 @@
 
 (defun stream-next (stream)
   "Get next item from stream
-  
+
   Returns (values item more-p) where more-p indicates if stream continues."
   (when (data-stream-closed-p stream)
     (return-from stream-next (values nil nil)))
-  
+
   (if (data-stream-next-fn stream)
       (funcall (data-stream-next-fn stream))
       (values nil nil)))
@@ -330,13 +330,13 @@
     (make-data-stream
      :next-fn (lambda ()
                 (if (< index length)
-                    (values (elt sequence index) 
+                    (values (elt sequence index)
                             (progn (incf index) (< index length)))
                     (values nil nil))))))
 
 (defun from-function (function &key (while-fn (constantly t)))
   "Create a stream from a function
-  
+
   FUNCTION: () -> value
   WHILE-FN: () -> boolean (continue predicate)"
   (make-data-stream
@@ -373,7 +373,7 @@
                (multiple-value-bind (item more-p) (stream-next stream)
                  (cond
                    ;; Check if item matches predicate before checking more-p
-                   ((and item (funcall predicate item)) 
+                   ((and item (funcall predicate item))
                     (return (values item more-p)))
                    ;; If no more items and current doesn't match, we're done
                    ((not more-p) (return (values nil nil)))))))
@@ -407,7 +407,7 @@
 
 (defun fold-stream (stream initial-value folder)
   "Fold stream into a single value
-  
+
   FOLDER: (accumulator item) -> new-accumulator"
   (let ((acc initial-value))
     (loop
@@ -461,7 +461,7 @@
                                    (incf current-index)
                                    (return (values item t)))
                                  (progn
-                                   (setf active-streams 
+                                   (setf active-streams
                                          (remove stream active-streams))
                                    (when (> current-index 0) (decf current-index))))))
                       finally (return (values nil nil))))
@@ -475,7 +475,7 @@
   "Add buffering to stream with specified buffer size"
   (let ((channel (make-channel :capacity buffer-size))
         (producer-thread nil))
-    
+
     ;; Start producer thread
     (setf producer-thread
           (sb-thread:make-thread
@@ -488,7 +488,7 @@
                       (close-channel channel)
                       (return))))))
            :name "stream-buffer-producer"))
-    
+
     (make-data-stream
      :next-fn (lambda () (receive channel))
      :close-fn (lambda ()

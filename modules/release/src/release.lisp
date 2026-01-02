@@ -49,8 +49,8 @@
 
 (defun verify (&key (release-dir nil))
   "Verify release package functionality."
-  (let ((dir (or release-dir 
-                 (path:path-string 
+  (let ((dir (or release-dir
+                 (path:path-string
                   (path:path-join (namestring (fs:current-directory))
                                   "releases")))))
     (verify-release-functionality dir)))
@@ -87,35 +87,35 @@
 
 (defun update-version-file (new-version)
   "Update VERSION file with new version."
-  (let ((version-file (path:path-string 
+  (let ((version-file (path:path-string
                        (path:path-join (namestring (fs:current-directory))
                                        "VERSION"))))
     (fs:write-file-string version-file (format nil "~A~%" new-version))))
 
 (defun verify-release-functionality (release-dir)
   "Verify that a release package works correctly."
-  (let ((epsilon-binary (path:path-string 
+  (let ((epsilon-binary (path:path-string
                          (path:path-join release-dir "bin" "epsilon"))))
     (unless (probe-file epsilon-binary)
       (error "Release binary not found: ~A" epsilon-binary))
-    
+
     ;; Test basic functionality
     (log:info "Testing release binary: ~A" epsilon-binary)
-    
+
     ;; Test version command
-    (let ((result (process:run-sync epsilon-binary 
+    (let ((result (process:run-sync epsilon-binary
                                      :args '("--version")
                                      :check-executable nil)))
       (unless (zerop (process:process-exit-code result))
         (error "Version check failed")))
-    
+
     ;; Test eval command
     (let ((result (process:run-sync epsilon-binary
                                      :args '("--eval" "(+ 1 1)")
                                      :check-executable nil)))
       (unless (zerop (process:process-exit-code result))
         (error "Eval check failed")))
-    
+
     (log:info "Release verification passed")
     t))
 
@@ -132,11 +132,11 @@
   "Detect the current platform and architecture."
   (let ((os (env:platform))
         (arch (machine-type)))
-    (format nil "~(~A~)-~A" 
+    (format nil "~(~A~)-~A"
             (case os
               (:darwin "macos")
               (t os))
-            (cond 
+            (cond
               ((search "X86-64" arch) "x86_64")
               ((search "ARM64" arch) "arm64")
               (t arch)))))
@@ -172,8 +172,8 @@
           ;; Create XML for each suite
           (when suites
             (mapcar (lambda (suite-name)
-                      (funcall make-junit-testsuite-fn 
-                               suite-name 
+                      (funcall make-junit-testsuite-fn
+                               suite-name
                                (funcall suite-tests-fn result suite-name)))
                     suites)))))))
 
@@ -223,7 +223,7 @@
           (failures-accessor (find-symbol "FAILURES" "EPSILON.TEST.SUITE"))
           (errors-accessor (find-symbol "ERRORS" "EPSILON.TEST.SUITE"))
           (skipped-accessor (find-symbol "SKIPPED" "EPSILON.TEST.SUITE")))
-      
+
       ;; Copy all tests from module-run to aggregate-run
       (when tests-accessor
         (let ((aggregate-tests (funcall tests-accessor aggregate-run))
@@ -235,7 +235,7 @@
           (let ((tests-slot (find-symbol "TESTS" "EPSILON.TEST.SUITE")))
             (when tests-slot
               (setf (slot-value aggregate-run tests-slot) aggregate-tests)))))
-      
+
       ;; Append failures, errors, and skipped tests
       (when failures-accessor
         (let ((failures-slot (find-symbol "FAILURES" "EPSILON.TEST.SUITE")))
@@ -243,14 +243,14 @@
             (setf (slot-value aggregate-run failures-slot)
                   (append (funcall failures-accessor aggregate-run)
                           (funcall failures-accessor module-run))))))
-      
+
       (when errors-accessor
         (let ((errors-slot (find-symbol "ERRORS" "EPSILON.TEST.SUITE")))
           (when errors-slot
             (setf (slot-value aggregate-run errors-slot)
                   (append (funcall errors-accessor aggregate-run)
                           (funcall errors-accessor module-run))))))
-      
+
       (when skipped-accessor
         (let ((skipped-slot (find-symbol "SKIPPED" "EPSILON.TEST.SUITE")))
           (when skipped-slot
@@ -278,7 +278,7 @@
   "Generate an aggregated JUnit XML report from all test results."
   (declare (ignore failed-modules))
   (ensure-directories-exist file)
-  
+
   ;; Check if we have actual test results with details
   (let ((has-detailed-results nil))
     (dolist (module-result all-results)
@@ -288,13 +288,13 @@
                (tests-fn (find-symbol "TESTS" "EPSILON.TEST.SUITE")))
           (when (and tests-fn (plusp (map:size (funcall tests-fn result))))
             (setf has-detailed-results t)))))
-    
+
     (if (and has-detailed-results
              (find-package "EPSILON.TEST.REPORT")
              (find-package "EPSILON.XML"))
       ;; Generate detailed JUnit report with all test cases
       (with-open-file (stream file
-                              :direction :output 
+                              :direction :output
                               :if-exists :supersede
                               :if-does-not-exist :create)
         (format stream "<?xml version=\"1.0\" encoding=\"UTF-8\"?>~%")
@@ -305,7 +305,7 @@
               (total-failures 0)
               (total-errors 0)
               (total-time 0.0))
-          
+
           ;; Process each module's results
           (dolist (module-result (reverse all-results))
             (let* ((module (car module-result))
@@ -321,7 +321,7 @@
                     (incf total-failures (count-module-failures result))
                     (incf total-errors (count-module-errors result))
                     (incf total-time (or (get-module-time result) 0.0)))))))
-          
+
           ;; Write the aggregated XML
           (funcall xml-emit
                    (funcall xml-element "testsuites"
@@ -331,16 +331,16 @@
                                               "time" (format nil "~,3F" total-time))
                             :children (reverse all-testsuites))
                    stream)))
-      
+
       ;; Fallback to simple summary format if detailed reporting unavailable
       (with-open-file (stream file
-                              :direction :output 
+                              :direction :output
                               :if-exists :supersede
                               :if-does-not-exist :create)
         (format stream "<?xml version=\"1.0\" encoding=\"UTF-8\"?>~%")
         (format stream "<testsuites tests=\"~D\" failures=\"~D\" errors=\"0\" time=\"0.0\">~%"
                 total-tested (- total-tested total-passed))
-        
+
         ;; Create a testsuite for each module
         (dolist (module-result (reverse all-results))
           (let* ((module (car module-result))
@@ -359,7 +359,7 @@
                   (format stream "      <failure message=\"Module tests failed\">Module ~A tests failed</failure>~%" module)
                   (format stream "    </testcase>~%")))
             (format stream "  </testsuite>~%")))
-        
+
         (format stream "</testsuites>~%"))))
   (log:info "JUnit report written to ~A" file))
 
@@ -370,36 +370,36 @@
    QUIET suppresses informational messages."
   (unless quiet
     (log:info "Starting Epsilon Release Self-Test"))
-  
+
   ;; Convert string format to keyword for compatibility
   (when (stringp format)
     (setf format (intern (string-upcase format) :keyword)))
-  
-  
+
+
   (let ((modules (get-modules environment))
         (total-tested 0)
         (total-passed 0)
         (failed-modules '())
         (all-results '()))
-    
+
     (unless quiet
       (log:info "Found ~D modules to test" (length modules)))
-    
+
     ;; Ensure epsilon.test is loaded once
     (unless (find-package "EPSILON.TEST")
       (loader:load-module environment "epsilon.test"))
-    
+
     (dolist (module modules)
       (unless quiet
         (log:info "Testing ~A..." module))
       (incf total-tested)
-      
+
       (let ((result nil))
         (handler-case
             (progn
               ;; Load the module
               (loader:load-module environment module)
-              
+
               ;; Run tests with format and file parameters
               (let* ((test-run-fn (find-symbol "RUN" (find-package "EPSILON.TEST")))
                      (success-p-fn (find-symbol "SUCCESS-P" (find-package "EPSILON.TEST")))
@@ -407,7 +407,7 @@
                      ;; For individual modules in junit mode, suppress output
                      (module-format (if (eq format :junit) :none format)))
                 (setf result (funcall test-run-fn environment module :format module-format))
-                
+
                 (if (funcall success-p-fn result)
                     (progn
                       (unless (eq format :junit)
@@ -417,20 +417,20 @@
                       (unless (eq format :junit)
                         (format t "  ✗ FAILED~%"))
                       (push module failed-modules)))
-                
+
                 ;; Clear tests after each package to free memory and prevent accumulation
                 (when (and clear-tests-fn (fboundp clear-tests-fn))
                   (funcall clear-tests-fn))))
-          
+
           (error (e)
             (unless (eq format :junit)
               (format t "  ✗ ERROR: ~A~%" e))
             (push module failed-modules)))
-        
+
         ;; Collect results for junit aggregation (always executed)
         (when (eq format :junit)
           (push (cons module result) all-results))))
-    
+
     ;; Generate appropriate output based on format
     (case format
       (:junit
@@ -444,14 +444,14 @@
        (format t "Total modules: ~D~%" total-tested)
        (format t "Passed: ~D~%" total-passed)
        (format t "Failed: ~D~%" (- total-tested total-passed))
-       
+
        (when failed-modules
          (format t "~%Failed modules:~%")
          (dolist (module (reverse failed-modules))
            (format t "  - ~A~%" module)))
-       
+
        (format t "~%")))
-    
+
     (= total-passed total-tested)))
 
 ;;; Release Generation Functions
@@ -459,7 +459,7 @@
 (defun get-platform-modules (environment platform-arch)
   "Get list of modules to include for a specific platform."
   (let ((platform (seq:first (str:split #\- platform-arch))))
-    
+
     ;; Use the same logic as get-modules to query available modules
     (let ((all-descriptors (loader:query-modules environment))
           (platform-modules '()))
@@ -478,7 +478,7 @@
 (defun build-modules-for-release (environment platform-arch)
   "Build all modules needed for the release."
   (format t "Building modules for ~A...~%" platform-arch)
-  
+
   (let ((modules (get-platform-modules environment platform-arch)))
     (dolist (module modules)
       (let ((module-name (format nil "epsilon.~A" module)))
@@ -494,10 +494,10 @@
 (defun copy-source-tree (release-dir)
   "Copy source tree to release directory."
   (format t "Copying source tree...~%")
-  
+
   (let ((src-dir (path:path-string (path:path-join (namestring (fs:current-directory)) "modules")))
         (target-src (path:path-string (path:path-join release-dir "modules"))))
-        
+
     ;; Copy source tree using standard epsilon.sys.fs functions
     (fs:copy-directory src-dir target-src)
     (format t "  ✓ Source tree copied successfully~%")))
@@ -526,13 +526,13 @@
 (defun create-sbcl-bundle (release-dir)
   "Bundle SBCL with the release."
   (format t "Creating SBCL bundle...~%")
-  
+
   (let ((bin-dir (path:path-string (path:path-join release-dir "bin")))
         (lib-dir (path:path-string (path:path-join release-dir "lib" "sbcl-libs"))))
-    
+
     (fs:make-dirs bin-dir)
     (fs:make-dirs lib-dir)
-    
+
     ;; Copy SBCL binary using built-in runtime path
     (handler-case
         (let ((sbcl-runtime sb-ext:*runtime-pathname*))
@@ -545,7 +545,7 @@
       (error (e)
         (log:error "Could not copy SBCL binary: ~A" e)
         (format t "Warning: Could not copy SBCL binary: ~A~%" e)))
-    
+
     ;; Copy SBCL libraries using SBCL_HOME
     (handler-case
         (let ((sbcl-home (sb-posix:getenv "SBCL_HOME")))
@@ -553,7 +553,7 @@
             ;; Copy all files from SBCL_HOME to lib-dir
             (fs:copy-directory sbcl-home lib-dir)
             (format t "  ✓ SBCL libraries copied from ~A~%" sbcl-home))
-          
+
           ;; Also copy the core file if it exists
           (let ((sbcl-core sb-ext:*core-pathname*))
             (when (and sbcl-core (probe-file sbcl-core))
@@ -567,7 +567,7 @@
 (defun copy-additional-files (release-dir)
   "Copy additional files like scripts, documentation, etc."
   (format t "Copying additional files...~%")
-  
+
   (let ((project-root (namestring (fs:current-directory))))
     ;; Copy scripts
     (let ((scripts-src (path:path-string (path:path-join project-root "scripts")))
@@ -578,7 +578,7 @@
           (error (e)
             (log:error "Could not copy scripts")
             (format t "Warning: Could not copy scripts: ~A~%" e)))))
-    
+
     ;; Copy VERSION file
     (let ((version-src (path:path-string (path:path-join project-root "VERSION")))
           (version-dst (path:path-string (path:path-join release-dir "VERSION"))))
@@ -588,7 +588,7 @@
           (error (e)
             (log:error "Could not copy VERSION file")
             (format t "Warning: Could not copy VERSION file: ~A~%" e)))))
-    
+
     ;; Copy README and LICENSE if they exist
     (dolist (file '("README.md" "LICENSE"))
       (let ((src-file (path:path-string (path:path-join project-root file)))
@@ -611,8 +611,8 @@
 
 (defun create-zip-archive (release-dir release-name)
   "Create a ZIP archive for Windows releases."
-  (process:run-sync "zip" 
-                    :args (list "-r" 
+  (process:run-sync "zip"
+                    :args (list "-r"
                                 (format nil "~A.zip" release-name)
                                 (path:path-name (path:make-path release-dir)))
                     :stream-output (lambda (line)
@@ -655,9 +655,9 @@
   (let ((platform (seq:first (str:split #\- platform-arch)))
         (parent-dir (path:path-string (path:path-parent (path:make-path release-dir))))
         (old-cwd (namestring (fs:current-directory))))
-    
+
     (log:info "Creating release archive for ~A in ~A" platform-arch release-dir)
-    
+
     (unwind-protect
          (progn
            (fs:change-directory parent-dir)
@@ -672,22 +672,22 @@
   "Run basic CLI smoke tests. These check that epsilon can start up, and load modules."
   (let ((failed 0)
         (epsilon-path "./epsilon"))
-    
+
     (log:info "Running CLI smoke tests...")
-    
+
     ;; Test 1: Version command
     (handler-case
-        (process:run-sync epsilon-path 
+        (process:run-sync epsilon-path
                           :args '("--version")
                           :check-executable nil)
       (process:process-error-condition (e)
         (incf failed)
-        (log:error "Version command failed with exit code ~A" 
+        (log:error "Version command failed with exit code ~A"
                    (process:process-error-exit-code e)))
       (error (e)
         (incf failed)
         (log:error "✗ Version command: ~A" e)))
-    
+
     ;; Test 2: Help command
     (handler-case
         (process:run-sync epsilon-path
@@ -695,12 +695,12 @@
                           :check-executable nil)
       (process:process-error-condition (e)
         (incf failed)
-        (log:error "Help command failed with exit code ~A" 
+        (log:error "Help command failed with exit code ~A"
                    (process:process-error-exit-code e)))
       (error (e)
         (incf failed)
         (log:error "✗ Help command: ~A" e)))
-    
+
     ;; Test 3: Simple evaluation
     (handler-case
         (let ((output (process:run-sync epsilon-path
@@ -711,12 +711,12 @@
               (progn (incf failed) (log:error "Simple evaluation: unexpected output"))))
       (process:process-error-condition (e)
         (incf failed)
-        (log:error "Simple evaluation failed with exit code ~A" 
+        (log:error "Simple evaluation failed with exit code ~A"
                    (process:process-error-exit-code e)))
       (error (e)
         (incf failed)
         (log:error "✗ Simple evaluation: ~A" e)))
-    
+
     ;; Test 4: Module loading
     (handler-case
         (process:run-sync epsilon-path
@@ -724,12 +724,12 @@
                           :check-executable nil)
       (process:process-error-condition (e)
         (incf failed)
-        (log:error "Module loading failed with exit code ~A" 
+        (log:error "Module loading failed with exit code ~A"
                    (process:process-error-exit-code e)))
       (error (e)
         (incf failed)
         (log:error "✗ Module loading: ~A" e)))
-    
+
     (log:info "Smoke tests complete: ~D failed" failed)
     (zerop failed)))
 
@@ -738,19 +738,19 @@
   (declare (ignore release-dir))
   (handler-case
       (progn
-        (process:run-sync "tar" 
-                          :args (list "czf" 
+        (process:run-sync "tar"
+                          :args (list "czf"
                                       (format nil "~a.tar.gz" release-name)
                                       release-name)
                           :working-directory working-dir
                           :check-executable nil)
         (format t "~%")
         ;; Create checksum file - use full path in working directory
-        (create-checksum-file (path:path-string 
-                               (path:path-join working-dir 
+        (create-checksum-file (path:path-string
+                               (path:path-join working-dir
                                                (format nil "~A.tar.gz" release-name)))))
     (process:process-error-condition (e)
-      (error "tar command failed with exit code ~A~%Output: ~A~%Error: ~A" 
+      (error "tar command failed with exit code ~A~%Output: ~A~%Error: ~A"
              (epsilon.process::process-error-exit-code e)
              (epsilon.process::process-error-output e)
              (epsilon.process::process-error-error-output e)))
@@ -770,18 +770,18 @@
                          version-override)))
     (format t "~%Epsilon Release Generator~%")
     (format t "========================~%~%")
-    
+
     (let* ((version (or version-arg (get-version)))
            (platform-arch (detect-platform))
            (release-name (format nil "epsilon-~A-~A" version platform-arch))
-           (release-dir (path:path-string 
+           (release-dir (path:path-string
                          (path:path-join (namestring (fs:current-directory)) "releases" release-name))))
-      
+
       (format t "Version: ~A~%" version)
       (format t "Platform: ~A~%" platform-arch)
       (format t "Release name: ~A~%" release-name)
       (format t "Output directory: ~A~%~%" release-dir)
-      
+
       ;; Create release directory
       (when (probe-file release-dir)
         (format t "Removing existing release directory...~%")
@@ -790,26 +790,26 @@
           (error (e)
             (log:error "Could not remove directory: ~A" e)
             (format t "Directory will be overwritten instead~%"))))
-      
+
       (fs:make-dirs release-dir)
-      
+
       ;; Build all modules
       (build-modules-for-release environment platform-arch)
-      
+
       ;; Copy source tree
       (copy-source-tree release-dir)
-      
+
       ;; Create SBCL bundle
       (create-sbcl-bundle release-dir)
-      
+
       ;; Copy epsilon script
       (copy-epsilon-script release-dir)
-      
+
       ;; Copy additional files
       (copy-additional-files release-dir)
-      
+
       ;; Copy installation instructions
       (copy-install-instructions release-dir)
-      
+
       ;; Create archive
       (create-release-archive release-dir release-name platform-arch))))

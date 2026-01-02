@@ -157,17 +157,17 @@
         (name nil))
     (when (sb-sys:sap= x509 (sb-sys:int-sap 0))
       (error "Failed to create X509 certificate"))
-    
+
     (unwind-protect
          (handler-case
              (progn
                ;; Generate key pair
                (setf pkey (create-rsa-key key-bits))
-               
+
                ;; Set certificate version (v3)
                (when (zerop (ffi:%x509-set-version x509 2))
                  (error "Failed to set certificate version"))
-               
+
                ;; Set serial number
                (let ((serial (ffi:%asn1-integer-new)))
                  (when (sb-sys:sap= serial (sb-sys:int-sap 0))
@@ -179,7 +179,7 @@
                         (when (zerop (ffi:%x509-set-serialnumber x509 serial))
                           (error "Failed to set certificate serial number")))
                    (ffi:%asn1-integer-free serial)))
-               
+
                ;; Set validity period
                (let ((not-before (ffi:%asn1-time-new))
                      (not-after (ffi:%asn1-time-new)))
@@ -192,7 +192,7 @@
                    (error "Failed to set not-before"))
                  (when (zerop (ffi:%x509-set-notafter x509 not-after))
                    (error "Failed to set not-after")))
-               
+
                ;; Create and set subject name
                (setf name (build-x509-name :common-name common-name
                                            :organization organization
@@ -201,28 +201,28 @@
                                            :locality locality))
                (when (zerop (ffi:%x509-set-subject-name x509 name))
                  (error "Failed to set subject name"))
-               
+
                ;; For self-signed, issuer = subject
                (when (zerop (ffi:%x509-set-issuer-name x509 name))
                  (error "Failed to set issuer name"))
-               
+
                ;; Set public key
                (when (zerop (ffi:%x509-set-pubkey x509 pkey))
                  (error "Failed to set public key"))
-               
+
                ;; Sign the certificate
                (let ((digest (ffi:%evp-sha256)))
                  (when (zerop (ffi:%x509-sign x509 pkey digest))
                    (error "Failed to sign certificate")))
-               
+
                ;; Convert to PEM format
                (values (x509-to-pem x509)
                        (evp-pkey-to-pem pkey)))
-           
+
            (error (e)
              ;; Clean up and re-throw
              (error "Certificate generation failed: ~A" e)))
-      
+
       ;; Cleanup
       (when name (ffi:%x509-name-free name))
       (when pkey (ffi:%evp-pkey-free pkey))
@@ -243,18 +243,18 @@
         (local-pkey private-key))
     (when (sb-sys:sap= req (sb-sys:int-sap 0))
       (error "Failed to create X509 request"))
-    
+
     (unwind-protect
          (handler-case
              (progn
                ;; Generate key if not provided
                (when need-key-gen
                  (setf local-pkey (create-rsa-key 2048)))
-               
+
                ;; Set version
                (when (zerop (ffi:%x509-req-set-version req 0))
                  (error "Failed to set request version"))
-               
+
                ;; Create and set subject name
                (setf name (build-x509-name :common-name common-name
                                            :organization organization
@@ -264,22 +264,22 @@
                                            :email email))
                (when (zerop (ffi:%x509-req-set-subject-name req name))
                  (error "Failed to set subject name"))
-               
+
                ;; Set public key
                (when (zerop (ffi:%x509-req-set-pubkey req local-pkey))
                  (error "Failed to set public key"))
-               
+
                ;; Sign the request
                (let ((digest (ffi:%evp-sha256)))
                  (when (zerop (ffi:%x509-req-sign req local-pkey digest))
                    (error "Failed to sign request")))
-               
+
                ;; Convert to PEM
                (csr-to-pem req))
-           
+
            (error (e)
              (error "CSR generation failed: ~A" e)))
-      
+
       ;; Cleanup
       (when name (ffi:%x509-name-free name))
       (when req (ffi:%x509-req-free req))
@@ -318,7 +318,7 @@
                (setf ca-pubkey (ffi:%x509-get-pubkey ca-cert))
                (when (sb-sys:sap= ca-pubkey (sb-sys:int-sap 0))
                  (error "Failed to get CA public key"))
-               
+
                ;; Verify certificate signature with CA's public key
                (let ((result (ffi:%x509-verify cert ca-pubkey)))
                  (case result
@@ -326,11 +326,11 @@
                    (0 nil) ; Invalid
                    (otherwise
                     (error "Verification error: ~A" result)))))
-           
+
            (error (e)
              (warn "Certificate verification failed: ~A" e)
              nil))
-      
+
       ;; Cleanup
       (when ca-pubkey (ffi:%evp-pkey-free ca-pubkey))
       (when cert (ffi:%x509-free cert))
@@ -364,14 +364,14 @@
          (not-after nil))
     (when (sb-sys:sap= x509 (sb-sys:int-sap 0))
       (error "Failed to create X509 certificate"))
-    
+
     (unwind-protect
          (handler-case
              (progn
                ;; Set version (v3)
                (when (zerop (ffi:%x509-set-version x509 2))
                  (error "Failed to set certificate version"))
-               
+
                ;; Set serial number
                (setf serial (ffi:%asn1-integer-new))
                (when (sb-sys:sap= serial (sb-sys:int-sap 0))
@@ -380,7 +380,7 @@
                  (error "Failed to set serial number value"))
                (when (zerop (ffi:%x509-set-serialnumber x509 serial))
                  (error "Failed to set certificate serial number"))
-               
+
                ;; Set validity period
                (setf not-before (ffi:%asn1-time-new))
                (setf not-after (ffi:%asn1-time-new))
@@ -393,17 +393,17 @@
                  (error "Failed to set not-before"))
                (when (zerop (ffi:%x509-set-notafter x509 not-after))
                  (error "Failed to set not-after"))
-               
+
                ;; Copy subject from CSR
                (let ((subject (ffi:%x509-req-get-subject-name csr)))
                  (when (zerop (ffi:%x509-set-subject-name x509 subject))
                    (error "Failed to set subject name")))
-               
+
                ;; Set issuer from CA certificate
                (let ((issuer (ffi:%x509-get-issuer-name ca-cert)))
                  (when (zerop (ffi:%x509-set-issuer-name x509 issuer))
                    (error "Failed to set issuer name")))
-               
+
                ;; Get and set public key from CSR
                (let ((req-pubkey (ffi:%x509-req-get-pubkey csr)))
                  (when (sb-sys:sap= req-pubkey (sb-sys:int-sap 0))
@@ -411,18 +411,18 @@
                  (when (zerop (ffi:%x509-set-pubkey x509 req-pubkey))
                    (error "Failed to set public key"))
                  (ffi:%evp-pkey-free req-pubkey))
-               
+
                ;; Sign with CA key
                (let ((digest (ffi:%evp-sha256)))
                  (when (zerop (ffi:%x509-sign x509 ca-key digest))
                    (error "Failed to sign certificate")))
-               
+
                ;; Convert to PEM
                (x509-to-pem x509))
-           
+
            (error (e)
              (error "Certificate signing failed: ~A" e)))
-      
+
       ;; Cleanup
       (when serial (ffi:%asn1-integer-free serial))
       (when not-before (ffi:%asn1-time-free not-before))
@@ -490,7 +490,7 @@
         (setf subject-dn (append subject-dn (list "L" locality))))
       (when email
         (setf subject-dn (append subject-dn (list "emailAddress" email))))
-      
+
       ;; Create self-signed certificate using x509 module
       (let ((cert (x509:create-certificate
                    :subject subject-dn
@@ -502,39 +502,85 @@
         (values (x509:save-certificate cert)
                 (epsilon.crypto:key-to-pem key :private-p t))))))
 
-(defun generate-certificate-request (common-name private-key &key
+(defun generate-certificate-request (common-name &key
+                                    private-key
                                     organization
                                     country
                                     state
                                     locality
-                                    email)
-  "Generate a Certificate Signing Request (CSR)"
-  ;; Build subject DN
-  (let ((subject-dn (list "CN" common-name)))
-    (when organization
-      (setf subject-dn (append subject-dn (list "O" organization))))
-    (when country
-      (setf subject-dn (append subject-dn (list "C" country))))
-    (when state
-      (setf subject-dn (append subject-dn (list "ST" state))))
-    (when locality
-      (setf subject-dn (append subject-dn (list "L" locality))))
-    (when email
-      (setf subject-dn (append subject-dn (list "emailAddress" email))))
-    
-    ;; Create CSR using x509 module
-    (x509:create-csr private-key subject-dn)))
+                                    email
+                                    (key-bits 2048))
+  "Generate a Certificate Signing Request (CSR).
+   If PRIVATE-KEY is not provided, generates a new RSA key of KEY-BITS size.
+   Returns: (values csr-pem key-pem) when key is generated, or just csr-pem when key is provided."
+  ;; Generate key if not provided
+  (let* ((need-key-gen (null private-key))
+         (key (if need-key-gen
+                  (epsilon.crypto:generate-rsa-key :bits key-bits)
+                  private-key)))
+    ;; Build subject DN
+    (let ((subject-dn (list "CN" common-name)))
+      (when organization
+        (setf subject-dn (append subject-dn (list "O" organization))))
+      (when country
+        (setf subject-dn (append subject-dn (list "C" country))))
+      (when state
+        (setf subject-dn (append subject-dn (list "ST" state))))
+      (when locality
+        (setf subject-dn (append subject-dn (list "L" locality))))
+      (when email
+        (setf subject-dn (append subject-dn (list "emailAddress" email))))
 
-(defun sign-certificate-request (csr-pem ca-cert-pem ca-key-pem &key (days 365))
-  "Sign a CSR with a CA certificate to produce a signed certificate"
+      ;; Create CSR using x509 module
+      (let ((csr (x509:create-csr key subject-dn)))
+        (if need-key-gen
+            (values csr (epsilon.crypto:key-to-pem key :private-p t))
+            csr)))))
+
+(defun parse-dn-string (dn-string)
+  "Parse a DN string like '/CN=Test CA/O=Org/C=US' into a property list.
+   Returns: (\"CN\" \"Test CA\" \"O\" \"Org\" \"C\" \"US\")"
+  (let ((result nil))
+    ;; Split on / and process each component
+    (dolist (part (remove-if #'(lambda (s) (zerop (length s)))
+                              (mapcar #'(lambda (s) (string-trim " " s))
+                                      (split-dn-string dn-string))))
+      ;; Each part is like "CN=Test CA"
+      (let ((eq-pos (position #\= part)))
+        (when eq-pos
+          (let ((key (subseq part 0 eq-pos))
+                (value (subseq part (1+ eq-pos))))
+            ;; Push key first, then value, so after nreverse we get (key value ...)
+            (push key result)
+            (push value result)))))
+    (nreverse result)))
+
+(defun split-dn-string (str)
+  "Split a DN string on '/' characters."
+  (let ((result nil)
+        (start 0))
+    (loop for i from 0 below (length str)
+          when (char= (char str i) #\/)
+          do (when (> i start)
+               (push (subseq str start i) result))
+             (setf start (1+ i)))
+    (when (< start (length str))
+      (push (subseq str start) result))
+    (nreverse result)))
+
+(defun sign-certificate-request (csr-pem ca-cert-pem ca-key-pem &key (days 365) is-ca)
+  "Sign a CSR with a CA certificate to produce a signed certificate.
+   IS-CA when true marks the resulting certificate as a CA certificate."
   ;; Load components
   (let* ((csr-handle (x509:load-csr csr-pem))
          (ca-cert (x509:load-certificate ca-cert-pem))
          (ca-key (epsilon.crypto:key-from-pem ca-key-pem :private-p t))
-         (issuer-dn (list "CN" (x509:x509-certificate-subject ca-cert)))
+         ;; Parse the CA subject DN string into a property list for the issuer
+         (issuer-dn (parse-dn-string (x509:x509-certificate-subject ca-cert)))
          (cert (x509:sign-csr csr-handle issuer-dn nil ca-key
-                                             :days days
-                                             :serial (random 1000000))))
+                              :days days
+                              :serial (random 1000000)
+                              :is-ca is-ca)))
     (x509:save-certificate cert)))
 
 (defun generate-ca-certificate (common-name &key

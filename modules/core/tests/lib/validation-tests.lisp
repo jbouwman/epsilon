@@ -17,18 +17,18 @@
   (let ((result (v:required "value")))
     (is (v:validation-success-p result))
     (is (equal "value" (v:validation-value result))))
-  
+
   ;; Test type validators
   (let ((result (v:string-type "hello")))
     (is (v:validation-success-p result)))
   (let ((result (v:string-type 42)))
     (is (v:validation-failure-p result)))
-  
+
   (let ((result (v:integer-type 42)))
     (is (v:validation-success-p result)))
   (let ((result (v:integer-type "not-an-int")))
     (is (v:validation-failure-p result)))
-  
+
   ;; Test list type
   (let ((result (v:list-type '(1 2 3))))
     (is (v:validation-success-p result)))
@@ -44,7 +44,7 @@
   (let* ((validator (v:min-length 3))
          (result (funcall validator "abc")))
     (is (v:validation-success-p result)))
-  
+
   ;; Test max-length
   (let* ((validator (v:max-length 3))
          (result (funcall validator "abcd")))
@@ -52,7 +52,7 @@
   (let* ((validator (v:max-length 3))
          (result (funcall validator "abc")))
     (is (v:validation-success-p result)))
-  
+
   ;; Test unique-items
   (let* ((validator (v:unique-items))
          (result (funcall validator '(1 2 3 2))))
@@ -60,7 +60,7 @@
   (let* ((validator (v:unique-items))
          (result (funcall validator '(1 2 3))))
     (is (v:validation-success-p result)))
-  
+
   ;; Test one-of
   (let* ((validator (v:one-of '("red" "green" "blue")))
          (result (funcall validator "yellow")))
@@ -78,13 +78,13 @@
          (result (funcall validator "ab")))
     (is (v:validation-failure-p result))
     (is (= 1 (length (v:validation-errors result)))))
-  
+
   (let* ((validator (v:all-of (list #'v:required
                                     #'v:string-type
                                     (v:min-length 3))))
          (result (funcall validator "abc")))
     (is (v:validation-success-p result)))
-  
+
   ;; Test chain
   (let* ((validator (v:chain
                      #'v:required
@@ -93,13 +93,13 @@
          (result (funcall validator "hello")))
     (is (v:validation-success-p result))
     (is (equal "HELLO" (v:validation-value result))))
-  
+
   ;; Test optional
   (let* ((validator (v:optional #'v:string-type))
          (result (funcall validator nil)))
     (is (v:validation-success-p result))
     (is (null (v:validation-value result))))
-  
+
   (let* ((validator (v:optional #'v:string-type))
          (result (funcall validator "value")))
     (is (v:validation-success-p result))
@@ -116,7 +116,7 @@
     (is (v:validation-failure-p result))
     ;; Should have errors from both stages
     (is (>= (length (v:validation-errors result)) 1)))
-  
+
   ;; Test stages that stop on failure
   (let* ((stages (list
                   (v:stage "type" #'v:string-type :continue-on-failure nil)
@@ -126,7 +126,7 @@
     (is (v:validation-failure-p result))
     ;; Should only have error from first stage
     (is (= 1 (length (v:validation-errors result)))))
-  
+
   ;; Test successful multi-stage
   (let* ((stages (list
                   (v:stage "type" #'v:string-type)
@@ -149,7 +149,7 @@
       ;; This will fail on filesystem validation, but should pass earlier stages
       (is (not valid-p))
       (is (not (null errors)))))
-  
+
   ;; Test invalid structure
   (let ((invalid-metadata '(:name)))  ; Odd number of elements
     (multiple-value-bind (valid-p errors)
@@ -157,7 +157,7 @@
       (is (not valid-p))
       (is (not (null errors)))
       (is (search "property list" (first errors)))))
-  
+
   ;; Test missing name
   (let ((no-name-metadata '(:version "1.0.0")))
     (multiple-value-bind (valid-p errors)
@@ -165,7 +165,7 @@
       (is (not valid-p))
       (is (not (null errors)))
       (is (search "required" (first errors)))))
-  
+
   ;; Test unknown keys
   (let ((unknown-key-metadata '(:name "test" :unknown-key "value")))
     (multiple-value-bind (valid-p errors)
@@ -173,7 +173,7 @@
       (is (not valid-p))
       (is (not (null errors)))
       (is (search "Unknown key" (first errors)))))
-  
+
   ;; Test type errors
   (let ((bad-types-metadata '(:name 42  ; Should be string
                               :sources "src")))  ; Should be list
@@ -182,7 +182,7 @@
       (is (not valid-p))
       (is (not (null errors)))
       (is (>= (length errors) 2))))
-  
+
   ;; Test sources/tests intersection
   (let ((overlapping-metadata '(:name "test"
                                 :sources ("src" "common")
@@ -216,7 +216,7 @@
     (is (v:validation-failure-p result))
     (let ((error (first (v:validation-errors result))))
       (is (equal "username" (v:validation-error-field error)))))
-  
+
   ;; Test nested field names
   (let* ((inner-validator #'v:required)
          (result1 (v:validate inner-validator nil "field"))

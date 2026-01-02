@@ -816,4 +816,3 @@ int connectx(int, const sa_endpoints_t *, sae_associd_t, unsigned int,
 __attribute__((availability(macos,introduced=10.11))) __attribute__((availability(ios,introduced=9.0))) __attribute__((availability(tvos,introduced=9.0))) __attribute__((availability(watchos,introduced=2.0)))
 int disconnectx(int, sae_associd_t, sae_connid_t);
 # 2 "<stdin>" 2
-

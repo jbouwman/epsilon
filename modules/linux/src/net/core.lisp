@@ -16,15 +16,15 @@
    #:close-socket
    #:set-nonblocking
    #:set-socket-reuse-addr
-   
+
    ;; Socket options
    #:set-socket-option
    #:get-socket-option
-   
+
    ;; Address operations
    #:get-local-address
    #:get-peer-address
-   
+
    ;; Stream conversion
    #:socket-to-stream))
 
@@ -49,7 +49,7 @@
   (let ((flags (const:%fcntl fd const:+f-getfl+ 0)))
     (when (< flags 0)
       (error "Failed to get file descriptor flags for fd ~A" fd))
-    (let ((result (const:%fcntl fd const:+f-setfl+ 
+    (let ((result (const:%fcntl fd const:+f-setfl+
                                 (logior flags const:+o-nonblock+))))
       (when (< result 0)
         (error "Failed to set non-blocking mode for fd ~A" fd))
@@ -59,7 +59,7 @@
   "Enable or disable SO_REUSEADDR on socket"
   (lib:with-foreign-memory ((optval :int :count 1))
     (setf (sb-sys:sap-ref-32 optval 0) (if enable 1 0))
-    (let ((result (const:%setsockopt fd const:+sol-socket+ 
+    (let ((result (const:%setsockopt fd const:+sol-socket+
                                      const:+so-reuseaddr+ optval 4)))
       (errors:check-error result "setsockopt SO_REUSEADDR"))))
 

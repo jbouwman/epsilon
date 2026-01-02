@@ -7,21 +7,24 @@
    (lib epsilon.foreign)
    (log epsilon.log))
   (:import-from epsilon.net.constants
-   +af-inet+ +sock-stream+ +ipproto-tcp+ +sock-dgram+ +ipproto-udp+
+   +af-inet+ +af-inet6+ +sock-stream+ +ipproto-tcp+ +sock-dgram+ +ipproto-udp+
    +sol-socket+ +so-reuseaddr+
    +shut-rd+ +shut-wr+ +shut-rdwr+
+   +sockaddr-in6-size+
    %socket %bind %listen %accept %connect %send %recv %close %shutdown
    %setsockopt %getsockname %getpeername %sendto %recvfrom)
   (:import-from epsilon.net.core
-   socket-address socket-address-ip socket-address-port
+   socket-address socket-address-ip socket-address-port socket-address-family
    tcp-listener tcp-listener-handle tcp-listener-local-address tcp-listener-kqueue
    tcp-stream tcp-stream-handle tcp-stream-local-address tcp-stream-peer-address
-   tcp-stream-input tcp-stream-output tcp-stream-connected-p
+   tcp-stream-input tcp-stream-output tcp-stream-byte-input tcp-stream-byte-output
+   tcp-stream-connected-p
    udp-socket udp-socket-handle udp-socket-local-address udp-socket-connected-peer
-   network-error connection-refused connection-reset address-in-use would-block-error 
+   network-error connection-refused connection-reset address-in-use would-block-error
    get-errno errno-to-string)
   (:import-from epsilon.net.address
-   normalize-address make-sockaddr-in-into parse-sockaddr-in make-socket-address)
+   normalize-address make-sockaddr-in-into parse-sockaddr-in parse-sockaddr-in6
+   make-socket-address fill-sockaddr-for-address sockaddr-size-for-family socket-family-constant)
   (:import-from epsilon.async
    set-nonblocking submit-async-operation make-async-operation)
   (:export
@@ -31,7 +34,7 @@
    close-socket
    get-socket-address
    set-socket-reuse-address
-   
+
    ;; TCP Listener operations
    tcp-bind
    tcp-accept
@@ -40,7 +43,7 @@
    tcp-poll-accept
    tcp-local-addr
    tcp-close
-   
+
    ;; TCP Stream operations
    tcp-connect
    tcp-read
@@ -55,8 +58,10 @@
    tcp-shutdown
    tcp-stream-reader
    tcp-stream-writer
+   tcp-stream-byte-reader
+   tcp-stream-byte-writer
    tcp-connected-p
-   
+
    ;; UDP operations
    udp-bind
    udp-connect
@@ -80,19 +85,21 @@
   "Create a socket with specified family, type, and protocol"
   (let ((socket-fd (%socket family type protocol)))
     (when (< socket-fd 0)
-      (error 'network-error 
+      (error 'network-error
              :message (format nil "Failed to create socket: ~A" (errno-to-string (get-errno)))))
     socket-fd))
 
 (defun bind-socket (socket-fd address)
   "Bind a socket to an address"
-  (let ((sock-addr (normalize-address address)))
-    (lib:with-foreign-memory ((addr :char :count 16))
-      (make-sockaddr-in-into addr (socket-address-ip sock-addr) (socket-address-port sock-addr))
-      (when (< (%bind socket-fd addr 16) 0)
-        (error 'address-in-use 
-               :message (format nil "Failed to bind socket to ~A:~D" 
-                                (socket-address-ip sock-addr) 
+  (let* ((sock-addr (normalize-address address))
+         (family (socket-address-family sock-addr))
+         (addr-size (sockaddr-size-for-family family)))
+    (lib:with-foreign-memory ((addr :char :count addr-size))
+      (fill-sockaddr-for-address addr sock-addr)
+      (when (< (%bind socket-fd addr addr-size) 0)
+        (error 'address-in-use
+               :message (format nil "Failed to bind socket to ~A:~D"
+                                (socket-address-ip sock-addr)
                                 (socket-address-port sock-addr)))))))
 
 (defun close-socket (socket-fd)
@@ -102,13 +109,20 @@
 
 (defun get-socket-address (socket-fd type)
   "Get local or peer address of socket"
-  (lib:with-foreign-memory ((addr :char :count 16)
+  ;; Use max size for IPv6 to handle both address families
+  (lib:with-foreign-memory ((addr :char :count +sockaddr-in6-size+)
                             (addrlen :int :count 1))
-    (setf (sb-sys:sap-ref-32 addrlen 0) 16)
+    (setf (sb-sys:sap-ref-32 addrlen 0) +sockaddr-in6-size+)
     (ecase type
       (:local (%getsockname socket-fd addr addrlen))
       (:peer (%getpeername socket-fd addr addrlen)))
-    (parse-sockaddr-in addr)))
+    ;; Check sa_family to determine address type (offset 1 on Darwin)
+    (let ((family (sb-sys:sap-ref-8 addr 1)))
+      (cond
+        ((= family +af-inet+) (parse-sockaddr-in addr))
+        ((= family +af-inet6+) (parse-sockaddr-in6 addr))
+        (t (error 'network-error
+                  :message (format nil "Unknown address family: ~D" family)))))))
 
 (defun set-socket-reuse-address (socket-fd enable)
   "Set SO_REUSEADDR option on socket"
@@ -130,9 +144,11 @@
   "Create a TCP listener bound to the specified address.
    BACKLOG specifies the maximum pending connections queue size (default 128).
    REUSE-ADDR enables SO_REUSEADDR socket option (default t)."
-  (let ((sock-addr (normalize-address address)))
+  (let* ((sock-addr (normalize-address address))
+         (family (socket-address-family sock-addr))
+         (af-family (socket-family-constant family)))
     (handler-case
-        (let* ((socket-fd (create-socket +af-inet+ +sock-stream+ +ipproto-tcp+))
+        (let* ((socket-fd (create-socket af-family +sock-stream+ +ipproto-tcp+))
                (kq (kqueue:kqueue)))
           ;; Set reuse address option
           (when reuse-addr
@@ -172,15 +188,21 @@
          (unless events
            ;; No events or kqueue error - return nil to allow shutdown check
            (return nil))
-         (lib:with-foreign-memory ((addr :char :count 16)
+         ;; Use max size for IPv6 to handle both address families
+         (lib:with-foreign-memory ((addr :char :count +sockaddr-in6-size+)
                                    (addrlen :int :count 1))
-           (setf (sb-sys:sap-ref-32 addrlen 0) 16)
+           (setf (sb-sys:sap-ref-32 addrlen 0) +sockaddr-in6-size+)
            (let ((client-fd (%accept (tcp-listener-handle listener) addr addrlen)))
              (cond
                ((>= client-fd 0)
-                ;; Success - create the stream
-                (let ((peer-addr (parse-sockaddr-in addr))
-                      (local-addr (get-socket-address client-fd :local)))
+                ;; Success - parse address based on family
+                (let* ((family (sb-sys:sap-ref-8 addr 1))
+                       (peer-addr (cond
+                                    ((= family +af-inet+) (parse-sockaddr-in addr))
+                                    ((= family +af-inet6+) (parse-sockaddr-in6 addr))
+                                    (t (error 'network-error
+                                              :message (format nil "Unknown family: ~D" family)))))
+                       (local-addr (get-socket-address client-fd :local)))
                   (return (values
                            (make-instance 'tcp-stream
                                           :handle client-fd
@@ -210,14 +232,20 @@
   (handler-case
       (let ((events (kqueue:wait-for-events (tcp-listener-kqueue listener) 1 0)))
         (if events
-            (lib:with-foreign-memory ((addr :char :count 16)
+            ;; Use max size for IPv6 to handle both address families
+            (lib:with-foreign-memory ((addr :char :count +sockaddr-in6-size+)
                                       (addrlen :int :count 1))
-              (setf (sb-sys:sap-ref-32 addrlen 0) 16)
+              (setf (sb-sys:sap-ref-32 addrlen 0) +sockaddr-in6-size+)
               (let ((client-fd (%accept (tcp-listener-handle listener) addr addrlen)))
                 (if (>= client-fd 0)
-                    (let ((peer-addr (parse-sockaddr-in addr))
-                          (local-addr (get-socket-address client-fd :local)))
-                      (values 
+                    (let* ((family (sb-sys:sap-ref-8 addr 1))
+                           (peer-addr (cond
+                                        ((= family +af-inet+) (parse-sockaddr-in addr))
+                                        ((= family +af-inet6+) (parse-sockaddr-in6 addr))
+                                        (t (error 'network-error
+                                                  :message (format nil "Unknown family: ~D" family)))))
+                           (local-addr (get-socket-address client-fd :local)))
+                      (values
                        (make-instance 'tcp-stream
                                       :handle client-fd
                                       :local-address local-addr
@@ -278,17 +306,21 @@
    Uses blocking connect for reliability."
   (declare (ignore timeout)) ; For future use with select/poll
   (let ((sock-addr (normalize-address address)))
-    (log:debug "tcp-connect: Connecting to ~A:~D~%"
-               (socket-address-ip sock-addr) (socket-address-port sock-addr))
-    (let ((socket-fd (create-socket +af-inet+ +sock-stream+ +ipproto-tcp+)))
-      (log:debug "tcp-connect: Socket created, fd=~D~%" socket-fd)
+    (log:debug "tcp-connect: Connecting to ~A:~D (family ~A)~%"
+               (socket-address-ip sock-addr) (socket-address-port sock-addr)
+               (socket-address-family sock-addr))
+    (let* ((family (socket-address-family sock-addr))
+           (af-family (socket-family-constant family))
+           (addr-size (sockaddr-size-for-family family))
+           (socket-fd (create-socket af-family +sock-stream+ +ipproto-tcp+)))
+      (log:debug "tcp-connect: Socket created, fd=~D, af=~D~%" socket-fd af-family)
 
       ;; Use blocking connect - simpler and more reliable
       ;; The socket starts in blocking mode by default
-      (lib:with-foreign-memory ((addr :char :count 16))
-        (make-sockaddr-in-into addr (socket-address-ip sock-addr) (socket-address-port sock-addr))
+      (lib:with-foreign-memory ((addr :char :count addr-size))
+        (fill-sockaddr-for-address addr sock-addr)
         (log:debug "tcp-connect: Calling %connect...~%")
-        (let ((result (%connect socket-fd addr 16)))
+        (let ((result (%connect socket-fd addr addr-size)))
           (log:debug "tcp-connect: %connect returned ~D~%" result)
           (when (< result 0)
             (let ((errno-val (get-errno)))
@@ -467,19 +499,47 @@
       (error 'network-error :message (format nil "Shutdown failed: ~A" e)))))
 
 (defun tcp-stream-reader (stream)
-  "Get a Lisp input stream for reading"
+  "Get a Lisp character input stream for reading.
+   Uses character element-type for text-based protocols (HTTP, ELS).
+   Uses :none buffering to avoid blocking on sockets."
   (or (tcp-stream-input stream)
       (setf (tcp-stream-input stream)
             (sb-sys:make-fd-stream (tcp-stream-handle stream)
                                    :input t
-                                   :buffering :full))))
+                                   :element-type 'character
+                                   :buffering :none))))
 
 (defun tcp-stream-writer (stream)
-  "Get a Lisp output stream for writing"
+  "Get a Lisp character output stream for writing.
+   Uses character element-type for text-based protocols (HTTP, ELS).
+   Uses :line buffering so newlines trigger flushes."
   (or (tcp-stream-output stream)
       (setf (tcp-stream-output stream)
             (sb-sys:make-fd-stream (tcp-stream-handle stream)
                                    :output t
+                                   :element-type 'character
+                                   :buffering :line))))
+
+(defun tcp-stream-byte-reader (stream)
+  "Get a Lisp byte input stream for reading.
+   Uses (unsigned-byte 8) element-type for binary protocols.
+   Uses no buffering to return data as soon as available."
+  (or (tcp-stream-byte-input stream)
+      (setf (tcp-stream-byte-input stream)
+            (sb-sys:make-fd-stream (tcp-stream-handle stream)
+                                   :input t
+                                   :element-type '(unsigned-byte 8)
+                                   :buffering :none))))
+
+(defun tcp-stream-byte-writer (stream)
+  "Get a Lisp byte output stream for writing.
+   Uses (unsigned-byte 8) element-type for binary protocols.
+   Uses :full buffering - caller must call force-output/finish-output."
+  (or (tcp-stream-byte-output stream)
+      (setf (tcp-stream-byte-output stream)
+            (sb-sys:make-fd-stream (tcp-stream-handle stream)
+                                   :output t
+                                   :element-type '(unsigned-byte 8)
                                    :buffering :full))))
 
 (defun tcp-connected-p (stream)
@@ -492,15 +552,17 @@
 
 (defun udp-bind (address)
   "Create a UDP socket bound to an address"
-  (let ((sock-addr (normalize-address address)))
+  (let* ((sock-addr (normalize-address address))
+         (family (socket-address-family sock-addr))
+         (af-family (socket-family-constant family)))
     (handler-case
-        (let ((socket-fd (create-socket +af-inet+ +sock-dgram+ +ipproto-udp+)))
+        (let ((socket-fd (create-socket af-family +sock-dgram+ +ipproto-udp+)))
           ;; Set socket to non-blocking mode
           (set-nonblocking socket-fd)
-          
+
           ;; Bind socket
           (bind-socket socket-fd sock-addr)
-          
+
           ;; Get actual bound address
           (let ((local-addr (get-socket-address socket-fd :local)))
             (make-instance 'udp-socket
@@ -511,12 +573,14 @@
 
 (defun udp-connect (socket address)
   "Connect UDP socket to a default peer"
-  (let ((sock-addr (normalize-address address)))
+  (let* ((sock-addr (normalize-address address))
+         (family (socket-address-family sock-addr))
+         (addr-size (sockaddr-size-for-family family)))
     (handler-case
         (progn
-          (lib:with-foreign-memory ((addr :char :count 16))
-            (make-sockaddr-in-into addr (socket-address-ip sock-addr) (socket-address-port sock-addr))
-            (when (< (%connect (udp-socket-handle socket) addr 16) 0)
+          (lib:with-foreign-memory ((addr :char :count addr-size))
+            (fill-sockaddr-for-address addr sock-addr)
+            (when (< (%connect (udp-socket-handle socket) addr addr-size) 0)
               (error 'network-error :message "UDP connect failed")))
           (setf (udp-socket-connected-peer socket) sock-addr))
       (error (e)
@@ -525,20 +589,22 @@
 (defun udp-send (socket data address)
   "Send data to a specific address"
   (let* ((sock-addr (normalize-address address))
+         (family (socket-address-family sock-addr))
+         (addr-size (sockaddr-size-for-family family))
          (data-bytes (normalize-data data))
          (count (length data-bytes)))
     (handler-case
         (lib:with-foreign-memory ((buf :char :count count)
-                                  (addr :char :count 16))
+                                  (addr :char :count addr-size))
           ;; Copy data to foreign buffer
           (loop for i from 0 below count
                 do (setf (sb-sys:sap-ref-8 buf i)
                          (aref data-bytes i)))
           ;; Set up address
-          (make-sockaddr-in-into addr (socket-address-ip sock-addr) (socket-address-port sock-addr))
+          (fill-sockaddr-for-address addr sock-addr)
           (log:debug "udp-send: Calling %sendto with fd=~D, count=~D~%" (udp-socket-handle socket) count)
           (finish-output)
-          (let ((bytes-sent (%sendto (udp-socket-handle socket) buf count 0 addr 16)))
+          (let ((bytes-sent (%sendto (udp-socket-handle socket) buf count 0 addr addr-size)))
             (log:debug "udp-send: %sendto returned ~D~%" bytes-sent)
             (finish-output)
             (if (>= bytes-sent 0)
@@ -550,11 +616,12 @@
 (defun udp-recv (socket buffer)
   "Receive data from any sender"
   (handler-case
+      ;; Use max size for IPv6 to handle both address families
       (lib:with-foreign-memory ((buf :char :count (length buffer))
-                                (addr :char :count 16)
+                                (addr :char :count +sockaddr-in6-size+)
                                 (addrlen :int :count 1))
-        (setf (sb-sys:sap-ref-32 addrlen 0) 16)
-        (log:debug "udp-recv: Calling %recvfrom with fd=~D, buffer-len=~D~%" 
+        (setf (sb-sys:sap-ref-32 addrlen 0) +sockaddr-in6-size+)
+        (log:debug "udp-recv: Calling %recvfrom with fd=~D, buffer-len=~D~%"
                    (udp-socket-handle socket) (length buffer))
         (finish-output)
         (let ((bytes-read (%recvfrom (udp-socket-handle socket)
@@ -568,12 +635,18 @@
              (loop for i from 0 below bytes-read
                    do (setf (aref buffer i)
                             (sb-sys:sap-ref-8 buf i)))
-             (let ((sender-addr (parse-sockaddr-in addr)))
+             ;; Parse sender address based on family
+             (let* ((family (sb-sys:sap-ref-8 addr 1))
+                    (sender-addr (cond
+                                   ((= family +af-inet+) (parse-sockaddr-in addr))
+                                   ((= family +af-inet6+) (parse-sockaddr-in6 addr))
+                                   (t (error 'network-error
+                                             :message (format nil "Unknown family: ~D" family))))))
                (values bytes-read sender-addr)))
             ((and (< bytes-read 0) (= (get-errno) 35)) ; EAGAIN - would block
              (values 0 nil))  ; No data available
             (t
-             (error 'network-error 
+             (error 'network-error
                     :message (format nil "UDP recv failed: errno ~D" (get-errno)))))))
     (error (e)
       (error 'network-error :message (format nil "UDP recv failed: ~A" e)))))
@@ -607,7 +680,7 @@
 (defun udp-poll-send (socket waker)
   "Poll for UDP write readiness (async operation)"
   (let ((dummy-data (make-array 1 :element-type '(unsigned-byte 8) :initial-element 0)))
-    (let ((result (udp-try-send socket dummy-data 
+    (let ((result (udp-try-send socket dummy-data
                                 (make-socket-address "127.0.0.1" 1))))
       (if (eq result :would-block)
           (progn
@@ -621,7 +694,7 @@
           :ready))))
 
 (defun udp-poll-recv (socket waker)
-  "Poll for UDP read readiness (async operation)"  
+  "Poll for UDP read readiness (async operation)"
   (let ((buffer (make-array 1 :element-type '(unsigned-byte 8))))
     (let ((result (udp-try-recv socket buffer)))
       (if (eq result :would-block)

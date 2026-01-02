@@ -15,11 +15,11 @@
   ;; AES-GCM ciphers
   (let ((aes-128-gcm (ffi:%evp-get-cipherbyname "aes-128-gcm"))
         (aes-256-gcm (ffi:%evp-get-cipherbyname "aes-256-gcm")))
-    (is (not (sb-sys:sap= aes-128-gcm (sb-sys:int-sap 0))) 
+    (is (not (sb-sys:sap= aes-128-gcm (sb-sys:int-sap 0)))
         "AES-128-GCM should be available")
     (is (not (sb-sys:sap= aes-256-gcm (sb-sys:int-sap 0)))
         "AES-256-GCM should be available"))
-  
+
   ;; ChaCha20-Poly1305
   (let ((chacha (ffi:%evp-get-cipherbyname "chacha20-poly1305")))
     ;; ChaCha20-Poly1305 might not be available in older OpenSSL
@@ -32,7 +32,7 @@
     (let ((md (ffi:%evp-get-digestbyname digest-name)))
       (is (not (sb-sys:sap= md (sb-sys:int-sap 0)))
           (format nil "~A digest should be available" digest-name))))
-  
+
   ;; BLAKE2 algorithms
   (let ((blake2b (ffi:%evp-get-digestbyname "BLAKE2b512"))
         (blake2s (ffi:%evp-get-digestbyname "BLAKE2s256")))
@@ -44,7 +44,7 @@
 (deftest test-openssl-version
   "Test OpenSSL version reporting"
   (let ((version-string (sb-sys:with-pinned-objects ()
-                          (sb-alien:alien-funcall 
+                          (sb-alien:alien-funcall
                            (sb-alien:extern-alien "OpenSSL_version"
                                                   (function sb-alien:c-string sb-alien:int))
                            0)))) ; 0 = OPENSSL_VERSION
@@ -65,14 +65,14 @@
         (is (crypto:crypto-key-p key) "RSA key generation should work"))
     (error (e)
       (is nil (format nil "RSA key generation failed: ~A" e))))
-  
+
   ;; EC support
   (handler-case
       (let ((key (crypto:generate-ec-key :curve :p256)))
         (is (crypto:crypto-key-p key) "EC key generation should work"))
     (error (e)
       (is nil (format nil "EC key generation failed: ~A" e))))
-  
+
   ;; Ed25519 support (might not be available)
   (handler-case
       (let ((key (crypto:generate-ed25519-key)))

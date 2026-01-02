@@ -21,7 +21,7 @@
    #:tcp-try-accept
    #:tcp-poll-accept
    #:tcp-local-addr
-   
+
    ;; TCP Stream operations
    #:tcp-connect
    #:tcp-read
@@ -38,7 +38,7 @@
    #:tcp-stream-reader
    #:tcp-stream-writer
    #:tcp-connected-p
-   
+
    ;; UDP operations
    #:udp-bind
    #:udp-connect
@@ -79,33 +79,33 @@
   (let* ((sock-addr (etypecase address
                       (types:socket-address address)
                       (string (address:parse-address address))))
-         (socket-fd (core:create-socket const:+af-inet+ 
-                                        const:+sock-stream+ 
+         (socket-fd (core:create-socket const:+af-inet+
+                                        const:+sock-stream+
                                         const:+ipproto-tcp+)))
-    
+
     (when reuse-addr
       (core:set-socket-reuse-addr socket-fd t))
-    
+
     (handler-case
         (progn
           ;; Bind socket to address
           (lib:with-foreign-memory ((sockaddr :char :count 16))
-            (address:make-sockaddr-in-into sockaddr 
+            (address:make-sockaddr-in-into sockaddr
                                            (types:socket-address-ip sock-addr)
                                            (types:socket-address-port sock-addr))
             (let ((result (const:%bind socket-fd sockaddr 16)))
               (errors:check-error result "bind")))
-          
+
           ;; Listen for connections
           (let ((result (const:%listen socket-fd backlog)))
             (errors:check-error result "listen"))
-          
+
           ;; Set to non-blocking mode
           (core:set-nonblocking socket-fd)
-          
+
           ;; Register with epoll manager for incoming connections
           (epoll-mgr:register-socket socket-fd '(:in))
-          
+
           ;; Get actual bound address (in case port was 0)
           (let ((actual-addr (core:get-local-address socket-fd)))
             (make-instance 'types:tcp-listener
@@ -124,7 +124,7 @@
           (lib:with-foreign-memory ((peer-sockaddr :char :count 16)
                                     (addrlen :int :count 1))
             (setf (sb-sys:sap-ref-32 addrlen 0) 16)
-            (let ((client-fd (const:%accept (types:tcp-listener-handle listener) 
+            (let ((client-fd (const:%accept (types:tcp-listener-handle listener)
                                             peer-sockaddr addrlen)))
               (cond
                 ((>= client-fd 0)
@@ -142,7 +142,7 @@
                  (errors:check-error client-fd "accept")))))
         (errors:would-block-error ()
           ;; Wait for socket to be ready with timeout
-          (let ((event (wait-for-socket-ready 
+          (let ((event (wait-for-socket-ready
                         (types:tcp-listener-handle listener)
                         '(:in)
                         timeout-ms)))
@@ -151,7 +151,7 @@
               (when timeout
                 (error 'errors:timeout-error :message "Accept timeout")))))
         (error (e)
-          (error 'errors:network-error 
+          (error 'errors:network-error
                  :message (format nil "Accept failed: ~A" e)))))))
 
 (defun tcp-try-accept (listener)
@@ -160,7 +160,7 @@
       (lib:with-foreign-memory ((peer-sockaddr :char :count 16)
                                 (addrlen :int :count 1))
         (setf (sb-sys:sap-ref-32 addrlen 0) 16)
-        (let ((client-fd (const:%accept (types:tcp-listener-handle listener) 
+        (let ((client-fd (const:%accept (types:tcp-listener-handle listener)
                                         peer-sockaddr addrlen)))
           (when (>= client-fd 0)
             (core:set-nonblocking client-fd)
@@ -174,13 +174,13 @@
     (errors:would-block-error ()
       nil)
     (error (e)
-      (error 'errors:network-error 
+      (error 'errors:network-error
              :message (format nil "Accept failed: ~A" e)))))
 
 (defun tcp-poll-accept (listener timeout-ms)
   "Poll for incoming connections with timeout"
-  (when (wait-for-socket-ready (types:tcp-listener-handle listener) 
-                               '(:in) 
+  (when (wait-for-socket-ready (types:tcp-listener-handle listener)
+                               '(:in)
                                timeout-ms)
     (tcp-try-accept listener)))
 
@@ -204,18 +204,18 @@
   (let* ((sock-addr (etypecase address
                       (types:socket-address address)
                       (string (address:parse-address address))))
-         (socket-fd (core:create-socket const:+af-inet+ 
-                                        const:+sock-stream+ 
+         (socket-fd (core:create-socket const:+af-inet+
+                                        const:+sock-stream+
                                         const:+ipproto-tcp+)))
-    
+
     (handler-case
         (progn
           ;; Set to non-blocking mode before connecting for async support
           (core:set-nonblocking socket-fd)
-          
+
           ;; Try to connect
           (lib:with-foreign-memory ((sockaddr :char :count 16))
-            (address:make-sockaddr-in-into sockaddr 
+            (address:make-sockaddr-in-into sockaddr
                                            (types:socket-address-ip sock-addr)
                                            (types:socket-address-port sock-addr))
             (let ((result (const:%connect socket-fd sockaddr 16)))
@@ -229,15 +229,15 @@
                           ;; Register socket for write events
                           (epoll-mgr:register-socket socket-fd '(:out))
                           (unwind-protect
-                              (let ((event (epoll-mgr:wait-for-socket 
+                              (let ((event (epoll-mgr:wait-for-socket
                                            socket-fd '(:out) timeout-ms)))
                                 (unless event
-                                  (error 'errors:timeout-error 
+                                  (error 'errors:timeout-error
                                          :message "Connection timeout")))
                             (epoll-mgr:unregister-socket socket-fd))))
                       ;; Other error, check and signal appropriately
                       (errors:check-error result "connect"))))))
-          
+
           ;; Get local and peer addresses
           (let ((local-addr (core:get-local-address socket-fd))
                 (peer-addr (core:get-peer-address socket-fd)))
@@ -266,7 +266,7 @@
   "Read data from TCP stream into buffer with optional timeout"
   (let ((actual-end (or end (length buffer))))
     (lib:with-foreign-memory ((buf :char :count (- actual-end start)))
-      (let ((result (const:%recv (types:tcp-stream-handle stream) 
+      (let ((result (const:%recv (types:tcp-stream-handle stream)
                                  buf (- actual-end start) 0)))
         (cond
           ((> result 0)
@@ -286,9 +286,9 @@
                  (if timeout
                      ;; Wait for data with timeout
                      (let ((timeout-ms (round (* timeout 1000))))
-                       (if (wait-for-socket-ready 
-                            (types:tcp-stream-handle stream) 
-                            '(:in) 
+                       (if (wait-for-socket-ready
+                            (types:tcp-stream-handle stream)
+                            '(:in)
                             timeout-ms)
                            ;; Retry read after epoll indicates readiness
                            (tcp-read stream buffer :start start :end end :timeout nil)
@@ -311,8 +311,8 @@
       (loop for i from start below actual-end
             for j from 0
             do (setf (sb-sys:sap-ref-8 buf j) (aref buffer i)))
-      
-      (let ((result (const:%send (types:tcp-stream-handle stream) 
+
+      (let ((result (const:%send (types:tcp-stream-handle stream)
                                  buf (- actual-end start) 0)))
         (cond
           ((>= result 0) result)
@@ -322,9 +322,9 @@
                  (if timeout
                      ;; Wait for socket to be writable with timeout
                      (let ((timeout-ms (round (* timeout 1000))))
-                       (if (wait-for-socket-ready 
-                            (types:tcp-stream-handle stream) 
-                            '(:out) 
+                       (if (wait-for-socket-ready
+                            (types:tcp-stream-handle stream)
+                            '(:out)
                             timeout-ms)
                            ;; Retry write after epoll indicates writability
                            (tcp-write stream data :start start :end end :timeout nil)
@@ -431,24 +431,24 @@
   (let* ((sock-addr (etypecase address
                       (types:socket-address address)
                       (string (address:parse-address address))))
-         (socket-fd (core:create-socket const:+af-inet+ 
-                                        const:+sock-dgram+ 
+         (socket-fd (core:create-socket const:+af-inet+
+                                        const:+sock-dgram+
                                         const:+ipproto-udp+)))
-    
+
     (handler-case
         (progn
           (core:set-socket-reuse-addr socket-fd t)
-          
+
           ;; Bind socket to address
           (lib:with-foreign-memory ((sockaddr :char :count 16))
-            (address:make-sockaddr-in-into sockaddr 
+            (address:make-sockaddr-in-into sockaddr
                                            (types:socket-address-ip sock-addr)
                                            (types:socket-address-port sock-addr))
             (let ((result (const:%bind socket-fd sockaddr 16)))
               (errors:check-error result "UDP bind")))
-          
+
           (core:set-nonblocking socket-fd)
-          
+
           ;; Get actual bound address (in case port was 0)
           (let ((actual-addr (core:get-local-address socket-fd)))
             (make-instance 'types:udp-socket
@@ -465,7 +465,7 @@
                      (string (address:parse-address address)))))
     (handler-case
         (lib:with-foreign-memory ((sockaddr :char :count 16))
-          (address:make-sockaddr-in-into sockaddr 
+          (address:make-sockaddr-in-into sockaddr
                                          (types:socket-address-ip sock-addr)
                                          (types:socket-address-port sock-addr))
           (let ((result (const:%connect (types:udp-socket-handle socket) sockaddr 16)))
@@ -486,8 +486,8 @@
       (loop for i from start below actual-end
             for j from 0
             do (setf (sb-sys:sap-ref-8 buf j) (aref buffer i)))
-      
-      (let ((result (const:%send (types:udp-socket-handle socket) 
+
+      (let ((result (const:%send (types:udp-socket-handle socket)
                                  buf (- actual-end start) 0)))
         (errors:check-error result "UDP send")
         result))))
@@ -496,7 +496,7 @@
   "Receive data on UDP socket"
   (let ((actual-end (or end (length buffer))))
     (lib:with-foreign-memory ((buf :char :count (- actual-end start)))
-      (let ((result (const:%recv (types:udp-socket-handle socket) 
+      (let ((result (const:%recv (types:udp-socket-handle socket)
                                  buf (- actual-end start) 0)))
         (cond
           ((> result 0)
@@ -530,13 +530,13 @@
       (loop for i from start below actual-end
             for j from 0
             do (setf (sb-sys:sap-ref-8 buf j) (aref buffer i)))
-      
+
       ;; Create destination address
-      (address:make-sockaddr-in-into sockaddr 
+      (address:make-sockaddr-in-into sockaddr
                                      (types:socket-address-ip sock-addr)
                                      (types:socket-address-port sock-addr))
-      
-      (let ((result (const:%sendto (types:udp-socket-handle socket) 
+
+      (let ((result (const:%sendto (types:udp-socket-handle socket)
                                    buf (- actual-end start) 0
                                    sockaddr 16)))
         (errors:check-error result "UDP sendto")
@@ -549,7 +549,7 @@
                               (sockaddr :char :count 16)
                               (addrlen :int :count 1))
       (setf (sb-sys:sap-ref-32 addrlen 0) 16)
-      (let ((result (const:%recvfrom (types:udp-socket-handle socket) 
+      (let ((result (const:%recvfrom (types:udp-socket-handle socket)
                                      buf (- actual-end start) 0
                                      sockaddr addrlen)))
         (cond

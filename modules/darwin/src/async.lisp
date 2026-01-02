@@ -17,21 +17,24 @@
    #:async-operation-fd
    #:async-operation-type
    #:async-operation-buffer
+   #:async-operation-start
+   #:async-operation-end
    #:async-operation-callback
    #:async-operation-error-callback
-   
+   #:async-operation-result
+
    ;; Async system management
    #:ensure-async-system
    #:stop-async-system
    #:submit-async-operation
    #:poll-completions
-   
+
    ;; Async operations
    #:async-read
    #:async-write
    #:async-accept
    #:async-connect
-   
+
    ;; Utilities
    #:set-nonblocking))
 
@@ -46,8 +49,11 @@
   (fd nil :type (or null fixnum))
   (type nil :type keyword)
   (buffer nil)
+  (start 0 :type fixnum)
+  (end nil :type (or null fixnum))
   (callback nil :type (or null function))
-  (error-callback nil :type (or null function)))
+  (error-callback nil :type (or null function))
+  (result nil))
 
 ;;; ============================================================================
 ;;; Darwin Kqueue-based Async System
@@ -127,7 +133,7 @@
                            (#.kqueue:+evfilt-write+ :write)
                            (t :unknown)))
          (key (cons fd operation-type)))
-    
+
     ;; Check for errors
     (when (or (not (zerop (logand flags kqueue:+ev-error+)))
               (not (zerop (logand flags kqueue:+ev-eof+))))
@@ -139,12 +145,12 @@
           (when (async-operation-error-callback async-op)
             (funcall (async-operation-error-callback async-op) "I/O error"))
           (return-from process-async-event)))
-      
+
       ;; Handle successful events
       (let ((async-op (gethash key *pending-operations*)))
         (when async-op
           (remhash key *pending-operations*)
-          
+
           ;; Perform the actual I/O operation
           (case operation-type
             (:read
@@ -153,7 +159,7 @@
              (perform-write-operation async-op))
             (:accept
              (perform-accept-operation async-op)))
-          
+
           (sb-thread:with-mutex (*completion-lock*)
             (push async-op *completion-queue*)))))))
 
@@ -165,9 +171,11 @@
           ;; For now, just signal completion without actual I/O
           ;; The actual I/O will be handled by epsilon.io layer
           (let ((bytes-read 0))
+            (setf (async-operation-result async-op) bytes-read)
             (when (async-operation-callback async-op)
               (funcall (async-operation-callback async-op) bytes-read)))
         (error (e)
+          (setf (async-operation-result async-op) e)
           (when (async-operation-error-callback async-op)
             (funcall (async-operation-error-callback async-op) e)))))))
 
@@ -179,23 +187,27 @@
           ;; For now, just signal completion without actual I/O
           ;; The actual I/O will be handled by epsilon.io layer
           (let ((bytes-written 0))
+            (setf (async-operation-result async-op) bytes-written)
             (when (async-operation-callback async-op)
               (funcall (async-operation-callback async-op) bytes-written)))
         (error (e)
+          (setf (async-operation-result async-op) e)
           (when (async-operation-error-callback async-op)
             (funcall (async-operation-error-callback async-op) e)))))))
 
 (defun perform-accept-operation (async-op)
   "Perform the actual accept operation"
   (handler-case
-        ;; For now, just signal completion without actual I/O
-        ;; The actual I/O will be handled by epsilon.io layer
-        (let ((client-fd -1))
-          (when (async-operation-callback async-op)
-            (funcall (async-operation-callback async-op) client-fd)))
-      (error (e)
-        (when (async-operation-error-callback async-op)
-          (funcall (async-operation-error-callback async-op) e)))))
+      ;; For now, just signal completion without actual I/O
+      ;; The actual I/O will be handled by epsilon.io layer
+      (let ((client-fd -1))
+        (setf (async-operation-result async-op) client-fd)
+        (when (async-operation-callback async-op)
+          (funcall (async-operation-callback async-op) client-fd)))
+    (error (e)
+      (setf (async-operation-result async-op) e)
+      (when (async-operation-error-callback async-op)
+        (funcall (async-operation-error-callback async-op) e)))))
 
 ;;; ============================================================================
 ;;; Async Operation Interface
@@ -206,11 +218,11 @@
   (ensure-async-system)
   (let ((fd (async-operation-fd operation))
         (op-type (async-operation-type operation)))
-    
+
     ;; Validate file descriptor
     (unless (validate-file-descriptor fd)
       (error "Invalid file descriptor: ~A" fd))
-    
+
     ;; Register with kqueue
     (let ((key (cons fd op-type))
           (filter (case op-type
@@ -219,10 +231,10 @@
                     (:accept kqueue:+evfilt-read+) ; Accept uses read filter
                     (:connect kqueue:+evfilt-write+) ; Connect uses write filter
                     (t (error "Unknown operation type: ~A" op-type)))))
-      
+
       ;; Store the operation
       (setf (gethash key *pending-operations*) operation)
-      
+
       ;; Add to kqueue
       (handler-case
           (kqueue:add-event *global-kqueue* fd filter)
@@ -241,23 +253,29 @@
 ;;; High-Level Async Operations
 ;;; ============================================================================
 
-(defun async-read (fd buffer &key on-complete on-error)
-  "Perform async read operation"
+(defun async-read (fd buffer &key (start 0) (end (length buffer)) on-complete on-error)
+  "Perform async read operation.
+   START and END specify the region of BUFFER to read into."
   (let ((operation (make-async-operation
                     :fd fd
                     :type :read
                     :buffer buffer
+                    :start start
+                    :end end
                     :callback on-complete
                     :error-callback on-error)))
     (submit-async-operation operation)
     operation))
 
-(defun async-write (fd buffer &key on-complete on-error)
-  "Perform async write operation"
+(defun async-write (fd buffer &key (start 0) (end (length buffer)) on-complete on-error)
+  "Perform async write operation.
+   START and END specify the region of BUFFER to write from."
   (let ((operation (make-async-operation
                     :fd fd
                     :type :write
                     :buffer buffer
+                    :start start
+                    :end end
                     :callback on-complete
                     :error-callback on-error)))
     (submit-async-operation operation)
@@ -293,7 +311,7 @@
   (let ((flags (constants:%fcntl fd constants:+f-getfl+ 0)))
     (when (< flags 0)
       (error "Failed to get file descriptor flags for fd ~A" fd))
-    (let ((result (constants:%fcntl fd constants:+f-setfl+ 
+    (let ((result (constants:%fcntl fd constants:+f-setfl+
                                     (logior flags constants:+o-nonblock+))))
       (when (< result 0)
         (error "Failed to set non-blocking mode for fd ~A" fd))

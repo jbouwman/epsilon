@@ -52,15 +52,15 @@
   (let ((password "password")
         (salt "salt"))
     ;; SHA-256
-    (let ((key-sha256 (kdf:pbkdf2 password salt 
+    (let ((key-sha256 (kdf:pbkdf2 password salt
                                      :digest crypto:+digest-sha256+)))
       (is (= 32 (length key-sha256))))
     ;; SHA-384
-    (let ((key-sha384 (kdf:pbkdf2 password salt 
+    (let ((key-sha384 (kdf:pbkdf2 password salt
                                      :digest crypto:+digest-sha384+)))
       (is (= 32 (length key-sha384))))
     ;; SHA-512
-    (let ((key-sha512 (kdf:pbkdf2 password salt 
+    (let ((key-sha512 (kdf:pbkdf2 password salt
                                      :digest crypto:+digest-sha512+)))
       (is (= 32 (length key-sha512))))))
 
@@ -81,7 +81,7 @@
          (start-time (get-internal-real-time))
          (key (kdf:pbkdf2 password salt :iterations 100000))
          (end-time (get-internal-real-time))
-         (elapsed-ms (/ (* (- end-time start-time) 1000) 
+         (elapsed-ms (/ (* (- end-time start-time) 1000)
                        internal-time-units-per-second)))
     (is (= 32 (length key)))
     ;; Should take some time but not too long (< 5 seconds)
@@ -133,7 +133,7 @@
   (let* ((shared-secret (crypto:crypto-random-bytes 32))
          (salt (crypto:crypto-random-bytes 16))
          ;; Derive 96 bytes (3 x 32-byte keys)
-         (key-material (kdf:hkdf shared-secret 
+         (key-material (kdf:hkdf shared-secret
                                     :salt salt
                                     :info (sb-ext:string-to-octets "app-keys")
                                     :length 96))
@@ -223,18 +223,18 @@
   "Benchmark various KDF functions"
   (let ((password "benchmark-password")
         (salt (crypto:crypto-random-bytes 16)))
-    
+
     ;; Benchmark PBKDF2 with different iteration counts
     (format t "~%KDF Performance Benchmarks:~%")
     (format t "===========================~%")
-    
+
     (dolist (iterations '(1000 10000 100000))
       (let* ((start (get-internal-real-time))
              (key (kdf:pbkdf2 password salt :iterations iterations))
              (elapsed (/ (* (- (get-internal-real-time) start) 1000.0)
                         internal-time-units-per-second)))
         (format t "PBKDF2 (~D iterations): ~,1Fms~%" iterations elapsed)))
-    
+
     ;; Benchmark HKDF
     (let* ((ikm (crypto:crypto-random-bytes 32))
            (start (get-internal-real-time))
@@ -242,7 +242,7 @@
            (elapsed (/ (* (- (get-internal-real-time) start) 1000.0)
                       internal-time-units-per-second)))
       (format t "HKDF (64 bytes): ~,1Fms~%" elapsed))
-    
+
     ;; Benchmark Scrypt if available
     (handler-case
         (let* ((start (get-internal-real-time))
@@ -259,7 +259,7 @@
   "Run all KDF tests"
   (format t "Running KDF Tests~%")
   (format t "=================~%")
-  
+
   ;; PBKDF2 tests
   (format t "~%Testing PBKDF2...~%")
   (test-pbkdf2-basic)
@@ -268,7 +268,7 @@
   (test-pbkdf2-different-digests)
   (test-pbkdf2-byte-input)
   (test-pbkdf2-high-iterations)
-  
+
   ;; HKDF tests
   (format t "~%Testing HKDF...~%")
   (test-hkdf-basic)
@@ -276,20 +276,20 @@
   (test-hkdf-with-info)
   (test-hkdf-no-salt)
   (test-hkdf-expand-to-multiple-keys)
-  
+
   ;; Scrypt tests
   (format t "~%Testing Scrypt...~%")
   (test-scrypt-basic)
   (test-scrypt-parameters)
   (test-scrypt-invalid-n)
-  
+
   ;; Random number tests
   (format t "~%Testing Random Generation...~%")
   (test-crypto-random-bytes)
   (test-crypto-random-various-sizes)
-  
+
   ;; Benchmarks
   (format t "~%Running Benchmarks...~%")
   (benchmark-kdf-functions)
-  
+
   (format t "~%All KDF tests completed!~%"))
