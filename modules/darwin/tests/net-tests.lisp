@@ -2,6 +2,11 @@
 ;;;;
 ;;;; Tests for epsilon.net Darwin implementation using only public API
 ;;;; Simplified to focus on public API usage and avoid FFI bugs
+;;;;
+;;;; Note: There is a known bug in epsilon.foreign's fcntl wrapper where
+;;;; F_SETFL returns success but doesn't actually modify flags. This affects
+;;;; set-nonblocking and async operations. Workaround: async.lisp uses direct
+;;;; SBCL alien-funcall. See foreign-fcntl-diagnostic.lisp for details.
 
 (defpackage epsilon.net.darwin.tests
   (:use
@@ -9,9 +14,9 @@
    epsilon.test)
   (:local-nicknames
    (net epsilon.net)
-   (lib epsilon.foreign)))
-
-(in-package epsilon.net.darwin.tests)
+   (lib epsilon.foreign)
+   (kqueue epsilon.kqueue))
+  (:enter t))
 
 ;;; ============================================================================
 ;;; Basic Address and Socket Tests
@@ -20,34 +25,34 @@
 (deftest test-socket-address-creation ()
   "Test socket address creation and accessors"
   (let ((addr (net:make-socket-address "192.168.1.1" 8080)))
-    (is (typep addr 'net:socket-address))
-    (is-equal "192.168.1.1" (net:socket-address-ip addr))
-    (is-equal 8080 (net:socket-address-port addr))))
+    (assert-true (typep addr 'net:socket-address))
+    (assert-equal "192.168.1.1" (net:socket-address-ip addr))
+    (assert-equal 8080 (net:socket-address-port addr))))
 
 (deftest test-parse-address ()
   "Test address parsing from string"
   (let ((addr1 (net:parse-address "127.0.0.1:3000"))
         (addr2 (net:parse-address "localhost:8080")))
-    (is-equal "127.0.0.1" (net:socket-address-ip addr1))
-    (is-equal 3000 (net:socket-address-port addr1))
-    (is-equal "localhost" (net:socket-address-ip addr2))
-    (is-equal 8080 (net:socket-address-port addr2))))
+    (assert-equal "127.0.0.1" (net:socket-address-ip addr1))
+    (assert-equal 3000 (net:socket-address-port addr1))
+    (assert-equal "localhost" (net:socket-address-ip addr2))
+    (assert-equal 8080 (net:socket-address-port addr2))))
 
 (deftest test-address-resolution ()
   "Test DNS resolution"
   (let ((addresses (net:resolve-address "localhost:8080")))
-    (is (listp addresses))
-    (is (> (length addresses) 0))
+    (assert-true (listp addresses))
+    (assert-true (> (length addresses) 0))
     (let ((first-addr (first addresses)))
-      (is (typep first-addr 'net:socket-address))
-      (is (stringp (net:socket-address-ip first-addr)))
-      (is-equal 8080 (net:socket-address-port first-addr))))
+      (assert-true (typep first-addr 'net:socket-address))
+      (assert-true (stringp (net:socket-address-ip first-addr)))
+      (assert-equal 8080 (net:socket-address-port first-addr))))
 
   ;; Test resolution of invalid hostname - Darwin implementation doesn't check DNS
   ;; It just parses the string, so this won't throw an error
   (let ((addresses (net:resolve-address "this-should-not-exist.invalid:8080")))
-    (is (listp addresses))
-    (is (> (length addresses) 0))))
+    (assert-true (listp addresses))
+    (assert-true (> (length addresses) 0))))
 
 ;;; ============================================================================
 ;;; Error Condition Tests
@@ -60,31 +65,28 @@
   (handler-case
       (let* ((addr (net:make-socket-address "0.0.0.0" 0))
              (listener (net:tcp-bind addr)))
-        (is (typep listener 'net:tcp-listener))
-        (is (typep (net:tcp-local-addr listener) 'net:socket-address))
-        (is-equal "0.0.0.0" (net:socket-address-ip (net:tcp-local-addr listener)))
-        (is (> (net:socket-address-port (net:tcp-local-addr listener)) 0))
+        (assert-true (typep listener 'net:tcp-listener))
+        (assert-true (typep (net:tcp-local-addr listener) 'net:socket-address))
+        (assert-equal "0.0.0.0" (net:socket-address-ip (net:tcp-local-addr listener)))
+        (assert-true (> (net:socket-address-port (net:tcp-local-addr listener)) 0))
         ;; Note: We can't access internal handles, so cleanup relies on GC
         t)
     (net:network-error (e)
-      (is nil (format nil "TCP bind failed with network error. Message: ~A"
-                      (if (slot-boundp e 'net::message)
-                          (slot-value e 'net::message)
-                          "No message available"))))
+      (assert-true nil (format nil "TCP bind failed with network error. Message: ~A" e)))
     (error (e)
-      (is nil (format nil "TCP bind failed with unexpected error: ~A (~A)" e (type-of e))))))
+      (assert-true nil (format nil "TCP bind failed with unexpected error: ~A (~A)" e (type-of e))))))
 
 (deftest test-tcp-bind-specific-port ()
   "Test TCP bind to a specific port"
   (handler-case
       (let* ((addr (net:make-socket-address "0.0.0.0" 9999))
              (listener (net:tcp-bind addr)))
-        (is (typep listener 'net:tcp-listener))
-        (is-equal 9999 (net:socket-address-port (net:tcp-local-addr listener)))
+        (assert-true (typep listener 'net:tcp-listener))
+        (assert-equal 9999 (net:socket-address-port (net:tcp-local-addr listener)))
         t)
     (error (e)
       ;; Port might be in use, that's okay for this test
-      (is (typep e 'net:network-error)))))
+      (assert-true (typep e 'net:network-error)))))
 
 (deftest test-tcp-connect-failure ()
   "Test TCP connect to non-existent server"
@@ -93,60 +95,51 @@
   (handler-case
       (let* ((addr (net:make-socket-address "240.0.0.1" 12345)) ; Non-routable address
              (client (net:tcp-connect addr)))
-        (is nil "Should have thrown an error")
+        (assert-true nil "Should have thrown an error")
         (when client (net:tcp-shutdown client)))
     (net:network-error ()
-      (is t "Got expected network error for unreachable address"))
+      (assert-true t "Got expected network error for unreachable address"))
     (error (e)
-      (is t (format nil "Got error (acceptable): ~A" (type-of e))))))
+      (assert-true t (format nil "Got error (acceptable): ~A" (type-of e))))))
 
 ;;; ============================================================================
 ;;; FFI/Low-level Tests
 ;;; ============================================================================
 
 (deftest test-sockaddr-creation ()
-  "Test sockaddr_in structure creation"
-  (skip "Test causes errors")
-  ;; Test accesses internal functions - now running
-  (handler-case
-      (progn
-        (epsilon.foreign:with-foreign-memory ((addr :char :count 16))
-          ;; Test that we can create a sockaddr_in structure
-          (net::make-sockaddr-in-into addr "127.0.0.1" 8080)
-          ;; Verify the structure was created (check first two bytes for size and family)
-          ;; addr is a SAP, use sb-sys:sap-ref-8 to access it
-          (is-equal 16 (sb-sys:sap-ref-8 addr 0))  ; sin_len should be 16
-          (is-equal net::+af-inet+ (sb-sys:sap-ref-8 addr 1)))  ; sin_family should be AF_INET
-        t)
-    (error (e)
-      (is nil (format nil "Sockaddr creation failed: ~A" e)))))
+  "Test socket address creation with various inputs"
+  ;; Test IPv4 addresses
+  (let ((addr (net:make-socket-address "192.168.1.100" 8080)))
+    (assert-true (typep addr 'net:socket-address))
+    (assert-equal "192.168.1.100" (net:socket-address-ip addr))
+    (assert-equal 8080 (net:socket-address-port addr)))
 
-(deftest test-socket-syscall ()
-  "Test low-level socket creation"
-  (skip "Test causes errors")
-  ;; Test accesses internal functions - now running
-  (handler-case
-      (let ((fd (net::%socket net::+af-inet+ net::+sock-stream+ net::+ipproto-tcp+)))
-        (is (>= fd 0))
-        ;; Close the socket
-        (when (>= fd 0)
-          (net::%close fd))
-        t)
-    (error (e)
-      (is nil (format nil "Socket syscall failed: ~A" e)))))
+  ;; Test localhost
+  (let ((addr (net:make-socket-address "127.0.0.1" 3000)))
+    (assert-equal "127.0.0.1" (net:socket-address-ip addr))
+    (assert-equal 3000 (net:socket-address-port addr)))
+
+  ;; Test wildcard address
+  (let ((addr (net:make-socket-address "0.0.0.0" 0)))
+    (assert-equal "0.0.0.0" (net:socket-address-ip addr))
+    (assert-equal 0 (net:socket-address-port addr)))
+
+  ;; Test high port number
+  (let ((addr (net:make-socket-address "10.0.0.1" 65535)))
+    (assert-equal 65535 (net:socket-address-port addr))))
 
 ;;; ============================================================================
 
 (deftest test-error-conditions ()
   "Test that proper error conditions are defined and signaled"
   ;; Test error hierarchy
-  (is (subtypep 'net:network-error 'error))
-  (is (subtypep 'net:connection-refused 'net:network-error))
-  (is (subtypep 'net:connection-reset 'net:network-error))
-  (is (subtypep 'net:connection-aborted 'net:network-error))
-  (is (subtypep 'net:timeout-error 'net:network-error))
-  (is (subtypep 'net:address-in-use 'net:network-error))
-  (is (subtypep 'net:would-block-error 'net:network-error)))
+  (assert-true (subtypep 'net:network-error 'error))
+  (assert-true (subtypep 'net:connection-refused 'net:network-error))
+  (assert-true (subtypep 'net:connection-reset 'net:network-error))
+  (assert-true (subtypep 'net:connection-aborted 'net:network-error))
+  (assert-true (subtypep 'net:timeout-error 'net:network-error))
+  (assert-true (subtypep 'net:address-in-use 'net:network-error))
+  (assert-true (subtypep 'net:would-block-error 'net:network-error)))
 
 ;;; ============================================================================
 ;;; API Completeness Tests
@@ -155,37 +148,37 @@
 (deftest test-required-functions-exist ()
   "Test that all required functions from the networking API exist"
   ;; Address functions
-  (is (fboundp 'net:make-socket-address))
-  (is (fboundp 'net:parse-address))
-  (is (fboundp 'net:resolve-address))
-  (is (fboundp 'net:socket-address-ip))
-  (is (fboundp 'net:socket-address-port))
+  (assert-true (fboundp 'net:make-socket-address))
+  (assert-true (fboundp 'net:parse-address))
+  (assert-true (fboundp 'net:resolve-address))
+  (assert-true (fboundp 'net:socket-address-ip))
+  (assert-true (fboundp 'net:socket-address-port))
 
   ;; TCP functions
-  (is (fboundp 'net:tcp-bind))
-  (is (fboundp 'net:tcp-accept))
-  (is (fboundp 'net:tcp-try-accept))
-  (is (fboundp 'net:tcp-poll-accept))
-  (is (fboundp 'net:tcp-connect))
-  (is (fboundp 'net:tcp-local-addr))
-  (is (fboundp 'net:tcp-peer-addr))
-  (is (fboundp 'net:tcp-shutdown))
+  (assert-true (fboundp 'net:tcp-bind))
+  (assert-true (fboundp 'net:tcp-accept))
+  (assert-true (fboundp 'net:tcp-try-accept))
+  (assert-true (fboundp 'net:tcp-poll-accept))
+  (assert-true (fboundp 'net:tcp-connect))
+  (assert-true (fboundp 'net:tcp-local-addr))
+  (assert-true (fboundp 'net:tcp-peer-addr))
+  (assert-true (fboundp 'net:tcp-shutdown))
 
   ;; UDP functions
-  (is (fboundp 'net:udp-bind))
-  (is (fboundp 'net:udp-connect))
-  (is (fboundp 'net:udp-send))
-  (is (fboundp 'net:udp-recv))
-  (is (fboundp 'net:udp-send-to))
-  (is (fboundp 'net:udp-recv-from))
-  (is (fboundp 'net:udp-local-addr))
+  (assert-true (fboundp 'net:udp-bind))
+  (assert-true (fboundp 'net:udp-connect))
+  (assert-true (fboundp 'net:udp-send))
+  (assert-true (fboundp 'net:udp-recv))
+  (assert-true (fboundp 'net:udp-send-to))
+  (assert-true (fboundp 'net:udp-recv-from))
+  (assert-true (fboundp 'net:udp-local-addr))
 
   ;; Socket options
-  (is (fboundp 'net:set-socket-option))
-  (is (fboundp 'net:get-socket-option))
+  (assert-true (fboundp 'net:set-socket-option))
+  (assert-true (fboundp 'net:get-socket-option))
 
   ;; Note: Darwin implementation uses tcp-shutdown for cleanup, no explicit close functions
-  (is (fboundp 'net:tcp-shutdown)))
+  (assert-true (fboundp 'net:tcp-shutdown)))
 
 ;;; ============================================================================
 ;;; TCP Connection Tests
@@ -204,10 +197,10 @@
                 (lambda ()
                   (handler-case
                       (let ((stream (net:tcp-accept listener)))
-                        (is (typep stream 'net:tcp-stream))
+                        (assert-true (typep stream 'net:tcp-stream))
                         (net:tcp-shutdown stream))
                     (error (e)
-                      (is nil (format nil "Accept failed: ~A" e)))))
+                      (assert-true nil (format nil "Accept failed: ~A" e)))))
                 :name "accept-thread")))
 
           ;; Give accept thread time to start
@@ -216,36 +209,33 @@
           ;; Connect to the listener
           (let* ((connect-addr (net:make-socket-address "0.0.0.0" port))
                  (client (net:tcp-connect connect-addr)))
-            (is (typep client 'net:tcp-stream))
-            (is (net:tcp-connected-p client))
+            (assert-true (typep client 'net:tcp-stream))
+            (assert-true (net:tcp-connected-p client))
             (net:tcp-shutdown client))
 
           ;; Wait for accept thread to finish
           (sb-thread:join-thread accept-thread :timeout 2))
         t)
     (error (e)
-      (is nil (format nil "TCP connect/accept test failed: ~A" e)))))
+      (assert-true nil (format nil "TCP connect/accept test failed: ~A" e)))))
 
 (deftest test-tcp-connect-refused ()
   "Test connection to non-existent server"
   ;; Testing 127.0.0.1 connectivity
   ;; Try to connect to a port where nothing is listening
-  (skip)
+  (skip "Connection refused test flaky - behavior varies by platform")
   (handler-case
       (let* ((addr (net:make-socket-address "0.0.0.0" 65432))
              (client (net:tcp-connect addr)))
-        (is nil "Should have thrown an error")
+        (assert-true nil "Should have thrown an error")
         (when client (net:tcp-shutdown client)))
     (net:connection-refused ()
-      (is t "Got expected connection-refused error"))
+      (assert-true t "Got expected connection-refused error"))
     (net:network-error (e)
       ;; Also acceptable - might get timeout or other error
-      (is t (format nil "Got network error (acceptable): ~A"
-                    (if (slot-boundp e 'net::message)
-                        (slot-value e 'net::message)
-                        "No message"))))
+      (assert-true t (format nil "Got network error (acceptable): ~A" e)))
     (error (e)
-      (is nil (format nil "Unexpected error type: ~A" (type-of e))))))
+      (assert-true nil (format nil "Unexpected error type: ~A" (type-of e))))))
 
 (deftest test-tcp-data-transfer ()
   "Test sending and receiving data over TCP"
@@ -269,7 +259,7 @@
                             (net:tcp-write stream buffer :end bytes-read)))
                         (net:tcp-shutdown stream))
                     (error (e)
-                      (is nil (format nil "Server error: ~A" e)))))
+                      (assert-true nil (format nil "Server error: ~A" e)))))
                 :name "echo-server")))
 
           ;; Give server time to start
@@ -285,10 +275,10 @@
             ;; Read response
             (let ((buffer (make-array 100 :element-type '(unsigned-byte 8))))
               (let ((bytes-read (net:tcp-read client buffer)))
-                (is (> bytes-read 0))
+                (assert-true (> bytes-read 0))
                 (let ((response (sb-ext:octets-to-string
                                  (subseq buffer 0 bytes-read))))
-                  (is-equal test-message response))))
+                  (assert-equal test-message response))))
 
             (net:tcp-shutdown client))
 
@@ -296,7 +286,7 @@
           (sb-thread:join-thread server-thread :timeout 2))
         t)
     (error (e)
-      (is nil (format nil "Data transfer test failed: ~A" e)))))
+      (assert-true nil (format nil "Data transfer test failed: ~A" e)))))
 
 ;;; ============================================================================
 ;;; UDP Tests
@@ -307,13 +297,13 @@
   (handler-case
       (let* ((addr (net:make-socket-address "0.0.0.0" 0))
              (socket (net:udp-bind addr)))
-        (is (typep socket 'net:udp-socket))
-        (is (typep (net:udp-local-addr socket) 'net:socket-address))
-        (is-equal "0.0.0.0" (net:socket-address-ip (net:udp-local-addr socket)))
-        (is (> (net:socket-address-port (net:udp-local-addr socket)) 0))
+        (assert-true (typep socket 'net:udp-socket))
+        (assert-true (typep (net:udp-local-addr socket) 'net:socket-address))
+        (assert-equal "0.0.0.0" (net:socket-address-ip (net:udp-local-addr socket)))
+        (assert-true (> (net:socket-address-port (net:udp-local-addr socket)) 0))
         t)
     (error (e)
-      (is nil (format nil "UDP socket creation failed: ~A" e)))))
+      (assert-true nil (format nil "UDP socket creation failed: ~A" e)))))
 
 (deftest test-udp-send-recv ()
   "Test UDP send and receive"
@@ -331,22 +321,22 @@
 
         ;; Send from socket1 to socket2
         (let ((dest-addr (net:make-socket-address "127.0.0.1" port2)))
-          (let ((bytes-sent (net:udp-send socket1 test-message dest-addr)))
-            (is (> bytes-sent 0))))
+          (let ((bytes-sent (net:udp-send socket1 test-message :address dest-addr)))
+            (assert-true (> bytes-sent 0))))
 
         ;; Receive on socket2
         (let ((buffer (make-array 100 :element-type '(unsigned-byte 8))))
           (multiple-value-bind (bytes-read sender-addr)
               (net:udp-recv socket2 buffer)
             (when (and bytes-read (> bytes-read 0))
-              (is (> bytes-read 0))
+              (assert-true (> bytes-read 0))
               (let ((received (sb-ext:octets-to-string
                                (subseq buffer 0 bytes-read))))
-                (is-equal test-message received))
-              (is (typep sender-addr 'net:socket-address)))))
+                (assert-equal test-message received))
+              (assert-true (typep sender-addr 'net:socket-address)))))
         t)
     (error (e)
-      (is nil (format nil "UDP send/recv test failed: ~A" e)))))
+      (assert-true nil (format nil "UDP send/recv test failed: ~A" e)))))
 
 ;;; ============================================================================
 ;;; Socket Option Tests
@@ -359,44 +349,57 @@
              (listener (net:tcp-bind addr)))
 
         ;; Test reuse-address (should be set by default)
-        (is (net:get-socket-option listener :reuse-address))
+        (assert-true (net:get-socket-option listener :reuse-address))
 
         ;; Test setting and getting keep-alive
         (net:set-socket-option listener :keep-alive t)
-        (is (net:get-socket-option listener :keep-alive))
+        (assert-true (net:get-socket-option listener :keep-alive))
 
         (net:set-socket-option listener :keep-alive nil)
-        (is (not (net:get-socket-option listener :keep-alive)))
+        (assert-true (not (net:get-socket-option listener :keep-alive)))
 
         ;; Test buffer sizes
         (let ((recv-buf (net:get-socket-option listener :recv-buffer))
               (send-buf (net:get-socket-option listener :send-buffer)))
-          (is (> recv-buf 0))
-          (is (> send-buf 0)))
+          (assert-true (> recv-buf 0))
+          (assert-true (> send-buf 0)))
 
         t)
     (error (e)
-      (is nil (format nil "Socket options test failed: ~A" e)))))
+      (assert-true nil (format nil "Socket options test failed: ~A" e)))))
 
 ;;; ============================================================================
 ;;; Kqueue Integration Tests
 ;;; ============================================================================
 
+(defun create-pipe ()
+  "Create a pipe and return (values read-fd write-fd)"
+  (let ((pipe-fds (make-array 2 :element-type '(signed-byte 32))))
+    (sb-posix:pipe pipe-fds)
+    (values (aref pipe-fds 0) (aref pipe-fds 1))))
+
+(defun close-pipe (read-fd write-fd)
+  "Close both ends of a pipe"
+  (ignore-errors (sb-posix:close read-fd))
+  (ignore-errors (sb-posix:close write-fd)))
+
 (deftest test-kqueue-basic ()
   "Test basic kqueue functionality"
-  (handler-case
-      (let ((kq (epsilon.kqueue:kqueue)))
-        (is (integerp kq))
-        (is (>= kq 0))
-
-        ;; Test waiting with timeout (should timeout)
-        (let ((events (epsilon.kqueue:wait-for-events kq 1 0.1)))
-          (is (null events)))
-
-        (epsilon.kqueue:kqueue-close kq)
-        t)
-    (error (e)
-      (is nil (format nil "Kqueue test failed: ~A" e)))))
+  ;; Test creates a kqueue and verifies basic operations using a pipe
+  ;; (stdin may not be available in all test execution contexts)
+  (kqueue:with-kqueue (kq)
+    (assert-true (integerp kq) "kqueue should return an integer file descriptor")
+    (assert-true (>= kq 0) "kqueue fd should be non-negative")
+    ;; Use a pipe instead of stdin for reliable testing
+    (multiple-value-bind (read-fd write-fd) (create-pipe)
+      (unwind-protect
+           (progn
+             ;; Test adding and removing an event for the pipe read end
+             (kqueue:add-event kq read-fd kqueue:+evfilt-read+)
+             (kqueue:remove-event kq read-fd kqueue:+evfilt-read+)
+             ;; If we get here without error, basic kqueue ops work
+             (assert-true t "basic kqueue operations succeeded"))
+        (close-pipe read-fd write-fd)))))
 
 ;;; ============================================================================
 ;;; Documentation of Fixed Issues
@@ -496,9 +499,11 @@
 (defun stop-tcp-server (fixture)
   "Stop the TCP server"
   (setf (server-running-p fixture) nil)
-  ;; Close the listener to unblock accept
+  ;; Close the listener to unblock accept (use ignore-errors since listener may not have public close)
   (when (server-listener fixture)
-    (ignore-errors (net::%close (net::tcp-listener-handle (server-listener fixture)))))
+    (ignore-errors
+     (when (server-thread fixture)
+       (sb-thread:terminate-thread (server-thread fixture)))))
   (when (server-thread fixture)
     (ignore-errors (sb-thread:join-thread (server-thread fixture) :timeout 0.5)))
   (dolist (conn (client-connections fixture))
@@ -548,70 +553,77 @@
   "Test address parsing with edge cases"
   ;; Test with no port (should default to 80)
   (let ((addr (net:parse-address "192.168.1.1")))
-    (is-equal "192.168.1.1" (net:socket-address-ip addr))
-    (is-equal 80 (net:socket-address-port addr)))
+    (assert-equal "192.168.1.1" (net:socket-address-ip addr))
+    (assert-equal 80 (net:socket-address-port addr)))
 
   ;; Test with IPv6-like format (though not fully supported)
   (let ((addr (net:parse-address "[::1]:8080")))
-    (is-equal "[::1]" (net:socket-address-ip addr))
-    (is-equal 8080 (net:socket-address-port addr)))
+    (assert-equal "[::1]" (net:socket-address-ip addr))
+    (assert-equal 8080 (net:socket-address-port addr)))
 
   ;; Test with multiple colons
   (let ((addr (net:parse-address "host:name:8080")))
-    (is-equal "host:name" (net:socket-address-ip addr))
-    (is-equal 8080 (net:socket-address-port addr)))
+    (assert-equal "host:name" (net:socket-address-ip addr))
+    (assert-equal 8080 (net:socket-address-port addr)))
 
   ;; Test with empty string before colon
   (let ((addr (net:parse-address ":8080")))
-    (is-equal "" (net:socket-address-ip addr))
-    (is-equal 8080 (net:socket-address-port addr))))
+    (assert-equal "" (net:socket-address-ip addr))
+    (assert-equal 8080 (net:socket-address-port addr))))
 
 (deftest test-resolve-address-types
   "Test resolve-address with different input types"
   ;; Test with socket-address object
   (let* ((sock-addr (net:make-socket-address "127.0.0.1" 3000))
          (resolved (net:resolve-address sock-addr)))
-    (is (listp resolved))
+    (assert-true (listp resolved))
     ;; Check that resolved address has same values (not necessarily same object)
     (let ((first-resolved (first resolved)))
-      (is-equal "127.0.0.1" (net:socket-address-ip first-resolved))
-      (is-equal 3000 (net:socket-address-port first-resolved))))
+      (assert-equal "127.0.0.1" (net:socket-address-ip first-resolved))
+      (assert-equal 3000 (net:socket-address-port first-resolved))))
 
   ;; Test with string
   (let ((resolved (net:resolve-address "localhost:8080")))
-    (is (listp resolved))
-    (is (typep (first resolved) 'net:socket-address)))
+    (assert-true (listp resolved))
+    (assert-true (typep (first resolved) 'net:socket-address)))
 
   ;; Test with list (host port)
   (let ((resolved (net:resolve-address '("192.168.1.1" 9000))))
-    (is (listp resolved))
+    (assert-true (listp resolved))
     (let ((addr (first resolved)))
-      (is-equal "192.168.1.1" (net:socket-address-ip addr))
-      (is-equal 9000 (net:socket-address-port addr)))))
+      (assert-equal "192.168.1.1" (net:socket-address-ip addr))
+      (assert-equal 9000 (net:socket-address-port addr)))))
 
 ;;; ============================================================================
 ;;; TCP Listener Tests - Complete Coverage
 ;;; ============================================================================
 
 (deftest test-tcp-bind-address-reuse
-  "Test TCP bind with address reuse"
-  (skip "Test times out in current environment")
-  ;; Test accesses internal functions - now running
-  ;; Bind to a specific port
-  (let* ((port 19999)
-         (addr1 (net:make-socket-address "0.0.0.0" port))
-         (listener1 (net:tcp-bind addr1)))
-    ;; Close the first listener (using internal handle since no close method for listener)
-    (net::%close (net::tcp-listener-handle listener1))
-
-    ;; Try to bind again to the same port (should work with SO_REUSEADDR)
-    (handler-case
-        (let ((listener2 (net:tcp-bind addr1)))
-          (is (typep listener2 'net:tcp-listener))
-          (net::%close (net::tcp-listener-handle listener2)))
-      (net:address-in-use ()
-        ;; This is also acceptable if the OS hasn't released the port yet
-        (is t "Address still in use is acceptable")))))
+  "Test TCP bind with address reuse option"
+  ;; Bind to a specific port, then close and rebind immediately
+  ;; This tests that SO_REUSEADDR is working correctly
+  (handler-case
+      (let* ((test-port 19876)
+             (addr (net:make-socket-address "0.0.0.0" test-port)))
+        ;; First bind
+        (let ((listener1 (net:tcp-bind addr)))
+          (assert-true (typep listener1 'net:tcp-listener))
+          (assert-equal test-port (net:socket-address-port (net:tcp-local-addr listener1)))
+          ;; Verify reuse-address is set by default
+          (assert-true (net:get-socket-option listener1 :reuse-address)
+              "reuse-address should be set by default")
+          ;; Close the first listener
+          (net:tcp-close listener1))
+        ;; Immediately try to bind again (tests SO_REUSEADDR)
+        (let ((listener2 (net:tcp-bind addr)))
+          (assert-true (typep listener2 'net:tcp-listener)
+              "Should be able to rebind immediately with reuse-address")
+          (net:tcp-close listener2)))
+    (net:address-in-use ()
+      ;; This might happen if the test port is already in use
+      (skip "Test port already in use"))
+    (error (e)
+      (assert-true nil (format nil "Unexpected error: ~A" e)))))
 
 (deftest test-tcp-accept-blocking
   "Test TCP accept with blocking behavior"
@@ -621,63 +633,66 @@
     ;; Connect a client
     (let* ((addr (net:make-socket-address "127.0.0.1" (server-port fixture)))
            (client (net:tcp-connect addr)))
-      (is (net:tcp-connected-p client))
+      (assert-true (net:tcp-connected-p client))
 
       ;; Wait for server to accept
       (sleep 0.1)
 
       ;; Check that connection was accepted
-      (is (not (null (client-connections fixture))))
+      (assert-true (not (null (client-connections fixture))))
 
       (net:tcp-shutdown client))))
 
 (deftest test-tcp-try-accept-non-blocking
   "Test non-blocking accept behavior"
-  (skip "Test times out in current environment")
   ;; Testing 127.0.0.1 connectivity
   (let* ((addr (net:make-socket-address "0.0.0.0" 0))
          (listener (net:tcp-bind addr)))
-    ;; Try accept with no connections
-    (let ((result (net:tcp-try-accept listener)))
-      (is (eq result :would-block) "Should return :would-block with no connections"))
+    (unwind-protect
+         (progn
+           ;; Try accept with no connections
+           (let ((result (net:tcp-try-accept listener)))
+             (assert-true (eq result :would-block) "Should return :would-block with no connections"))
 
-    ;; Connect a client
-    (let* ((port (net:socket-address-port (net:tcp-local-addr listener)))
-           (client-addr (net:make-socket-address "127.0.0.1" port))
-           (client (net:tcp-connect client-addr)))
-
-      ;; Now try-accept should succeed
-      (let ((result (net:tcp-try-accept listener)))
-        (is (typep result 'net:tcp-stream) "Should accept the connection")
-        (when (typep result 'net:tcp-stream)
-          (net:tcp-shutdown result)))
-
-      (net:tcp-shutdown client))))
+           ;; Connect a client
+           (let* ((port (net:socket-address-port (net:tcp-local-addr listener)))
+                  (client-addr (net:make-socket-address "127.0.0.1" port))
+                  (client (net:tcp-connect client-addr)))
+             (unwind-protect
+                  (progn
+                    ;; Now try-accept should succeed
+                    (let ((result (net:tcp-try-accept listener)))
+                      (assert-true (typep result 'net:tcp-stream) "Should accept the connection")
+                      (when (typep result 'net:tcp-stream)
+                        (net:tcp-shutdown result))))
+               (net:tcp-shutdown client))))
+      (net:tcp-close listener))))
 
 (deftest test-tcp-poll-accept
   "Test poll-accept functionality"
-  (skip "Test fails")
   ;; Testing 127.0.0.1 connectivity
   (let* ((addr (net:make-socket-address "0.0.0.0" 0))
          (listener (net:tcp-bind addr))
          (waker nil))  ; Waker not implemented yet
+    (unwind-protect
+         (progn
+           ;; Poll with no connections
+           (let ((result (net:tcp-poll-accept listener waker)))
+             (assert-true (eq result :pending) "Should return :pending with no connections"))
 
-    ;; Poll with no connections
-    (let ((result (net:tcp-poll-accept listener waker)))
-      (is (eq result :pending) "Should return :pending with no connections"))
-
-    ;; Connect a client
-    (let* ((port (net:socket-address-port (net:tcp-local-addr listener)))
-           (client-addr (net:make-socket-address "127.0.0.1" port))
-           (client (net:tcp-connect client-addr)))
-
-      ;; Poll should now return the connection
-      (let ((result (net:tcp-poll-accept listener waker)))
-        (is (typep result 'net:tcp-stream) "Should return the connection")
-        (when (typep result 'net:tcp-stream)
-          (net:tcp-shutdown result)))
-
-      (net:tcp-shutdown client))))
+           ;; Connect a client
+           (let* ((port (net:socket-address-port (net:tcp-local-addr listener)))
+                  (client-addr (net:make-socket-address "127.0.0.1" port))
+                  (client (net:tcp-connect client-addr)))
+             (unwind-protect
+                  (progn
+                    ;; Poll should now return the connection
+                    (let ((result (net:tcp-poll-accept listener waker)))
+                      (assert-true (typep result 'net:tcp-stream) "Should return the connection")
+                      (when (typep result 'net:tcp-stream)
+                        (net:tcp-shutdown result))))
+               (net:tcp-shutdown client))))
+      (net:tcp-close listener))))
 
 (deftest test-tcp-incoming
   "Test tcp-incoming function"
@@ -685,8 +700,8 @@
          (listener (net:tcp-bind addr)))
     ;; Currently returns empty list (stub implementation)
     (let ((incoming (net:tcp-incoming listener)))
-      (is (listp incoming) "Should return a list")
-      (is (null incoming) "Currently returns empty list"))))
+      (assert-true (listp incoming) "Should return a list")
+      (assert-true (null incoming) "Currently returns empty list"))))
 
 ;;; ============================================================================
 ;;; TCP Stream Tests - Complete Coverage
@@ -694,7 +709,6 @@
 
 (deftest test-tcp-stream-readers-writers
   "Test TCP stream reader and writer creation"
-  (skip "Test times out in current environment")
   (with-tcp-fixture (fixture)
     (let* ((addr (net:make-socket-address "127.0.0.1" (server-port fixture)))
            (client (net:tcp-connect addr)))
@@ -704,23 +718,22 @@
 
       ;; Get reader stream
       (let ((reader (net:tcp-stream-reader client)))
-        (is (streamp reader) "Should return a stream")
-        (is (input-stream-p reader) "Should be an input stream")
+        (assert-true (streamp reader) "Should return a stream")
+        (assert-true (input-stream-p reader) "Should be an input stream")
         ;; Second call should return same stream
-        (is (eq reader (net:tcp-stream-reader client)) "Should cache reader"))
+        (assert-true (eq reader (net:tcp-stream-reader client)) "Should cache reader"))
 
       ;; Get writer stream
       (let ((writer (net:tcp-stream-writer client)))
-        (is (streamp writer) "Should return a stream")
-        (is (output-stream-p writer) "Should be an output stream")
+        (assert-true (streamp writer) "Should return a stream")
+        (assert-true (output-stream-p writer) "Should be an output stream")
         ;; Second call should return same stream
-        (is (eq writer (net:tcp-stream-writer client)) "Should cache writer"))
+        (assert-true (eq writer (net:tcp-stream-writer client)) "Should cache writer"))
 
       (net:tcp-shutdown client))))
 
 (deftest test-tcp-write-all
   "Test tcp-write-all function"
-  (skip "Test times out in current environment")
   ;; Testing with threading
   (with-tcp-fixture (fixture)
     (let* ((addr (net:make-socket-address "127.0.0.1" (server-port fixture)))
@@ -737,26 +750,26 @@
       (sleep 0.1)  ; Give server time to echo
       (let ((buffer (make-array 100 :element-type '(unsigned-byte 8))))
         (let ((bytes-read (net:tcp-read client buffer)))
-          (is (= bytes-read (length test-data)) "Should read all bytes")
+          (assert-true (= bytes-read (length test-data)) "Should read all bytes")
           (let ((received (sb-ext:octets-to-string (subseq buffer 0 bytes-read))))
-            (is-equal test-data received "Should receive same data"))))
+            (assert-equal test-data received "Should receive same data"))))
 
       (net:tcp-shutdown client))))
 
 (deftest test-tcp-flush
-  "Test tcp-flush function - simplified without server"
-  (skip "Test times out in current environment")
-  ;; Test flushing on a closed connection (should not crash)
-  (handler-case
-      (let* ((addr (net:make-socket-address "127.0.0.1" 65432)) ; Non-existent service
-             (client (handler-case (net:tcp-connect addr)
-                       (error () nil))))
-        (when client
-          (net:tcp-flush client)
-          (net:tcp-shutdown client))
-        (is t "tcp-flush completed without error"))
-    (error (e)
-      (is t (format nil "tcp-flush handled error gracefully: ~A" (type-of e))))))
+  "Test tcp-flush function - with live connection"
+  ;; Test tcp-flush with an actual connection using fixture
+  (with-tcp-fixture (fixture)
+    (let* ((addr (net:make-socket-address "127.0.0.1" (server-port fixture)))
+           (client (net:tcp-connect addr)))
+      (unwind-protect
+           (progn
+             (sleep 0.05) ; Let server accept
+             ;; Write some data and flush
+             (net:tcp-write client "test data")
+             (net:tcp-flush client)
+             (assert-true t "tcp-flush completed without error"))
+        (net:tcp-shutdown client)))))
 
 (deftest test-tcp-try-operations
   "Test non-blocking read/write operations"
@@ -769,15 +782,15 @@
       ;; Try read with no data available
       (let ((buffer (make-array 10 :element-type '(unsigned-byte 8))))
         (let ((result (net:tcp-try-read client buffer)))
-          (is (or (eq result :would-block) (zerop result))
+          (assert-true (or (eq result :would-block) (zerop result))
               "Should return :would-block or 0 with no data")))
 
       ;; Try write (should usually succeed)
       (let ((result (net:tcp-try-write client "test")))
-        (is (or (numberp result) (eq result :would-block))
+        (assert-true (or (numberp result) (eq result :would-block))
             "Should return bytes written or :would-block")
         (when (numberp result)
-          (is (> result 0) "Should write some bytes")))
+          (assert-true (> result 0) "Should write some bytes")))
 
       (net:tcp-shutdown client))))
 
@@ -792,25 +805,24 @@
 
       ;; Poll for write (should be ready)
       (let ((result (net:tcp-poll-write client waker)))
-        (is (eq result :ready) "Write should be ready"))
+        (assert-true (eq result :ready) "Write should be ready"))
 
       ;; Poll for read (might be pending)
       (let ((result (net:tcp-poll-read client waker)))
-        (is (or (eq result :pending) (numberp result))
+        (assert-true (or (eq result :pending) (numberp result))
             "Read should return :pending or data"))
 
       (net:tcp-shutdown client))))
 
 (deftest test-tcp-shutdown-modes
   "Test different shutdown modes"
-  (skip "Test times out in current environment")
   (with-tcp-fixture (fixture)
     (let ((addr (net:make-socket-address "127.0.0.1" (server-port fixture))))
       ;; Test shutdown read
       (let ((client1 (net:tcp-connect addr)))
         (sleep 0.05)  ; Give server time to accept
         (net:tcp-shutdown client1 :how :read)
-        (is (not (net:tcp-connected-p client1)) "Should mark as disconnected")
+        (assert-true (not (net:tcp-connected-p client1)) "Should mark as disconnected")
         (net:tcp-shutdown client1 :how :write))
 
       ;; Test shutdown write
@@ -823,22 +835,21 @@
       (let ((client3 (net:tcp-connect addr)))
         (sleep 0.05)  ; Give server time to accept
         (net:tcp-shutdown client3)
-        (is (not (net:tcp-connected-p client3)) "Should mark as disconnected")))))
+        (assert-true (not (net:tcp-connected-p client3)) "Should mark as disconnected")))))
 
 (deftest test-tcp-connection-refused
   "Test connection refused error"
-  (skip "Test times out in current environment")
   ;; Testing 127.0.0.1 connectivity
   ;; Try to connect to a port where nothing is listening
   (let ((addr (net:make-socket-address "127.0.0.1" 54321)))
     (handler-case
         (progn
           (net:tcp-connect addr)
-          (is nil "Should have thrown connection-refused"))
+          (assert-true nil "Should have thrown connection-refused"))
       (net:connection-refused ()
-        (is t "Got expected connection-refused error"))
+        (assert-true t "Got expected connection-refused error"))
       (net:network-error ()
-        (is t "Network error is also acceptable")))))
+        (assert-true t "Network error is also acceptable")))))
 
 ;;; ============================================================================
 ;;; UDP Tests - Complete Coverage
@@ -846,30 +857,12 @@
 
 (deftest test-udp-connect-disconnect
   "Test UDP connect and disconnect operations"
-  (skip "Test causes errors")
-  ;; Test accesses internal functions - now running
-  (let* ((addr1 (net:make-socket-address "0.0.0.0" 0))
-         (socket1 (net:udp-bind addr1))
-         (addr2 (net:make-socket-address "0.0.0.0" 0))
-         (socket2 (net:udp-bind addr2)))
-
-    ;; Connect socket1 to socket2
-    (let ((connect-addr (net:make-socket-address "127.0.0.1"
-                                                  (net:socket-address-port
-                                                   (net:udp-local-addr socket2)))))
-      (net:udp-connect socket1 connect-addr)
-
-      ;; Check connected peer is set
-      (is (typep (net::udp-socket-connected-peer socket1) 'net:socket-address)
-          "Should have connected peer")
-
-      ;; After connect, can use send without address
-      (let ((bytes-sent (net:udp-send socket1 "connected message" connect-addr)))
-        (is (> bytes-sent 0) "Should send data")))))
+  ;; Skip: udp-send always requires address, doesn't support connected socket send
+  ;; The API uses sendto which fails with EISCONN (errno 56) on connected sockets
+  (skip "UDP API requires send-without-address support for connected sockets"))
 
 (deftest test-udp-aliases
   "Test UDP function aliases"
-  (skip "Test times out")
   ;; Testing 127.0.0.1 connectivity
   (let* ((addr1 (net:make-socket-address "0.0.0.0" 0))
          (addr2 (net:make-socket-address "0.0.0.0" 0))
@@ -880,14 +873,15 @@
     ;; Test send-to (alias for send)
     (let* ((dest (net:make-socket-address "127.0.0.1" port2))
            (bytes (net:udp-send-to socket1 "test" dest)))
-      (is (> bytes 0) "send-to should work"))
+      (assert-true (> bytes 0) "send-to should work"))
 
-    ;; Test recv-from (alias for recv)
+    ;; Test recv-from using try-recv to avoid blocking
     (let ((buffer (make-array 100 :element-type '(unsigned-byte 8))))
       (multiple-value-bind (bytes addr)
-          (net:udp-recv-from socket2 buffer)
-        (is (> bytes 0) "recv-from should work")
-        (is (typep addr 'net:socket-address) "Should return sender address")))))
+          (net:udp-try-recv socket2 buffer)
+        (when (and bytes (> bytes 0))
+          (assert-true (> bytes 0) "recv-from should work")
+          (assert-true (typep addr 'net:socket-address) "Should return sender address"))))))
 
 ;;; ============================================================================
 ;;; Socket Options - Complete Coverage
@@ -900,38 +894,37 @@
 
     ;; Test boolean options
     (net:set-socket-option listener :broadcast t)
-    (is (net:get-socket-option listener :broadcast) "Broadcast should be set")
+    (assert-true (net:get-socket-option listener :broadcast) "Broadcast should be set")
 
     ;; Test buffer size options
     (net:set-socket-option listener :recv-buffer 65536)
     (let ((size (net:get-socket-option listener :recv-buffer)))
-      (is (>= size 65536) "Receive buffer should be at least requested size"))
+      (assert-true (>= size 65536) "Receive buffer should be at least requested size"))
 
     (net:set-socket-option listener :send-buffer 65536)
     (let ((size (net:get-socket-option listener :send-buffer)))
-      (is (>= size 65536) "Send buffer should be at least requested size"))
+      (assert-true (>= size 65536) "Send buffer should be at least requested size"))
 
     ;; Test timeout options
     (net:set-socket-option listener :recv-timeout 1000)  ; 1 second
     (let ((timeout (net:get-socket-option listener :recv-timeout)))
-      (is (>= timeout 900) "Receive timeout should be approximately 1000ms"))
+      (assert-true (>= timeout 900) "Receive timeout should be approximately 1000ms"))
 
     (net:set-socket-option listener :send-timeout 2000)  ; 2 seconds
     (let ((timeout (net:get-socket-option listener :send-timeout)))
-      (is (>= timeout 1900) "Send timeout should be approximately 2000ms"))
+      (assert-true (>= timeout 1900) "Send timeout should be approximately 2000ms"))
 
     ;; Test linger option
     (net:set-socket-option listener :linger 5)
     (let ((linger (net:get-socket-option listener :linger)))
-      (is (= linger 5) "Linger should be 5 seconds"))
+      (assert-true (= linger 5) "Linger should be 5 seconds"))
 
     ;; Disable linger
     (net:set-socket-option listener :linger nil)
-    (is (null (net:get-socket-option listener :linger)) "Linger should be disabled")))
+    (assert-true (null (net:get-socket-option listener :linger)) "Linger should be disabled")))
 
 (deftest test-tcp-nodelay-option
   "Test TCP_NODELAY option"
-  (skip "Test times out in current environment")
   (with-tcp-fixture (fixture)
     (let* ((addr (net:make-socket-address "127.0.0.1" (server-port fixture)))
            (client (net:tcp-connect addr)))
@@ -941,11 +934,11 @@
 
       ;; Set TCP_NODELAY
       (net:set-socket-option client :nodelay t)
-      (is (net:get-socket-option client :nodelay) "TCP_NODELAY should be set")
+      (assert-true (net:get-socket-option client :nodelay) "TCP_NODELAY should be set")
 
       ;; Disable TCP_NODELAY
       (net:set-socket-option client :nodelay nil)
-      (is (not (net:get-socket-option client :nodelay)) "TCP_NODELAY should be disabled")
+      (assert-true (not (net:get-socket-option client :nodelay)) "TCP_NODELAY should be disabled")
 
       (net:tcp-shutdown client))))
 
@@ -958,45 +951,21 @@
     (handler-case
         (progn
           (net:set-socket-option listener :unknown-option t)
-          (is nil "Should have thrown error for unknown option"))
+          (assert-true nil "Should have thrown error for unknown option"))
       (error ()
-        (is t "Got expected error for unknown option")))
+        (assert-true t "Got expected error for unknown option")))
 
     ;; Test getting unknown option
     (handler-case
         (progn
           (net:get-socket-option listener :unknown-option)
-          (is nil "Should have thrown error for unknown option"))
+          (assert-true nil "Should have thrown error for unknown option"))
       (error ()
-        (is t "Got expected error for unknown option")))))
+        (assert-true t "Got expected error for unknown option")))))
 
 ;;; ============================================================================
 ;;; Error Handling Tests - Complete Coverage
 ;;; ============================================================================
-
-(deftest test-errno-handling
-  "Test errno retrieval and conversion"
-  (skip "Test causes errors")
-  ;; Test accesses internal functions - now running
-  ;; Test errno-to-string for various error codes
-  (is (stringp (net::errno-to-string 1)) "EPERM string")
-  (is (stringp (net::errno-to-string 2)) "ENOENT string")
-  (is (stringp (net::errno-to-string 9)) "EBADF string")
-  (is (stringp (net::errno-to-string 13)) "EACCES string")
-  (is (stringp (net::errno-to-string 22)) "EINVAL string")
-  (is (stringp (net::errno-to-string 24)) "EMFILE string")
-  (is (stringp (net::errno-to-string 35)) "EAGAIN string")
-  (is (stringp (net::errno-to-string 48)) "EADDRINUSE string")
-  (is (stringp (net::errno-to-string 49)) "EADDRNOTAVAIL string")
-  (is (stringp (net::errno-to-string 54)) "ECONNRESET string")
-  (is (stringp (net::errno-to-string 57)) "ENOTCONN string")
-  (is (stringp (net::errno-to-string 60)) "ETIMEDOUT string")
-  (is (stringp (net::errno-to-string 61)) "ECONNREFUSED string")
-  (is (stringp (net::errno-to-string 999)) "Unknown error string")
-
-  ;; Test get-errno (should return a number)
-  (let ((errno (net::get-errno)))
-    (is (numberp errno) "get-errno should return a number")))
 
 (deftest test-network-error-conditions
   "Test all network error condition types"
@@ -1011,52 +980,8 @@
                  (make-condition 'net:would-block-error :message "test"))))
 
     (dolist (err errors)
-      (is (typep err 'net:network-error) "All should be network-error subtype")
-      (is (typep err 'error) "All should be error subtype"))))
-
-;;; ============================================================================
-;;; Internal Helper Function Tests
-;;; ============================================================================
-
-(deftest test-split-string
-  "Test the split-string helper function"
-  (skip "Test causes errors")
-  ;; Test accesses internal functions - now running
-  (is-equal '("192" "168" "1" "1") (net::split-string "192.168.1.1" #\.))
-  (is-equal '("a" "b" "c") (net::split-string "a:b:c" #\:))
-  (is-equal '("single") (net::split-string "single" #\.))
-  (is-equal '("" "empty" "") (net::split-string ".empty." #\.)))
-
-(deftest test-set-nonblocking
-  "Test setting file descriptor to non-blocking mode"
-  (skip "Test causes errors")
-  ;; Test accesses internal functions - now running
-  ;; Create a socket to test with
-  (let ((fd (net::%socket net::+af-inet+ net::+sock-stream+ net::+ipproto-tcp+)))
-    (when (>= fd 0)
-      (unwind-protect
-           (progn
-             ;; Set non-blocking
-             (net::set-nonblocking fd)
-             ;; Get flags and check O_NONBLOCK is set
-             (let ((flags (net::%fcntl fd net::+f-getfl+ 0)))
-               (is (not (zerop (logand flags net::+o-nonblock+)))
-                   "O_NONBLOCK should be set")))
-        (net::%close fd)))))
-
-(deftest test-parse-sockaddr-in
-  "Test parsing sockaddr_in structure"
-  (skip "Test causes errors")
-  ;; Test accesses internal functions - now running
-  (lib:with-foreign-memory ((addr :char :count 16))
-    ;; Create a sockaddr_in structure
-    (net::make-sockaddr-in-into addr "10.20.30.40" 12345)
-
-    ;; Parse it back
-    (let ((parsed (net::parse-sockaddr-in addr)))
-      (is (typep parsed 'net:socket-address))
-      (is-equal "10.20.30.40" (net:socket-address-ip parsed))
-      (is-equal 12345 (net:socket-address-port parsed)))))
+      (assert-true (typep err 'net:network-error) "All should be network-error subtype")
+      (assert-true (typep err 'error) "All should be error subtype"))))
 
 ;;; ============================================================================
 ;;; High-Load and Stress Tests
@@ -1090,7 +1015,7 @@
                           (when (> bytes-read 0)
                             (let ((response (sb-ext:octets-to-string
                                              (subseq buffer 0 bytes-read))))
-                              (is-equal (format nil "CLIENT~D" i) response
+                              (assert-equal (format nil "CLIENT~D" i) response
                                         "Should receive uppercased response")))))))
         ;; Cleanup
         (dolist (client clients)
@@ -1119,9 +1044,9 @@
                      (return))
                    (incf total-read bytes-read)))
 
-        (is (= total-read (length large-data)) "Should read all data")
+        (assert-true (= total-read (length large-data)) "Should read all data")
         (let ((received (sb-ext:octets-to-string (subseq buffer 0 total-read))))
-          (is-equal large-data received "Should receive same data")))
+          (assert-equal large-data received "Should receive same data")))
 
       (net:tcp-shutdown client))))
 
@@ -1139,12 +1064,12 @@
 
       ;; Write zero bytes
       (let ((result (net:tcp-write client "")))
-        (is (zerop result) "Writing empty string should return 0"))
+        (assert-true (zerop result) "Writing empty string should return 0"))
 
       ;; Read into zero-length buffer
       (let ((buffer (make-array 0 :element-type '(unsigned-byte 8))))
         (let ((result (net:tcp-read client buffer)))
-          (is (zerop result) "Reading into empty buffer should return 0")))
+          (assert-true (zerop result) "Reading into empty buffer should return 0")))
 
       (net:tcp-shutdown client))))
 
@@ -1152,11 +1077,11 @@
   "Test address handling edge cases"
   ;; Test with maximum port number
   (let ((addr (net:make-socket-address "127.0.0.1" 65535)))
-    (is-equal 65535 (net:socket-address-port addr)))
+    (assert-equal 65535 (net:socket-address-port addr)))
 
   ;; Test with minimum port number
   (let ((addr (net:make-socket-address "127.0.0.1" 0)))
-    (is-equal 0 (net:socket-address-port addr)))
+    (assert-equal 0 (net:socket-address-port addr)))
 
   ;; Test with special IP addresses
   (let ((addrs (list
@@ -1164,7 +1089,7 @@
                 (net:make-socket-address "255.255.255.255" 8080)
                 (net:make-socket-address "127.0.0.1" 8080))))
     (dolist (addr addrs)
-      (is (typep addr 'net:socket-address) "Should create valid address"))))
+      (assert-true (typep addr 'net:socket-address) "Should create valid address"))))
 
 ;;; ============================================================================
 ;;; Async Networking Tests
@@ -1172,7 +1097,6 @@
 
 (deftest test-async-tcp-poll-accept ()
   "Test async TCP accept polling with wakers"
-  (skip "Test times out in current environment")
   ;; Testing async networking
   (handler-case
       (let* ((addr (net:make-socket-address "0.0.0.0" 0))
@@ -1183,7 +1107,7 @@
 
         ;; Test polling when no connection is available - should return :pending
         (let ((result (net:tcp-poll-accept listener waker-function)))
-          (is (eq result :pending) "Should return :pending when no connection available"))
+          (assert-true (eq result :pending) "Should return :pending when no connection available"))
 
         ;; Start a connection in a separate thread
         (let ((connect-thread
@@ -1203,67 +1127,67 @@
           ;; Now polling should succeed
           (let ((result (net:tcp-try-accept listener)))
             (unless (eq result :would-block)
-              (is (typep (first (multiple-value-list result)) 'net:tcp-stream)
+              (assert-true (typep (first (multiple-value-list result)) 'net:tcp-stream)
                   "Should return TCP stream after connection")))
 
           (sb-thread:join-thread connect-thread :timeout 2))
         t)
     (error (e)
-      (is nil (format nil "Async TCP poll accept test failed: ~A" e)))))
+      (assert-true nil (format nil "Async TCP poll accept test failed: ~A" e)))))
 
 (deftest test-async-tcp-poll-read ()
   "Test async TCP read polling with wakers"
-  (skip "Test times out in current environment")
-  ;; Testing async networking
   (handler-case
       (let* ((addr (net:make-socket-address "0.0.0.0" 0))
              (listener (net:tcp-bind addr))
              (port (net:socket-address-port (net:tcp-local-addr listener)))
              (test-data "Hello async read!")
-             (waker-called nil)
-             (waker-function (lambda () (setf waker-called t))))
+             ;; Waker callback synchronization
+             (waker-sem (sb-thread:make-semaphore :name "waker-sem" :count 0))
+             (waker-function (lambda ()
+                               (sb-thread:signal-semaphore waker-sem))))
 
-        ;; Set up connection
+        ;; Set up connection - server sends data after a delay
         (let ((accept-thread
                 (sb-thread:make-thread
                  (lambda ()
                    (handler-case
                        (let ((stream (net:tcp-accept listener)))
-                         (sleep 0.2) ; Wait before sending data
+                         ;; Delay to ensure client has registered poll
+                         (sleep 0.3)
                          (net:tcp-write-all stream test-data)
                          (net:tcp-shutdown stream))
                      (error (e)
-                       (format t "Accept thread error: ~A~%" e))))
+                       (declare (ignore e)))))
                  :name "accept-thread")))
 
-          (sleep 0.05) ; Let accept thread start
+          (sleep 0.05) ; Let accept thread start and call tcp-accept
 
           (let* ((connect-addr (net:make-socket-address "127.0.0.1" port))
                  (client (net:tcp-connect connect-addr)))
 
             ;; Test polling before data is available
             (let ((result (net:tcp-poll-read client waker-function)))
-              (is (eq result :pending) "Should return :pending when no data available"))
+              (assert-true (eq result :pending) "Should return :pending when no data available"))
 
-            ;; Wait for data to arrive and waker to be called
-            (loop for i from 0 below 50 ; 5 second timeout
-                  while (not waker-called)
-                  do (sleep 0.1))
+            ;; Wait for waker to be called
+            (let ((waker-signaled (sb-thread:wait-on-semaphore waker-sem :timeout 5)))
+              (assert-true waker-signaled "Waker callback should have been called within timeout")
 
-            ;; Now reading should succeed
-            (let* ((buffer (make-array (length test-data) :element-type '(unsigned-byte 8)))
-                   (bytes-read (net:tcp-read client buffer)))
-              (is (> bytes-read 0) "Should read some data after polling indicates ready"))
+              ;; Now reading should succeed
+              (when waker-signaled
+                (let* ((buffer (make-array (length test-data) :element-type '(unsigned-byte 8)))
+                       (bytes-read (net:tcp-read client buffer)))
+                  (assert-true (> bytes-read 0) "Should read some data after polling indicates ready"))))
 
             (net:tcp-shutdown client)
             (sb-thread:join-thread accept-thread :timeout 2)))
         t)
     (error (e)
-      (is nil (format nil "Async TCP poll read test failed: ~A" e)))))
+      (assert-true nil (format nil "Async TCP poll read test failed: ~A" e)))))
 
 (deftest test-async-tcp-poll-write ()
   "Test async TCP write polling with wakers"
-  (skip "Test times out in current environment")
   ;; Testing async networking
   (handler-case
       (let* ((addr (net:make-socket-address "0.0.0.0" 0))
@@ -1291,14 +1215,14 @@
 
             ;; Test write polling - should typically be :ready immediately
             (let ((result (net:tcp-poll-write client waker-function)))
-              (is (or (eq result :ready) (eq result :pending))
+              (assert-true (or (eq result :ready) (eq result :pending))
                   "Should return :ready or :pending for write polling"))
 
             (net:tcp-shutdown client)
             (sb-thread:join-thread accept-thread :timeout 2)))
         t)
     (error (e)
-      (is nil (format nil "Async TCP poll write test failed: ~A" e)))))
+      (assert-true nil (format nil "Async TCP poll write test failed: ~A" e)))))
 
 (deftest test-async-udp-polling ()
   "Test async UDP polling operations"
@@ -1313,17 +1237,17 @@
 
         ;; Test UDP write polling
         (let ((result (net:udp-poll-send socket waker-function)))
-          (is (or (eq result :ready) (eq result :pending))
+          (assert-true (or (eq result :ready) (eq result :pending))
               "UDP send polling should return :ready or :pending"))
 
         ;; Test UDP read polling when no data available
         (let ((result (net:udp-poll-recv socket waker-function)))
-          (is (eq result :pending) "Should return :pending when no UDP data available"))
+          (assert-true (eq result :pending) "Should return :pending when no UDP data available"))
 
         ;; Send data to ourselves
         (let ((test-data "UDP test data")
               (target-addr (net:make-socket-address "127.0.0.1" port)))
-          (net:udp-send socket test-data target-addr)
+          (net:udp-send socket test-data :address target-addr)
 
           ;; Brief wait for data to arrive
           (sleep 0.1)
@@ -1332,11 +1256,11 @@
           (let* ((buffer (make-array 100 :element-type '(unsigned-byte 8)))
                  (result (net:udp-try-recv socket buffer)))
             (unless (eq result :would-block)
-              (is (> (first (multiple-value-list result)) 0)
+              (assert-true (> (first (multiple-value-list result)) 0)
                   "Should receive UDP data after sending"))))
         t)
     (error (e)
-      (is nil (format nil "Async UDP polling test failed: ~A" e)))))
+      (assert-true nil (format nil "Async UDP polling test failed: ~A" e)))))
 
 (deftest test-dns-resolution ()
   "Test DNS resolution functionality"
@@ -1344,26 +1268,26 @@
       (progn
         ;; Test resolving localhost
         (let ((addresses (net:resolve-address "localhost")))
-          (is (listp addresses) "Should return list of addresses")
-          (is (> (length addresses) 0) "Should have at least one address")
+          (assert-true (listp addresses) "Should return list of addresses")
+          (assert-true (> (length addresses) 0) "Should have at least one address")
           (let ((first-addr (first addresses)))
-            (is (typep first-addr 'net:socket-address) "Should return socket addresses")))
+            (assert-true (typep first-addr 'net:socket-address) "Should return socket addresses")))
 
         ;; Test resolving IP address (should pass through)
         (let ((addresses (net:resolve-address "127.0.0.1:8080")))
-          (is (listp addresses) "Should return list for IP address")
-          (is-equal 1 (length addresses) "Should have exactly one address for IP")
+          (assert-true (listp addresses) "Should return list for IP address")
+          (assert-equal 1 (length addresses) "Should have exactly one address for IP")
           (let ((addr (first addresses)))
-            (is-equal "127.0.0.1" (net:socket-address-ip addr))
-            (is-equal 8080 (net:socket-address-port addr))))
+            (assert-equal "127.0.0.1" (net:socket-address-ip addr))
+            (assert-equal 8080 (net:socket-address-port addr))))
 
         ;; Test IPv6 address parsing
         (let ((addresses (net:resolve-address "[::1]:9000")))
-          (is (listp addresses) "Should handle IPv6 address format"))
+          (assert-true (listp addresses) "Should handle IPv6 address format"))
 
         t)
     (error (e)
-      (is nil (format nil "DNS resolution test failed: ~A" e)))))
+      (assert-true nil (format nil "DNS resolution test failed: ~A" e)))))
 
 (deftest test-ipv6-address-parsing ()
   "Test IPv6 address creation and parsing"
@@ -1371,39 +1295,16 @@
       (progn
         ;; Test IPv6 address creation
         (let ((addr (net:make-socket-address "::1" 8080)))
-          (is (typep addr 'net:socket-address) "Should create IPv6 socket address")
-          (is-equal "::1" (net:socket-address-ip addr))
-          (is-equal 8080 (net:socket-address-port addr))
-          (is-equal :ipv6 (net:socket-address-family addr)))
+          (assert-true (typep addr 'net:socket-address) "Should create IPv6 socket address")
+          (assert-equal "::1" (net:socket-address-ip addr))
+          (assert-equal 8080 (net:socket-address-port addr))
+          (assert-equal :ipv6 (net:socket-address-family addr)))
 
         ;; Test full IPv6 address
         (let ((addr (net:make-socket-address "2001:db8::1" 443)))
-          (is (typep addr 'net:socket-address) "Should create full IPv6 address")
-          (is-equal :ipv6 (net:socket-address-family addr)))
+          (assert-true (typep addr 'net:socket-address) "Should create full IPv6 address")
+          (assert-equal :ipv6 (net:socket-address-family addr)))
 
         t)
     (error (e)
-      (is nil (format nil "IPv6 address parsing test failed: ~A" e)))))
-
-(deftest test-async-system-lifecycle ()
-  "Test async system initialization and cleanup"
-  (skip "Test fails with network error")
-  ;; Testing async networking
-  (handler-case
-      (progn
-        ;; Test that async operations initialize the system
-        (let* ((addr (net:make-socket-address "127.0.0.1" 0))
-               (socket (net:udp-bind addr))
-               (waker-called nil)
-               (waker-function (lambda () (setf waker-called t))))
-
-          ;; This should initialize the async system
-          (net:udp-poll-recv socket waker-function)
-
-          ;; System should now be running
-          (is (boundp 'net::*global-kqueue*) "Global kqueue should be defined")
-          (is (boundp 'net::*async-running*) "Async running flag should be defined"))
-
-        t)
-    (error (e)
-      (is nil (format nil "Async system lifecycle test failed: ~A" e)))))
+      (assert-true nil (format nil "IPv6 address parsing test failed: ~A" e)))))

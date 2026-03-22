@@ -1,0 +1,33 @@
+(:name "epsilon.test"
+ :module-set "epsilon-stdlib"
+ :description "Test framework for Epsilon"
+ :requires ("epsilon.process" "epsilon.crypto" "epsilon.annotation" "epsilon.channel" "epsilon.log" "epsilon.stacktrace")
+ :commands ((:name "test"
+             :description "Run tests for specified modules"
+             :usage-hint "test [modules]"
+             :usage "epsilon test [modules...] [options]"
+             :handler "epsilon.test.cli:run"
+             :options ((:name "--all" :description "Test all known modules in dependency order")
+                       (:name "--changed" :description "Test only changed modules")
+                       (:name "--dependencies" :description "Also test transitive dependencies")
+                       (:name "--fail-fast" :description "Stop on first module failure")
+                       (:name "--parallel" :arg "N" :description "Run N modules in parallel (default: auto-detect)")
+                       (:name "--sequential" :description "Force sequential module execution")
+                       (:name "--verbose" :description "Verbose output (full output per module)")
+                       (:name "--noclean" :description "Retain test work directories")
+                       (:name "--update-snapshots" :description "Update snapshot files")
+                       (:name "--integration" :description "Run integration tests only")
+                       (:name "--force" :description "Bypass test result cache (re-run even if unchanged)")
+                       (:name "--test-include-category"
+                        :arg "CAT"
+                        :description "Only run tests with category CAT")
+                       (:name "--test-exclude-category"
+                        :arg "CAT"
+                        :description "Exclude tests with category CAT"))
+             :examples (("epsilon test json" "Run JSON module tests")
+                        ("epsilon test --all" "Test all modules in dependency order")
+                        ("epsilon test --all --fail-fast" "Test all, stop on first failure")
+                        ("epsilon test --all --parallel 4" "Test all with 4 parallel workers")
+                        ("epsilon test --all --sequential" "Test all, one at a time")
+                        ("epsilon test sql --dependencies" "Test sql and all its deps")
+                        ("epsilon test --changed" "Test only changed modules")))))

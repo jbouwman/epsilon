@@ -30,9 +30,8 @@
 
    ;; Converters
    #:bool-to-foreign
-   #:foreign-to-bool))
-
-(in-package :epsilon.foreign.marshalling)
+   #:foreign-to-bool)
+  (:enter t))
 
 ;;;; Automatic Type Marshalling for FFI
 
@@ -111,35 +110,59 @@
     ;; Fall back to hardcoded signatures
     ;; String functions from string.h
     (setf sigs (map:assoc sigs "strlen"
-                          (trampoline:make-ffi-signature :return-type :size-t :arg-types '(:string))))
+                          (trampoline:make-ffi-signature
+                           :return-type :size-t
+                           :arg-types '(:string))))
     (setf sigs (map:assoc sigs "strcpy"
-                          (trampoline:make-ffi-signature :return-type :string :arg-types '(:string :string))))
+                          (trampoline:make-ffi-signature
+                           :return-type :string
+                           :arg-types '(:string :string))))
     (setf sigs (map:assoc sigs "strcmp"
-                          (trampoline:make-ffi-signature :return-type :int :arg-types '(:string :string))))
+                          (trampoline:make-ffi-signature
+                           :return-type :int
+                           :arg-types '(:string :string))))
     (setf sigs (map:assoc sigs "strcat"
-                          (trampoline:make-ffi-signature :return-type :string :arg-types '(:string :string))))
+                          (trampoline:make-ffi-signature
+                           :return-type :string
+                           :arg-types '(:string :string))))
 
     ;; Memory functions from stdlib.h
     (setf sigs (map:assoc sigs "malloc"
-                          (trampoline:make-ffi-signature :return-type :pointer :arg-types '(:size-t))))
+                          (trampoline:make-ffi-signature
+                           :return-type :pointer
+                           :arg-types '(:size-t))))
     (setf sigs (map:assoc sigs "free"
-                          (trampoline:make-ffi-signature :return-type :void :arg-types '(:pointer))))
+                          (trampoline:make-ffi-signature
+                           :return-type :void
+                           :arg-types '(:pointer))))
     (setf sigs (map:assoc sigs "memcpy"
-                          (trampoline:make-ffi-signature :return-type :pointer :arg-types '(:pointer :pointer :size-t))))
+                          (trampoline:make-ffi-signature
+                           :return-type :pointer
+                           :arg-types '(:pointer :pointer :size-t))))
 
     ;; I/O functions from stdio.h
     (setf sigs (map:assoc sigs "printf"
-                          (trampoline:make-ffi-signature :return-type :int :arg-types '(:string &rest))))
+                          (trampoline:make-ffi-signature
+                           :return-type :int
+                           :arg-types '(:string &rest))))
     (setf sigs (map:assoc sigs "puts"
-                          (trampoline:make-ffi-signature :return-type :int :arg-types '(:string))))
+                          (trampoline:make-ffi-signature
+                           :return-type :int
+                           :arg-types '(:string))))
     (setf sigs (map:assoc sigs "getchar"
-                          (trampoline:make-ffi-signature :return-type :int :arg-types '())))
+                          (trampoline:make-ffi-signature
+                           :return-type :int
+                           :arg-types '())))
 
     ;; System functions
     (setf sigs (map:assoc sigs "getpid"
-                          (trampoline:make-ffi-signature :return-type :pid-t :arg-types '())))
+                          (trampoline:make-ffi-signature
+                           :return-type :pid-t
+                           :arg-types '())))
     (setf sigs (map:assoc sigs "getenv"
-                          (trampoline:make-ffi-signature :return-type :string :arg-types '(:string))))
+                          (trampoline:make-ffi-signature
+                           :return-type :string
+                           :arg-types '(:string))))
 
     sigs))
 
@@ -476,7 +499,9 @@
         (count (gensym "COUNT")))
     `(let* ((,count (length ,strings))
             (,string-ptrs (make-array (1+ ,count)))
-            (,sap-array (make-array (* (1+ ,count) ,sb-vm:n-word-bytes) :element-type '(unsigned-byte 8))))
+            (,sap-array (make-array
+                        (* (1+ ,count) ,sb-vm:n-word-bytes)
+                        :element-type '(unsigned-byte 8))))
        ;; Convert each string to alien string and store SAP
        (loop for i from 0
              for string in ,strings

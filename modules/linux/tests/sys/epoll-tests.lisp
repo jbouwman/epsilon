@@ -5,29 +5,28 @@
    epsilon.test)
   (:local-nicknames
    (epoll epsilon.sys.epoll)
-   (lib epsilon.foreign)))
-
-(in-package epsilon.sys.epoll-tests)
+   (lib epsilon.foreign))
+  (:enter t))
 
 (deftest test-epoll-create
   "Test basic epoll creation"
   (let ((epfd (epoll:epoll-create)))
-    (is (plusp epfd))
-    (is (zerop (epoll:epoll-close epfd)))))
+    (assert-true (plusp epfd))
+    (assert-true (zerop (epoll:epoll-close epfd)))))
 
 (deftest test-epoll-create1
   "Test epoll creation with flags"
   (let ((epfd (epoll:epoll-create1 epoll:+epoll-cloexec+)))
-    (is (plusp epfd))
-    (is (zerop (epoll:epoll-close epfd)))))
+    (assert-true (plusp epfd))
+    (assert-true (zerop (epoll:epoll-close epfd)))))
 
 (deftest test-epoll-event-creation
   "Test epoll event structure creation"
   (let ((event (epoll:make-epoll-event
                 :events epoll:+epollin+
                 :data (epoll:make-epoll-data :fd 42))))
-    (is (= (epoll:epoll-event-events event) epoll:+epollin+))
-    (is (= (epoll:epoll-data-fd (epoll:epoll-event-data event)) 42))))
+    (assert-true (= (epoll:epoll-event-events event) epoll:+epollin+))
+    (assert-true (= (epoll:epoll-data-fd (epoll:epoll-event-data event)) 42))))
 
 ;; Define system functions for testing
 (lib:defshared test-pipe "pipe" "libc" :int (pipefd :pointer))
@@ -42,7 +41,7 @@
     (unwind-protect
          (progn
            ;; Create pipe using epsilon.foreign
-           (is (zerop (test-pipe pipe-fds)))
+           (assert-true (zerop (test-pipe pipe-fds)))
 
            (let ((read-fd (sb-sys:sap-ref-32 pipe-fds 0))
                  (write-fd (sb-sys:sap-ref-32 pipe-fds 4)))
@@ -54,7 +53,7 @@
 
                ;; Initially, no events
                (let ((events (epoll:wait-for-events epfd 10 0))) ; 0ms timeout
-                 (is (null events)))
+                 (assert-true (null events)))
 
                ;; Write some data
                (let ((data "test"))
@@ -66,11 +65,11 @@
 
                ;; Now should have an event
                (let ((events (epoll:wait-for-events epfd 10 100))) ; 100ms timeout
-                 (is (= (length events) 1))
+                 (assert-true (= (length events) 1))
                  (when events
                    (let ((event (first events)))
-                     (is (epoll:epoll-event-readable-p event))
-                     (is (= (epoll:epoll-data-fd (epoll:epoll-event-data event))
+                     (assert-true (epoll:epoll-event-readable-p event))
+                     (assert-true (= (epoll:epoll-data-fd (epoll:epoll-event-data event))
                             read-fd))))))
 
              ;; Clean up
@@ -82,15 +81,15 @@
   "Test epoll_data union functionality"
   ;; Test fd storage
   (let ((data (epoll:make-epoll-data :fd 12345)))
-    (is (= (epoll:epoll-data-fd data) 12345)))
+    (assert-true (= (epoll:epoll-data-fd data) 12345)))
 
   ;; Test u32 storage
   (let ((data (epoll:make-epoll-data :u32 #xDEADBEEF)))
-    (is (= (epoll:epoll-data-u32 data) #xDEADBEEF)))
+    (assert-true (= (epoll:epoll-data-u32 data) #xDEADBEEF)))
 
   ;; Test u64 storage
   (let ((data (epoll:make-epoll-data :u64 #x123456789ABCDEF0)))
-    (is (= (epoll:epoll-data-u64 data) #x123456789ABCDEF0))))
+    (assert-true (= (epoll:epoll-data-u64 data) #x123456789ABCDEF0))))
 
 (deftest test-epoll-event-predicates
   "Test event checking predicates"
@@ -100,16 +99,16 @@
         (combined (epoll:make-epoll-event
                    :events (logior epoll:+epollin+ epoll:+epollout+))))
 
-    (is (epoll:epoll-event-readable-p readable))
-    (is (not (epoll:epoll-event-writable-p readable)))
+    (assert-true (epoll:epoll-event-readable-p readable))
+    (assert-true (not (epoll:epoll-event-writable-p readable)))
 
-    (is (epoll:epoll-event-writable-p writable))
-    (is (not (epoll:epoll-event-readable-p writable)))
+    (assert-true (epoll:epoll-event-writable-p writable))
+    (assert-true (not (epoll:epoll-event-readable-p writable)))
 
-    (is (epoll:epoll-event-error-p error-event))
+    (assert-true (epoll:epoll-event-error-p error-event))
 
-    (is (epoll:epoll-event-readable-p combined))
-    (is (epoll:epoll-event-writable-p combined))))
+    (assert-true (epoll:epoll-event-readable-p combined))
+    (assert-true (epoll:epoll-event-writable-p combined))))
 
 (deftest test-epoll-memory-packing
   "Test epoll_event structure packing/unpacking"
@@ -123,7 +122,7 @@
       (let ((unpacked (epoll::unpack-epoll-event buffer 0)))
 
         ;; Verify
-        (is (= (epoll:epoll-event-events unpacked)
+        (assert-true (= (epoll:epoll-event-events unpacked)
                (epoll:epoll-event-events original)))
-        (is (= (epoll:epoll-event-data unpacked)
+        (assert-true (= (epoll:epoll-event-data unpacked)
                (epoll:epoll-event-data original)))))))

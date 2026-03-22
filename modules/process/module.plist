@@ -1,0 +1,4 @@
+(:name "epsilon.process"
+ :module-set "epsilon-stdlib"
+ :description "Subprocess management for Epsilon"
+ :requires ("epsilon.foreign" "epsilon.async" "epsilon.typeclass"))

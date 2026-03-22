@@ -1,0 +1,5 @@
+(:name "epsilon.json"
+ :module-set "epsilon-stdlib"
+ :description "JSON parser"
+ :data ("tests/json")
+ :requires ("epsilon.parsing"))

@@ -37,6 +37,8 @@
    #:tcp-close
    #:tcp-stream-reader
    #:tcp-stream-writer
+   #:tcp-stream-byte-reader
+   #:tcp-stream-byte-writer
    #:tcp-connected-p
 
    ;; UDP operations
@@ -48,9 +50,8 @@
    #:udp-recv-from
    #:udp-local-addr
    #:udp-poll-send
-   #:udp-poll-recv))
-
-(in-package epsilon.net.sockets)
+   #:udp-poll-recv)
+  (:enter t))
 
 ;;; ============================================================================
 ;;; Socket Event Waiting (Refactored to use Epoll Manager)
@@ -62,13 +63,23 @@
    Returns the event if ready, nil on timeout."
   (let ((event (epoll-mgr:wait-for-socket socket-fd events-list timeout-ms)))
     (when event
-      ;; Check if the event indicates an error
-      (let ((event-mask (epoll:epoll-event-events event)))
+      ;; Check if any of the requested data events are present.
+      ;; EPOLLHUP/EPOLLERR can accompany EPOLLIN/EPOLLOUT (e.g. peer shutdown
+      ;; with data still readable); in that case the caller should still attempt
+      ;; the I/O operation and handle the result.
+      (let ((event-mask (epoll:epoll-event-events event))
+            (requested-mask (logior (if (member :in events-list) epoll:+epollin+ 0)
+                                    (if (member :out events-list) epoll:+epollout+ 0))))
         (cond
+          ;; Requested events are set -- let the caller try I/O
+          ((not (zerop (logand event-mask requested-mask)))
+           event)
+          ;; Only error/hangup with none of the requested events
           ((or (logtest event-mask epoll:+epollerr+)
                (logtest event-mask epoll:+epollhup+))
-           nil)  ; Error or hangup
-          (t event))))))  ; Normal event
+           nil)
+          ;; Unexpected event
+          (t event))))))
 
 ;;; ============================================================================
 ;;; TCP Listener Operations
@@ -200,10 +211,26 @@
 ;;; ============================================================================
 
 (defun tcp-connect (address &key (timeout nil))
-  "Connect to a TCP server with optional timeout"
+  "Connect to a TCP server with optional timeout.
+   ADDRESS can be a socket-address or string like 'host:port'.
+   Resolves hostnames via DNS when the IP field is not a numeric address.
+   Signals network-error with detailed message on failure."
   (let* ((sock-addr (etypecase address
                       (types:socket-address address)
                       (string (address:parse-address address))))
+         ;; Resolve hostname to numeric IP if needed
+         (sock-addr (let ((ip (types:socket-address-ip sock-addr)))
+                      (if (every (lambda (c) (or (digit-char-p c) (char= c #\.))) ip)
+                          sock-addr
+                          (let ((resolved (address:resolve-address
+                                           ip (types:socket-address-port sock-addr))))
+                            (unless resolved
+                              (error 'errors:network-error
+                                     :message (format nil "DNS resolution failed for ~A" ip)))
+                            (first resolved)))))
+         (target-desc (format nil "~A:~D"
+                              (types:socket-address-ip sock-addr)
+                              (types:socket-address-port sock-addr)))
          (socket-fd (core:create-socket const:+af-inet+
                                         const:+sock-stream+
                                         const:+ipproto-tcp+)))
@@ -223,20 +250,34 @@
                 ;; Check if it's a would-block error (async connection in progress)
                 (let ((errno (errors:get-errno)))
                   (if (= errno const:+einprogress+)
-                      (when timeout
-                        ;; Wait for connection to complete with timeout
-                        (let ((timeout-ms (round (* timeout 1000))))
-                          ;; Register socket for write events
-                          (epoll-mgr:register-socket socket-fd '(:out))
-                          (unwind-protect
-                              (let ((event (epoll-mgr:wait-for-socket
-                                           socket-fd '(:out) timeout-ms)))
-                                (unless event
-                                  (error 'errors:timeout-error
-                                         :message "Connection timeout")))
-                            (epoll-mgr:unregister-socket socket-fd))))
-                      ;; Other error, check and signal appropriately
-                      (errors:check-error result "connect"))))))
+                      ;; Wait for the async connect to complete
+                      (let ((timeout-ms (if timeout
+                                            (round (* timeout 1000))
+                                            30000)))  ; default 30s
+                        (epoll-mgr:register-socket socket-fd '(:out))
+                        (unwind-protect
+                            (let ((event (epoll-mgr:wait-for-socket
+                                         socket-fd '(:out) timeout-ms)))
+                              (unless event
+                                (error 'errors:timeout-error
+                                       :message (format nil "Connection to ~A timed out after ~A seconds"
+                                                        target-desc (or timeout 30))))
+                              ;; Check SO_ERROR -- async connect may have failed
+                              (let ((so-error (core:get-socket-option
+                                               socket-fd :error)))
+                                (unless (zerop so-error)
+                                  (let ((condition-class (errors:errno-to-condition so-error)))
+                                    (error condition-class
+                                           :message (format nil "connect to ~A failed: ~A"
+                                                            target-desc
+                                                            (errors:errno-to-string so-error)))))))
+                          (epoll-mgr:unregister-socket socket-fd)))
+                      ;; Other error - provide detailed message with target address
+                      (let* ((errno-str (errors:errno-to-string errno))
+                             (condition-class (errors:errno-to-condition errno)))
+                        (error condition-class
+                               :message (format nil "connect to ~A failed: ~A"
+                                                target-desc errno-str))))))))
 
           ;; Get local and peer addresses
           (let ((local-addr (core:get-local-address socket-fd))
@@ -246,9 +287,15 @@
                            :local-address local-addr
                            :peer-address peer-addr
                            :connected-p t)))
-      (error (e)
+      (errors:network-error (e)
+        ;; Network errors already have good messages, just close and re-raise
         (const:%close socket-fd)
-        (error e)))))
+        (error e))
+      (error (e)
+        ;; Wrap unexpected errors with context
+        (const:%close socket-fd)
+        (error 'errors:network-error
+               :message (format nil "TCP connect to ~A failed: ~A" target-desc e))))))
 
 (defun tcp-stream-reader (stream)
   "Get or create input stream for TCP stream"
@@ -261,6 +308,28 @@
   (or (types:tcp-stream-output stream)
       (setf (types:tcp-stream-output stream)
             (core:socket-to-stream (types:tcp-stream-handle stream) :output))))
+
+(defun tcp-stream-byte-reader (stream)
+  "Get a Lisp byte input stream for reading.
+   Uses (unsigned-byte 8) element-type for binary protocols.
+   Uses no buffering to return data as soon as available."
+  (or (types:tcp-stream-byte-input stream)
+      (setf (types:tcp-stream-byte-input stream)
+            (sb-sys:make-fd-stream (types:tcp-stream-handle stream)
+                                   :input t
+                                   :element-type '(unsigned-byte 8)
+                                   :buffering :none))))
+
+(defun tcp-stream-byte-writer (stream)
+  "Get a Lisp byte output stream for writing.
+   Uses (unsigned-byte 8) element-type for binary protocols.
+   Uses :full buffering - caller must call force-output/finish-output."
+  (or (types:tcp-stream-byte-output stream)
+      (setf (types:tcp-stream-byte-output stream)
+            (sb-sys:make-fd-stream (types:tcp-stream-handle stream)
+                                   :output t
+                                   :element-type '(unsigned-byte 8)
+                                   :buffering :full))))
 
 (defun tcp-read (stream buffer &key (start 0) (end nil) (timeout nil))
   "Read data from TCP stream into buffer with optional timeout"
@@ -363,13 +432,45 @@
   ;; Non-blocking write
   (tcp-write stream data :start start :end end))
 
-(defun tcp-poll-read (stream timeout-ms)
-  "Poll for readable data with timeout"
-  (wait-for-socket-ready (types:tcp-stream-handle stream) '(:in) timeout-ms))
+(defun tcp-poll-read (stream waker)
+  "Poll for read readiness. Returns :ready if data is available,
+   or :pending after registering WAKER for async notification."
+  (let ((fd (types:tcp-stream-handle stream)))
+    (core:set-nonblocking fd)
+    (lib:with-foreign-memory ((buf :char :count 1))
+      ;; MSG_PEEK (0x2) checks for data without consuming it
+      (let ((result (const:%recv fd buf 1 2)))
+        (cond
+          ((> result 0) :ready)
+          ((= result 0) :ready)  ;; EOF is also "ready" - reader will see 0 bytes
+          (t
+           (let ((errno (errors:get-errno)))
+             (if (= errno const:+eagain+)
+                 ;; No data yet - spawn a thread to wait and call waker
+                 (progn
+                   (sb-thread:make-thread
+                    (lambda ()
+                      (wait-for-socket-ready fd '(:in) 5000)
+                      (when waker (funcall waker)))
+                    :name "tcp-poll-read-waker")
+                   :pending)
+                 ;; Some other error - treat as ready so the reader
+                 ;; gets the error on the actual read call
+                 :ready))))))))
 
-(defun tcp-poll-write (stream timeout-ms)
-  "Poll for writability with timeout"
-  (wait-for-socket-ready (types:tcp-stream-handle stream) '(:out) timeout-ms))
+(defun tcp-poll-write (stream waker)
+  "Poll for write readiness. Returns :ready if writable,
+   or :pending after registering WAKER for async notification."
+  (let ((fd (types:tcp-stream-handle stream)))
+    (if (wait-for-socket-ready fd '(:out) 0)
+        :ready
+        (progn
+          (sb-thread:make-thread
+           (lambda ()
+             (wait-for-socket-ready fd '(:out) 5000)
+             (when waker (funcall waker)))
+           :name "tcp-poll-write-waker")
+          :pending))))
 
 (defun tcp-peer-addr (stream)
   "Get peer address of TCP stream"
@@ -474,23 +575,23 @@
       (error (e)
         (error e)))))
 
-(defun udp-send (socket data &key (start 0) (end nil))
-  "Send data on connected UDP socket"
-  (let* ((buffer (etypecase data
-                   (string (sb-ext:string-to-octets data))
-                   (vector data)
-                   (list (coerce data 'vector))))
-         (actual-end (or end (length buffer))))
-    (lib:with-foreign-memory ((buf :char :count (- actual-end start)))
-      ;; Copy data to foreign buffer
-      (loop for i from start below actual-end
-            for j from 0
-            do (setf (sb-sys:sap-ref-8 buf j) (aref buffer i)))
-
-      (let ((result (const:%send (types:udp-socket-handle socket)
-                                 buf (- actual-end start) 0)))
-        (errors:check-error result "UDP send")
-        result))))
+(defun udp-send (socket data &key address (start 0) (end nil))
+  "Send data on UDP socket.  When ADDRESS is nil, use the connected peer."
+  (if address
+      (udp-send-to socket data address :start start :end end)
+      (let* ((buffer (etypecase data
+                       (string (sb-ext:string-to-octets data))
+                       (vector data)
+                       (list (coerce data 'vector))))
+             (actual-end (or end (length buffer))))
+        (lib:with-foreign-memory ((buf :char :count (- actual-end start)))
+          (loop for i from start below actual-end
+                for j from 0
+                do (setf (sb-sys:sap-ref-8 buf j) (aref buffer i)))
+          (let ((result (const:%send (types:udp-socket-handle socket)
+                                     buf (- actual-end start) 0)))
+            (errors:check-error result "UDP send")
+            result)))))
 
 (defun udp-recv (socket buffer &key (start 0) (end nil))
   "Receive data on UDP socket"

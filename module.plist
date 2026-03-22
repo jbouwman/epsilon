@@ -1,0 +1,7 @@
+(:name "epsilon"
+ :description "Bootstrap library for Epsilon"
+ :commands ((:name "modules"
+             :description "List available modules"
+             :usage-hint "modules"
+             :usage "epsilon modules"
+             :handler "epsilon.commands:cmd-modules")))

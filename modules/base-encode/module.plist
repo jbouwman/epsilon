@@ -1,0 +1,4 @@
+(:name "epsilon.base-encode"
+ :module-set "epsilon-stdlib"
+ :description "base encoding: base16 (hex), base32 (RFC 4648, Crockford), base64 (RFC 4648, URL-safe), bech32"
+ :requires ("epsilon.io" "epsilon.uuid" "epsilon.typeclass"))

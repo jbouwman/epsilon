@@ -62,9 +62,8 @@
    %getsockopt
    %getsockname
    %getpeername
-   %fcntl))
-
-(in-package epsilon.net.constants)
+   %fcntl)
+  (:enter t))
 
 ;;; ============================================================================
 ;;; Darwin Constants
@@ -177,5 +176,5 @@
   :documentation "Get peer's address")
 
 (lib:defshared %fcntl "fcntl" "libc" :int
-  (fd :int) (cmd :int) (arg :long)
+  (fd :int) (cmd :int) (arg :int)
   :documentation "File control operations")

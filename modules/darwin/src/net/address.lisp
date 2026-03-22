@@ -39,9 +39,8 @@
    ;; Unified address handling
    fill-sockaddr-for-address
    sockaddr-size-for-family
-   socket-family-constant))
-
-(in-package epsilon.net.address)
+   socket-family-constant)
+  (:enter t))
 
 ;;; ============================================================================
 ;;; Address Utilities
@@ -189,9 +188,12 @@
                                 (socket-address-port address))
            address)))
     (string
-     (multiple-value-bind (host port)
-         (parse-address address)
-       (make-socket-address (resolve-hostname-to-ip host) port)))))
+     (let ((addr (parse-address address)))
+       (let ((host (socket-address-ip addr))
+             (port (socket-address-port addr)))
+         (if (and host (not (looks-like-ip-address-p host)))
+             (make-socket-address (resolve-hostname-to-ip host) port)
+             addr))))))
 
 ;;; ============================================================================
 ;;; Address Resolution
@@ -200,7 +202,7 @@
 (defun parse-ipv4-address (ip-string)
   "Parse IPv4 address string into octets"
   (let ((parts (mapcar #'parse-integer
-                       (seq:realize (str:split "." ip-string)))))
+                       (seq:realize (str:split #\. ip-string)))))
     (when (and (= (length parts) 4)
                (every (lambda (x) (and (>= x 0) (<= x 255))) parts))
       (make-instance 'ipv4-address
@@ -209,20 +211,30 @@
 (defun parse-ipv6-address (ip-string)
   "Parse IPv6 address string into words"
   (let* ((expanded (expand-ipv6-address ip-string))
-         (parts (seq:realize (str:split ":" expanded))))
+         (parts (seq:realize (str:split #\: expanded))))
     (when (= (length parts) 8)
       (let ((words (mapcar (lambda (x) (parse-integer x :radix 16)) parts)))
         (when (every (lambda (x) (and (>= x 0) (<= x 65535))) words)
           (make-instance 'ipv6-address
                          :words (coerce words '(vector (unsigned-byte 16) 8))))))))
 
+(defun split-double-colon (ip-string)
+  "Split an IPv6 string on '::'. Returns a list of at most two parts."
+  (let ((pos (search "::" ip-string)))
+    (if pos
+        (list (subseq ip-string 0 pos)
+              (subseq ip-string (+ pos 2)))
+        (list ip-string))))
+
 (defun expand-ipv6-address (ip-string)
   "Expand compressed IPv6 address notation"
   ;; Simple implementation - handle :: expansion
   (if (search "::" ip-string)
-      (let* ((parts (seq:realize (str:split "::" ip-string)))
-             (left (if (first parts) (seq:realize (str:split ":" (first parts))) '()))
-             (right (if (second parts) (seq:realize (str:split ":" (second parts))) '()))
+      (let* ((parts (split-double-colon ip-string))
+             (left (if (plusp (length (first parts)))
+                       (seq:realize (str:split #\: (first parts))) '()))
+             (right (if (and (second parts) (plusp (length (second parts))))
+                        (seq:realize (str:split #\: (second parts))) '()))
              (missing (- 8 (length left) (length right))))
         (format nil "~{~A~^:~}"
                 (append left
@@ -245,29 +257,38 @@
                    :port port
                    :family (if (eq family :hostname) :ipv4 family))))
 
-(defun resolve-address (address-spec)
-  "Resolve an address specification to socket addresses"
-  (etypecase address-spec
-    (socket-address
-     ;; Check if the socket-address already has a resolved IP or needs DNS lookup
-     (let ((host (socket-address-ip address-spec))
-           (port (socket-address-port address-spec)))
-       (if (or (detect-ip-address host) (null host))
-           ;; It's already an IP address or localhost
-           (list address-spec)
-           ;; Need DNS resolution
-           (dns-resolve-hostname host port))))
-    (string
-     (let* ((addr (parse-address address-spec))
-            (host (socket-address-ip addr))
-            (port (socket-address-port addr)))
-       (if (or (detect-ip-address host) (null host))
-           ;; It's already an IP address or localhost
-           (list addr)
-           ;; Need DNS resolution
-           (dns-resolve-hostname host port))))
-    (list
-       (list (make-socket-address (first address-spec) (second address-spec))))))
+(defun resolve-address (address-spec &optional port)
+  "Resolve an address specification to socket addresses.
+   Can be called as:
+   - (resolve-address socket-address)
+   - (resolve-address \"host:port\")
+   - (resolve-address '(host port))
+   - (resolve-address hostname port) - for compatibility with Linux/Windows"
+  (if port
+      ;; Two-argument form: (resolve-address hostname port)
+      (resolve-address (make-socket-address address-spec port))
+      ;; Single-argument form
+      (etypecase address-spec
+        (socket-address
+         ;; Check if the socket-address already has a resolved IP or needs DNS lookup
+         (let ((host (socket-address-ip address-spec))
+               (port (socket-address-port address-spec)))
+           (if (or (detect-ip-address host) (null host))
+               ;; It's already an IP address or localhost
+               (list address-spec)
+               ;; Need DNS resolution
+               (dns-resolve-hostname host port))))
+        (string
+         (let* ((addr (parse-address address-spec))
+                (host (socket-address-ip addr))
+                (port (socket-address-port addr)))
+           (if (or (detect-ip-address host) (null host))
+               ;; It's already an IP address or localhost
+               (list addr)
+               ;; Need DNS resolution
+               (dns-resolve-hostname host port))))
+        (list
+         (list (make-socket-address (first address-spec) (second address-spec)))))))
 
 (defun detect-ip-address (host)
   "Check if host string is already an IP address"
@@ -292,7 +313,7 @@
           (let* ((port-str (if port (format nil "~D" port) "0"))
                  (result (lib:shared-call '("getaddrinfo" "/usr/lib/libSystem.B.dylib")
                                           :int
-                                          '(:c-string :c-string :pointer :pointer)
+                                          '(:string :string :pointer :pointer)
                                           hostname port-str hints result-ptr)))
             (if (= result 0)
                 (let ((addrinfo-list (parse-addrinfo-results (sb-sys:sap-ref-sap result-ptr 0))))

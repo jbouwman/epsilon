@@ -73,9 +73,8 @@
    udp-try-send
    udp-try-recv
    udp-poll-send
-   udp-poll-recv))
-
-(in-package epsilon.net.sockets)
+   udp-poll-recv)
+  (:enter t))
 
 ;;; ============================================================================
 ;;; Common Socket Utilities
@@ -349,8 +348,9 @@
                            :peer-address sock-addr
                            :connected-p t)))))))
 
-(defun tcp-read (stream buffer &key (start 0) end)
+(defun tcp-read (stream buffer &key (start 0) end timeout)
   "Read data from the stream into a buffer"
+  (declare (ignore timeout))
   (let* ((end (or end (length buffer)))
          (count (- end start)))
     (handler-case
@@ -448,19 +448,34 @@
     (error () :would-block)))
 
 (defun tcp-poll-read (stream waker)
-  "Poll for read readiness"
-  (let ((buffer (make-array 1 :element-type '(unsigned-byte 8))))
-    (let ((result (tcp-try-read stream buffer)))
-      (if (eq result :would-block)
-          (progn
-            (let ((async-op (make-async-operation
-                             :fd (tcp-stream-handle stream)
-                             :type :read
-                             :buffer buffer
-                             :callback waker)))
-              (submit-async-operation async-op)
-              :pending))
-          result))))
+  "Poll for read readiness. Returns :ready if data (or EOF) is available,
+   or :pending after registering WAKER for async notification.
+   Does not modify the fd's blocking mode."
+  (let ((fd (tcp-stream-handle stream)))
+    (lib:with-foreign-memory ((buf :char :count 1))
+      ;; MSG_PEEK | MSG_DONTWAIT = 0x2 | 0x80 = 0x82
+      ;; Non-blocking peek without modifying the fd's blocking state.
+      (let ((result (%recv fd buf 1 #x82)))
+        (cond
+          ;; Data available
+          ((> result 0) :ready)
+          ;; EOF (peer closed) -- the fd IS readable, caller will see 0 from recv
+          ((= result 0) :ready)
+          ;; recv returned -1: check errno
+          (t (let ((errno-val (get-errno)))
+               (if (= errno-val 35) ;; EAGAIN/EWOULDBLOCK
+                   ;; No data yet, register for async notification
+                   (let ((async-op (make-async-operation
+                                     :fd fd
+                                     :type :read
+                                     :buffer (make-array 1 :element-type '(unsigned-byte 8))
+                                     :callback waker)))
+                     (submit-async-operation async-op)
+                     :pending)
+                   ;; Real error
+                   (error 'network-error
+                          :message (format nil "tcp-poll-read failed: ~A"
+                                           (errno-to-string errno-val)))))))))))
 
 (defun tcp-poll-write (stream waker)
   "Poll for write readiness"
@@ -500,7 +515,6 @@
 
 (defun tcp-stream-reader (stream)
   "Get a Lisp character input stream for reading.
-   Uses character element-type for text-based protocols (HTTP, ELS).
    Uses :none buffering to avoid blocking on sockets."
   (or (tcp-stream-input stream)
       (setf (tcp-stream-input stream)
@@ -511,7 +525,6 @@
 
 (defun tcp-stream-writer (stream)
   "Get a Lisp character output stream for writing.
-   Uses character element-type for text-based protocols (HTTP, ELS).
    Uses :line buffering so newlines trigger flushes."
   (or (tcp-stream-output stream)
       (setf (tcp-stream-output stream)
@@ -586,30 +599,37 @@
       (error (e)
         (error 'network-error :message (format nil "UDP connect failed: ~A" e))))))
 
-(defun udp-send (socket data address)
-  "Send data to a specific address"
-  (let* ((sock-addr (normalize-address address))
-         (family (socket-address-family sock-addr))
-         (addr-size (sockaddr-size-for-family family))
-         (data-bytes (normalize-data data))
-         (count (length data-bytes)))
+(defun udp-send (socket data &key address)
+  "Send data on UDP socket.  When ADDRESS is nil, use the connected peer."
+  (let ((data-bytes (normalize-data data))
+        (count))
+    (setf count (length data-bytes))
     (handler-case
-        (lib:with-foreign-memory ((buf :char :count count)
-                                  (addr :char :count addr-size))
-          ;; Copy data to foreign buffer
-          (loop for i from 0 below count
-                do (setf (sb-sys:sap-ref-8 buf i)
-                         (aref data-bytes i)))
-          ;; Set up address
-          (fill-sockaddr-for-address addr sock-addr)
-          (log:debug "udp-send: Calling %sendto with fd=~D, count=~D~%" (udp-socket-handle socket) count)
-          (finish-output)
-          (let ((bytes-sent (%sendto (udp-socket-handle socket) buf count 0 addr addr-size)))
-            (log:debug "udp-send: %sendto returned ~D~%" bytes-sent)
-            (finish-output)
-            (if (>= bytes-sent 0)
-                bytes-sent
-                (error 'network-error :message (format nil "UDP send failed: errno ~D" (get-errno))))))
+        (if address
+            ;; Addressed send via sendto
+            (let* ((sock-addr (normalize-address address))
+                   (family (socket-address-family sock-addr))
+                   (addr-size (sockaddr-size-for-family family)))
+              (lib:with-foreign-memory ((buf :char :count count)
+                                        (addr-buf :char :count addr-size))
+                (loop for i from 0 below count
+                      do (setf (sb-sys:sap-ref-8 buf i) (aref data-bytes i)))
+                (fill-sockaddr-for-address addr-buf sock-addr)
+                (let ((bytes-sent (%sendto (udp-socket-handle socket) buf count 0
+                                           addr-buf addr-size)))
+                  (if (>= bytes-sent 0)
+                      bytes-sent
+                      (error 'network-error
+                             :message (format nil "UDP send failed: errno ~D" (get-errno)))))))
+            ;; Connected send via send
+            (lib:with-foreign-memory ((buf :char :count count))
+              (loop for i from 0 below count
+                    do (setf (sb-sys:sap-ref-8 buf i) (aref data-bytes i)))
+              (let ((bytes-sent (%send (udp-socket-handle socket) buf count 0)))
+                (if (>= bytes-sent 0)
+                    bytes-sent
+                    (error 'network-error
+                           :message (format nil "UDP send failed: errno ~D" (get-errno)))))))
       (error (e)
         (error 'network-error :message (format nil "UDP send failed: ~A" e))))))
 
@@ -653,7 +673,7 @@
 
 (defun udp-send-to (socket data address)
   "Send data to address via UDP socket"
-  (udp-send socket data address))
+  (udp-send socket data :address address))
 
 (defun udp-recv-from (socket buffer)
   "Receive data from UDP socket"
@@ -666,7 +686,7 @@
 (defun udp-try-send (socket data address)
   "Try to send UDP data without blocking"
   (handler-case
-      (udp-send socket data address)
+      (udp-send socket data :address address)
     (would-block-error () :would-block)
     (error () :would-block)))
 

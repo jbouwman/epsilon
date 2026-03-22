@@ -1,0 +1,4 @@
+(:name "epsilon.io"
+ :module-set "epsilon-core"
+ :description "IO streams with composition, buffering, and async concurrency."
+ :requires ("epsilon.async" "epsilon.typeclass"))

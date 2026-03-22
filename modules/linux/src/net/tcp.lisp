@@ -58,9 +58,8 @@
 
    ;; Macros
    #:with-tcp-server
-   #:with-tcp-connection))
-
-(in-package epsilon.net.tcp)
+   #:with-tcp-connection)
+  (:enter t))
 
 ;;; ============================================================================
 ;;; Value-Added TCP Operations

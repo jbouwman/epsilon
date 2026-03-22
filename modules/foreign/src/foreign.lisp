@@ -1,6 +1,7 @@
 (defpackage epsilon.foreign
   (:use cl)
   (:local-nicknames
+   (sym epsilon.symbol)
    (map epsilon.map)
    (seq epsilon.sequence)
    (path epsilon.path)
@@ -8,14 +9,12 @@
    (log epsilon.log)
    (trampoline epsilon.foreign.trampoline)
    (marshalling epsilon.foreign.marshalling)
-   (struct epsilon.foreign.struct)
    (callback epsilon.foreign.callback)
-   (callback-impl epsilon.foreign.callback-impl)
-   (clang-sigs epsilon.clang.signatures))
+   ;; Struct support (JIT-based)
+   (jit-struct epsilon.foreign.jit.struct))
   (:export
    ;; Core FFI
    shared-call
-   shared-call-unified
    lib-open
    lib-close
    lib-function
@@ -23,31 +22,14 @@
 
    ;; Utilities
    diagnose-ffi-call
-   test-libffi-integration
-
-   ;; Configuration
-   *use-libffi-calls*
-   *libffi-function-whitelist*
-   *libffi-function-blacklist*
-   *track-call-performance*
-
-   ;; Module utilities
-   get-module-root
-
-   ;; libffi bridge functions
-   load-libffi-extension
-   libffi-call
-   *libffi-library*
    resolve-function-address
    ffi-call
-   ffi-call-auto
 
    ;; Type Management
    define-foreign-struct
+   define-ffi-struct
    with-foreign-struct
-   map-struct
    foreign-array
-   with-zero-copy
 
    ;; Memory Management
    foreign-alloc
@@ -55,16 +37,12 @@
    with-foreign-memory
    register-finalizer
 
-   ;; Structure Discovery
-   grovel-struct
-   grovel-lib
-   parse-header
-
    ;; Type Mapping
    def-type-map
    *primitive-type-map*
+   *custom-type-map*
 
-   ;; New trampoline-based interface
+   ;; Trampoline-based interface
    defshared-fast
    shared-call-fast
 
@@ -93,7 +71,6 @@
    infer-function-signature
    with-pinned-array
    with-string-array
-   with-output-array
    define-enum
    enum-value
    enum-keyword
@@ -105,471 +82,11 @@
    bool-to-foreign
    foreign-to-bool
 
-   ;; Re-export from struct module
-   define-c-struct
-   define-c-struct-auto
-   define-c-union
-   parse-c-struct
-   struct-layout-p
-   get-struct-layout
-   struct-layout-size
-   struct-layout-alignment
-   struct-field-offset
-   struct-field-type
-   struct-field-size
-   struct-has-field-p
-   with-c-struct
-   with-c-union
-   with-struct-view
-   with-foreign-object
-   struct-ref
-   struct-ref-ptr
-   union-ref
-   struct-pointer
-   struct-to-bytes
-   bytes-to-struct
-   struct-to-string
-
-   ;; Re-export from callback module
-   make-callback
-   call-callback
-   callback-pointer
-   register-callback
-   unregister-callback
-   get-callback
-   list-callbacks
-   defcallback
-   with-callback
-   with-callback-scope
-   callback-info
-   callback-info-p
-   callback-info-function
-   callback-info-signature
-   callback-info-pointer
+   ;; Re-exported from callback module via sym:reexport at end of file
 
    ;; Public API and configuration
-   ffi-system-status
-   get-call-statistics))
-
-(in-package epsilon.foreign)
-
-;;;; libffi Integration
-;;;; SBCL bridge to libffi C extension, enabling real callback creation
-
-;;; Type mapping constants (must match C extension)
-(defconstant +epsilon-type-void+          0)
-(defconstant +epsilon-type-int+           1)
-(defconstant +epsilon-type-long+          2)
-(defconstant +epsilon-type-float+         3)
-(defconstant +epsilon-type-double+        4)
-(defconstant +epsilon-type-pointer+       5)
-(defconstant +epsilon-type-string+        6)
-(defconstant +epsilon-type-bool+          7)
-(defconstant +epsilon-type-unsigned-int+  8)
-(defconstant +epsilon-type-unsigned-long+ 9)
-
-;;; Global state
-(defvar *libffi-library* nil
-  "Handle to the loaded libffi extension library")
-
-(defvar *libffi-callbacks* (map:make-map)
-  "Registry mapping callback IDs to Lisp callback information")
-
-(defvar *libffi-mutex* (sb-thread:make-mutex :name "libffi-callbacks")
-  "Mutex for thread-safe callback operations")
-
-;;; Module path resolution
-(defun get-module-root ()
-  "Get the root directory of the current module"
-  (or
-   ;; Method 1: Use load/compile pathname - go up from src/foreign.lisp to module root
-   (when (or *load-pathname* *compile-file-pathname*)
-     (let* ((path (or *load-pathname* *compile-file-pathname*))
-            (dir (pathname-directory path)))
-       ;; Check if we're in a fasl directory structure
-       (if (member "fasl" dir :test #'string=)
-           ;; In fasl dir: find "modules" in path and construct from there
-           (let ((modules-pos (position "modules" dir :test #'string= :from-end t)))
-             (when modules-pos
-               (make-pathname
-                :directory (append (subseq dir 0 (1+ modules-pos)) '("foreign")))))
-           ;; Normal source path: go up two levels from src/foreign.lisp
-           (make-pathname
-            :directory (butlast (butlast dir))))))
-   ;; Method 2: Try relative to current directory
-   (probe-file "modules/foreign/")
-   ;; Method 3: Error if we can't find it
-   (error "Cannot determine module directory")))
-
-;;; Library loading
-(defun load-libffi-extension ()
-  "Load the libffi C extension library"
-  (when *libffi-library*
-    (return-from load-libffi-extension *libffi-library*))
-
-  (let* ((module-root (get-module-root))
-         ;; Convert SBCL's "X86-64" to standard "x86_64"
-         (arch (string-downcase (substitute #\_ #\- (machine-type))))
-         (platform-lib (format nil "lib/libepsilon-libffi-~A-~A.~A"
-                              #+linux "linux" #+darwin "darwin" #-(or linux darwin) "unknown"
-                              arch
-                              #+linux "so" #+darwin "dylib" #-(or linux darwin) "so"))
-         (extension-path (merge-pathnames platform-lib module-root)))
-
-    (unless (probe-file extension-path)
-      (error "libffi extension not found at ~A" extension-path))
-
-    (setf *libffi-library* (sb-alien:load-shared-object extension-path))
-    (log:debug "Loaded libffi extension from ~A" extension-path)
-    *libffi-library*))
-
-;;; Foreign function definitions
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defmacro define-libffi-function (name return-type &rest args)
-    "Define a foreign function from the libffi extension"
-    `(sb-alien:define-alien-routine ,name ,return-type ,@args)))
-
-(define-libffi-function epsilon-libffi-test sb-alien:int)
-
-(define-libffi-function epsilon-create-callback sb-alien:int
-  (lisp-function sb-alien:system-area-pointer)
-  (return-type sb-alien:int)
-  (arg-types (* sb-alien:int))
-  (nargs sb-alien:int))
-
-(define-libffi-function epsilon-get-callback-pointer sb-alien:system-area-pointer
-  (callback-id sb-alien:int))
-
-(define-libffi-function epsilon-destroy-callback sb-alien:int
-  (callback-id sb-alien:int))
-
-(define-libffi-function epsilon-cleanup-all-callbacks sb-alien:void)
-
-(define-libffi-function epsilon-get-callback-count sb-alien:int)
-
-(define-libffi-function epsilon-get-last-error sb-alien:c-string)
-
-;;; Function call support
-(define-libffi-function epsilon-prep-cif sb-alien:int
-  (return-type sb-alien:int)
-  (arg-types (* sb-alien:int))
-  (nargs sb-alien:int)
-  (cif-ptr (* sb-alien:system-area-pointer)))
-
-(define-libffi-function epsilon-call-function sb-alien:int
-  (cif sb-alien:system-area-pointer)
-  (function-ptr sb-alien:system-area-pointer)
-  (args (* sb-alien:system-area-pointer))
-  (result sb-alien:system-area-pointer))
-
-(define-libffi-function epsilon-free-cif sb-alien:void
-  (cif sb-alien:system-area-pointer))
-
-;;; Type conversion utilities
-(defun lisp-type-to-epsilon-type (lisp-type)
-  "Convert Lisp type symbols to epsilon type constants"
-  (case lisp-type
-    ((:void void) +epsilon-type-void+)
-    ((:int int integer) +epsilon-type-int+)
-    ((:long long) +epsilon-type-long+)
-    ((:unsigned-int unsigned-int) +epsilon-type-unsigned-int+)
-    ((:unsigned-long unsigned-long) +epsilon-type-unsigned-long+)
-    ((:float float single-float) +epsilon-type-float+)
-    ((:double double double-float) +epsilon-type-double+)
-    ((:pointer pointer sb-alien:system-area-pointer) +epsilon-type-pointer+)
-    ((:string :c-string string c-string) +epsilon-type-string+)
-    ((:bool boolean) +epsilon-type-bool+)
-    (t (error "Unsupported type for libffi callback: ~A" lisp-type))))
-
-(defun make-epsilon-type-array (arg-types)
-  "Create C array of epsilon type constants from Lisp type list"
-  (let* ((count (length arg-types))
-         (array (sb-alien:make-alien sb-alien:int count)))
-    (loop for i from 0
-          for type in arg-types
-          do (setf (sb-alien:deref array i) (lisp-type-to-epsilon-type type)))
-    array))
-
-;;; Callback registry management
-(defstruct callback-info
-  id
-  function
-  return-type
-  arg-types
-  pointer)
-
-(defun register-libffi-callback (id function return-type arg-types pointer)
-  "Register a callback in the Lisp-side registry"
-  (sb-thread:with-mutex (*libffi-mutex*)
-    (setf *libffi-callbacks* (map:assoc *libffi-callbacks* id
-                                               (make-callback-info :id id
-                                                                   :function function
-                                                                   :return-type return-type
-                                                                   :arg-types arg-types
-                                                                   :pointer pointer)))))
-
-(defun unregister-libffi-callback (id)
-  "Remove a callback from the Lisp-side registry"
-  (sb-thread:with-mutex (*libffi-mutex*)
-    (setf *libffi-callbacks* (map:dissoc *libffi-callbacks* id))))
-
-(defun get-libffi-callback (id)
-  "Retrieve callback info by ID"
-  (sb-thread:with-mutex (*libffi-mutex*)
-    (map:get *libffi-callbacks* id)))
-
-;;; High-level callback creation interface
-(defun make-libffi-callback (function return-type arg-types)
-  "Create a real callback using libffi
-   Returns the C function pointer or signals an error"
-  (unless *libffi-library*
-    (load-libffi-extension))
-
-  ;; Validate arguments
-  (unless (functionp function)
-    (error "First argument must be a function"))
-
-  (unless (and (listp arg-types) (every #'symbolp arg-types))
-    (error "arg-types must be a list of type symbols"))
-
-  (let* ((epsilon-return-type (lisp-type-to-epsilon-type return-type))
-         (nargs (length arg-types))
-         (epsilon-arg-types (make-epsilon-type-array arg-types))
-         (lisp-function-ptr (sb-sys:int-sap
-                             (sb-kernel:get-lisp-obj-address function))))
-
-    (unwind-protect
-         (let ((callback-id (epsilon-create-callback lisp-function-ptr
-                                                     epsilon-return-type
-                                                     epsilon-arg-types
-                                                     nargs)))
-           (if (< callback-id 0)
-               (error "Failed to create libffi callback: ~A"
-                      (epsilon-get-last-error))
-               (let ((pointer (epsilon-get-callback-pointer callback-id)))
-                 (if (zerop (sb-sys:sap-int pointer))
-                     (progn
-                       (epsilon-destroy-callback callback-id)
-                       (error "Failed to get callback pointer: ~A"
-                              (epsilon-get-last-error)))
-                     (progn
-                       (register-libffi-callback callback-id function
-                                                 return-type arg-types pointer)
-                       pointer)))))
-      ;; Clean up the temporary array
-      (sb-alien:free-alien epsilon-arg-types))))
-
-;;; Cleanup utilities
-(defun cleanup-libffi-callbacks ()
-  "Clean up all libffi callbacks"
-  (when *libffi-library*
-    (epsilon-cleanup-all-callbacks)
-    (sb-thread:with-mutex (*libffi-mutex*)
-      (setf *libffi-callbacks* (map:make-map)))))
-
-;;; Test and diagnostic functions
-(defun test-libffi-extension ()
-  "Test if libffi extension is working"
-  (unless *libffi-library*
-    (load-libffi-extension))
-
-  (let ((result (epsilon-libffi-test)))
-    (if (= result 42)
-        (format t "libffi extension test passed (returned ~A)~%" result)
-        (format t "libffi extension test failed (returned ~A, expected 42)~%" result))
-    (= result 42)))
-
-(defun libffi-callback-count ()
-  "Get count of active libffi callbacks"
-  (if *libffi-library*
-      (epsilon-get-callback-count)
-      0))
-
-;;; CIF (Call Interface) management for function calls
-
-(defvar *cif-cache* (make-hash-table :test 'equal)
-  "Cache of prepared call interfaces")
-
-(defvar *cif-mutex* (sb-thread:make-mutex :name "libffi-cif")
-  "Mutex for thread-safe CIF operations")
-
-(defstruct cif-info
-  pointer
-  return-type
-  arg-types
-  ref-count)
-
-(defun get-or-create-cif (return-type arg-types)
-  "Get cached or create new call interface"
-  ;; Ensure extension is loaded
-  (unless *libffi-library*
-    (load-libffi-extension))
-
-  (let ((signature (list return-type arg-types)))
-    (sb-thread:with-mutex (*cif-mutex*)
-      (let ((existing (gethash signature *cif-cache*)))
-        (if existing
-            (progn
-              (incf (cif-info-ref-count existing))
-              existing)
-            (let ((cif-info (prepare-cif return-type arg-types)))
-              (setf (gethash signature *cif-cache*) cif-info)
-              cif-info))))))
-
-(defun prepare-cif (return-type arg-types)
-  "Prepare a call interface for the given signature"
-  (let* ((epsilon-return-type (lisp-type-to-epsilon-type return-type))
-         (nargs (length arg-types))
-         (epsilon-arg-types (make-epsilon-type-array arg-types))
-         (cif-ptr-holder (sb-alien:make-alien sb-alien:system-area-pointer)))
-
-    (unwind-protect
-         (let ((result (epsilon-prep-cif epsilon-return-type
-                                        epsilon-arg-types
-                                        nargs
-                                        cif-ptr-holder)))
-           (if (< result 0)
-               (error "Failed to prepare CIF: ~A" (epsilon-get-last-error))
-               (let ((cif-ptr (sb-alien:deref cif-ptr-holder)))
-                 (make-cif-info :pointer cif-ptr
-                               :return-type return-type
-                               :arg-types arg-types
-                               :ref-count 1))))
-      ;; Clean up the temporary array
-      (sb-alien:free-alien epsilon-arg-types))))
-
-(defun release-cif (cif-info)
-  "Release a call interface (reference counted)"
-  (sb-thread:with-mutex (*cif-mutex*)
-    (when (zerop (decf (cif-info-ref-count cif-info)))
-      ;; Remove from cache when ref count reaches zero
-      (let ((signature (list (cif-info-return-type cif-info)
-                            (cif-info-arg-types cif-info))))
-        (remhash signature *cif-cache*)
-        (epsilon-free-cif (cif-info-pointer cif-info))))))
-
-;;; High-level function call interface
-
-(defun libffi-call (function-address return-type arg-types args)
-  "Make FFI call using libffi instead of hardcoded signatures"
-  (let ((cif-info (get-or-create-cif return-type arg-types)))
-    (unwind-protect
-         (multiple-value-bind (converted-args holders)
-             (convert-args-to-pointers args arg-types)
-           ;; Keep holders alive during the entire call by binding them
-           (unwind-protect
-                (let* ((result-holder (allocate-result-holder return-type))
-                       (fn-sap (if (sb-sys:system-area-pointer-p function-address)
-                                  function-address
-                                  (sb-sys:int-sap function-address)))
-                       (call-result (epsilon-call-function (cif-info-pointer cif-info)
-                                                           fn-sap
-                                                           converted-args
-                                                           result-holder)))
-                  (if (< call-result 0)
-                      (error "FFI call failed: ~A" (epsilon-get-last-error))
-                      (extract-result result-holder return-type)))
-             ;; holders keeps memory alive through lexical binding
-             (when holders nil)))
-      (release-cif cif-info))))
-
-(defun convert-args-to-pointers (args arg-types)
-  "Convert Lisp arguments to array of pointers for libffi"
-  (let* ((nargs (length args))
-         (arg-array (sb-alien:make-alien sb-alien:system-area-pointer nargs))
-         ;; Keep holders alive during the call
-         (holders '()))
-    (loop for i from 0
-          for arg in args
-          for type in arg-types
-          do (multiple-value-bind (converted holder)
-                 (convert-arg-to-pointer arg type)
-               (setf (sb-alien:deref arg-array i) converted)
-               (when holder
-                 (push holder holders))))
-    ;; Return both array and holders to keep them alive
-    (values arg-array holders)))
-
-(defun convert-arg-to-pointer (arg type)
-  "Convert single argument to pointer for libffi call. Returns (values pointer holder-to-keep-alive)"
-  (case type
-    (:int (let ((holder (sb-alien:make-alien sb-alien:int)))
-            (setf (sb-alien:deref holder) arg)
-            (values (sb-alien:alien-sap holder) holder)))
-    (:long (let ((holder (sb-alien:make-alien sb-alien:long)))
-             (setf (sb-alien:deref holder) arg)
-             (values (sb-alien:alien-sap holder) holder)))
-    (:unsigned-int (let ((holder (sb-alien:make-alien sb-alien:unsigned-int)))
-                    (setf (sb-alien:deref holder) arg)
-                    (values (sb-alien:alien-sap holder) holder)))
-    (:unsigned-long (let ((holder (sb-alien:make-alien sb-alien:unsigned-long)))
-                     (setf (sb-alien:deref holder) arg)
-                     (values (sb-alien:alien-sap holder) holder)))
-    (:float (let ((holder (sb-alien:make-alien sb-alien:single-float)))
-              (setf (sb-alien:deref holder) (coerce arg 'single-float))
-              (values (sb-alien:alien-sap holder) holder)))
-    (:pointer (let* ((ptr (if (sb-sys:system-area-pointer-p arg)
-                              arg
-                              (sb-sys:int-sap (if (integerp arg) arg 0))))
-                    (holder (sb-alien:make-alien sb-alien:system-area-pointer)))
-                (setf (sb-alien:deref holder) ptr)
-                (values (sb-alien:alien-sap holder) holder)))
-    ((:string :c-string) (if (stringp arg)
-                 ;; Convert Lisp string to C string and wrap in pointer
-                 (let* ((c-string (sb-alien:make-alien-string arg))
-                        (string-sap (sb-alien:alien-sap c-string))
-                        (holder (sb-alien:make-alien sb-alien:system-area-pointer)))
-                   (setf (sb-alien:deref holder) string-sap)
-                   ;; Return both pointer and objects to keep alive
-                   (values (sb-alien:alien-sap holder) (list holder c-string)))
-                 (error "Expected string for :string type")))
-    (otherwise (error "Unsupported argument type: ~A" type))))
-
-(defun allocate-result-holder (return-type)
-  "Allocate memory to hold function result"
-  (case return-type
-    (:void (sb-sys:int-sap 0))
-    (:int (sb-alien:alien-sap (sb-alien:make-alien sb-alien:int)))
-    (:long (sb-alien:alien-sap (sb-alien:make-alien sb-alien:long)))
-    (:unsigned-int (sb-alien:alien-sap (sb-alien:make-alien sb-alien:unsigned-int)))
-    (:unsigned-long (sb-alien:alien-sap (sb-alien:make-alien sb-alien:unsigned-long)))
-    (:float (sb-alien:alien-sap (sb-alien:make-alien sb-alien:single-float)))
-    (:pointer (sb-alien:alien-sap (sb-alien:make-alien sb-alien:system-area-pointer)))
-    (otherwise (error "Unsupported return type: ~A" return-type))))
-
-(defun extract-result (result-holder return-type)
-  "Extract result from libffi call"
-  (case return-type
-    (:void nil)
-    (:int (sb-alien:deref (sb-alien:sap-alien result-holder (* sb-alien:int))))
-    (:long (sb-alien:deref (sb-alien:sap-alien result-holder (* sb-alien:long))))
-    (:unsigned-int (sb-alien:deref (sb-alien:sap-alien result-holder (* sb-alien:unsigned-int))))
-    (:unsigned-long (sb-alien:deref (sb-alien:sap-alien result-holder (* sb-alien:unsigned-long))))
-    (:float (sb-alien:deref (sb-alien:sap-alien result-holder (* sb-alien:single-float))))
-    (:pointer (sb-alien:deref (sb-alien:sap-alien result-holder (* sb-alien:system-area-pointer))))
-    (otherwise (error "Unsupported return type: ~A" return-type))))
-
-;;; Integration with existing FFI infrastructure
-
-(defun libffi-available-for-calls-p ()
-  "Check if libffi is available for function calls (not just callbacks)"
-  (and *libffi-library*
-       (let ((addr (sb-sys:find-dynamic-foreign-symbol-address "epsilon_prep_cif")))
-         (and addr (not (zerop addr))))))
-
-;;; Ensure foreign functions are available
-(defun ensure-libffi-functions ()
-  "Ensure libffi foreign functions are properly linked"
-  (when *libffi-library*
-    ;; Check if functions are available
-    (let ((test-addr (sb-sys:find-dynamic-foreign-symbol-address "epsilon_libffi_test")))
-      (when (and test-addr (not (zerop test-addr)))
-        t))))
-
-;;; Initialize on load
-(eval-when (:load-toplevel :execute)
-  (load-libffi-extension)
-  (ensure-libffi-functions))
+   ffi-system-status)
+  (:enter t))
 
 ;;;; Core FFI Functions
 
@@ -613,10 +130,28 @@
   "Check if a pathname string is absolute"
   (and (stringp path) (> (length path) 0) (char= (char path 0) #\/)))
 
+(defun resolve-function-address (function-designator)
+  "Resolve function designator to memory address."
+  (etypecase function-designator
+    (string
+     ;; String function name, assume libc
+     (lib:lib-function (lib:lib-open "libc") function-designator))
+    (symbol
+     (lib:lib-function (lib:lib-open "libc") (string function-designator)))
+    (list
+     (destructuring-bind (fn-name lib-name) function-designator
+       (lib:lib-function (lib:lib-open lib-name) (string fn-name))))
+    (integer
+     function-designator))) ; Already an address
+
 (defun shared-call (function-designator return-type arg-types &rest args)
-  "Main entry point for FFI calls using libffi"
-  ;; Delegate to the libffi implementation
-  (apply #'shared-call-unified function-designator return-type arg-types args))
+  "Main entry point for FFI calls using SBCL's native trampoline system"
+  ;; Resolve function address
+  (let ((function-address (resolve-function-address function-designator)))
+    (unless function-address
+      (error "Could not find function ~A" function-designator))
+    ;; Use trampoline system for the call
+    (trampoline:call-with-trampoline function-address return-type arg-types args)))
 
 ;; Type conversion and mapping system
 
@@ -683,104 +218,143 @@
          (arg-types (when arg-specs (mapcar #'second arg-specs))))
     `(defun ,lisp-name ,arg-names
        ,@(when documentation (list documentation))
-       (shared-call (list ,c-name ,library) ,return-type ',(or arg-types '()) ,@arg-names))))
+       (shared-call (list ,c-name ,library) ,return-type ',arg-types ,@arg-names))))
 
 ;;;; Type Management
 
 ;;; define-foreign-struct: Defines a foreign structure layout
-;;; Uses clang to determine actual memory layout
-;;; Creates optimized accessors for structure fields
-;;; Handles alignment and packing automatically
+;;; Delegates to epsilon.foreign.jit.struct:define-jit-struct for
+;;; efficient struct passing.
 ;;;
 ;;; Parameters:
 ;;;   name - Symbol naming the structure
-;;;   &rest fields - List of field definitions (name type &key offset)
-;;;   &key from-header - C header file to extract from
-;;;        c-name - Name in C if different from Lisp name
+;;;   &rest fields - List of field definitions (name type)
 ;;;
 ;;; Example:
 ;;; (define-foreign-struct timespec
 ;;;   (sec :long)
-;;;   (nsec :long)
-;;;   :from-header "time.h")
+;;;   (nsec :long))
 
-(defmacro define-foreign-struct (name &rest fields &key from-header c-name)
-  "Stub implementation - define a foreign struct"
-  (declare (ignore fields from-header c-name))
-  `(defstruct ,name))
+(defmacro define-foreign-struct (name &rest fields)
+  "Define a foreign struct for use with FFI.
+
+   Delegates to the JIT struct system which handles:
+   - Layout calculation with proper alignment
+   - Efficient struct passing (register packing for small structs)
+   - Field accessors
+
+   Example:
+     (define-foreign-struct point
+       (x :double)
+       (y :double))"
+  `(jit-struct:define-jit-struct ,name ,@fields))
+
+(defmacro define-ffi-struct (name &rest fields)
+  "Define a struct for FFI with BOTH jit-struct metadata AND sb-alien type.
+
+   This is the recommended way to define structs when you need struct-by-value
+   returns. The sb-alien type enables correct calling convention handling.
+
+   Creates:
+   - jit-struct definition for layout queries and field access
+   - sb-alien struct type for use in sb-alien:define-alien-routine
+
+   Example:
+     (define-ffi-struct xxh128-hash-t
+       (low64 :unsigned-long)
+       (high64 :unsigned-long))
+
+     ;; Then use with sb-alien:define-alien-routine:
+     (sb-alien:define-alien-routine (\"XXH3_128bits\" %xxh3-128bits)
+         (sb-alien:struct xxh128-hash-t)
+       (input sb-alien:system-area-pointer)
+       (length sb-alien:unsigned-long))"
+  `(jit-struct:define-ffi-struct ,name ,@fields))
 
 ;;; with-foreign-struct: Allocates a foreign structure and binds it
-;;; Zero-copy where possible for efficiency
 ;;;
 ;;; Parameters:
 ;;;   (var type) - Binding and structure type
 ;;;   &body body - Code to execute with binding
 ;;;
 ;;; Example:
-;;; (with-foreign-struct (ts 'timespec)
+;;; (with-foreign-struct (ts timespec)
 ;;;   (setf (struct-slot ts 'sec) 10)
 ;;;   (my-function ts))
 
 (defmacro with-foreign-struct ((var type) &body body)
-  "Stub implementation - allocate foreign struct"
-  (declare (ignore type))
-  `(let ((,var (foreign-alloc 64))) ; Allocate 64 bytes for any struct
-     (unwind-protect
-          (progn ,@body)
-       (foreign-free ,var))))
+  "Allocate and bind a foreign struct for the duration of BODY.
 
-;;; map-struct: Maps a Lisp structure to/from a foreign structure
-;;; Enables zero-copy sharing of structure data
+   The struct is allocated as a byte array that can be passed to foreign
+   functions. Use struct-field-ref to access fields.
+
+   Example:
+     (define-foreign-struct point (x :double) (y :double))
+     (with-foreign-struct (p point)
+       (setf (jit-struct:struct-field-ref p 'point 'x) 1.0d0)
+       (my-function p))"
+  (let ((size-var (gensym "SIZE"))
+        (buffer-var (gensym "BUFFER")))
+    `(let* ((,size-var (or (jit-struct:jit-struct-size ',type)
+                           (error "Unknown struct type: ~A" ',type)))
+            (,buffer-var (make-array ,size-var
+                                     :element-type '(unsigned-byte 8)
+                                     :initial-element 0)))
+       (sb-sys:with-pinned-objects (,buffer-var)
+         (let ((,var (sb-sys:sap-int (sb-sys:vector-sap ,buffer-var))))
+           ,@body)))))
+
+;;; foreign-array: Creates an array suitable for foreign code
 ;;;
 ;;; Parameters:
-;;;   lisp-value - Lisp structure or object
-;;;   foreign-type - Foreign structure type
-;;;   direction - :to-foreign or :from-foreign or :bidirectional
-;;;
-;;; Returns: Foreign structure pointer or updated Lisp value
-
-(defun map-struct (lisp-value foreign-type &optional (direction :bidirectional))
-  "Stub implementation - map between Lisp and foreign structs"
-  (declare (ignore foreign-type direction))
-  lisp-value)
-
-;;; foreign-array: Creates or maps an array for foreign code
-;;; Zero-copy array sharing with foreign code
-;;; Handles multi-dimensional arrays
-;;;
-;;; Parameters:
-;;;   element-type - Type of array elements
-;;;   dimensions - List of array dimensions
+;;;   element-type - Type of array elements (:float, :double, :int, etc.)
+;;;   dimensions - Array dimensions
 ;;;   &key initial-contents - Initial data
-;;;        existing-array - Lisp array to share
-;;;        foreign-pointer - Foreign memory to use
+;;;        initial-element - Initial element value
 ;;;
-;;; Returns: Array object that can be passed to foreign code
+;;; Returns: A simple-array that can be passed to foreign code
 
-(defun foreign-array (element-type dimensions &key initial-contents existing-array foreign-pointer)
-  "Stub implementation - create foreign array"
-  (declare (ignore element-type initial-contents existing-array foreign-pointer))
-  (apply #'make-array dimensions))
+(defun foreign-array (element-type dimensions &key initial-contents initial-element)
+  "Create an array suitable for passing to foreign code.
 
-;;; with-zero-copy: Executes body with zero-copy foreign data sharing
-;;; Optimizes data transfer between Lisp and C
-;;;
-;;; Parameters:
-;;;   bindings - List of (var lisp-value foreign-type) triplets
-;;;   &body body - Code to execute with bindings
-;;;
-;;; Example:
-;;; (with-zero-copy ((farr my-array :float-array)
-;;;                  (fstruct my-struct 'mystruct))
-;;;   (my-c-function farr fstruct))
+   ELEMENT-TYPE - FFI type keyword (:float, :double, :int, etc.)
+   DIMENSIONS - Array dimensions (integer or list)
+   INITIAL-CONTENTS - Optional initial data
+   INITIAL-ELEMENT - Optional initial element value
 
-(defmacro with-zero-copy (bindings &body body)
-  "Stub implementation - zero-copy data sharing"
-  (let ((var-bindings (mapcar (lambda (binding)
-                                `(,(first binding) ,(second binding)))
-                              bindings)))
-    `(let ,var-bindings
-       ,@body)))
+   Returns a simple-array with appropriate element type.
+
+   Example:
+     (let ((arr (foreign-array :double '(100))))
+       (sb-sys:with-pinned-objects (arr)
+         (my-function (sb-sys:vector-sap arr))))"
+  (let ((lisp-element-type (case element-type
+                             ((:float :single-float) 'single-float)
+                             ((:double :double-float) 'double-float)
+                             ((:char :int8) '(signed-byte 8))
+                             ((:uchar :uint8 :unsigned-char) '(unsigned-byte 8))
+                             ((:short :int16) '(signed-byte 16))
+                             ((:ushort :uint16) '(unsigned-byte 16))
+                             ((:int :int32) '(signed-byte 32))
+                             ((:uint :uint32) '(unsigned-byte 32))
+                             ((:long :int64) '(signed-byte 64))
+                             ((:ulong :uint64) '(unsigned-byte 64))
+                             ((:pointer) '(unsigned-byte 64))
+                             (otherwise t)))
+        (dims (if (listp dimensions) dimensions (list dimensions))))
+    (cond
+      (initial-contents
+       (make-array dims
+                   :element-type lisp-element-type
+                   :initial-contents initial-contents))
+      (initial-element
+       (make-array dims
+                   :element-type lisp-element-type
+                   :initial-element (coerce initial-element lisp-element-type)))
+      (t
+       (make-array dims
+                   :element-type lisp-element-type
+                   :initial-element (coerce 0 lisp-element-type))))))
 
 ;;;; Memory Management
 
@@ -875,170 +449,90 @@
   "Registers a function to run when object is GC'd"
   (sb-ext:finalize object function))
 
-;;;; Structure Discovery
-
-;;; grovel-struct: Extracts structure layout from C
-;;; Uses clang to determine exact memory layout
-;;;
-;;; Parameters:
-;;;   struct-name - Name of C structure
-;;;   &key headers - List of headers to include
-;;;        include-dirs - Additional include directories
-;;;
-;;; Returns: Structure description for use with define-foreign-struct
-
-(defun grovel-struct (struct-name &key headers include-dirs)
-  "Stub implementation - extract C struct layout"
-  (declare (ignore struct-name headers include-dirs))
-  nil)
-
-;;; grovel-lib: Extracts function information from a library
-;;; Uses various tools (nm, objdump, clang) to get function signatures
-;;;
-;;; Parameters:
-;;;   library-name - Name of library to analyze
-;;;   &key headers - Related headers to parse
-;;;        include-dirs - Additional include directories
-;;;
-;;; Returns: List of function descriptions
-
-(defun grovel-lib (library-name &key headers include-dirs)
-  "Stub implementation - extract library functions"
-  (declare (ignore library-name headers include-dirs))
-  nil)
-
-;;; parse-header: Extracts type information from C header files
-;;; Creates Lisp-accessible descriptions of C types
-;;;
-;;; Parameters:
-;;;   header-file - Header file to parse
-;;;   &key include-dirs - Additional include directories
-;;;        types - Specific types to extract (nil for all)
-;;;        recursive - Whether to follow included headers
-;;;
-;;; Returns: Hash table mapping C types to their descriptions
-
-(defun parse-header (header-file &key include-dirs types recursive)
-  "Stub implementation - parse C headers"
-  (declare (ignore header-file include-dirs types recursive))
-  map:+empty+)
-
 ;;;; Type Mapping
 
+;;; Custom type map for user-defined type conversions
+
+(defvar *custom-type-map* (make-hash-table :test 'eq)
+  "Map of custom type conversions.
+   Key: lisp type symbol
+   Value: plist with :c-type :to-foreign :from-foreign :direct")
+
 ;;; def-type-map: Defines mapping between Lisp and C types
-;;; Creates optimized conversion paths for types
+;;; Creates conversion functions for custom types
 ;;;
 ;;; Parameters:
-;;;   lisp-type - Lisp type specifier
-;;;   c-type - C type specifier
+;;;   lisp-type - Lisp type specifier (symbol)
+;;;   c-type - C type specifier (:int, :pointer, etc.)
 ;;;   &key to-foreign - Function to convert Lisp->C
 ;;;        from-foreign - Function to convert C->Lisp
 ;;;        direct - If true, indicates no conversion needed
 ;;;
 ;;; Example:
-;;; (def-type-map 'string '(:pointer :char)
-;;;   :to-foreign #'string-to-c-string
-;;;   :from-foreign #'c-string-to-string)
+;;; (def-type-map my-string :pointer
+;;;   :to-foreign (lambda (s) (sb-ext:string-to-octets s :null-terminate t))
+;;;   :from-foreign (lambda (p) (sb-ext:octets-to-string (pointer-to-octets p))))
 
 (defmacro def-type-map (lisp-type c-type &key to-foreign from-foreign direct)
-  "Stub implementation - define type mapping"
-  (declare (ignore lisp-type c-type to-foreign from-foreign direct))
-  nil)
+  "Define a custom type mapping for FFI conversions.
+
+   LISP-TYPE - Symbol naming the Lisp type
+   C-TYPE - FFI type keyword (:int, :pointer, :double, etc.)
+   TO-FOREIGN - Function (lisp-value) -> foreign-value
+   FROM-FOREIGN - Function (foreign-value) -> lisp-value
+   DIRECT - If true, no conversion needed (types are compatible)
+
+   Example:
+     ;; Define a boolean type that maps to C int
+     (def-type-map my-bool :int
+       :to-foreign (lambda (v) (if v 1 0))
+       :from-foreign (lambda (v) (not (zerop v))))
+
+     ;; Use in defshared
+     (defshared my-func \"my_func\" \"mylib\" my-bool (x my-bool))"
+  `(setf (gethash ',lisp-type *custom-type-map*)
+         (list :c-type ,c-type
+               :to-foreign ,to-foreign
+               :from-foreign ,from-foreign
+               :direct ,direct)))
+
+(defun get-type-map (lisp-type)
+  "Get the type mapping for a Lisp type."
+  (gethash lisp-type *custom-type-map*))
+
+(defun convert-custom-to-foreign (value type)
+  "Convert a value using a custom type map."
+  (let ((map (get-type-map type)))
+    (if map
+        (let ((converter (getf map :to-foreign))
+              (direct (getf map :direct)))
+          (cond
+            (direct value)
+            (converter (funcall converter value))
+            (t value)))
+        value)))
+
+(defun convert-custom-from-foreign (value type)
+  "Convert a value from foreign using a custom type map."
+  (let ((map (get-type-map type)))
+    (if map
+        (let ((converter (getf map :from-foreign))
+              (direct (getf map :direct)))
+          (cond
+            (direct value)
+            (converter (funcall converter value))
+            (t value)))
+        value)))
 
 ;;; *primitive-type-map* - Variable holding primitive type mappings
 ;;; Maps Lisp primitive types to their C equivalents
 ;;; Used by shared-call for efficient type conversion
 
-;;; Control variables
-(defvar *use-libffi-calls* nil
-  "When true, use libffi for function calls instead of direct alien calls")
-
-(defvar *track-call-performance* nil
-  "When true, track performance statistics for FFI calls")
-
-;;; Core FFI Functions
-
-(defun call-with-signature (function-address return-type arg-types args)
-  "Call function using signature-specific optimized paths"
-  (cond
-    ;; No arguments - simple function calls
-    ((null arg-types)
-     (cond
-       ((eq return-type :int)
-        (eval `(sb-alien:alien-funcall
-                (sb-alien:sap-alien
-                 (sb-sys:int-sap ,function-address)
-                 (sb-alien:function sb-alien:int)))))
-       ((eq return-type :void)
-        (eval `(sb-alien:alien-funcall
-                (sb-alien:sap-alien
-                 (sb-sys:int-sap ,function-address)
-                 (sb-alien:function sb-alien:void)))))
-       ((eq return-type :pointer)
-        (eval `(sb-alien:alien-funcall
-                (sb-alien:sap-alien
-                 (sb-sys:int-sap ,function-address)
-                 (sb-alien:function sb-alien:system-area-pointer)))))
-       (t (error "Return type ~A not yet implemented for zero-argument functions" return-type))))
-
-    ;; String functions - strlen style: unsigned-long fn(string)
-    ((and (eq return-type :unsigned-long) (equal arg-types '(:string)))
-     (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type))
-                                   args arg-types)))
-       (eval `(sb-alien:alien-funcall
-               (sb-alien:sap-alien
-                (sb-sys:int-sap ,function-address)
-                (sb-alien:function sb-alien:unsigned-long sb-alien:c-string))
-               ,@converted-args))))
-
-    ;; Memory allocation - malloc style: pointer fn(unsigned-long)
-    ((and (eq return-type :pointer) (equal arg-types '(:unsigned-long)))
-     (let ((converted-args (mapcar (lambda (arg type) (convert-to-foreign arg type))
-                                   args arg-types)))
-       (eval `(sb-alien:alien-funcall
-               (sb-alien:sap-alien
-                (sb-sys:int-sap ,function-address)
-                (sb-alien:function sb-alien:system-area-pointer sb-alien:unsigned-long))
-               ,@converted-args))))
-
-    ;; Simple system calls - getpid style: int fn()
-    ((and (eq return-type :int) (null arg-types))
-     (eval `(sb-alien:alien-funcall
-             (sb-alien:sap-alien
-              (sb-sys:int-sap ,function-address)
-              (sb-alien:function sb-alien:int)))))
-
-    ;; Pointer-returning functions with no args - like sqlite3_libversion: pointer fn()
-    ((and (eq return-type :pointer) (null arg-types))
-     (eval `(sb-alien:alien-funcall
-             (sb-alien:sap-alien
-              (sb-sys:int-sap ,function-address)
-              (sb-alien:function sb-alien:system-area-pointer)))))
-
-    (t
-     (error "Function signature ~A ~A not yet implemented in call-with-signature"
-            return-type arg-types))))
-
-;; shared-call-unified is defined in libffi-calls.lisp
-
-;; Removed duplicate libffi-call definition to avoid conflicts
-
-;; shared-call is defined above - use shared-call-unified directly
-
-;; Library handle for libffi extension
-(defvar *libffi-library* nil
-  "Handle to the libffi extension library")
-
-;; resolve-function-address is defined in libffi-calls.lisp
-;; ffi-call-auto is defined in libffi-calls.lisp
-
 (defun ffi-call (function-address return-type arg-types &rest args)
-  "Direct FFI call with function address"
-  (call-with-signature function-address return-type arg-types args))
+  "Direct FFI call with function address using the trampoline system"
+  (trampoline:call-with-trampoline function-address return-type arg-types args))
 
-;; *primitive-type-map* is defined earlier in this file (line ~622)
-
-;;;; New Trampoline-based Fast FFI
+;;;; Trampoline-based FFI
 
 (defun shared-call-fast (function-designator return-type arg-types &rest args)
   "Fast FFI call using compiled trampolines instead of eval"
@@ -1070,11 +564,11 @@
          (arg-types (when arg-specs (mapcar #'second arg-specs))))
     `(progn
        ;; Register the signature
-       (trampoline:register-signature ',lisp-name ,return-type ',(or arg-types '()))
+       (trampoline:register-signature ',lisp-name ,return-type ',arg-types)
        ;; Define the function
        (defun ,lisp-name ,arg-names
          ,@(when documentation (list documentation))
-         (shared-call-fast (list ,c-name ,library) ,return-type ',(or arg-types '()) ,@arg-names)))))
+         (shared-call-fast (list ,c-name ,library) ,return-type ',arg-types ,@arg-names)))))
 
 ;; Helper functions for type conversion - these are actually needed
 (defun convert-from-foreign (value type)
@@ -1114,68 +608,11 @@
 
 ;; Re-export smart defshared macro - now handled by smart-ffi module
 
-;; Re-export array handling macros
-(defmacro with-output-array ((var count type) &body body)
-  "Create an array for output parameters"
-  `(marshalling:with-output-array (,var ,count ,type) ,@body))
-
-;; Re-export struct functions
-(defun define-c-struct (name fields)
-  "Define a C struct"
-  (struct:define-c-struct name fields))
-
-(defmacro with-c-struct ((var type) &body body)
-  "Allocate a C struct"
-  `(struct:with-c-struct (,var ,type) ,@body))
-
-(defun struct-ref (struct field)
-  "Get struct field value"
-  (struct:struct-ref struct field))
-
-(defun (setf struct-ref) (value struct field)
-  "Set struct field value"
-  (setf (struct:struct-ref struct field) value))
-
-;;;; Configuration management
-
-(defvar *replace-shared-call* nil
-  "Whether to replace the original shared-call with unified version")
-
-(defun enable-libffi-by-default ()
-  "Configure system to use libffi by default"
-  (setf *use-libffi-calls* t)
-  (setf *libffi-function-whitelist* nil)  ; Allow all functions
-  (setf *libffi-function-blacklist* '())  ; Block none
-  (format t "libffi enabled by default for all functions~%"))
-
-(defun enable-conservative-libffi ()
-  "Configure system to use libffi only for tested functions"
-  (setf *use-libffi-calls* t)
-  (setf *libffi-function-whitelist*
-        '("strlen" "malloc" "free" "getpid" "close" "read" "write"))
-  (setf *libffi-function-blacklist* '())
-  (format t "libffi enabled for conservative function set~%"))
-
-(defun disable-libffi ()
-  "Disable libffi and use SBCL fallback"
-  (setf *use-libffi-calls* nil)
-  (format t "libffi disabled, using SBCL fallback~%"))
-
-;;;; Development helpers
-
-(defmacro with-libffi-testing (&body body)
-  "Execute body with optimal settings for libffi testing"
-  `(let ((*use-libffi-calls* t)
-         (*track-call-performance* t)
-         (*libffi-function-whitelist* nil)
-         (*libffi-function-blacklist* '()))
-     (format t "libffi testing mode enabled~%")
-     ,@body))
 
 ;;;; System status and diagnostics
 
 (defun ffi-system-status ()
-  "Display  FFI system status"
+  "Display FFI system status"
   (format t "~%Epsilon FFI System Status~%")
   (format t "=========================~%~%")
 
@@ -1183,49 +620,47 @@
   (format t "Core System:~%")
   (format t "  SBCL version: ~A~%" (lisp-implementation-version))
   (format t "  Platform: ~A ~A~%" (machine-type) (machine-version))
+  (format t "  FFI backend: SBCL native trampoline~%")
 
-  ;; libffi status
-  (format t "~%libffi Integration:~%")
-  (format t "  libffi available: ~A~%" (and (boundp '*libffi-library*) *libffi-library* t))
-  (format t "  Function calls: ~A~%" (if (fboundp 'libffi-available-for-calls-p)
-                                         (libffi-available-for-calls-p)
-                                         "Unknown"))
-  (format t "  Callbacks: ~A~%" (if (fboundp 'libffi-callback-count)
-                                    (> (libffi-callback-count) -1)
-                                    "Unknown"))
+  ;; Signature system - check authoritative libclang-based system first
+  (format t "~%Signature Discovery:~%")
 
-  ;; Signature system
-  (format t "~%Signature System:~%")
-  (if (find-package :epsilon.clang.signatures)
-      (let ((db-symbol (find-symbol "*SIGNATURE-DATABASE*" :epsilon.clang.signatures)))
-        (if db-symbol
-            (format t "  Clang integration: Available~%  Cached signatures: ~D~%"
-                    (hash-table-count (symbol-value db-symbol)))
-            (format t "  Clang integration: Package found but database unavailable~%")))
-      (format t "  Clang integration: Not available~%"))
-
-  ;; Performance tracking
-  (format t "~%Performance:~%")
-  (format t "  Call tracking: ~A~%" *track-call-performance*)
-  (format t "  Tracked functions: ~D~%" (hash-table-count *call-statistics*))
-
-  ;; Configuration
-  (format t "~%Configuration:~%")
-  (format t "  Use libffi: ~A~%" *use-libffi-calls*)
-  (format t "  Whitelist: ~A~%" (if *libffi-function-whitelist*
-                                  (length *libffi-function-whitelist*)
-                                  "All functions"))
-  (format t "  Blacklist: ~D functions~%" (length *libffi-function-blacklist*))
+  ;; Check signature discovery system
+  (if (find-package :epsilon.foreign.signatures)
+      (let ((cache-symbol (find-symbol "*SIGNATURE-CACHE*" :epsilon.foreign.signatures)))
+        (if cache-symbol
+            (format t "  libclang-based (authoritative): Available~%~
+                       ~4TCached signatures: ~D~%"
+                    (hash-table-count (symbol-value cache-symbol)))
+            (format t "  libclang-based (authoritative): Package found but cache unavailable~%")))
+      (format t "  libclang-based (authoritative): Not available~%"))
 
   (format t "~%"))
 
-;;;; Initialize public API
+;;;; Re-export from trampoline module
+(sym:reexport :epsilon.foreign.trampoline
+              '(make-ffi-trampoline get-or-create-trampoline
+                c-type c-type-p c-type-base c-type-size c-type-alignment c-type-signed-p
+                get-c-type
+                ffi-signature ffi-signature-p ffi-signature-return-type
+                ffi-signature-arg-types ffi-signature-trampoline
+                register-signature get-signature clear-signature-registry
+                convert-to-foreign convert-from-foreign))
 
-(defun initialize-public-api ()
-  "Initialize the public API system"
-  (unless (boundp '*use-libffi-calls*)
-    (setf *use-libffi-calls* t)))
+;;;; Re-export from marshalling module
+(sym:reexport :epsilon.foreign.marshalling
+              '(infer-function-signature
+                with-pinned-array with-string-array with-output-array
+                define-enum enum-value enum-keyword
+                define-c-type
+                foreign-error foreign-error-p foreign-error-code foreign-error-function
+                bool-to-foreign foreign-to-bool))
 
-;; Initialize when loaded
-(eval-when (:load-toplevel :execute)
-  (initialize-public-api))
+;;;; Re-export from callback module
+(sym:reexport :epsilon.foreign.callback
+              '(make-callback call-callback callback-pointer
+                register-callback unregister-callback get-callback list-callbacks))
+
+(sym:reexport-types :epsilon.foreign.callback
+                    '("CALLBACK-INFO"))
+

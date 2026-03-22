@@ -1,0 +1,3 @@
+(:name "epsilon.annotation"
+ :module-set "epsilon-stdlib"
+ :description "General-purpose annotation system for Epsilon definitions")

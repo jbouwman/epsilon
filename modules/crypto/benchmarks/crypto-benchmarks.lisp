@@ -1,58 +1,78 @@
 ;;;; Cryptography Benchmarks
 ;;;;
-;;;; This module provides benchmarks for cryptographic operations
+;;;; This module provides benchmarks for cryptographic operations.
+;;;; Uses throughput metrics (MB/s) for data processing operations.
 
 (defpackage epsilon.tool.benchmark.crypto
   (:use cl)
   (:local-nicknames
-   (benchmark epsilon.tool.benchmark)
-   (suites epsilon.tool.benchmark.suites)
+   (bench epsilon.tool.benchmark)
    (crypto epsilon.crypto)
-   (blake2 epsilon.crypto.blake2)
-   (aead epsilon.crypto.aead))
+   (blake2 epsilon.crypto)
+   (aead epsilon.crypto))
   (:export
-   register-crypto-benchmarks))
-
-(in-package epsilon.tool.benchmark.crypto)
+   register-crypto-benchmarks
+   run-hash-throughput-benchmarks
+   run-encryption-throughput-benchmarks)
+  (:enter t))
 
 ;;; Hash Function Benchmarks
 
 (defun register-hash-benchmarks ()
-  "Register hash function benchmarks"
+  "Register hash function benchmarks with throughput metrics"
 
-  ;; SHA-256 benchmark
-  (benchmark:defbenchmark crypto-sha256-1kb ()
+  ;; SHA-256 benchmarks
+  (bench:defbenchmark crypto/hash/sha256-1kb ()
     (let ((data (make-array 1024 :element-type '(unsigned-byte 8) :initial-element 0)))
-      (crypto:digest data crypto:+digest-sha256+)))
+      (bench:consume (crypto:digest data crypto:+digest-sha256+))))
 
-  (benchmark:defbenchmark crypto-sha256-64kb ()
+  (bench:defbenchmark crypto/hash/sha256-64kb ()
     (let ((data (make-array 65536 :element-type '(unsigned-byte 8) :initial-element 0)))
-      (crypto:digest data crypto:+digest-sha256+)))
+      (bench:consume (crypto:digest data crypto:+digest-sha256+))))
 
   ;; SHA-512 benchmark
-  (benchmark:defbenchmark crypto-sha512-1kb ()
+  (bench:defbenchmark crypto/hash/sha512-1kb ()
     (let ((data (make-array 1024 :element-type '(unsigned-byte 8) :initial-element 0)))
-      (crypto:digest data crypto:+digest-sha512+)))
+      (bench:consume (crypto:digest data crypto:+digest-sha512+))))
 
   ;; SHA3-256 benchmark
   (when (boundp 'crypto:+digest-sha3-256+)
-    (benchmark:defbenchmark crypto-sha3-256-1kb ()
+    (bench:defbenchmark crypto/hash/sha3-256-1kb ()
       (let ((data (make-array 1024 :element-type '(unsigned-byte 8) :initial-element 0)))
-        (crypto:digest data crypto:+digest-sha3-256+))))
+        (bench:consume (crypto:digest data crypto:+digest-sha3-256+)))))
 
   ;; BLAKE2b benchmarks
-  (when (find-package "EPSILON.CRYPTO.BLAKE2")
+  (when (find-package "EPSILON.CRYPTO.HASH.BLAKE2")
     (benchmark:defbenchmark crypto-blake2b-1kb ()
       (let ((data (make-array 1024 :element-type '(unsigned-byte 8) :initial-element 0)))
-        (blake2:blake2b data :output-length 32)))
+        (bench:consume (blake2:blake2b data :output-length 32))))
 
-    (benchmark:defbenchmark crypto-blake2b-64kb ()
+    (bench:defbenchmark crypto/hash/blake2b-64kb ()
       (let ((data (make-array 65536 :element-type '(unsigned-byte 8) :initial-element 0)))
-        (blake2:blake2b data :output-length 32)))
+        (bench:consume (blake2:blake2b data :output-length 32))))
 
-    (benchmark:defbenchmark crypto-blake2s-1kb ()
+    (bench:defbenchmark crypto/hash/blake2s-1kb ()
       (let ((data (make-array 1024 :element-type '(unsigned-byte 8) :initial-element 0)))
-        (blake2:blake2s data)))))
+        (bench:consume (blake2:blake2s data))))))
+
+;;; Parameterized Hash Throughput Benchmarks
+
+(defun run-hash-throughput-benchmarks ()
+  "Run hash benchmarks with various sizes to measure throughput"
+  (bench:with-benchmark-group "crypto/hash-throughput"
+    (dolist (size '(1024 4096 16384 65536 262144 1048576))
+      (let ((data (make-array size :element-type '(unsigned-byte 8) :initial-element 0)))
+        (bench:benchmark-with-input (format nil "sha256-~A" (format-size size))
+          :input data
+          :throughput (bench:throughput-bytes size)
+          (bench:consume (crypto:digest input crypto:+digest-sha256+)))))))
+
+(defun format-size (bytes)
+  "Format byte size for display"
+  (cond
+    ((>= bytes 1048576) (format nil "~DMB" (/ bytes 1048576)))
+    ((>= bytes 1024) (format nil "~DKB" (/ bytes 1024)))
+    (t (format nil "~DB" bytes))))
 
 ;;; KDF Benchmarks
 
@@ -60,68 +80,89 @@
   "Register Key Derivation Function benchmarks"
 
   ;; PBKDF2 with various iteration counts
-  (benchmark:defbenchmark crypto-pbkdf2-1k-iterations ()
+  (bench:defbenchmark crypto/kdf/pbkdf2-1k ()
     (let ((password "benchmark-password")
           (salt (make-array 16 :element-type '(unsigned-byte 8) :initial-element 42)))
-      (crypto:pbkdf2 password salt
-                     :iterations 1000
-                     :key-length 32
-                     :digest crypto:+digest-sha256+)))
+      (bench:consume
+       (crypto:pbkdf2 password salt
+                      :iterations 1000
+                      :key-length 32
+                      :digest crypto:+digest-sha256+))))
 
-  (benchmark:defbenchmark crypto-pbkdf2-10k-iterations ()
+  (bench:defbenchmark crypto/kdf/pbkdf2-10k ()
     (let ((password "benchmark-password")
           (salt (make-array 16 :element-type '(unsigned-byte 8) :initial-element 42)))
-      (crypto:pbkdf2 password salt
-                     :iterations 10000
-                     :key-length 32
-                     :digest crypto:+digest-sha256+)))
+      (bench:consume
+       (crypto:pbkdf2 password salt
+                      :iterations 10000
+                      :key-length 32
+                      :digest crypto:+digest-sha256+))))
 
   ;; HKDF
   (when (fboundp 'crypto:hkdf)
-    (benchmark:defbenchmark crypto-hkdf-expand ()
+    (bench:defbenchmark crypto/kdf/hkdf ()
       (let ((key-material (make-array 32 :element-type '(unsigned-byte 8) :initial-element 1))
             (info (make-array 16 :element-type '(unsigned-byte 8) :initial-element 2)))
-        (crypto:hkdf key-material
-                     :info info
-                     :length 64
-                     :digest crypto:+digest-sha256+))))
+        (bench:consume
+         (crypto:hkdf key-material
+                      :info info
+                      :length 64
+                      :digest crypto:+digest-sha256+)))))
 
   ;; Scrypt (if available)
   (when (fboundp 'crypto:scrypt)
-    (benchmark:defbenchmark crypto-scrypt-standard ()
+    (bench:defbenchmark crypto/kdf/scrypt ()
       (let ((password "benchmark-password")
             (salt (make-array 16 :element-type '(unsigned-byte 8) :initial-element 42)))
-        (crypto:scrypt password salt
-                       :n 16384 :r 8 :p 1
-                       :key-length 32)))))
+        (bench:consume
+         (crypto:scrypt password salt
+                        :n 16384 :r 8 :p 1
+                        :key-length 32))))))
 
 ;;; Symmetric Encryption Benchmarks
 
 (defun register-symmetric-benchmarks ()
-  "Register symmetric encryption benchmarks"
+  "Register symmetric encryption benchmarks with throughput"
 
   ;; AES-256-GCM
-  (benchmark:defbenchmark crypto-aes256-gcm-encrypt-1kb ()
+  (bench:defbenchmark crypto/aead/aes256-gcm-1kb ()
     (let ((key (make-array 32 :element-type '(unsigned-byte 8) :initial-element 1))
+          (nonce (make-array 12 :element-type '(unsigned-byte 8) :initial-element 0))
           (data (make-array 1024 :element-type '(unsigned-byte 8) :initial-element 0)))
-      (aead:aead-encrypt :aes-256-gcm key data)))
+      (bench:consume (crypto:aes-gcm-encrypt data key nonce))))
 
-  (benchmark:defbenchmark crypto-aes256-gcm-encrypt-64kb ()
+  (bench:defbenchmark crypto/aead/aes256-gcm-64kb ()
     (let ((key (make-array 32 :element-type '(unsigned-byte 8) :initial-element 1))
+          (nonce (make-array 12 :element-type '(unsigned-byte 8) :initial-element 0))
           (data (make-array 65536 :element-type '(unsigned-byte 8) :initial-element 0)))
-      (aead:aead-encrypt :aes-256-gcm key data)))
+      (bench:consume (crypto:aes-gcm-encrypt data key nonce))))
 
   ;; ChaCha20-Poly1305
-  (when (member :chacha20-poly1305 (aead:available-ciphers))
-    (benchmark:defbenchmark crypto-chacha20-poly1305-encrypt-1kb ()
-      (let ((key (make-array 32 :element-type '(unsigned-byte 8) :initial-element 1))
-            (data (make-array 1024 :element-type '(unsigned-byte 8) :initial-element 0)))
-        (aead:aead-encrypt :chacha20-poly1305 key data)))
+  (bench:defbenchmark crypto/aead/chacha20-poly1305-1kb ()
+    (let ((key (make-array 32 :element-type '(unsigned-byte 8) :initial-element 1))
+          (nonce (make-array 12 :element-type '(unsigned-byte 8) :initial-element 0))
+          (data (make-array 1024 :element-type '(unsigned-byte 8) :initial-element 0)))
+      (bench:consume (crypto:chacha20-poly1305-encrypt data key nonce))))
 
-    (benchmark:defbenchmark crypto-chacha20-poly1305-encrypt-64kb ()
-      (let ((key (make-array 32 :element-type '(unsigned-byte 8) :initial-element 1))
-            (data (make-array 65536 :element-type '(unsigned-byte 8) :initial-element 0)))
-        (aead:aead-encrypt :chacha20-poly1305 key data)))))
+  (bench:defbenchmark crypto/aead/chacha20-poly1305-64kb ()
+    (let ((key (make-array 32 :element-type '(unsigned-byte 8) :initial-element 1))
+          (nonce (make-array 12 :element-type '(unsigned-byte 8) :initial-element 0))
+          (data (make-array 65536 :element-type '(unsigned-byte 8) :initial-element 0)))
+      (bench:consume (crypto:chacha20-poly1305-encrypt data key nonce)))))
+
+;;; Parameterized Encryption Throughput Benchmarks
+
+(defun run-encryption-throughput-benchmarks ()
+  "Run encryption benchmarks with various sizes to measure throughput"
+  (let ((key (make-array 32 :element-type '(unsigned-byte 8) :initial-element 1))
+        (nonce (make-array 12 :element-type '(unsigned-byte 8) :initial-element 0)))
+    (bench:with-benchmark-group "crypto/aead-throughput"
+      (dolist (size '(1024 4096 16384 65536 262144))
+        (let ((data (make-array size :element-type '(unsigned-byte 8) :initial-element 0)))
+          (bench:benchmark-with-input (format nil "aes256-gcm-~A" (format-size size))
+            :input data
+            :throughput (bench:throughput-bytes size)
+            (bench:consume (crypto:aes-gcm-encrypt input key nonce))))))))
 
 ;;; Asymmetric Cryptography Benchmarks
 
@@ -133,11 +174,11 @@
         (rsa-4096-key nil))
 
     ;; Key generation benchmarks
-    (benchmark:defbenchmark crypto-rsa-2048-keygen ()
-      (crypto:generate-rsa-key :bits 2048))
+    (bench:defbenchmark crypto/rsa/keygen-2048 ()
+      (bench:consume (crypto:generate-rsa-key :bits 2048)))
 
-    (benchmark:defbenchmark crypto-rsa-4096-keygen ()
-      (crypto:generate-rsa-key :bits 4096))
+    (bench:defbenchmark crypto/rsa/keygen-4096 ()
+      (bench:consume (crypto:generate-rsa-key :bits 4096)))
 
     ;; Initialize keys for other benchmarks
     (handler-case
@@ -146,18 +187,20 @@
           (setf rsa-4096-key (crypto:generate-rsa-key :bits 4096))
 
           ;; RSA signing benchmarks
-          (benchmark:defbenchmark crypto-rsa-2048-sign ()
-            (crypto:sign-message rsa-2048-key "Benchmark message for signing"))
+          (bench:defbenchmark crypto/rsa/sign-2048 ()
+            (bench:consume
+             (crypto:sign-message rsa-2048-key "Benchmark message for signing")))
 
-          (benchmark:defbenchmark crypto-rsa-4096-sign ()
-            (crypto:sign-message rsa-4096-key "Benchmark message for signing"))
+          (bench:defbenchmark crypto/rsa/sign-4096 ()
+            (bench:consume
+             (crypto:sign-message rsa-4096-key "Benchmark message for signing")))
 
           ;; RSA encryption benchmarks
-          (benchmark:defbenchmark crypto-rsa-2048-encrypt ()
-            (crypto:encrypt rsa-2048-key "Short message"))
+          (bench:defbenchmark crypto/rsa/encrypt-2048 ()
+            (bench:consume (crypto:encrypt rsa-2048-key "Short message")))
 
-          (benchmark:defbenchmark crypto-rsa-4096-encrypt ()
-            (crypto:encrypt rsa-4096-key "Short message")))
+          (bench:defbenchmark crypto/rsa/encrypt-4096 ()
+            (bench:consume (crypto:encrypt rsa-4096-key "Short message"))))
       (error (e)
         (format t "Warning: Could not initialize RSA benchmarks: ~A~%" e))))
 
@@ -166,11 +209,11 @@
         (ec-p384-key nil))
 
     ;; Key generation
-    (benchmark:defbenchmark crypto-ec-p256-keygen ()
-      (crypto:generate-ec-key :curve :p256))
+    (bench:defbenchmark crypto/ec/keygen-p256 ()
+      (bench:consume (crypto:generate-ec-key :curve :p256)))
 
-    (benchmark:defbenchmark crypto-ec-p384-keygen ()
-      (crypto:generate-ec-key :curve :p384))
+    (bench:defbenchmark crypto/ec/keygen-p384 ()
+      (bench:consume (crypto:generate-ec-key :curve :p384)))
 
     ;; Initialize keys for other benchmarks
     (handler-case
@@ -179,46 +222,49 @@
           (setf ec-p384-key (crypto:generate-ec-key :curve :p384))
 
           ;; ECC signing benchmarks
-          (benchmark:defbenchmark crypto-ec-p256-sign ()
-            (crypto:sign-message ec-p256-key "Benchmark message for signing"))
+          (bench:defbenchmark crypto/ec/sign-p256 ()
+            (bench:consume
+             (crypto:sign-message ec-p256-key "Benchmark message for signing")))
 
-          (benchmark:defbenchmark crypto-ec-p384-sign ()
-            (crypto:sign-message ec-p384-key "Benchmark message for signing")))
+          (bench:defbenchmark crypto/ec/sign-p384 ()
+            (bench:consume
+             (crypto:sign-message ec-p384-key "Benchmark message for signing"))))
       (error (e)
         (format t "Warning: Could not initialize ECC benchmarks: ~A~%" e))))
 
   ;; Ed25519 operations
   (let ((ed25519-key nil))
 
-    (benchmark:defbenchmark crypto-ed25519-keygen ()
-      (crypto:generate-ed25519-key))
+    (bench:defbenchmark crypto/ed25519/keygen ()
+      (bench:consume (crypto:generate-ed25519-key)))
 
     ;; Initialize key for other benchmarks
     (handler-case
         (progn
           (setf ed25519-key (crypto:generate-ed25519-key))
 
-          (benchmark:defbenchmark crypto-ed25519-sign ()
-            (crypto:sign-message ed25519-key "Benchmark message for signing")))
+          (bench:defbenchmark crypto/ed25519/sign ()
+            (bench:consume
+             (crypto:sign-message ed25519-key "Benchmark message for signing"))))
       (error (e)
         (format t "Warning: Could not initialize Ed25519 benchmarks: ~A~%" e)))))
 
 ;;; Random Number Generation Benchmarks
 
 (defun register-random-benchmarks ()
-  "Register random number generation benchmarks"
+  "Register random number generation benchmarks with throughput"
 
-  (benchmark:defbenchmark crypto-random-bytes-32 ()
-    (crypto:crypto-random-bytes 32))
+  (bench:defbenchmark crypto/random/bytes-32 ()
+    (bench:consume (crypto:crypto-random-bytes 32)))
 
-  (benchmark:defbenchmark crypto-random-bytes-256 ()
-    (crypto:crypto-random-bytes 256))
+  (bench:defbenchmark crypto/random/bytes-256 ()
+    (bench:consume (crypto:crypto-random-bytes 256)))
 
-  (benchmark:defbenchmark crypto-random-bytes-4096 ()
-    (crypto:crypto-random-bytes 4096))
+  (bench:defbenchmark crypto/random/bytes-4096 ()
+    (bench:consume (crypto:crypto-random-bytes 4096)))
 
-  (benchmark:defbenchmark crypto-random-integer ()
-    (crypto:crypto-random-integer most-positive-fixnum)))
+  (bench:defbenchmark crypto/random/integer ()
+    (bench:consume (crypto:crypto-random-integer most-positive-fixnum))))
 
 ;;; Certificate Operations Benchmarks
 
@@ -233,20 +279,22 @@
           (setf test-key (crypto:generate-rsa-key :bits 2048))
 
           ;; Certificate creation
-          (benchmark:defbenchmark crypto-certificate-create ()
-            (crypto:create-certificate
-             :key test-key
-             :subject-cn "benchmark.example.com"
-             :serial 1
-             :not-before (get-universal-time)
-             :not-after (+ (get-universal-time) (* 365 24 60 60))))
+          (bench:defbenchmark crypto/cert/create ()
+            (bench:consume
+             (crypto:create-certificate
+              :key test-key
+              :subject-cn "benchmark.example.com"
+              :serial 1
+              :not-before (get-universal-time)
+              :not-after (+ (get-universal-time) (* 365 24 60 60)))))
 
           ;; CSR creation
-          (benchmark:defbenchmark crypto-csr-create ()
-            (crypto:create-csr test-key
-                              :subject-cn "benchmark.example.com"
-                              :subject-c "US"
-                              :subject-o "Benchmark Corp")))
+          (bench:defbenchmark crypto/cert/csr ()
+            (bench:consume
+             (crypto:create-csr test-key
+                                :subject-cn "benchmark.example.com"
+                                :subject-c "US"
+                                :subject-o "Benchmark Corp"))))
       (error (e)
         (format t "Warning: Could not initialize certificate benchmarks: ~A~%" e)))))
 
@@ -259,29 +307,4 @@
   (register-symmetric-benchmarks)
   (register-asymmetric-benchmarks)
   (register-random-benchmarks)
-  (register-certificate-benchmarks)
-
-  ;; Register the crypto suite
-  (suites:register-suite 'crypto-operations
-                        :description "Cryptographic operations benchmarks"
-                        :benchmarks '(;; Hash functions
-                                     crypto-sha256-1kb
-                                     crypto-sha256-64kb
-                                     crypto-sha512-1kb
-                                     crypto-blake2b-1kb
-                                     crypto-blake2s-1kb
-                                     ;; KDF
-                                     crypto-pbkdf2-1k-iterations
-                                     crypto-pbkdf2-10k-iterations
-                                     ;; Symmetric
-                                     crypto-aes256-gcm-encrypt-1kb
-                                     crypto-chacha20-poly1305-encrypt-1kb
-                                     ;; Asymmetric
-                                     crypto-rsa-2048-sign
-                                     crypto-ec-p256-sign
-                                     crypto-ed25519-sign
-                                     ;; Random
-                                     crypto-random-bytes-32
-                                     ;; Certificates
-                                     crypto-certificate-create
-                                     crypto-csr-create)))
+  (register-certificate-benchmarks))

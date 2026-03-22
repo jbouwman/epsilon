@@ -19,9 +19,8 @@
 
    ;; Sockaddr utilities
    #:make-sockaddr-in-into
-   #:parse-sockaddr-in))
-
-(in-package epsilon.net.address)
+   #:parse-sockaddr-in)
+  (:enter t))
 
 ;;; ============================================================================
 ;;; Sockaddr Utilities
@@ -66,7 +65,7 @@
                      (sb-sys:sap-ref-8 sap 5)
                      (sb-sys:sap-ref-8 sap 6)
                      (sb-sys:sap-ref-8 sap 7))))
-    (make-instance 'socket-address :ip ip :port port)))
+    (types:make-socket-address ip port)))
 
 ;;; ============================================================================
 ;;; Address Creation and Resolution
@@ -86,7 +85,9 @@
         (error "Invalid address format: ~A" address-string))))
 
 (defun resolve-address (hostname-or-address port)
-  "Resolve hostname to socket addresses using getaddrinfo"
+  "Resolve hostname to socket addresses using getaddrinfo.
+   Returns a list of socket-address objects.
+   Signals network-error with detailed message on failure."
   (cond
     ;; If it looks like an IP address, use it directly
     ((and (stringp hostname-or-address)
@@ -100,12 +101,34 @@
 
     ;; Otherwise use getaddrinfo for DNS resolution
     (t
-     (handler-case
-         (dns-resolve-hostname hostname-or-address port)
-       (error (e)
-         (error 'errors:network-error
-                :message (format nil "Failed to resolve ~A: ~A"
-                                 hostname-or-address e)))))))
+     ;; dns-resolve-hostname already signals network-error with details
+     (dns-resolve-hostname hostname-or-address port))))
+
+(defun gai-error-string (code)
+  "Convert getaddrinfo error code to human-readable string.
+   See man getaddrinfo for error codes."
+  (case code
+    (-2 "EAI_NONAME - Name or service not known")
+    (-3 "EAI_AGAIN - Temporary failure in name resolution")
+    (-4 "EAI_FAIL - Non-recoverable failure in name resolution")
+    (-5 "EAI_FAMILY - Address family not supported")
+    (-6 "EAI_SOCKTYPE - Socket type not supported")
+    (-7 "EAI_SERVICE - Service not supported for socket type")
+    (-10 "EAI_MEMORY - Memory allocation failure")
+    (-11 "EAI_SYSTEM - System error (check errno)")
+    (-12 "EAI_OVERFLOW - Argument buffer overflow")
+    ;; Positive codes on some systems
+    (1 "EAI_BADFLAGS - Invalid flags")
+    (2 "EAI_NONAME - Name or service not known")
+    (3 "EAI_AGAIN - Temporary failure in name resolution")
+    (4 "EAI_FAIL - Non-recoverable failure in name resolution")
+    (5 "EAI_FAMILY - Address family not supported")
+    (6 "EAI_SOCKTYPE - Socket type not supported")
+    (7 "EAI_SERVICE - Service not supported for socket type")
+    (8 "EAI_NONAME - Name or service not known")
+    (10 "EAI_MEMORY - Memory allocation failure")
+    (11 "EAI_SYSTEM - System error (check errno)")
+    (t (format nil "Unknown getaddrinfo error (code ~D)" code))))
 
 (defun dns-resolve-hostname (hostname port)
   "Resolve hostname to IP addresses using getaddrinfo"
@@ -125,7 +148,7 @@
         (let* ((port-str (if port (format nil "~D" port) "0"))
                (result (lib:shared-call '("getaddrinfo" "libc")
                                         :int
-                                        '(:c-string :c-string :pointer :pointer)
+                                        '(:string :string :pointer :pointer)
                                         hostname port-str hints result-ptr)))
           (if (= result 0)
               (let* ((addrinfo-ptr (sb-sys:sap-ref-sap result-ptr 0))
@@ -134,12 +157,24 @@
                 (lib:shared-call '("freeaddrinfo" "libc")
                                  :void '(:pointer)
                                  addrinfo-ptr)
-                addrinfo-list)
-              ;; getaddrinfo failed
-              (error "getaddrinfo failed with code ~D for hostname ~A" result hostname))))
+                (if addrinfo-list
+                    addrinfo-list
+                    ;; getaddrinfo succeeded but returned no results
+                    (error 'errors:network-error
+                           :message (format nil "DNS lookup for ~A:~A returned no addresses"
+                                            hostname port))))
+              ;; getaddrinfo failed - provide detailed error message
+              (error 'errors:network-error
+                     :message (format nil "DNS lookup failed for ~A:~A - ~A"
+                                      hostname port (gai-error-string result))))))
+    (errors:network-error (e)
+      ;; Re-raise network errors as-is
+      (error e))
     (error (e)
-      ;; DNS resolution error
-      (error "DNS resolution failed for ~A: ~A" hostname e))))
+      ;; Wrap other errors with context
+      (error 'errors:network-error
+             :message (format nil "DNS resolution error for ~A:~A - ~A"
+                              hostname port e)))))
 
 (defun parse-addrinfo-results (addrinfo-ptr)
   "Parse linked list of addrinfo structures"
@@ -167,5 +202,5 @@
                    (when socket-addr
                      (push socket-addr results))))
                ;; Move to next addrinfo in linked list
-               (setf current (sb-sys:sap-ref-sap current 40))) ; ai_next at offset 40
-    (nreverse results))))
+               (setf current (sb-sys:sap-ref-sap current 40)))) ; ai_next at offset 40
+    (nreverse results)))

@@ -16,9 +16,8 @@
    parse
    struct-specifier
    translation-unit
-   external-declaration))
-
-(in-package epsilon.clang)
+   external-declaration)
+  (:enter t))
 
 ;; Basic token predicates
 (defun token-type-p (expected-type)

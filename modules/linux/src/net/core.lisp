@@ -26,9 +26,8 @@
    #:get-peer-address
 
    ;; Stream conversion
-   #:socket-to-stream))
-
-(in-package epsilon.net.core)
+   #:socket-to-stream)
+  (:enter t))
 
 ;;; ============================================================================
 ;;; Socket Creation and Management
@@ -67,21 +66,109 @@
 ;;; Socket Options
 ;;; ============================================================================
 
-(defun set-socket-option (handle level optname value)
-  "Set a raw socket option"
-  (lib:with-foreign-memory ((optval :int :count 1))
-    (setf (sb-sys:sap-ref-32 optval 0) (if value 1 0))
-    (let ((result (const:%setsockopt handle level optname optval 4)))
-      (errors:check-error result "setsockopt"))))
+(defun option-to-constants (option)
+  "Map a keyword option to (level optname) values"
+  (case option
+    (:reuse-address (values const:+sol-socket+ const:+so-reuseaddr+))
+    (:keep-alive    (values const:+sol-socket+ const:+so-keepalive+))
+    (:broadcast     (values const:+sol-socket+ const:+so-broadcast+))
+    (:error         (values const:+sol-socket+ const:+so-error+))
+    (:linger        (values const:+sol-socket+ const:+so-linger+))
+    (:recv-buffer   (values const:+sol-socket+ const:+so-rcvbuf+))
+    (:send-buffer   (values const:+sol-socket+ const:+so-sndbuf+))
+    (:recv-timeout  (values const:+sol-socket+ const:+so-rcvtimeo+))
+    (:send-timeout  (values const:+sol-socket+ const:+so-sndtimeo+))
+    ((:nodelay :no-delay) (values const:+ipproto-tcp+ const:+tcp-nodelay+))
+    (t (error "Unknown socket option: ~A" option))))
 
-(defun get-socket-option (handle level optname)
-  "Get a raw socket option"
-  (lib:with-foreign-memory ((optval :int :count 1)
-                            (optlen :int :count 1))
-    (setf (sb-sys:sap-ref-32 optlen 0) 4)
-    (let ((result (const:%getsockopt handle level optname optval optlen)))
-      (errors:check-error result "getsockopt")
-      (sb-sys:sap-ref-32 optval 0))))
+(defun get-socket-handle (socket)
+  "Extract the file descriptor from a socket object"
+  (etypecase socket
+    (types:tcp-listener (types:tcp-listener-handle socket))
+    (types:tcp-stream (types:tcp-stream-handle socket))
+    (types:udp-socket (types:udp-socket-handle socket))
+    (integer socket)))
+
+(defun set-socket-option (socket option value)
+  "Set a socket option"
+  (multiple-value-bind (level optname) (option-to-constants option)
+    (let ((fd (get-socket-handle socket)))
+      (case option
+        ((:reuse-address :keep-alive :broadcast :nodelay :no-delay)
+         ;; Boolean options
+         (lib:with-foreign-memory ((optval :int :count 1))
+           (setf (sb-sys:sap-ref-32 optval 0) (if value 1 0))
+           (let ((result (const:%setsockopt fd level optname optval 4)))
+             (errors:check-error result "setsockopt"))))
+        ((:recv-buffer :send-buffer)
+         ;; Integer size options
+         (lib:with-foreign-memory ((optval :int :count 1))
+           (setf (sb-sys:sap-ref-32 optval 0) value)
+           (let ((result (const:%setsockopt fd level optname optval 4)))
+             (errors:check-error result "setsockopt"))))
+        ((:recv-timeout :send-timeout)
+         ;; Timeout options (value in seconds, convert to timeval)
+         (lib:with-foreign-memory ((optval :char :count 16))
+           ;; struct timeval { long tv_sec; long tv_usec; }
+           (let ((seconds (floor value))
+                 (microseconds (* (mod value 1) 1000000)))
+             (setf (sb-sys:sap-ref-64 optval 0) seconds)
+             (setf (sb-sys:sap-ref-64 optval 8) microseconds))
+           (let ((result (const:%setsockopt fd level optname optval 16)))
+             (errors:check-error result "setsockopt"))))
+        (:linger
+         ;; Linger option
+         (lib:with-foreign-memory ((optval :char :count 8))
+           ;; struct linger { int l_onoff; int l_linger; }
+           (if value
+               (progn
+                 (setf (sb-sys:sap-ref-32 optval 0) 1)
+                 (setf (sb-sys:sap-ref-32 optval 4) value))
+               (setf (sb-sys:sap-ref-32 optval 0) 0))
+           (let ((result (const:%setsockopt fd level optname optval 8)))
+             (errors:check-error result "setsockopt"))))))))
+
+(defun get-socket-option (socket option)
+  "Get a socket option"
+  (multiple-value-bind (level optname) (option-to-constants option)
+    (let ((fd (get-socket-handle socket)))
+      (case option
+        ((:reuse-address :keep-alive :broadcast :nodelay :no-delay)
+         ;; Boolean options
+         (lib:with-foreign-memory ((optval :int :count 1)
+                                   (optlen :int :count 1))
+           (setf (sb-sys:sap-ref-32 optlen 0) 4)
+           (let ((result (const:%getsockopt fd level optname optval optlen)))
+             (errors:check-error result "getsockopt")
+             (not (zerop (sb-sys:sap-ref-32 optval 0))))))
+        ((:error :recv-buffer :send-buffer)
+         ;; Integer options
+         (lib:with-foreign-memory ((optval :int :count 1)
+                                   (optlen :int :count 1))
+           (setf (sb-sys:sap-ref-32 optlen 0) 4)
+           (let ((result (const:%getsockopt fd level optname optval optlen)))
+             (errors:check-error result "getsockopt")
+             (sb-sys:sap-ref-32 optval 0))))
+        ((:recv-timeout :send-timeout)
+         ;; Timeout options (timeval to seconds)
+         (lib:with-foreign-memory ((optval :char :count 16)
+                                   (optlen :int :count 1))
+           (setf (sb-sys:sap-ref-32 optlen 0) 16)
+           (let ((result (const:%getsockopt fd level optname optval optlen)))
+             (errors:check-error result "getsockopt")
+             (let ((seconds (sb-sys:sap-ref-64 optval 0))
+                   (microseconds (sb-sys:sap-ref-64 optval 8)))
+               (+ (* seconds 1000) (floor microseconds 1000))))))
+        (:linger
+         ;; Linger option
+         (lib:with-foreign-memory ((optval :char :count 8)
+                                   (optlen :int :count 1))
+           (setf (sb-sys:sap-ref-32 optlen 0) 8)
+           (let ((result (const:%getsockopt fd level optname optval optlen)))
+             (errors:check-error result "getsockopt")
+             (if (zerop (sb-sys:sap-ref-32 optval 0))
+                 nil
+                 (sb-sys:sap-ref-32 optval 4)))))))))
 
 ;;; ============================================================================
 ;;; Address Operations

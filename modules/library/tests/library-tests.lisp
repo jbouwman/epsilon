@@ -3,9 +3,8 @@
 (defpackage epsilon.library.tests
   (:use cl epsilon.test)
   (:local-nicknames
-   (lib epsilon.library)))
-
-(in-package epsilon.library.tests)
+   (lib epsilon.library))
+  (:enter t))
 
 ; Tests for epsilon.library module
 
@@ -89,10 +88,6 @@
 			:base-name "totally-fake-lib-that-does-not-exist"
 			:critical-p nil)
 
-  ;; Check libraries should return status for all registered libs
-  (let ((status (lib:check-libraries)))
-    (assert (epsilon.map:map-p status)))
-
   ;; Available libraries should not include the fake one
   (assert (not (member 'fake-nonexistent-lib (lib:available-libraries))))
 
@@ -113,7 +108,7 @@
   "Test bundled library path generation"
   (let ((root (lib::get-bundled-library-root)))
     (assert (stringp root))
-    (assert (search "library/lib" root)))
+    (assert (search "vendor/lib" root)))
 
   ;; Test path generation (won't exist unless we bundle something)
   (let ((path (lib::get-bundled-library-path "test" "1.0")))

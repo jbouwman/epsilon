@@ -25,9 +25,8 @@
 
    ;; Module information
    #:version
-   #:features))
-
-(in-package #:epsilon.darwin)
+   #:features)
+  (:enter t))
 
 ;;; ============================================================================
 ;;; Module Metadata

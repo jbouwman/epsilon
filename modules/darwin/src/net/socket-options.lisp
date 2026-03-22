@@ -16,9 +16,8 @@
    network-error)
   (:export
    set-socket-option
-   get-socket-option))
-
-(in-package epsilon.net.socket-options)
+   get-socket-option)
+  (:enter t))
 
 ;;; ============================================================================
 ;;; Socket Options

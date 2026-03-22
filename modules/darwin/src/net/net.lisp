@@ -5,8 +5,9 @@
   (:import-from epsilon.net.core
    network-error connection-refused connection-reset connection-aborted
    timeout-error address-in-use would-block-error
+   dns-resolution-error host-unreachable
    address ipv4-address ipv6-address socket-address
-   tcp-listener tcp-stream udp-socket
+   tcp-listener tcp-stream udp-socket udp-socket-handle
    socket-address-ip socket-address-port socket-address-family
    tcp-stream-handle)
   (:import-from epsilon.net.address
@@ -72,6 +73,7 @@
    udp-try-recv
    udp-poll-send
    udp-poll-recv
+   udp-socket-handle
 
    ;; Address resolution
    make-socket-address
@@ -93,8 +95,10 @@
    timeout-error
    address-in-use
    would-block-error
+   dns-resolution-error
+   host-unreachable
 
    ;; Status checks
-   tcp-connected-p))
+   tcp-connected-p)
+  (:enter t))
 
-(in-package epsilon.net)

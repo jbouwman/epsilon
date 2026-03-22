@@ -2,7 +2,8 @@
   (:use cl)
   (:local-nicknames
    (map epsilon.map)
-   (trampoline epsilon.foreign.trampoline))
+   (trampoline epsilon.foreign.trampoline)
+   (lock epsilon.sys.lock))
   (:export
    ;; Core callback functions
    #:make-callback
@@ -25,16 +26,10 @@
    #:callback-info-p
    #:callback-info-function
    #:callback-info-signature
-   #:callback-info-pointer
+   #:callback-info-pointer)
+  (:enter t))
 
-   ;; libffi integration
-   #:make-sbcl-callback
-   #:*use-libffi*
-   #:libffi-available-p))
-
-(in-package :epsilon.foreign.callback)
-
-;;;; Callback Support for FFI - Phase 4
+;;;; Callback Support for FFI
 
 ;;; Callback information structure
 
@@ -59,7 +54,7 @@
 (defvar *dummy-pointer-counter* #x3000
   "Counter for generating unique dummy pointers when SBCL callbacks fail")
 
-(defvar *callback-lock* (sb-thread:make-mutex :name "callback-registry-lock")
+(defvar *callback-lock* (lock:make-lock "callback-registry-lock")
   "Lock for thread-safe callback operations")
 
 ;;; Type conversion helpers
@@ -109,10 +104,11 @@
            ,(convert-lisp-to-c-form 'result return-type)))))
 
 (defun convert-c-to-lisp-form (arg type)
-  "Generate form to convert C argument to Lisp"
-  (case type
-    (:string `(if (sb-alien:null-alien ,arg) nil ,arg))
-    (t arg))) ; Most types pass through directly
+  "Generate form to convert C argument to Lisp.
+   Note: In alien-lambda callbacks, c-string arguments are already
+   converted to Lisp strings by SBCL, so we don't need null-alien."
+  (declare (ignore type))
+  arg) ; All types pass through directly; SBCL handles conversions
 
 (defun convert-lisp-to-c-form (value-var type)
   "Generate form to convert Lisp value to C"
@@ -123,39 +119,37 @@
 
 (defun create-real-callback-or-dummy (function return-type arg-types
                                       alien-return alien-args arg-names)
-  "Create a real callback or return a dummy pointer if unavailable"
+  "Create a real callback or return a dummy pointer if unavailable.
+   Uses alien-lambda2 + %define-alien-callable for GC-safe static
+   trampolines instead of alien-lambda (see IMPL-224)."
   (handler-case
-      ;; Try to create real callback using SBCL's alien-lambda
       (let* ((typed-lambda-list (loop for name in arg-names
                                       for type in alien-args
                                       collect (list name type)))
-             (lambda-form `(sb-alien::alien-lambda
-                           ,alien-return
-                           ,typed-lambda-list
-                           ,(build-callback-body function return-type arg-types arg-names)))
-             (alien-cb (eval lambda-form))
-             (pointer (sb-alien:alien-sap alien-cb)))
-        (list alien-cb pointer))
+             (body (build-callback-body function return-type arg-types arg-names))
+             (lambda2-form `(sb-alien::alien-lambda2
+                            ,alien-return
+                            ,typed-lambda-list
+                            ,body))
+             (fn (eval lambda2-form))
+             (cb-name (intern (format nil "FFI-CB-~D"
+                                      (lock:with-lock (*callback-lock*)
+                                        (incf *callback-id-counter*)))
+                              (find-package :epsilon.foreign.callback)))
+             (type-spec `(sb-alien:function ,alien-return ,@alien-args))
+             (parsed-type (sb-alien::parse-alien-type type-spec nil)))
+        (sb-alien::%define-alien-callable cb-name fn parsed-type type-spec)
+        (let ((acf (sb-alien:alien-callable-function cb-name)))
+          (list acf (sb-alien:alien-sap acf))))
     (error ()
       ;; Fall back to dummy pointer
-      (list nil (sb-sys:int-sap (sb-thread:with-mutex (*callback-lock*)
+      (list nil (sb-sys:int-sap (lock:with-lock (*callback-lock*)
                                   (incf *dummy-pointer-counter*)))))))
 
-;;; libffi integration control
-(defvar *use-libffi* nil
-  "Whether to use libffi for callback creation when available
-   Currently disabled as SBCL's alien-lambda is working correctly")
+;;; Core SBCL callback implementation
 
-(defun libffi-available-p ()
-  "Check if libffi integration is available"
-  (and (find-package '#:epsilon.foreign)
-       (find-symbol "*LIBFFI-AVAILABLE-P*" '#:epsilon.foreign)
-       (symbol-value (find-symbol "*LIBFFI-AVAILABLE-P*" '#:epsilon.foreign))))
-
-;;; Original SBCL callback implementation (renamed for clarity)
-
-(defun make-sbcl-callback (function return-type arg-types)
-  "Create a C-callable callback from a Lisp function"
+(defun make-native-callback (function return-type arg-types)
+  "Create a C-callable callback from a Lisp function using SBCL's native alien-lambda"
   ;; Use SBCL's alien-lambda to create real callbacks
   (let* ((alien-return (lisp-type-to-alien-type return-type))
          (alien-args (mapcar #'lisp-type-to-alien-type arg-types))
@@ -177,19 +171,14 @@
                                     :alien-callback alien-cb
                                     :id (incf *callback-id-counter*))))
       ;; Register it
-      (sb-thread:with-mutex (*callback-lock*)
+      (lock:with-lock (*callback-lock*)
         (setf *callback-registry* (map:assoc *callback-registry* (callback-info-id info) info)))
       ;; Return the pointer
       pointer)))
 
-;;; Enhanced callback creation with libffi integration
-
 (defun make-callback (function return-type arg-types)
-  "Create a C-callable callback from a Lisp function
-   Prefers SBCL's alien-lambda which works correctly after our fixes"
-  ;; Always use SBCL implementation which is now working
-  ;; libffi integration would require complex C-to-Lisp callback mechanism
-  (make-sbcl-callback function return-type arg-types))
+  "Create a C-callable callback from a Lisp function using SBCL's alien-lambda."
+  (make-native-callback function return-type arg-types))
 
 (defun make-callback-wrapper (function return-type arg-types)
   "Create a wrapper function that handles type conversions"
@@ -244,7 +233,7 @@
 (defun call-callback (callback-ptr &rest args)
   "Call a callback pointer with arguments (mainly for testing)"
   ;; Find the callback info using a different approach to avoid hash table type issues
-  (let ((info (sb-thread:with-mutex (*callback-lock*)
+  (let ((info (lock:with-lock (*callback-lock*)
                 (block found
                   (map:each (lambda (key val)
                               (declare (ignore key))
@@ -265,7 +254,7 @@
   "Register a named callback"
   (let ((ptr (make-callback function return-type arg-types)))
     ;; Find the info that was just created
-    (let ((info (sb-thread:with-mutex (*callback-lock*)
+    (let ((info (lock:with-lock (*callback-lock*)
                   (block found
                     (map:each (lambda (key val)
                                 (declare (ignore key))
@@ -277,13 +266,13 @@
       (when info
         (setf (callback-info-name info) name)
         ;; Also index by name
-        (sb-thread:with-mutex (*callback-lock*)
+        (lock:with-lock (*callback-lock*)
           (setf *callback-registry* (map:assoc *callback-registry* name info))))
       (callback-info-id info))))
 
 (defun unregister-callback (name-or-id)
   "Unregister a callback by name or ID"
-  (sb-thread:with-mutex (*callback-lock*)
+  (lock:with-lock (*callback-lock*)
     (let ((info (map:get *callback-registry* name-or-id)))
       (when info
         ;; Remove from registry
@@ -297,14 +286,14 @@
 
 (defun get-callback (name-or-id)
   "Get a callback pointer by name or ID"
-  (sb-thread:with-mutex (*callback-lock*)
+  (lock:with-lock (*callback-lock*)
     (let ((info (map:get *callback-registry* name-or-id)))
       (when info
         (callback-info-pointer info)))))
 
 (defun list-callbacks ()
   "List all registered callbacks"
-  (sb-thread:with-mutex (*callback-lock*)
+  (lock:with-lock (*callback-lock*)
     (let ((result '()))
       (map:each (lambda (key val)
                   (declare (ignore key))
@@ -353,7 +342,7 @@
            (dolist (cb ,callbacks)
              ;; Find and unregister using map:each instead of map:vals
              (handler-case
-                 (sb-thread:with-mutex (*callback-lock*)
+                 (lock:with-lock (*callback-lock*)
                    (map:each (lambda (key val)
                                (declare (ignore key))
                                (when (and (callback-info-p val)

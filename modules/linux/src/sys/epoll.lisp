@@ -58,9 +58,8 @@
    #:epoll-event-readable-p
    #:epoll-event-writable-p
    #:epoll-event-error-p
-   #:epoll-event-hangup-p))
-
-(in-package :epsilon.sys.epoll)
+   #:epoll-event-hangup-p)
+  (:enter t))
 
 ;;;; epoll Constants
 
@@ -126,24 +125,25 @@
   (data 0 :type (unsigned-byte 64)))      ; epoll_data_t (as 64-bit int)
 
 (defun epoll-event-size ()
-  "Size of epoll_event structure in bytes"
-  ;; events (4 bytes) + padding (4 bytes) + data (8 bytes) = 16 bytes on x64
-  16)
+  "Size of epoll_event structure in bytes.
+   On x86_64, struct epoll_event is __attribute__((packed)):
+   events (4 bytes) + data (8 bytes) = 12 bytes, no padding."
+  12)
 
 (defun pack-epoll-event (event buffer offset)
-  "Pack epoll_event structure into SAP buffer"
+  "Pack epoll_event structure into SAP buffer.
+   Packed layout: events (4 bytes at 0) + data (8 bytes at 4)."
   (let ((ptr (sb-sys:sap+ buffer offset)))
-    ;; events (4 bytes)
     (setf (sb-sys:sap-ref-32 ptr 0) (epoll-event-events event))
-    ;; data (8 bytes at offset 8 due to padding)
-    (setf (sb-sys:sap-ref-64 ptr 8) (epoll-event-data event))))
+    (setf (sb-sys:sap-ref-64 ptr 4) (epoll-event-data event))))
 
 (defun unpack-epoll-event (buffer offset)
-  "Unpack epoll_event structure from SAP buffer"
+  "Unpack epoll_event structure from SAP buffer.
+   Packed layout: events (4 bytes at 0) + data (8 bytes at 4)."
   (let ((ptr (sb-sys:sap+ buffer offset)))
     (make-epoll-event
      :events (sb-sys:sap-ref-32 ptr 0)
-     :data (sb-sys:sap-ref-64 ptr 8))))
+     :data (sb-sys:sap-ref-64 ptr 4))))
 
 ;;;; epoll_data_t Helper Functions
 
@@ -207,25 +207,29 @@
         result)))
 
 (defun epoll-wait (epfd max-events timeout)
-  "Wait for events on epoll file descriptor"
+  "Wait for events on epoll file descriptor.
+   Returns a list of epoll-event structures, or NIL if interrupted by signal."
   (let ((buf-size (* max-events (epoll-event-size))))
     (when (> buf-size 1024)
       (error "Too many events requested (max 64)"))
     (lib:with-foreign-memory ((events-buf 1024))
       (let ((result (%epoll-wait epfd events-buf max-events timeout)))
-        (when (= result -1)
-          (let ((errno (sb-alien:get-errno)))
-            (error "epoll_wait failed with errno ~D (~A)"
-                   errno
-                   (case errno
-                     (9 "EBADF - epfd is not a valid file descriptor")
-                     (14 "EFAULT - memory area not accessible")
-                     (22 "EINVAL - epfd not an epoll fd or maxevents <= 0")
-                     (4 "EINTR - interrupted by signal")
-                     (t "Unknown error")))))
-        ;; Unpack returned events
-        (loop for i from 0 below result
-              collect (unpack-epoll-event events-buf (* i (epoll-event-size))))))))
+        (cond
+          ((= result -1)
+           (let ((errno (sb-alien:get-errno)))
+             (if (= errno 4)  ; EINTR - interrupted by signal, not an error
+                 nil
+                 (error "epoll_wait failed with errno ~D (~A)"
+                        errno
+                        (case errno
+                          (9 "EBADF - epfd is not a valid file descriptor")
+                          (14 "EFAULT - memory area not accessible")
+                          (22 "EINVAL - epfd not an epoll fd or maxevents <= 0")
+                          (t "Unknown error"))))))
+          (t
+           ;; Unpack returned events
+           (loop for i from 0 below result
+                 collect (unpack-epoll-event events-buf (* i (epoll-event-size))))))))))
 
 (defmacro with-epoll ((epfd-var &optional (flags 0)) &body body)
   "Execute body with epoll fd, automatically closing on exit"

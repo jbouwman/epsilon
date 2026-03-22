@@ -5,6 +5,10 @@
 
 (defpackage epsilon.net.core
   (:use cl)
+  (:import-from #:epsilon.net.conditions
+   #:network-error #:error-message #:connection-refused #:connection-reset
+   #:connection-aborted #:timeout-error #:address-in-use
+   #:would-block-error)
   (:export
    ;; Address types
    #:address
@@ -47,12 +51,13 @@
    #:timeout-error
    #:address-in-use
    #:would-block-error
+   #:dns-resolution-error
+   #:host-unreachable
 
    ;; Error utilities
    #:get-errno
-   #:errno-to-string))
-
-(in-package epsilon.net.core)
+   #:errno-to-string)
+  (:enter t))
 
 ;;; ============================================================================
 ;;; Address Types
@@ -139,59 +144,28 @@
   (:documentation "UDP socket"))
 
 ;;; ============================================================================
-;;; Error Conditions
+;;; Error Conditions (base conditions imported from epsilon.net.conditions)
 ;;; ============================================================================
 
-(define-condition network-error (error)
-  ((message :initarg :message :reader error-message))
-  (:documentation "Base condition for network errors")
+(define-condition dns-resolution-error (network-error)
+  ((hostname :initarg :hostname :reader dns-error-hostname))
+  (:documentation "DNS resolution failed")
   (:report (lambda (condition stream)
-             (format stream "Network error: ~A"
+             (format stream "DNS resolution failed for ~A: ~A"
+                     (dns-error-hostname condition)
                      (if (slot-boundp condition 'message)
                          (error-message condition)
                          "Unknown error")))))
 
-(define-condition connection-refused (network-error)
-  ()
-  (:documentation "Connection was refused by the remote host")
+(define-condition host-unreachable (network-error)
+  ((host :initarg :host :reader unreachable-host))
+  (:documentation "Host is unreachable")
   (:report (lambda (condition stream)
-             (declare (ignore condition))
-             (format stream "Connection refused"))))
-
-(define-condition connection-reset (network-error)
-  ()
-  (:documentation "Connection was reset by peer")
-  (:report (lambda (condition stream)
-             (declare (ignore condition))
-             (format stream "Connection reset by peer"))))
-
-(define-condition connection-aborted (network-error)
-  ()
-  (:documentation "Connection was aborted")
-  (:report (lambda (condition stream)
-             (declare (ignore condition))
-             (format stream "Connection aborted"))))
-
-(define-condition timeout-error (network-error)
-  ()
-  (:documentation "Operation timed out")
-  (:report (lambda (condition stream)
-             (declare (ignore condition))
-             (format stream "Operation timed out"))))
-
-(define-condition address-in-use (network-error)
-  ()
-  (:documentation "Address is already in use")
-  (:report (lambda (condition stream)
-             (declare (ignore condition))
-             (format stream "Address already in use"))))
-
-(define-condition would-block-error (network-error)
-  ()
-  (:documentation "Operation would block")
-  (:report (lambda (condition stream)
-             (declare (ignore condition))
-             (format stream "Operation would block"))))
+             (format stream "Host unreachable: ~A - ~A"
+                     (unreachable-host condition)
+                     (if (slot-boundp condition 'message)
+                         (error-message condition)
+                         "No route to host")))))
 
 ;;; ============================================================================
 ;;; Error Handling Utilities
@@ -221,8 +195,11 @@
     (36 "EINPROGRESS - Operation now in progress")
     (48 "EADDRINUSE - Address already in use")
     (49 "EADDRNOTAVAIL - Cannot assign requested address")
+    (51 "ENETUNREACH - Network is unreachable")
+    (53 "ECONNABORTED - Software caused connection abort")
     (54 "ECONNRESET - Connection reset by peer")
     (57 "ENOTCONN - Socket is not connected")
-    (60 "ETIMEDOUT - Operation timed out")
+    (60 "ETIMEDOUT - Connection timed out")
     (61 "ECONNREFUSED - Connection refused")
-    (t (format nil "Unknown error (~D)" errno))))
+    (65 "EHOSTUNREACH - No route to host")
+    (t (format nil "errno ~D" errno))))

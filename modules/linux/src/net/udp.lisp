@@ -31,9 +31,8 @@
    #:udp-poll-recv
 
    ;; Macros
-   #:with-udp-socket))
-
-(in-package epsilon.net.udp)
+   #:with-udp-socket)
+  (:enter t))
 
 ;;; ============================================================================
 ;;; Convenience Macros

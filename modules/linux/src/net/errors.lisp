@@ -6,9 +6,14 @@
   (:use cl)
   (:local-nicknames
    (const epsilon.net.constants))
+  (:import-from #:epsilon.net.conditions
+   #:network-error #:error-message #:connection-refused #:connection-reset
+   #:connection-aborted #:timeout-error #:address-in-use
+   #:would-block-error)
   (:export
-   ;; Error conditions
+   ;; Error conditions (from epsilon.net.conditions)
    #:network-error
+   #:error-message
    #:connection-refused
    #:connection-reset
    #:connection-aborted
@@ -16,47 +21,61 @@
    #:address-in-use
    #:would-block-error
 
+   ;; Extended error conditions
+   #:dns-resolution-error
+   #:dns-error-hostname
+   #:host-unreachable
+   #:unreachable-host
+
    ;; Error utilities
    #:get-errno
    #:errno-to-string
    #:errno-to-condition
-   #:check-error))
-
-(in-package epsilon.net.errors)
+   #:check-error)
+  (:enter t))
 
 ;;; ============================================================================
-;;; Error Conditions
+;;; Print Methods for Condition Reporting
+;;; ============================================================================
+;;;
+;;; These print-object methods ensure that when conditions are printed with
+;;; ~A format directive (princ), the actual error message is shown instead
+;;; of SBCL's default "Condition <TYPE> was signalled."
+
+(defmethod print-object ((condition network-error) stream)
+  "Print network-error with its message for clear error reporting."
+  (if *print-escape*
+      (print-unreadable-object (condition stream :type t :identity t)
+        (format stream "~A" (error-message condition)))
+      (format stream "Network error: ~A" (error-message condition))))
+
+;;; ============================================================================
+;;; Error Utilities
 ;;; ============================================================================
 
-(define-condition network-error (error)
-  ((message :initarg :message :reader error-message))
-  (:documentation "Base condition for network errors")
+;;; ============================================================================
+;;; Extended Error Conditions
+;;; ============================================================================
+
+(define-condition dns-resolution-error (network-error)
+  ((hostname :initarg :hostname :reader dns-error-hostname))
+  (:documentation "DNS resolution failed")
   (:report (lambda (condition stream)
-             (format stream "Network error: ~A" (error-message condition)))))
+             (format stream "DNS resolution failed for ~A: ~A"
+                     (dns-error-hostname condition)
+                     (if (slot-boundp condition 'message)
+                         (error-message condition)
+                         "Unknown error")))))
 
-(define-condition connection-refused (network-error)
-  ()
-  (:documentation "Connection was refused by the remote host"))
-
-(define-condition connection-reset (network-error)
-  ()
-  (:documentation "Connection was reset by peer"))
-
-(define-condition connection-aborted (network-error)
-  ()
-  (:documentation "Connection was aborted"))
-
-(define-condition timeout-error (network-error)
-  ()
-  (:documentation "Operation timed out"))
-
-(define-condition address-in-use (network-error)
-  ()
-  (:documentation "Address is already in use"))
-
-(define-condition would-block-error (network-error)
-  ()
-  (:documentation "Operation would block"))
+(define-condition host-unreachable (network-error)
+  ((host :initarg :host :reader unreachable-host))
+  (:documentation "Host is unreachable")
+  (:report (lambda (condition stream)
+             (format stream "Host unreachable: ~A - ~A"
+                     (unreachable-host condition)
+                     (if (slot-boundp condition 'message)
+                         (error-message condition)
+                         "No route to host")))))
 
 ;;; ============================================================================
 ;;; Error Utilities

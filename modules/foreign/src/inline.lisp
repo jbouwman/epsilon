@@ -17,9 +17,8 @@
    ;; Export example inlined functions
    #:%strlen
    #:%memcpy
-   #:%getpid))
-
-(in-package epsilon.foreign.inline)
+   #:%getpid)
+  (:enter t))
 
 ;;; Inline optimization for frequently called FFI functions
 

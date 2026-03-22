@@ -5,6 +5,7 @@
 
 (defpackage epsilon.foreign.memory-pool
   (:use cl)
+  (:local-nicknames (lock epsilon.sys.lock))
   (:export
    #:create-pool
    #:pool-allocate
@@ -15,9 +16,8 @@
    #:pool-reset
    #:pool-destroy
    #:*default-pool*
-   #:*pool-statistics*))
-
-(in-package epsilon.foreign.memory-pool)
+   #:*pool-statistics*)
+  (:enter t))
 
 ;;; Pool structure
 
@@ -32,7 +32,7 @@
   (peak-usage 0 :type fixnum)
   (allocation-count 0 :type fixnum)
   (reuse-count 0 :type fixnum)
-  (lock (sb-thread:make-mutex :name "pool-lock")))
+  (lock (lock:make-lock "pool-lock")))
 
 ;;; Global pools
 
@@ -80,7 +80,7 @@
     (error "Requested size ~D exceeds pool block size ~D"
            size (memory-pool-block-size pool)))
 
-  (sb-thread:with-mutex ((memory-pool-lock pool))
+  (lock:with-lock ((memory-pool-lock pool))
     (let ((ptr (or (pop (memory-pool-free-blocks pool))
                    (when (< (memory-pool-total-allocated pool)
                            (memory-pool-max-blocks pool))
@@ -109,7 +109,7 @@
   (ensure-default-pool)
   (unless pool (setf pool *default-pool*))
 
-  (sb-thread:with-mutex ((memory-pool-lock pool))
+  (lock:with-lock ((memory-pool-lock pool))
     (setf (memory-pool-used-blocks pool)
           (delete ptr (memory-pool-used-blocks pool) :test #'sb-sys:sap=))
     (push ptr (memory-pool-free-blocks pool))))
@@ -125,7 +125,7 @@
 
 (defun pool-statistics (pool)
   "Get statistics for a memory pool"
-  (sb-thread:with-mutex ((memory-pool-lock pool))
+  (lock:with-lock ((memory-pool-lock pool))
     (list :name (memory-pool-name pool)
           :block-size (memory-pool-block-size pool)
           :total-blocks (memory-pool-total-allocated pool)
@@ -142,7 +142,7 @@
 
 (defun pool-reset (pool)
   "Reset pool, moving all used blocks to free list"
-  (sb-thread:with-mutex ((memory-pool-lock pool))
+  (lock:with-lock ((memory-pool-lock pool))
     (setf (memory-pool-free-blocks pool)
           (append (memory-pool-used-blocks pool)
                   (memory-pool-free-blocks pool)))
@@ -150,7 +150,7 @@
 
 (defun pool-destroy (pool)
   "Destroy a pool and free all its memory"
-  (sb-thread:with-mutex ((memory-pool-lock pool))
+  (lock:with-lock ((memory-pool-lock pool))
     ;; Free all blocks (convert SAP back to alien for freeing)
     (dolist (ptr (memory-pool-free-blocks pool))
       (sb-alien:free-alien (sb-alien:sap-alien ptr (* (sb-alien:unsigned 8)))))

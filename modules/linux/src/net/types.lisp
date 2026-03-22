@@ -24,13 +24,14 @@
    #:tcp-stream-connected-p
    #:tcp-stream-input
    #:tcp-stream-output
+   #:tcp-stream-byte-input
+   #:tcp-stream-byte-output
 
    #:udp-socket
    #:udp-socket-handle
    #:udp-socket-local-address
-   #:udp-socket-connected-peer))
-
-(in-package epsilon.net.types)
+   #:udp-socket-connected-peer)
+  (:enter t))
 
 ;;; ============================================================================
 ;;; Address Types
@@ -88,7 +89,11 @@
    (output-stream :initform nil :accessor tcp-stream-output
                   :documentation "Lisp output stream")
    (connected-p :initarg :connected-p :initform t :accessor tcp-stream-connected-p
-                :documentation "Connection status"))
+                :documentation "Connection status")
+   (byte-input :initform nil :accessor tcp-stream-byte-input
+               :documentation "Byte input stream")
+   (byte-output :initform nil :accessor tcp-stream-byte-output
+                :documentation "Byte output stream"))
   (:documentation "TCP connection stream"))
 
 (defmethod print-object ((stream tcp-stream) stream-obj)

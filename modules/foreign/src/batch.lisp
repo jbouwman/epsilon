@@ -17,9 +17,8 @@
    #:*batch-threshold*
    #:*current-batch*
    #:execute-batch
-   #:optimize-call-sequence))
-
-(in-package epsilon.foreign.batch)
+   #:optimize-call-sequence)
+  (:enter t))
 
 ;;; Batch context
 

@@ -23,16 +23,16 @@ done
 # The directory where epsilon is located
 # Handle both root-level (./epsilon) and bin-level (./bin/epsilon) layouts
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT")" && pwd)"
-if [ -d "$SCRIPT_DIR/modules" ]; then
+if [ -f "$SCRIPT_DIR/module.plist" ]; then
     # Script is at root level (development layout)
     export EPSILON_HOME="$SCRIPT_DIR"
-elif [ -d "$SCRIPT_DIR/../modules" ]; then
+elif [ -f "$SCRIPT_DIR/../module.plist" ]; then
     # Script is in bin/ subdirectory (release layout)
     export EPSILON_HOME="$(cd "$SCRIPT_DIR/.." && pwd)"
 else
     export EPSILON_HOME="$SCRIPT_DIR"
 fi
-EPSILON_BOOT="$EPSILON_HOME/modules/core/src/epsilon.lisp"
+EPSILON_BOOT="$EPSILON_HOME/src/epsilon.lisp"
 
 # Detect boot script
 if ! [ -f "$EPSILON_BOOT" ]; then
@@ -40,23 +40,46 @@ if ! [ -f "$EPSILON_BOOT" ]; then
     exit 1
 fi
 
-# Find SBCL: prefer bundled, fall back to system
+# Detect platform for vendored SBCL
+detect_platform() {
+    OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+    ARCH="$(uname -m)"
+    case "$OS" in
+        darwin) OS="darwin" ;;
+        linux) OS="linux" ;;
+        *) OS="unknown" ;;
+    esac
+    case "$ARCH" in
+        x86_64|amd64) ARCH="x86_64" ;;
+        arm64|aarch64) ARCH="arm64" ;;
+        *) ARCH="unknown" ;;
+    esac
+    echo "${OS}-${ARCH}"
+}
+
+# Find SBCL: require vendored SBCL (custom fork with extended C-call conventions)
 SBCL=""
 SBCL_CORE_ARG=""
+PLATFORM="$(detect_platform)"
+VENDOR_SBCL="$EPSILON_HOME/vendor/sbcl/$PLATFORM/sbcl"
+VENDOR_CORE="$EPSILON_HOME/vendor/sbcl/$PLATFORM/sbcl.core"
 
-if [ -x "$EPSILON_HOME/bin/sbcl" ]; then
-    # Use bundled SBCL
-    SBCL="$EPSILON_HOME/bin/sbcl"
-    if [ -f "$EPSILON_HOME/lib/sbcl-libs/sbcl.core" ]; then
-        export SBCL_HOME="$EPSILON_HOME/lib/sbcl-libs"
-        SBCL_CORE_ARG="--core $SBCL_HOME/sbcl.core"
+if [ -n "${EPSILON_SBCL:-}" ] && [ -x "$EPSILON_SBCL" ]; then
+    # Nix-built SBCL: has SBCL_HOME compiled in, no core/home paths needed
+    SBCL="$EPSILON_SBCL"
+elif [ -x "$VENDOR_SBCL" ]; then
+    SBCL="$VENDOR_SBCL"
+    if [ -f "$VENDOR_CORE" ]; then
+        SBCL_CORE_ARG="--core $VENDOR_CORE"
     fi
-elif command -v sbcl >/dev/null 2>&1; then
-    # Use system SBCL
-    SBCL="sbcl"
+    # Set SBCL_HOME so SBCL can find vendored contribs (sb-posix)
+    export SBCL_HOME="$EPSILON_HOME/vendor/sbcl/$PLATFORM"
 else
-    echo "Error: SBCL not found" >&2
-    echo "Please install SBCL: https://www.sbcl.org/" >&2
+    echo "Error: Vendored SBCL not found for platform: $PLATFORM" >&2
+    echo "Expected: $VENDOR_SBCL" >&2
+    echo "" >&2
+    echo "Epsilon requires a custom SBCL fork with extended C-call conventions." >&2
+    echo "See: $EPSILON_HOME/vendor/sbcl/README.md for build instructions." >&2
     exit 1
 fi
 
@@ -90,7 +113,7 @@ done
 # Force rebuild of bootstrap.fasl if requested
 if [ "$REBUILD_BOOT" = "true" ]; then
     echo "Forcing rebuild of bootstrap cache..."
-    rm -f "$EPSILON_HOME/modules/core/target/bootstrap.fasl"
+    rm -f "$EPSILON_HOME/_build/epsilon.core/bootstrap.fasl"
 fi
 
 SBCL_RUNTIME_ARGS="--noinform"

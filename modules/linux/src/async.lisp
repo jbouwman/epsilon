@@ -10,7 +10,7 @@
    (#:epoll-mgr #:epsilon.net.epoll-manager)
    (#:lib #:epsilon.foreign))
   (:export
-   ;; Async operation types
+   ;; Async operation struct
    #:async-operation
    #:async-operation-p
    #:make-async-operation
@@ -40,12 +40,24 @@
 
    ;; Operation management
    #:cleanup-fd-operations
-   #:cancel-async-operation))
+   #:cancel-async-operation
 
-(in-package #:epsilon.async)
+   ;; Pool teardown support
+   #:quiesce-fd
+   #:fence-async-event-loop
+
+   ;; Process monitoring (synchronous subprocess I/O multiplexing)
+   #:+eagain+
+   #:make-process-monitor
+   #:process-monitor-add-read
+   #:process-monitor-add-pid
+   #:process-monitor-remove-read
+   #:process-monitor-wait
+   #:process-monitor-close)
+  (:enter t))
 
 ;;; ============================================================================
-;;; Async Operation Types
+;;; Async Operation Struct
 ;;; ============================================================================
 
 (defstruct async-operation
@@ -95,6 +107,18 @@
 
 (defvar *completion-lock* (sb-thread:make-mutex :name "completion-queue"))
 
+(defvar *cancel-in-progress* nil
+  "Defense-in-depth guard: when non-nil, cancel-async-operation is already
+   on the call stack and re-entrant invocations return immediately.")
+
+(defvar *event-loop-generation* 0
+  "Monotonically increasing counter incremented after each event loop iteration.
+   Used by fence-async-event-loop to synchronize with the event loop thread.")
+
+(defvar *event-loop-generation-lock* (sb-thread:make-mutex :name "event-loop-generation"))
+
+(defvar *event-loop-generation-cv* (sb-thread:make-waitqueue :name "event-loop-generation"))
+
 (defun validate-file-descriptor (fd)
   "Validate that a file descriptor is valid before using with epoll"
   (and (integerp fd)
@@ -136,7 +160,8 @@
   ;; Epoll manager will handle its own cleanup
   (epoll-mgr:shutdown-epoll-manager)
   (clrhash *pending-operations*)
-  (setf *completion-queue* '()))
+  (setf *completion-queue* '())
+  (setf *event-loop-generation* 0))
 
 (defun async-event-loop ()
   "Main async event processing loop"
@@ -151,7 +176,12 @@
       (error (e)
         (warn "Linux async event loop error: ~A" e)
         ;; Sleep on error to prevent error loops
-        (sleep 0.1)))))
+        (sleep 0.1)))
+    ;; Advance generation for fence synchronization.
+    ;; This signals that all callbacks from this iteration have completed.
+    (sb-thread:with-mutex (*event-loop-generation-lock*)
+      (incf *event-loop-generation*)
+      (sb-thread:condition-broadcast *event-loop-generation-cv*))))
 
 (defun process-epoll-event (event)
   "Process a single epoll event"
@@ -250,7 +280,10 @@
 ;;; ============================================================================
 
 (defun submit-async-operation (operation)
-  "Submit an async operation for processing"
+  "Submit an async operation for processing.
+   If the fd is already registered with the epoll manager (e.g. re-registering
+   for read after partial consume), uses modify-socket-events instead of
+   register-socket to avoid EPOLL_CTL_ADD on an already-added fd."
   (ensure-async-system)
   (let ((fd (async-operation-fd operation))
         (op-type (async-operation-type operation)))
@@ -259,28 +292,23 @@
     (unless (validate-file-descriptor fd)
       (error "Invalid file descriptor: ~A" fd))
 
-    (let* ((key (cons fd op-type))
-           (epoll-events (case op-type
-                           (:read epoll:+epollin+)
-                           (:write epoll:+epollout+)
-                           (:accept epoll:+epollin+)
-                           (:connect epoll:+epollout+)
-                           (t (error "Unknown operation type: ~A" op-type)))))
-
+    (let ((key (cons fd op-type))
+          (events (case op-type
+                    (:read '(:in))
+                    (:write '(:out))
+                    (:accept '(:in))
+                    (:connect '(:out))
+                    (t (error "Unknown operation type: ~A" op-type)))))
       ;; Store operation for completion lookup
       (setf (gethash key *pending-operations*) operation)
 
-      ;; Register with epoll manager
+      ;; Register or modify epoll interest for this fd
       (handler-case
-          (epoll-mgr:register-socket
-           fd
-           (case op-type
-             (:read '(:in))
-             (:write '(:out))
-             (:accept '(:in))
-             (:connect '(:out))
-             (t (error "Unknown operation type: ~A" op-type)))
-           :data fd)
+          (if (epoll-mgr:socket-registered-p fd)
+              ;; fd already in epoll -- modify events
+              (epoll-mgr:modify-socket-events fd events)
+              ;; fd not yet registered -- add it
+              (epoll-mgr:register-socket fd events :data fd))
         (error (e)
           ;; For testing purposes, just complete immediately if epoll fails
           ;; This allows tests to work with stdin/stdout
@@ -339,7 +367,7 @@
 
 (defun async-connect (fd address &key on-complete on-error)
   "Perform async connect operation"
-  (declare (ignore address)) ; Would be used in full implementation
+  (declare (ignore address))
   (let ((operation (make-async-operation
                     :fd fd
                     :type :connect
@@ -381,8 +409,14 @@
     (length operations-to-remove)))
 
 (defun cancel-async-operation (operation)
-  "Cancel a specific async operation"
-  (let* ((fd (async-operation-fd operation))
+  "Cancel a specific async operation.
+   Uses *cancel-in-progress* as a re-entrancy guard: if the error-callback
+   invoked below itself calls cancel-async-operation, the nested call
+   returns immediately instead of recursing."
+  (when *cancel-in-progress*
+    (return-from cancel-async-operation nil))
+  (let* ((*cancel-in-progress* t)
+         (fd (async-operation-fd operation))
          (op-type (async-operation-type operation))
          (key (cons fd op-type)))
     (when (gethash key *pending-operations*)
@@ -394,6 +428,42 @@
           (error (e)
             (warn "Error in cancel error callback: ~A" e))))
       t)))
+
+;;; ============================================================================
+;;; Pool Teardown Support
+;;; ============================================================================
+
+(defun quiesce-fd (fd)
+  "Silently remove FD from the async system without invoking callbacks.
+   Removes all pending operations for FD from the pending table and
+   unregisters FD from epoll.  Unlike cleanup-fd-operations, this does
+   NOT invoke error callbacks, avoiding re-entrancy issues during pool
+   teardown.  Use fence-async-event-loop after quiescing to ensure any
+   currently-executing callbacks for FD have completed."
+  (let ((keys-to-remove '()))
+    (maphash (lambda (key op)
+               (declare (ignore op))
+               (when (= (car key) fd)
+                 (push key keys-to-remove)))
+             *pending-operations*)
+    (dolist (key keys-to-remove)
+      (remhash key *pending-operations*)))
+  (handler-case (epoll-mgr:unregister-socket fd) (error () nil)))
+
+(defun fence-async-event-loop ()
+  "Wait for the async event loop to complete its current iteration.
+   Guarantees that any callbacks in-flight when this function is called
+   have finished executing before this function returns.
+   Returns immediately if the async system is not running."
+  (unless (and *async-thread* (sb-thread:thread-alive-p *async-thread*))
+    (return-from fence-async-event-loop))
+  (sb-thread:with-mutex (*event-loop-generation-lock*)
+    (let ((target (1+ *event-loop-generation*)))
+      (loop while (and *async-running*
+                       (< *event-loop-generation* target))
+            do (sb-thread:condition-wait *event-loop-generation-cv*
+                                        *event-loop-generation-lock*
+                                        :timeout 1)))))
 
 ;;; ============================================================================
 ;;; Utilities
@@ -408,3 +478,69 @@
       (when (< result 0)
         (error "Failed to set non-blocking mode for fd ~A" fd))
       fd)))
+
+;;; ============================================================================
+;;; Process Monitor (synchronous multiplexer for subprocess I/O)
+;;; ============================================================================
+
+(defconstant +eagain+ 11
+  "EAGAIN errno value on Linux.")
+
+(defstruct (process-monitor (:constructor %make-process-monitor))
+  "Synchronous I/O multiplexer for subprocess stdout/stderr and process exit.
+   Backed by a dedicated epoll instance, independent of the global async system."
+  epoll-fd
+  (pidfd nil))
+
+(defun make-process-monitor ()
+  "Create a new process monitor backed by a dedicated epoll fd."
+  (%make-process-monitor :epoll-fd (epoll:epoll-create1 0)))
+
+(defun process-monitor-add-read (monitor fd)
+  "Register FD for read-readiness and hangup events."
+  (epoll:add-event (process-monitor-epoll-fd monitor) fd
+                   (logior epoll:+epollin+ epoll:+epollrdhup+)))
+
+(defun process-monitor-add-pid (monitor pid pidfd)
+  "Register process exit via PIDFD if available.
+   PID is unused on Linux. Returns true if registered, nil if pidfd is nil."
+  (declare (ignore pid))
+  (when pidfd
+    (epoll:add-event (process-monitor-epoll-fd monitor) pidfd
+                     epoll:+epollin+
+                     :data (epoll:make-epoll-data :fd pidfd))
+    (setf (process-monitor-pidfd monitor) pidfd)
+    t))
+
+(defun process-monitor-remove-read (monitor fd)
+  "Remove FD from read-readiness monitoring. Ignores errors."
+  (handler-case
+      (epoll:delete-event (process-monitor-epoll-fd monitor) fd)
+    (error () nil)))
+
+(defun process-monitor-wait (monitor timeout-ms)
+  "Wait up to TIMEOUT-MS milliseconds for events. Pass -1 to block indefinitely.
+   Returns a list of (fd . event-type) where event-type is :readable, :eof,
+   :pid-exit, or :error. For :pid-exit events the car is nil."
+  (let ((epfd  (process-monitor-epoll-fd monitor))
+        (pidfd (process-monitor-pidfd monitor))
+        (results nil))
+    (dolist (ev (epoll:epoll-wait epfd 16 (if timeout-ms timeout-ms -1)))
+      (let* ((fd   (epoll:epoll-data-fd (epoll:epoll-event-data ev)))
+             (evts (epoll:epoll-event-events ev)))
+        (cond
+          ((and pidfd (= fd pidfd))
+           (push (cons nil :pid-exit) results))
+          ((not (zerop (logand evts epoll:+epollin+)))
+           (push (cons fd :readable) results))
+          ((not (zerop (logand evts (logior epoll:+epollhup+
+                                           epoll:+epollrdhup+
+                                           epoll:+epollerr+))))
+           (push (cons fd :eof) results))
+          (t
+           (push (cons fd :error) results)))))
+    (nreverse results)))
+
+(defun process-monitor-close (monitor)
+  "Release the epoll fd held by MONITOR."
+  (epoll:epoll-close (process-monitor-epoll-fd monitor)))

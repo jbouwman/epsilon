@@ -22,6 +22,7 @@
    ;; Socket options
    #:+sol-socket+
    #:+so-reuseaddr+
+   #:+so-error+
    #:+so-keepalive+
    #:+so-broadcast+
    #:+so-linger+
@@ -70,9 +71,8 @@
    #:%getsockopt
    #:%getsockname
    #:%getpeername
-   #:%fcntl))
-
-(in-package epsilon.net.constants)
+   #:%fcntl)
+  (:enter t))
 
 ;;; ============================================================================
 ;;; Address Families
@@ -113,6 +113,9 @@
 
 (defconstant +so-reuseaddr+ 2
   "Allow reuse of local addresses")
+
+(defconstant +so-error+ 4
+  "Get and clear pending socket error")
 
 (defconstant +so-keepalive+ 9
   "Keep connections alive")

@@ -52,9 +52,8 @@
 
    ;; timespec-struct accessors
    timespec-struct-tv-sec
-   timespec-struct-tv-nsec))
-
-(in-package epsilon.kqueue)
+   timespec-struct-tv-nsec)
+  (:enter t))
 
 ;;; BSD kqueue constants (macOS/FreeBSD)
 
@@ -78,6 +77,9 @@
 (defconstant +ev-eof+ #x8000)
 (defconstant +ev-error+ #x4000)
 
+;; errno values we need to handle
+(defconstant +eintr+ 4)  ; Interrupted system call
+
 ;;; Foreign function declarations using epsilon.foreign
 
 ;; int kqueue(void);
@@ -95,6 +97,13 @@
 ;; int close(int fd);
 (defun %close (fd)
   (lib:shared-call '("close" "/usr/lib/libSystem.B.dylib") :int '(:int) fd))
+
+;; int* __error(void) - get pointer to errno on macOS
+(defun %get-errno ()
+  (let ((errno-ptr (lib:shared-call '("__error" "/usr/lib/libSystem.B.dylib")
+                                    :pointer '())))
+    (when errno-ptr
+      (sb-sys:sap-ref-32 errno-ptr 0))))
 
 ;;; Structure definitions
 
@@ -205,17 +214,22 @@
                (setf nsec (truncate (* nsec 1000000000)))
                (setf timeout-memory (make-timespec-memory sec nsec))))
 
-           ;; Call kevent
-           (let ((result (%kevent kq
-                                  (or change-memory 0)
-                                  change-count
-                                  (or event-memory 0)
-                                  event-count
-                                  (or timeout-memory 0))))
-             (cond
-               ((= result -1) (error "kevent failed"))
-               ((= result 0) '()) ; Timeout
-               (t (parse-kevent-memory event-memory result)))))
+           ;; Call kevent with EINTR retry
+           (loop
+             (let ((result (%kevent kq
+                                    (or change-memory 0)
+                                    change-count
+                                    (or event-memory 0)
+                                    event-count
+                                    (or timeout-memory 0))))
+               (cond
+                 ((= result -1)
+                  (let ((errno (%get-errno)))
+                    (if (= errno +eintr+)
+                        nil ; Retry on EINTR
+                        (error "kevent failed with errno ~D" errno))))
+                 ((= result 0) (return '())) ; Timeout
+                 (t (return (parse-kevent-memory event-memory result)))))))
 
       ;; Cleanup
       (when change-memory (lib:foreign-free change-memory))
