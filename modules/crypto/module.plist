@@ -1,0 +1,9 @@
+(:name "epsilon.crypto"
+ :module-set "epsilon-stdlib"
+ :description "Cryptographic operations and TLS"
+ :requires ("epsilon.ssl"
+            "epsilon.net"
+            "epsilon.io"
+            "epsilon.json"
+            "epsilon.base-encode"
+            "epsilon.typeclass"))

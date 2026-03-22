@@ -1,0 +1,4 @@
+(:name "epsilon.typeclass"
+ :module-set "epsilon-stdlib"
+ :description "Type class system with standard instances, defstruct+, records, and enums"
+ :requires ("epsilon"))

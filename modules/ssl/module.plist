@@ -1,0 +1,4 @@
+(:name "epsilon.ssl"
+ :module-set "epsilon-stdlib"
+ :description "TLS 1.3 and cryptographic primitives"
+ :requires ("epsilon.foreign"))

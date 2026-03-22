@@ -1,0 +1,4 @@
+(:name "epsilon.log"
+ :module-set "epsilon-stdlib"
+ :description "Structured logging with composable spec syntax"
+ :requires ("epsilon" "epsilon.typeclass"))

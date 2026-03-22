@@ -1,0 +1,98 @@
+;;;; Main epsilon.net package - re-exports all public APIs
+
+(defpackage epsilon.net
+  (:use cl)
+  (:import-from epsilon.net.errors
+   network-error error-message connection-refused connection-reset
+   connection-aborted timeout-error address-in-use would-block-error
+   dns-resolution-error dns-error-hostname
+   host-unreachable unreachable-host)
+  (:import-from epsilon.net.types
+   socket-address socket-address-ip socket-address-port
+   tcp-listener tcp-stream udp-socket udp-socket-handle
+   tcp-stream-handle)
+  (:import-from epsilon.net.address
+   make-socket-address resolve-address parse-address)
+  (:import-from epsilon.net.socket-options
+   set-socket-option get-socket-option)
+  (:import-from epsilon.net.sockets
+   tcp-bind tcp-accept tcp-incoming tcp-try-accept tcp-poll-accept tcp-local-addr tcp-close
+   tcp-connect tcp-read tcp-write tcp-write-all tcp-flush
+   tcp-try-read tcp-try-write tcp-poll-read tcp-poll-write
+   tcp-peer-addr tcp-shutdown tcp-stream-reader tcp-stream-writer
+   tcp-stream-byte-reader tcp-stream-byte-writer tcp-connected-p
+   udp-bind udp-connect udp-send udp-recv udp-send-to udp-recv-from
+   udp-local-addr udp-poll-send udp-poll-recv)
+  (:export
+   ;; Address types
+   socket-address
+
+   ;; Socket types
+   tcp-listener
+   tcp-stream
+   udp-socket
+
+   ;; TCP Listener operations
+   tcp-bind
+   tcp-accept
+   tcp-incoming
+   tcp-try-accept
+   tcp-poll-accept
+   tcp-local-addr
+   tcp-close
+
+   ;; TCP Stream operations
+   tcp-connect
+   tcp-read
+   tcp-write
+   tcp-write-all
+   tcp-flush
+   tcp-try-read
+   tcp-try-write
+   tcp-poll-read
+   tcp-poll-write
+   tcp-peer-addr
+   tcp-shutdown
+   tcp-stream-reader
+   tcp-stream-writer
+   tcp-stream-byte-reader
+   tcp-stream-byte-writer
+   tcp-stream-handle
+
+   ;; UDP operations
+   udp-bind
+   udp-connect
+   udp-send
+   udp-recv
+   udp-send-to
+   udp-recv-from
+   udp-local-addr
+   udp-poll-send
+   udp-poll-recv
+   udp-socket-handle
+
+   ;; Address resolution
+   make-socket-address
+   resolve-address
+   socket-address-ip
+   socket-address-port
+   parse-address
+
+   ;; Socket options
+   set-socket-option
+   get-socket-option
+
+   ;; Error conditions
+   network-error
+   connection-refused
+   connection-reset
+   connection-aborted
+   timeout-error
+   address-in-use
+   would-block-error
+   dns-resolution-error
+   host-unreachable
+
+   ;; Status checks
+   tcp-connected-p)
+  (:enter t))

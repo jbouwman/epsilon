@@ -1,0 +1,5 @@
+(:name "epsilon.foreign"
+ :module-set "epsilon-core"
+ :description "Foreign Function Interface and C language integration"
+ :requires ("epsilon.parsing" "epsilon.library")
+ :benchmarks ("benchmarks"))
