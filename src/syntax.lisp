@@ -1,0 +1,179 @@
+;;; Suppress package variance warnings globally
+;;; This must be the first thing evaluated so it's in effect when
+;;; epsilon re-exports symbols from other packages
+(setf sb-ext:*on-package-variance* nil)
+
+(defpackage :epsilon.syntax
+  (:use
+   :cl)
+  (:export
+   :define-constant
+   :->
+   :->>
+   :if-let
+   :when-let
+   :when-let*
+   :while
+   :re-export))
+
+(in-package :epsilon.syntax)
+
+(defmacro define-constant (name value &optional doc)
+  "Define a constant that can be redefined if the new value is equalp to the old."
+  `(defconstant ,name
+     (if (boundp ',name)
+         (let ((old (symbol-value ',name)))
+           (if (equalp old ,value)
+               old
+               ,value))
+         ,value)
+     ,@(when doc (list doc))))
+
+(defmacro while (cond &body body)
+  `(do () ((not ,cond)) ,@body))
+
+(defmacro -> (x &rest forms)
+  "Thread X through FORMS as first argument.
+   Each form can be a symbol (called as function) or a list (inserted as first arg).
+
+   Examples:
+     (-> x f)           => (f x)
+     (-> x (f a b))     => (f x a b)
+     (-> x f (g a) h)   => (h (g (f x) a))"
+  (if (null forms)
+      x
+      (let ((form (first forms)))
+        (if (listp form)
+            `(-> (,(first form) ,x ,@(rest form)) ,@(rest forms))
+            `(-> (,form ,x) ,@(rest forms))))))
+
+(defmacro ->> (x &rest forms)
+  "Thread X through FORMS as last argument.
+   Each form can be a symbol (called as function) or a list (inserted as last arg).
+
+   Examples:
+     (->> x f)          => (f x)
+     (->> x (f a b))    => (f a b x)
+     (->> x f (g a) h)  => (h (g a (f x)))"
+  (if (null forms)
+      x
+      (let ((form (first forms)))
+        (if (listp form)
+            `(->> (,@form ,x) ,@(rest forms))
+            `(->> (,form ,x) ,@(rest forms))))))
+
+(defmacro if-let (bindings &body (then-form &optional else-form))
+    "Creates new variable bindings, and conditionally executes either
+THEN-FORM or ELSE-FORM. ELSE-FORM defaults to NIL.
+
+BINDINGS must be either single binding of the form:
+
+ (variable initial-form)
+
+or a list of bindings of the form:
+
+ ((variable-1 initial-form-1)
+  (variable-2 initial-form-2)
+  ...
+  (variable-n initial-form-n))
+
+All initial-forms are executed sequentially in the specified order. Then all
+the variables are bound to the corresponding values.
+
+If all variables were bound to true values, the THEN-FORM is executed with the
+bindings in effect, otherwise the ELSE-FORM is executed with the bindings in
+effect."
+    (let* ((binding-list (if (and (consp bindings) (symbolp (car bindings)))
+                             (list bindings)
+                             bindings))
+         (variables (mapcar #'car binding-list)))
+    `(let ,binding-list
+       (if (and ,@variables)
+           ,then-form
+           ,else-form))))
+
+(defmacro when-let (bindings &body forms)
+    "Creates new variable bindings, and conditionally executes FORMS.
+
+BINDINGS must be either single binding of the form:
+
+ (variable initial-form)
+
+or a list of bindings of the form:
+
+ ((variable-1 initial-form-1)
+  (variable-2 initial-form-2)
+  ...
+  (variable-n initial-form-n))
+
+All initial-forms are executed sequentially in the specified order. Then all
+the variables are bound to the corresponding values.
+
+If all variables were bound to true values, then FORMS are executed as an
+implicit PROGN."
+  (let* ((binding-list (if (and (consp bindings) (symbolp (car bindings)))
+                           (list bindings)
+                           bindings))
+         (variables (mapcar #'car binding-list)))
+    `(let ,binding-list
+       (when (and ,@variables)
+         ,@forms))))
+
+(defmacro when-let* (bindings &body body)
+  "Creates new variable bindings, and conditionally executes BODY.
+
+BINDINGS must be either single binding of the form:
+
+ (variable initial-form)
+
+or a list of bindings of the form:
+
+ ((variable-1 initial-form-1)
+  (variable-2 initial-form-2)
+  ...
+  (variable-n initial-form-n))
+
+Each INITIAL-FORM is executed in turn, and the variable bound to the
+corresponding value. INITIAL-FORM expressions can refer to variables
+previously bound by the WHEN-LET*.
+
+Execution of WHEN-LET* stops immediately if any INITIAL-FORM evaluates to NIL.
+If all INITIAL-FORMs evaluate to true, then BODY is executed as an implicit
+PROGN."
+  (let ((binding-list (if (and (consp bindings) (symbolp (car bindings)))
+                          (list bindings)
+                          bindings)))
+    (labels ((bind (bindings body)
+               (if bindings
+                   `(let (,(car bindings))
+                      (when ,(caar bindings)
+                        ,(bind (cdr bindings) body)))
+                   `(progn ,@body))))
+      (bind binding-list body))))
+
+(defmacro re-export (source-package &rest symbols)
+  "Import SYMBOLS from SOURCE-PACKAGE and re-export them from the current package.
+
+   This eliminates the need to duplicate symbol names in both :import-from
+   and :export clauses of defpackage.
+
+   Example:
+     ;; Instead of:
+     ;; (:import-from :epsilon.net.core network-error connection-refused)
+     ;; (:export network-error connection-refused)
+
+     ;; Use:
+     (re-export epsilon.net.core
+       network-error connection-refused)
+
+   The macro must be called after the source package is loaded."
+  `(eval-when (:compile-toplevel :load-toplevel :execute)
+     (let ((pkg (find-package ',source-package)))
+       (unless pkg
+         (error "Package ~A not found for re-export" ',source-package))
+       (dolist (sym-name ',(mapcar #'string symbols))
+         (let ((sym (find-symbol sym-name pkg)))
+           (unless sym
+             (error "Symbol ~S not found in package ~A" sym-name ',source-package))
+           (import sym)
+           (export (list (intern sym-name))))))))

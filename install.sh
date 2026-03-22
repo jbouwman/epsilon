@@ -13,7 +13,6 @@
 #   --source            Install from source via git clone (requires SBCL)
 #   --check             Check/verify existing installation
 #   --uninstall         Remove epsilon installation
-#   --completions       Install shell completions only
 #   --manifest PATH     Install dependencies from manifest after install
 #   --force             Skip confirmation prompts
 #   --quiet             Suppress informational output
@@ -41,7 +40,6 @@ GITHUB_API_URL="https://api.github.com/repos/$GITHUB_REPO/releases"
 # Defaults (can be overridden by env vars or CLI args)
 INSTALL_DIR="${EPSILON_HOME:-$HOME/.epsilon}"
 BINARY_DIR="${EPSILON_BIN:-$HOME/.local/bin}"
-COMPLETIONS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/epsilon/completions"
 
 # Command line options (env vars as defaults)
 INSTALL_VERSION="${EPSILON_VERSION:-}"
@@ -49,7 +47,6 @@ MANIFEST_PATH="${EPSILON_MANIFEST:-}"
 INSTALL_SOURCE="${EPSILON_SOURCE:-false}"
 CHECK_ONLY=false
 UNINSTALL=false
-COMPLETIONS_ONLY=false
 SHOW_HELP=false
 FORCE=false
 QUIET=false
@@ -97,7 +94,6 @@ Options:
     --source            Install from source via git clone (requires SBCL)
     --check             Check/verify existing installation without changes
     --uninstall         Remove epsilon installation completely
-    --completions       Install shell completions only (requires existing install)
     --manifest PATH     Install dependencies from manifest after epsilon install
     --force             Skip confirmation prompts
     --quiet             Suppress informational output
@@ -160,10 +156,6 @@ parse_args() {
                 ;;
             --uninstall)
                 UNINSTALL=true
-                shift
-                ;;
-            --completions)
-                COMPLETIONS_ONLY=true
                 shift
                 ;;
             --manifest)
@@ -430,12 +422,8 @@ install_from_source() {
         exit 1
     fi
 
-    # Check for SBCL (required for source installs)
-    if ! command -v sbcl >/dev/null 2>&1; then
-        error "SBCL is required for source installation"
-        echo "Install SBCL: https://www.sbcl.org/" >&2
-        exit 1
-    fi
+    # Note: Vendored SBCL is required (custom fork with extended C-call conventions)
+    # The epsilon script will verify vendored SBCL is present after clone
 
     # Handle existing installation
     if [ -d "$INSTALL_DIR" ]; then
@@ -514,81 +502,6 @@ create_symlinks() {
 
     ln -sf "$epsilon_bin" "$symlink_path"
     success "Created symlink at $symlink_path"
-}
-
-# Install shell completions
-install_completions() {
-    [ "$IS_CI" = true ] && return 0  # Skip completions in CI
-
-    info "Installing shell completions..."
-    mkdir -p "$COMPLETIONS_DIR"
-
-    # Generate Bash completion
-    cat > "$COMPLETIONS_DIR/epsilon.bash" << 'BASH_COMPLETION'
-_epsilon_completions() {
-    local cur prev opts
-    COMPREPLY=()
-    cur="${COMP_WORDS[COMP_CWORD]}"
-    prev="${COMP_WORDS[COMP_CWORD-1]}"
-    opts="--help --version --version-json --debug --quiet --eval --module --load --test --exec --modules --path --module-dir --init --new --doctor --verbose --log"
-
-    case "$prev" in
-        --module|--test)
-            local modules
-            if command -v epsilon >/dev/null 2>&1; then
-                modules=$(epsilon --modules 2>/dev/null | grep -E '^epsilon\.' | awk '{print $1}' || true)
-            fi
-            COMPREPLY=( $(compgen -W "$modules" -- "$cur") )
-            return 0
-            ;;
-        --load|--path)
-            COMPREPLY=( $(compgen -f -- "$cur") )
-            return 0
-            ;;
-    esac
-
-    if [[ "$cur" == -* ]]; then
-        COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
-    fi
-    return 0
-}
-complete -F _epsilon_completions epsilon
-BASH_COMPLETION
-
-    # Generate Zsh completion
-    cat > "$COMPLETIONS_DIR/_epsilon" << 'ZSH_COMPLETION'
-#compdef epsilon
-_epsilon() {
-    local -a opts
-    opts=(
-        '--help[Show help message]'
-        '--version[Show version information]'
-        '--debug[Enable debugger]'
-        '--quiet[Suppress warnings]'
-        '--eval[Evaluate expression]:expression:'
-        '--module[Load module]:module:'
-        '--load[Load file]:file:_files'
-        '--test[Run tests]:module:'
-        '--exec[Execute function]:function:'
-        '--modules[List modules]'
-        '--path[Module path]:path:_files -/'
-        '--init[Initialize new project]'
-        '--new[Create new module]:name:'
-        '--doctor[Run diagnostics]'
-    )
-    _arguments -s $opts
-}
-_epsilon "$@"
-ZSH_COMPLETION
-
-    success "Shell completions installed to $COMPLETIONS_DIR"
-
-    if [ "$QUIET" = false ]; then
-        echo ""
-        echo "To enable completions, add to your shell config:"
-        echo "  Bash: source $COMPLETIONS_DIR/epsilon.bash"
-        echo "  Zsh:  fpath=($COMPLETIONS_DIR \$fpath); autoload -Uz compinit && compinit"
-    fi
 }
 
 # Update shell configuration hints
@@ -738,7 +651,6 @@ uninstall_epsilon() {
         echo "This will remove:"
         [ -d "$INSTALL_DIR" ] && echo "  - $INSTALL_DIR"
         [ -L "$BINARY_DIR/epsilon" ] && echo "  - $BINARY_DIR/epsilon"
-        [ -d "$COMPLETIONS_DIR" ] && echo "  - $COMPLETIONS_DIR"
         echo ""
         read -p "Are you sure? (y/N) " -n 1 -r < /dev/tty
         echo
@@ -751,7 +663,6 @@ uninstall_epsilon() {
     [ -L "$BINARY_DIR/epsilon" ] && rm "$BINARY_DIR/epsilon" && success "Removed symlink"
     [ -f "$BINARY_DIR/epsilon" ] && rm "$BINARY_DIR/epsilon" && success "Removed binary"
     [ -d "$INSTALL_DIR" ] && rm -rf "$INSTALL_DIR" && success "Removed installation"
-    [ -d "$COMPLETIONS_DIR" ] && rm -rf "$COMPLETIONS_DIR" && success "Removed completions"
 
     success "Epsilon has been uninstalled"
 }
@@ -804,15 +715,6 @@ main() {
         exit 0
     fi
 
-    if [ "$COMPLETIONS_ONLY" = true ]; then
-        if [ ! -d "$INSTALL_DIR" ]; then
-            error "Epsilon not installed. Run install.sh first."
-            exit 1
-        fi
-        install_completions
-        exit 0
-    fi
-
     # Full installation
     [ "$IS_CI" = false ] && echo "" && echo "Installing Epsilon..." && echo ""
 
@@ -837,7 +739,6 @@ main() {
     fi
 
     create_symlinks
-    install_completions
     update_shell_config
     verify_installation
 
