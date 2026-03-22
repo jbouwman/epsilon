@@ -44,11 +44,11 @@ jobs:
 
       - name: Run tests
         run: |
-          ./epsilon --exec epsilon.release:selftest
+          ./epsilon test --force --all --parallel 1
 
       - name: Run lint
         run: |
-          ./epsilon --exec epsilon.lint:lint-directory -- "modules/" || true
+          ./epsilon analyze --all || true
 
   build:
     name: Build (${{ matrix.platform }})
