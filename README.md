@@ -1,23 +1,31 @@
 # Epsilon
 
-![Cow Tools](tools.png)
-
 [![CI - Multi-Platform Build](https://github.com/jbouwman/epsilon/actions/workflows/ci.yml/badge.svg)](https://github.com/jbouwman/epsilon/actions/workflows/ci.yml)
 
-Epsilon is a module system for Common Lisp.
+Epsilon is a Common Lisp module and build system for SBCL.
 
-- **Modern Module System** - Versioning and dependency resolution
-- **Functional Data Structures** - Persistent maps (HAMT), sets, and vectors with structural sharing
-- **Cryptography** - Native TLS/SSL, X.509 certificates, and cryptographic operations
+Epsilon ships a module declaration system, a runtime, a content-addressed build,
+and a compact standard library sufficient to load further modules.
 
-## Contributing
+```bash
+./epsilon repl
+epsilon> (+ 1 2 3)
+6
+```
 
-Run `make test` to verify changes, follow existing code conventions, and open a pull request.
+See `epsilon commands` for a list of commands.
 
-## Security
+The standard library provides HAMT-backed persistent maps/sets, HTTP, JSON, SQL,
+MessagePack, WebSocket, regex, time, UUID, base64, compression, TLS/X.509, an
+FFI with libclang-driven binding generation, an `sb-fiber` M:N coroutine
+scheduler, and a content-addressed build pool.
 
-To report a security issue, please email the maintainer directly rather than opening a public issue.
+## Documentation
+
+- [`docs/MODULE.md`](docs/MODULE.md) — manifest reference and module conventions
+- [`demos/`](demos/) — worked examples
+- [`CHANGELOG.md`](CHANGELOG.md) — release notes
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE).

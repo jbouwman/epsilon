@@ -2,9 +2,8 @@
 
 (defpackage epsilon.library.tests
   (:use cl epsilon.test)
-  (:local-nicknames
-   (lib epsilon.library))
-  (:enter t))
+  (:import
+   (epsilon.library lib)))
 
 ; Tests for epsilon.library module
 
@@ -79,6 +78,32 @@
                     #+linux "/lib/x86_64-linux-gnu/libc.so.6"
                     #+windows "C:\\Windows\\System32\\msvcrt.dll"
                     #-(or darwin linux windows) "/usr/lib/libc.so")
+    (assert (lib:library-available-p 'libc))))
+
+(deftest test-library-available-p-is-side-effect-free-after-first-call
+  "Repeated probes of an already-available library must not trigger
+   `sb-alien:load-shared-object` after the first answer is cached.
+   Pre-fix, every probe re-ran SBCL's symbol resolution which silently
+   corrupted dispatch state for libraries with overlapping exports
+   (notably FFmpeg's libavformat / libavcodec / libavutil / libswscale).
+   The reproducer was a third `kreisler.video.ffmpeg.demux:open-video`
+   call segfaulting at a wild PC inside libavformat. See
+   `epsilon.library::*availability-cache*'."
+  (lib:define-library libc
+                      :base-name "c"
+                      :critical-p t
+                      :search-names (list #+darwin "/usr/lib/libSystem.B.dylib"
+                                          #+linux "libc.so.6" #+linux "libc.so"
+                                          #+windows "msvcrt.dll"))
+  (lib::clear-availability-cache)
+  (lib:library-available-p 'libc)
+  ;; After the first call there must be a cache entry; the second call
+  ;; must not run the probe again (we can only check this indirectly --
+  ;; assert the cache entry exists).
+  (assert (not (eq (epsilon.map:get lib::*availability-cache* 'libc :unset)
+                   :unset)))
+  ;; And the answer must be stable across many subsequent probes.
+  (loop repeat 100 do
     (assert (lib:library-available-p 'libc))))
 
 (deftest test-diagnostics

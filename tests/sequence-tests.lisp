@@ -1,8 +1,7 @@
 (defpackage epsilon.sequence-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.sequence seq)
-            (epsilon.string str))
-  (:enter t))
+  (:import (epsilon.sequence seq)
+            (epsilon.string str)))
 
 (deftest test-sequence-creation
   (assert-true (seq:sequence-p (seq:seq '(1 2 3))))

@@ -38,12 +38,13 @@ VENDOR_SBCL := vendor/sbcl/$(PLATFORM_OS)-$(PLATFORM_ARCH)/sbcl
 HAS_VENDOR_SBCL := $(shell test -x $(VENDOR_SBCL) && echo yes || echo no)
 
 # CI setup - install platform dependencies
-# Requires vendored SBCL (custom fork with extended C-call conventions)
+# Requires the custom SBCL fork (github:jbouwman/sbcl). Not vendored; build
+# locally with vendor/sbcl/build.sh or rely on Nix (sbcl-epsilon derivation).
 ci-setup:
 ifeq ($(HAS_VENDOR_SBCL),yes)
-	@echo "Using vendored SBCL: $(VENDOR_SBCL)"
+	@echo "Using locally-built SBCL: $(VENDOR_SBCL)"
 else
-	$(error Vendored SBCL not found at $(VENDOR_SBCL). See vendor/sbcl/README.md for build instructions.)
+	$(error SBCL not found at $(VENDOR_SBCL). Run ./vendor/sbcl/build.sh to build it, or use 'nix develop' which provides sbcl-epsilon automatically.)
 endif
 ifeq ($(UNAME_S),Linux)
 	apt-get update && apt-get install -y libssl-dev build-essential git tar gzip

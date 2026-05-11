@@ -6,12 +6,11 @@
 
 (defpackage :epsilon.channel
   (:use :cl)
-  (:local-nicknames
-   (#:thread #:epsilon.sys.thread)
-   (#:lock #:epsilon.sys.lock)
-   (#:cv #:epsilon.sys.variable)
-   (#:seq #:epsilon.sequence)
-   (#:fn #:epsilon.function))
+  (:import
+   (epsilon.sys.thread thread)
+   (epsilon.sys.lock lock)
+   (epsilon.sys.variable cv)
+   (epsilon.sequence seq))
   (:export
    ;; Channel creation and management
    #:channel
@@ -87,8 +86,7 @@
    #:timeout-channel
 
    ;; Scheduler integration hook
-   #:*task-run-hook*)
-  (:enter t))
+   #:*task-run-hook*))
 
 ;;;; Error Conditions
 

@@ -12,8 +12,9 @@
 
 (defpackage epsilon.foreign.jit.callback
   (:use cl)
-  (:local-nicknames
-   (jit epsilon.foreign.jit))
+  (:import
+   (epsilon.foreign.jit jit)
+   (epsilon.sys.lock lock))
   (:export
    ;; Callback creation
    #:make-jit-callback
@@ -43,8 +44,7 @@
    #:clear-callbacks
 
    ;; Convenience macro
-   #:defcallback)
-  (:enter t))
+   #:defcallback))
 
 ;;; ============================================================================
 ;;; Callback Structure
@@ -76,12 +76,12 @@
 (defvar *callback-id-counter* 0
   "Counter for generating unique callback IDs")
 
-(defvar *callback-lock* (sb-thread:make-mutex :name "jit-callback-lock")
+(defvar *callback-lock* (lock:make-lock "jit-callback-lock")
   "Lock for thread-safe callback operations")
 
 (defun next-callback-id ()
   "Generate the next callback ID"
-  (sb-thread:with-mutex (*callback-lock*)
+  (lock:with-lock (*callback-lock*)
     (incf *callback-id-counter*)))
 
 ;;; ============================================================================
@@ -209,7 +209,7 @@
                        :alien-callback alien-cb)))
 
         ;; Register it
-        (sb-thread:with-mutex (*callback-lock*)
+        (lock:with-lock (*callback-lock*)
           (setf (gethash id *callback-registry*) callback)
           (when pointer
             (setf (gethash (sb-sys:sap-int pointer) *callback-pointer-index*) callback))
@@ -224,7 +224,7 @@
    Note: The callback pointer becomes invalid after this call.
    Any C code still holding the pointer will crash if it calls it."
   (when callback
-    (sb-thread:with-mutex (*callback-lock*)
+    (lock:with-lock (*callback-lock*)
       (let ((id (jit-callback-id callback))
             (name (jit-callback-name callback))
             (pointer (jit-callback-pointer callback)))
@@ -266,20 +266,20 @@
 
 (defun get-callback (name-or-id)
   "Get a callback by name or ID. Returns the JIT-CALLBACK structure."
-  (sb-thread:with-mutex (*callback-lock*)
+  (lock:with-lock (*callback-lock*)
     (etypecase name-or-id
       (symbol (gethash name-or-id *callback-name-index*))
       (integer (gethash name-or-id *callback-registry*)))))
 
 (defun get-callback-by-pointer (pointer)
   "Get a callback by its pointer address."
-  (sb-thread:with-mutex (*callback-lock*)
+  (lock:with-lock (*callback-lock*)
     (gethash (if (integerp pointer) pointer (sb-sys:sap-int pointer))
              *callback-pointer-index*)))
 
 (defun list-callbacks ()
   "List all registered callbacks."
-  (sb-thread:with-mutex (*callback-lock*)
+  (lock:with-lock (*callback-lock*)
     (let ((result '()))
       (maphash (lambda (id callback)
                  (push (list :id id
@@ -294,7 +294,7 @@
 
 (defun clear-callbacks ()
   "Clear all registered callbacks."
-  (sb-thread:with-mutex (*callback-lock*)
+  (lock:with-lock (*callback-lock*)
     (maphash (lambda (id callback)
                (declare (ignore id))
                (setf (jit-callback-pointer callback) nil)

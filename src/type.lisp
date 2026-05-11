@@ -3,7 +3,7 @@
 ;;;; This module provides core type definitions and basic byte array operations.
 ;;;; More complex binary I/O operations have been moved to separate modules.
 
-(defpackage #:epsilon.type
+(cl:defpackage #:epsilon.type
   (:use #:cl)
   (:export
    ;; Array types

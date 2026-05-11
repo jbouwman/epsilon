@@ -1,11 +1,12 @@
 ;;;; Tests for extended defpackage macro
 ;;;;
-;;;; Tests the :require and :enter extensions to defpackage.
+;;;; Tests the :import and :enter extensions to defpackage.
 
 (defpackage epsilon.defpackage-test
-  (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.main main))
-  (:enter t))
+  (:import cl
+           epsilon.test
+           epsilon.syntax
+           (epsilon.main main)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; Helper functions for testing macro expansion
@@ -73,9 +74,10 @@
   "Standard CL options pass through unchanged"
   (let* ((expansion (macroexpand-1
                      '(epsilon.main:defpackage test-pkg
-                       (:use :cl)
+                       (:import cl)
                        (:export #:foo #:bar)
-                       (:shadow #:list))))
+                       (:shadow #:list)
+                       (:enter nil))))
          (defpkg (find-cl-defpackage-form expansion)))
     (assert-true defpkg "Should contain cl:defpackage")
     (assert-true (eq 'test-pkg (second defpkg)) "Package name should be test-pkg")
@@ -83,13 +85,14 @@
     (assert-true (defpackage-has-option-p defpkg :export) "Should have :export option")
     (assert-true (defpackage-has-option-p defpkg :shadow) "Should have :shadow option")))
 
-(deftest test-defpackage-require-generates-local-nicknames
-  "The :require option generates :local-nicknames entries"
+(deftest test-defpackage-import-generates-local-nicknames
+  "The :import option generates :local-nicknames entries"
   (let* ((expansion (macroexpand-1
                      '(epsilon.main:defpackage test-pkg
-                       (:use :cl)
-                       (:require (epsilon.http http)
-                                 (epsilon.json json)))))
+                       (:import cl
+                                (epsilon.http http)
+                                (epsilon.json json))
+                       (:enter nil))))
          (defpkg (find-cl-defpackage-form expansion))
          (nicknames-opt (get-defpackage-option defpkg :local-nicknames)))
     (assert-true defpkg "Should contain cl:defpackage")
@@ -101,89 +104,122 @@
       (assert-true (find :json nickname-list :key #'first)
           "Should have :json nickname"))))
 
-(deftest test-defpackage-require-merges-with-local-nicknames
-  "The :require option merges with explicit :local-nicknames"
-  (let* ((expansion (macroexpand-1
-                     '(epsilon.main:defpackage test-pkg
-                       (:use :cl)
-                       (:require (epsilon.http http))
-                       (:local-nicknames (:str :epsilon.string)))))
-         (defpkg (find-cl-defpackage-form expansion))
-         (nicknames-opt (get-defpackage-option defpkg :local-nicknames)))
-    (assert-true defpkg "Should contain cl:defpackage")
-    (assert-true nicknames-opt "Should have :local-nicknames option")
-    (let ((nickname-list (rest nicknames-opt)))
-      (assert-true (find :http nickname-list :key #'first)
-          "Should have :http from :require")
-      (assert-true (find :str nickname-list :key #'first)
-          "Should have :str from :local-nicknames"))))
+(deftest test-defpackage-local-nicknames-rejected
+  "The :local-nicknames option signals an error in the extended defpackage"
+  (assert-true
+   (handler-case
+       (progn
+         (macroexpand-1
+          '(epsilon.main:defpackage test-pkg
+            (:import cl)
+            (:local-nicknames (:str :epsilon.string))))
+         nil)
+     (error () t))
+   "Should signal an error when :local-nicknames is used"))
 
-(deftest test-defpackage-multiple-require-clauses-consolidated
-  "Multiple :require clauses are consolidated"
+(deftest test-defpackage-use-folded-into-import
+  "The :use option is accepted and folded into :import as bare symbols"
   (let* ((expansion (macroexpand-1
                      '(epsilon.main:defpackage test-pkg
                        (:use :cl)
-                       (:require (epsilon.http http))
-                       (:require (epsilon.json json)))))
+                       (:import (epsilon.http http))
+                       (:enter nil))))
+         (defpkg (find-cl-defpackage-form expansion))
+         (use-opt (get-defpackage-option defpkg :use))
+         (nicknames-opt (get-defpackage-option defpkg :local-nicknames)))
+    (assert-true defpkg "Should contain cl:defpackage")
+    ;; :use packages should appear in generated :use clause
+    (assert-true use-opt "Should have :use option")
+    (assert-true (member :cl (rest use-opt)) ":cl should be in :use")
+    ;; Nickname imports should still work
+    (assert-true nicknames-opt "Should have :local-nicknames")
+    (assert-true (find :http (rest nicknames-opt) :key #'first)
+        "Should have :http nickname")))
+
+(deftest test-defpackage-multiple-import-clauses-consolidated
+  "Multiple :import clauses are consolidated"
+  (let* ((expansion (macroexpand-1
+                     '(epsilon.main:defpackage test-pkg
+                       (:import cl (epsilon.http http))
+                       (:import (epsilon.json json))
+                       (:enter nil))))
          (defpkg (find-cl-defpackage-form expansion))
          (nicknames-opt (get-defpackage-option defpkg :local-nicknames)))
     (assert-true defpkg "Should contain cl:defpackage")
     (assert-true nicknames-opt "Should have :local-nicknames option")
     (let ((nickname-list (rest nicknames-opt)))
       (assert-true (find :http nickname-list :key #'first)
-          "Should have :http from first :require")
+          "Should have :http from first :import")
       (assert-true (find :json nickname-list :key #'first)
-          "Should have :json from second :require"))))
+          "Should have :json from second :import"))))
 
-(deftest test-defpackage-enter-emits-in-package
-  "The :enter option emits (in-package ...) form"
+(deftest test-defpackage-enter-default-emits-in-package
+  "Without :enter clause, in-package is emitted (default is t)"
   (let ((expansion (macroexpand-1
                     '(epsilon.main:defpackage test-pkg
-                      (:use :cl)
+                      (:import cl)))))
+    (assert-true (expansion-contains-p expansion 'in-package)
+        "Should contain in-package form by default")))
+
+(deftest test-defpackage-enter-nil-omits-in-package
+  "With (:enter nil), no (in-package ...) form is emitted"
+  (let ((expansion (macroexpand-1
+                    '(epsilon.main:defpackage test-pkg
+                      (:import cl)
+                      (:enter nil)))))
+    (assert-true (not (expansion-contains-p expansion 'in-package))
+        "Should not contain in-package form")))
+
+(deftest test-defpackage-enter-t-emits-in-package
+  "With explicit (:enter t), in-package is emitted"
+  (let ((expansion (macroexpand-1
+                    '(epsilon.main:defpackage test-pkg
+                      (:import cl)
                       (:enter t)))))
     (assert-true (expansion-contains-p expansion 'in-package)
         "Should contain in-package form")))
 
-(deftest test-defpackage-no-enter-omits-in-package
-  "Without :enter, no (in-package ...) form is emitted"
+(deftest test-defpackage-import-generates-eval-when
+  "The :import option generates eval-when for module loading"
   (let ((expansion (macroexpand-1
                     '(epsilon.main:defpackage test-pkg
-                      (:use :cl)))))
-    (assert-true (not (expansion-contains-p expansion 'in-package))
-        "Should not contain in-package form")))
-
-(deftest test-defpackage-require-generates-eval-when
-  "The :require option generates eval-when for module loading"
-  (let ((expansion (macroexpand-1
-                    '(epsilon.main:defpackage test-pkg
-                      (:use :cl)
-                      (:require (epsilon.http http))))))
+                      (:import cl
+                               (epsilon.http http))
+                      (:enter nil)))))
     (assert-true (expansion-contains-p expansion 'eval-when)
         "Should contain eval-when form for module loading")))
 
-(deftest test-defpackage-require-without-nickname
-  "The :require option handles specs without nicknames"
+(deftest test-defpackage-import-without-nickname
+  "Bare symbols in :import generate :use entries, not nicknames"
   (let* ((expansion (macroexpand-1
                      '(epsilon.main:defpackage test-pkg
-                       (:use :cl)
-                       (:require (epsilon.http http)
-                                 epsilon.json))))  ; no nickname
+                       (:import cl
+                                (epsilon.http http)
+                                epsilon.json)
+                       (:enter nil))))
          (defpkg (find-cl-defpackage-form expansion))
-         (nicknames-opt (get-defpackage-option defpkg :local-nicknames)))
+         (nicknames-opt (get-defpackage-option defpkg :local-nicknames))
+         (use-opt (get-defpackage-option defpkg :use)))
     (assert-true defpkg "Should contain cl:defpackage")
+    ;; Bare symbols should appear in :use
+    (assert-true use-opt "Should have :use option")
+    (let ((use-list (rest use-opt)))
+      (assert-true (member :cl use-list) "Should use :cl")
+      (assert-true (member :epsilon.json use-list) "Should use :epsilon.json"))
     ;; Should have only the nickname for epsilon.http
     (let ((nickname-list (when nicknames-opt (rest nicknames-opt))))
       (assert-true (find :http nickname-list :key #'first)
           "Should have :http nickname")
-      (assert-true (not (find :json nickname-list :key #'first))
-          "Should not have :json nickname since none was specified"))))
+      (assert-true (not (find :epsilon.json nickname-list :key #'first))
+          "Should not have :epsilon.json nickname since it was bare"))))
 
-(deftest test-defpackage-non-epsilon-require-no-module-load
-  "Non-epsilon packages in :require get nicknames but no module load"
+(deftest test-defpackage-non-epsilon-import-no-module-load
+  "Non-epsilon packages in :import get nicknames but no module load"
   (let ((expansion (macroexpand-1
                     '(epsilon.main:defpackage test-pkg
-                      (:use :cl)
-                      (:require (my-other-lib lib))))))
+                      (:import cl
+                               (my-other-lib lib))
+                      (:enter nil)))))
     ;; The expansion should still have local-nicknames but eval-when
     ;; should either be empty or not contain loader calls for non-epsilon pkgs
     (let* ((defpkg (find-cl-defpackage-form expansion))
@@ -193,4 +229,3 @@
       (let ((nickname-list (rest nicknames-opt)))
         (assert-true (find :lib nickname-list :key #'first)
             "Should have :lib nickname")))))
-

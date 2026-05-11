@@ -4,39 +4,39 @@
 ;;;; running.
 ;;;;
 ;;;; To use, define tests with (deftest name ...) and run with (run)
-
 (defpackage epsilon.test
   (:use :cl :epsilon.symbol)
-  (:require (epsilon.loader loader)
-            (epsilon.map map)
-            (epsilon.sys.pkg pkg)
-            (epsilon.file fs)
-            (epsilon.test.report report)
-            (epsilon.test.suite suite)
-            (epsilon.test.fixture fixture)
-            (epsilon.test.subtest subtest)
-            (epsilon.test.snapshot snapshot)
-            (epsilon.test.property property)
-            (epsilon.test.mock mock)
-            (epsilon.test.parallel parallel)
-            (epsilon.test.isolation isolation)
-            (epsilon.test.workdir workdir)
-            (epsilon.annotation ann)
-            (epsilon.path path)
-            (epsilon.log log)
-            (epsilon.sequence seq)
-            (epsilon.string str))
-  (:enter t))
+  (:import (epsilon.loader loader)
+           (epsilon.map map)
+           (epsilon.sys.pkg pkg)
+           (epsilon.fs fs)
+           (epsilon.test.report report)
+           (epsilon.test.suite suite)
+           (epsilon.test.fixture fixture)
+           (epsilon.test.subtest subtest)
+           (epsilon.test.snapshot snapshot)
+           (epsilon.test.property property)
+           (epsilon.test.mock mock)
+           (epsilon.test.parallel parallel)
+           (epsilon.test.isolation isolation)
+           (epsilon.test.workdir workdir)
+           (epsilon.annotate ann)
+           (epsilon.fs path)
+           (epsilon.log log)
+           (epsilon.sequence seq)
+           (epsilon.string str)))
 
 ;;; Configurable Timeouts
-
-(defparameter *default-timeout* 10
+(defparameter *default-timeout*
+  60
   "Default timeout in seconds for tests. Set to NIL to disable timeouts.")
 
-(defvar *test-noclean* nil
+(defvar *test-noclean*
+  nil
   "When T, retain test work directories after run for inspection.")
 
-(defvar *test-work-root* nil
+(defvar *test-work-root*
+  nil
   "Bound to the run directory path during test execution.")
 
 ;;; ---------------------------------------------------------------------------
@@ -46,8 +46,8 @@
 ;;; its source and all transitive dependency hashes) hasn't changed since
 ;;; the last successful test run, skip re-running the tests.
 ;;; ---------------------------------------------------------------------------
-
-(defvar *test-cache-enabled* t
+(defvar *test-cache-enabled*
+  t
   "When T, skip tests for modules whose content hash matches the last
    successful run.  Set to NIL or use --force to bypass.")
 
@@ -56,8 +56,10 @@
    Respects EPSILON_TEST_CACHE env var.  Set to 'none' to disable."
   (let ((override (sb-ext:posix-getenv "EPSILON_TEST_CACHE")))
     (cond
-      ((not *test-cache-enabled*) nil)
-      ((and override (string-equal override "none")) nil)
+      ((not *test-cache-enabled*)
+       nil)
+      ((and override (string-equal override "none"))
+       nil)
       (override
        (let ((dir (format nil "~A/" override)))
          (ensure-directories-exist dir)
@@ -72,7 +74,8 @@
   "Return the cache file path for MODULE-NAME and TEST-MODE."
   (let ((cache-dir (test-cache-directory)))
     (when cache-dir
-      (let ((path (format nil "~A~A/~A.passed"
+      (let ((path (format nil
+                          "~A~A/~A.passed"
                           cache-dir
                           (substitute #\/ #\. module-name)
                           (string-downcase (symbol-name test-mode)))))
@@ -85,34 +88,63 @@
   (when (and content-hash *test-cache-enabled*)
     (let ((path (test-cache-path module-name test-mode)))
       (when (and path (probe-file path))
-        (handler-case
-            (with-open-file (s path :direction :input)
-              (let ((stored (read-line s nil nil)))
-                (and stored (string= (string-trim '(#\Space #\Newline) stored)
-                                     content-hash))))
-          (error () nil))))))
+        (handler-case (with-open-file (s path :direction :input)
+          (let ((stored (read-line s nil nil)))
+            (and stored (string= (string-trim '(#\Space #\Newline) stored) content-hash))))
+          (error
+           ()
+           nil))))))
 
 (defun test-cache-store (module-name test-mode content-hash)
   "Record that MODULE-NAME passed TEST-MODE with CONTENT-HASH."
   (when (and content-hash *test-cache-enabled*)
     (let ((path (test-cache-path module-name test-mode)))
       (when path
-        (handler-case
-            (with-open-file (s path :direction :output
-                                    :if-exists :supersede
-                                    :if-does-not-exist :create)
-              (write-string content-hash s))
-          (error () nil))))))
+        (handler-case (with-open-file (s path
+                                         :direction
+                                         :output
+                                         :if-exists
+                                         :supersede
+                                         :if-does-not-exist
+                                         :create)
+          (write-string content-hash s))
+          (error
+           ()
+           nil))))))
 
-(defvar *test-timeouts* map:+empty+
+(defun module-committish (module-name-or-hash &key (length 7))
+  "Return a short, eyeball-able prefix of a module's content hash --
+   the per-module analogue of `git log --oneline'.  Accepts either a
+   module name or a raw hash string.  Returns a string of LENGTH
+   lowercase hex characters, or NIL when the module isn't loaded /
+   doesn't have a content hash yet (e.g. modules whose build ran
+   before *content-hashing-p* turned on and haven't been rehydrated).
+
+   Surfaced in the test runner output and `epsilon affected --modules'
+   so an operator can spot which modules really changed at a glance."
+  (let ((hash (cond
+                ((stringp module-name-or-hash)
+                 (or (when (and (>= (length module-name-or-hash) length)
+                                (every (lambda (c)
+                                         (or (and (char>= c #\0) (char<= c #\9))
+                                             (and (char>= c #\a) (char<= c #\f))))
+                                       module-name-or-hash))
+                       module-name-or-hash)
+                     (let ((info (loader:get-module module-name-or-hash)))
+                       (when info (loader:module-content-hash info)))))
+                (t nil))))
+    (when (and hash (>= (length hash) length))
+      (subseq hash 0 length))))
+
+(defvar *test-timeouts*
+  map:+empty+
   "Map from test symbol to per-test timeout in seconds")
 
 ;; TODO module-file is here in order to load package-relative resources: non-source files that contain test data, metadata, configuration and so on. Ideally there should be a generic scheme for this that uses the package's load time or runtime environment.
-
 (defun module-file (module-name relative-path)
   "Return absolute path to RELATIVE-PATH within MODULE-NAME's directory.
    Example: (module-file 'epsilon.test \"fixtures/data.txt\")"
-  (let ((module (loader:get-module (loader:environment) module-name :error-p t)))
+  (let ((module (loader:get-module module-name :error-p t)))
     (path:string-path-join (path::path-from-uri (loader:module-uri module)) relative-path)))
 
 (defun fixture-path (module-name filename)
@@ -136,12 +168,10 @@
       (setf docstring (first remaining))
       (setf remaining (rest remaining)))
     ;; Parse keyword options
-    (loop while (and remaining
-                     (listp (first remaining))
-                     (keywordp (caar remaining)))
+    (loop while (and remaining (listp (first remaining)) (keywordp (caar remaining)))
           do (let ((opt (first remaining)))
-               (setf options (map:assoc options (first opt) (second opt)))
-               (setf remaining (rest remaining))))
+            (setf options (map:assoc options (first opt) (second opt)))
+            (setf remaining (rest remaining))))
     (values options docstring remaining)))
 
 (defun apply-test-annotations (name annotations)
@@ -151,15 +181,16 @@
     (let ((timeout (assoc :timeout annotations))
           (parallel (assoc :parallel annotations))
           (isolate (assoc :isolate annotations))
-          (category (assoc :category annotations)))
+          (tag (or (assoc :tag annotations)
+                   (assoc :category annotations))))
       (when timeout
         (setf *test-timeouts* (map:assoc *test-timeouts* name (cdr timeout))))
       (when parallel
         (parallel:register-parallel-test name (cdr parallel)))
       (when isolate
         (isolation:register-isolated-test name (cdr isolate)))
-      (when category
-        (suite:register-test-category name (cdr category))))))
+      (when tag
+        (suite:register-test-tag name (cdr tag))))))
 
 (defmacro deftest (name &body body)
   "Define a test with NAME.
@@ -171,7 +202,6 @@
    - (:timeout nil) / #@(:timeout nil) - Disable timeout (useful for debugging)
    - (:parallel T) / #@:parallel - Mark test as safe for parallel execution
    - (:isolate :process) / #@(:isolate :process) - Run in a separate subprocess
-   - #@(:category :integration) - Categorize the test
 
    Preferred (annotation) syntax:
    #@(:timeout 60)
@@ -184,45 +214,38 @@
      \"Test that takes a long time\"
      (:timeout 60)
      (perform-expensive-computation))"
-  (multiple-value-bind (options docstring real-body)
-      (parse-deftest-options body)
+  (multiple-value-bind (options docstring real-body) (parse-deftest-options body)
     (declare (ignore options))
     ;; Legacy in-body option parsing (compile-time)
     (let ((timeout-opt (find-if (lambda (form)
-                                  (and (listp form)
-                                       (eq (first form) :timeout)))
+                                  (and (listp form) (eq (first form) :timeout)))
                                 body))
           (parallel-opt (find-if (lambda (form)
-                                   (and (listp form)
-                                        (eq (first form) :parallel)))
+                                   (and (listp form) (eq (first form) :parallel)))
                                  body))
           (isolate-opt (find-if (lambda (form)
-                                  (and (listp form)
-                                       (eq (first form) :isolate)))
+                                  (and (listp form) (eq (first form) :isolate)))
                                 body)))
       `(progn
-         (defun ,name ()
-           ,@(when docstring (list docstring))
-           ,@real-body)
-         (epsilon.test.suite:register-test ',name ,docstring)
-         ;; Consume #@ annotations at load time (set by with-annotations)
-         (apply-test-annotations ',name (ann:consume-annotations))
-         ;; Legacy in-body options (only apply if no #@ annotation overrides)
-         ,@(when timeout-opt
-             `((unless (map:get *test-timeouts* ',name)
-                 (setf *test-timeouts*
-                       (map:assoc *test-timeouts* ',name ,(second timeout-opt))))))
-         ,@(when parallel-opt
-             `((unless (parallel:parallel-test-p ',name)
-                 (parallel:register-parallel-test ',name ,(second parallel-opt)))))
-         ,@(when isolate-opt
-             `((unless (isolation:isolated-test-p ',name)
-                 (isolation:register-isolated-test ',name ,(second isolate-opt)))))))))
+        (defun ,name () ,@(when docstring (list docstring)) ,@real-body)
+        (epsilon.test.suite:register-test ',name ,docstring)
+        ;; Consume #@ annotations at load time (set by with-annotations)
+        (apply-test-annotations ',name (ann:consume-annotations))
+        ;; Legacy in-body options (only apply if no #@ annotation overrides)
+        ,@(when timeout-opt
+                `((unless (map:get *test-timeouts* ',name)
+                          (setf *test-timeouts*
+                                (map:assoc *test-timeouts* ',name ,(second timeout-opt))))))
+        ,@(when parallel-opt
+                `((unless (parallel:parallel-test-p ',name)
+                          (parallel:register-parallel-test ',name ,(second parallel-opt)))))
+        ,@(when isolate-opt
+                `((unless (isolation:isolated-test-p ',name)
+                          (isolation:register-isolated-test ',name ,(second isolate-opt)))))))))
 
 (defun get-test-timeout (test-symbol)
   "Get the timeout for a test, or the default if not specified"
-  (or (map:get *test-timeouts* test-symbol)
-      *default-timeout*))
+  (or (map:get *test-timeouts* test-symbol) *default-timeout*))
 
 (defun parse-test-spec (spec)
   "Parse a test specification into module, package, and name components.
@@ -233,34 +256,39 @@
            (not (find #\: spec))
            (every (lambda (c)
                     (or (digit-char-p c)
-                        (member c '(#\a #\b #\c #\d #\e #\f
-                                   #\A #\B #\C #\D #\E #\F))))
+                        (member c '(#\a #\b #\c #\d #\e #\f #\A #\B #\C #\D #\E #\F))))
                   spec))
-      ;; It's a hash - return it as the test name with no module/package
-      (values nil nil spec)
-      ;; Regular parsing
-      (let* ((parts (seq:realize (str:split #\: spec)))
-             (num-parts (length parts)))
-        (case num-parts
-          (1 ;; Just module
-           (values (first parts) nil nil))
-          (2 ;; module:package or :package
-           (if (string= "" (first parts))
-               (values nil (second parts) nil)
-               (values (first parts) (second parts) nil)))
-          (3 ;; module:package:name or :package:name
-           (if (string= "" (first parts))
-               (values nil (second parts) (third parts))
-               (values (first parts) (second parts) (third parts))))
-          (otherwise
-           (error "Invalid test specification: ~A" spec))))))
+    ;; It's a hash - return it as the test name with no module/package
+    (values nil nil spec)
+    ;; Regular parsing
+    (let* ((parts (seq:realize (str:split #\: spec)))
+           (num-parts (length parts)))
+      (case num-parts
+        (1 ;; Just module
+         (values (first parts) nil nil))
+        (2 ;; module:package or :package
+         (if (string= "" (first parts))
+           (values nil (second parts) nil)
+           (values (first parts) (second parts) nil)))
+        (3 ;; module:package:name or :package:name
+         (if (string= "" (first parts))
+           (values nil (second parts) (third parts))
+           (values (first parts) (second parts) (third parts))))
+        (otherwise
+         (error "Invalid test specification: ~A" spec))))))
 
-(defun run (environment module &key package test-name (format :dot) file
-                                     parallel (workers parallel:*parallel-workers*)
-                                     (test-mode :unit))
+(defun run (module &key
+                   package
+                   test-name
+                   (format :dot)
+                   file
+                   parallel
+                   (workers parallel:*parallel-workers*)
+                   (test-mode :unit)
+                   tags
+                   exclude-tags)
   "Test an epsilon module.
 
-  ENVIRONMENT - The loader environment with repositories configured
   MODULE - Module to test (e.g., 'epsilon', 'epsilon.http')
   PACKAGE - Specific package pattern to filter tests (optional)
   TEST-NAME - Specific test name pattern to run (optional) or hash prefix
@@ -270,9 +298,10 @@
   WORKERS - Number of worker threads for parallel execution (default: 4)
   TEST-MODE - Which test roots to load: :unit (tests/ only, default),
               :integration (integration/ only), or :all (both)
+  TAGS - Only run tests with one of these tags (list of keywords)
+  EXCLUDE-TAGS - Exclude tests with any of these tags (list of keywords)
 
   Returns the test run result object."
-
   ;; Check if test-name looks like a hash and no module specified
   (when (and test-name
              (not package)
@@ -280,189 +309,248 @@
              (<= (length test-name) 8)
              (every (lambda (c)
                       (or (digit-char-p c)
-                          (member c '(#\a #\b #\c #\d #\e #\f
-                                      #\A #\B #\C #\D #\E #\F))))
+                          (member c '(#\a #\b #\c #\d #\e #\f #\A #\B #\C #\D #\E #\F))))
                     test-name))
     ;; Hash detected - need to load all test modules to find it
     (log:debug "Hash identifier detected: ~A, loading all test modules" test-name)
-    (let ((modules (loader:query-modules environment)))
+    (let ((modules (loader:query-modules)))
       (dolist (mod modules)
         (let ((module-name (loader:module-name mod)))
-          ;; Skip certain modules that are known to not have tests or cause issues
-          (unless (member module-name '("epsilon.tool.repl") :test #'string=)
-            (handler-case
-                (handler-bind ((sb-ext:compiler-note #'muffle-warning))
-                  ;; Load module if needed
-                  (unless (loader:module-loaded-p mod)
-                    (loader:load-module environment module-name))
-                  ;; Load test resources
-                  (loader:load-module-resources environment module-name :tests))
-              (error (e)
-                ;; Silently skip modules that fail to load
-                (log:debug "Skipping module ~A: ~A" module-name e))))))))
-
+          (handler-case (handler-bind ((sb-ext:compiler-note #'muffle-warning))
+              ;; Load module if needed
+              (unless (loader:module-loaded-p mod)
+                (loader:load-module module-name))
+              ;; Load test resources
+              (loader:load-module-resources module-name :tests))
+              (error
+               (e)
+               ;; Silently skip modules that fail to load
+               (log:debug "Skipping module ~A: ~A" module-name e)))))))
   ;; Load test files for the module using generic resource loader
   (when module
     (when (member test-mode '(:unit :all))
       (log:debug "Loading unit tests for module: ~A" module)
       (handler-bind ((sb-ext:compiler-note #'muffle-warning))
-        (loader:load-module-resources environment module :tests)))
+        (loader:load-module-resources module :tests)))
     (when (member test-mode '(:integration :all))
       (log:debug "Loading integration tests for module: ~A" module)
       (handler-bind ((sb-ext:compiler-note #'muffle-warning))
-        (loader:load-module-resources environment module :integration))))
-
+        (loader:load-module-resources module :integration))))
   ;; Check if test-name looks like a hash (short hex string)
-  (let* ((pattern-selected-tests
-          (if (and test-name
-                   (not package)
-                   (not module)
-                   (<= (length test-name) 8)
-                   (every (lambda (c)
-                            (or (digit-char-p c)
-                                (member c '(#\a #\b #\c #\d #\e #\f
-                                            #\A #\B #\C #\D #\E #\F))))
-                          test-name))
-              ;; Try to find test by hash
-              (let ((test-symbol (suite:find-test-by-hash test-name)))
-                (if test-symbol
-                    (list test-symbol)
-                    ;; Fall back to pattern matching
-                    (suite:select :package package :name test-name)))
-              ;; Regular pattern-based selection
-              (suite:select :package package :name test-name)))
+  (let* ((pattern-selected-tests (if (and test-name
+                                          (not package)
+                                          (not module)
+                                          (<= (length test-name) 8)
+                                          (every (lambda (c)
+                                                   (or (digit-char-p c)
+                                                       (member c
+                                                               '(#\a #\b
+                                                                     #\c
+                                                                     #\d
+                                                                     #\e
+                                                                     #\f
+                                                                     #\A
+                                                                     #\B
+                                                                     #\C
+                                                                     #\D
+                                                                     #\E
+                                                                     #\F))))
+                                                 test-name))
+                                   ;; Try to find test by hash
+                                   (let ((test-symbol (suite:find-test-by-hash test-name)))
+                                     (if test-symbol
+                                       (list test-symbol)
+                                       ;; Fall back to pattern matching
+                                       (suite:select :package package :name test-name
+                                                     :tags tags :exclude-tags exclude-tags)))
+                                   ;; Regular pattern-based selection
+                                   (suite:select :package package :name test-name
+                                                 :tags tags :exclude-tags exclude-tags)))
          (selected-tests pattern-selected-tests))
-    (log:debug "Test selection complete: ~D tests selected"
-               (length selected-tests))
+    (log:debug "Test selection complete: ~D tests selected" (length selected-tests))
     (when (or package test-name)
       (log:debug "Selected ~D tests matching package: '~A', name: '~A'"
-                 (length selected-tests) package test-name))
+                 (length selected-tests)
+                 package
+                 test-name))
     (when (zerop (length selected-tests))
-      (log:warn "No tests found!")
-      (format t "~&;;; Warning: No tests found!~%"))
+      (log:warn "No tests found for ~A" (or module "(no module)"))
+      (format t "~&;;; Warning: no tests found for ~A~%" (or module "(no module)")))
     (suite:run selected-tests
-               (report:make :format format
-                            :file file)
-               :parallel parallel
-               :workers workers)))
+               (report:make :format format :file file)
+               :parallel
+               parallel
+               :workers
+               workers)))
 
-(defun run-tests (environment specs &key verbose noclean
-                                        (test-mode :unit))
+(defun run-tests (specs &key verbose noclean (test-mode :unit) tags exclude-tags)
   "Run tests for multiple test specifications.
 
-  ENVIRONMENT - The loader environment with repositories configured
   SPECS - List of test specification strings (e.g., \"module:package:test\")
   VERBOSE - Use verbose output format (default: nil)
   NOCLEAN - When T, retain test work directories after run
   TEST-MODE - Which test roots to load: :unit (tests/ only, default),
               :integration (integration/ only), or :all (both)
+  TAGS - Only run tests with one of these tags (list of keywords)
+  EXCLUDE-TAGS - Exclude tests with any of these tags (list of keywords)
 
   Modules whose content hash matches a prior successful run are skipped
   unless *test-cache-enabled* is NIL.
 
   Returns (VALUES SUCCESS-P FAILED-MODULES) where FAILED-MODULES is a list
   of (spec . reason) pairs.  Reason is :load-error or :test-failure."
-  (log:debug "run-tests called with environment: ~A, specs: ~A, verbose: ~A"
-             environment specs verbose)
+  (log:debug "run-tests called with specs: ~A, verbose: ~A" specs verbose)
   (let ((*test-noclean* noclean)
         (suite:*capture-only* (not verbose))
-        (failed-modules '()))
+        (failed-modules '())
+        (heap-profile (when suite:*profile-heap*
+                        (list))))
     (dolist (spec specs)
       ;; Clear test registry to ensure isolation between modules
       (suite:clear-tests)
-      (multiple-value-bind (module package-filter name-filter)
-          (parse-test-spec spec)
+      (multiple-value-bind (module package-filter name-filter) (parse-test-spec spec)
         (log:debug "Parsed test spec ~A -> module: ~A, package: ~A, name: ~A"
-                   spec module package-filter name-filter)
+                   spec
+                   module
+                   package-filter
+                   name-filter)
         ;; Load the module if specified (muffle compiler notes to reduce noise)
         (when module
-          (handler-case
-              (handler-bind ((sb-ext:compiler-note #'muffle-warning))
-                (loader:load-module environment module))
-            (error (e)
-              (format *error-output* "~&  FAIL ~A  (load error: ~A)~%" spec e)
-              (push (cons spec :load-error) failed-modules)
-              (go :next-spec))))
-
+          (handler-case (handler-bind ((sb-ext:compiler-note #'muffle-warning))
+            (loader:load-module module))
+            (error
+             (e)
+             (format *error-output* "~&  FAIL ~A  (load error: ~A)~%" spec e)
+             (push (cons spec :load-error) failed-modules)
+             (go :next-spec))))
         ;; Check test result cache (skip if hash unchanged since last pass)
-        (let ((content-hash (when module
-                              (let ((mod-info (loader:get-module environment module)))
-                                (when mod-info
-                                  (loader:module-content-hash mod-info))))))
+        (let* ((content-hash (when module
+                               (let ((mod-info (loader:get-module module)))
+                                 (when mod-info
+                                   (loader:module-content-hash mod-info)))))
+               ;; Per-module committish: a 7-char hex prefix of the
+               ;; content hash, surfaced in the status lines so an
+               ;; operator can spot which module identities actually
+               ;; changed across runs (the per-module analogue of git's
+               ;; short SHA).
+               (committish (when (and content-hash (>= (length content-hash) 7))
+                             (subseq content-hash 0 7)))
+               (display-spec (if (and module
+                                      (null package-filter)
+                                      (null name-filter)
+                                      committish)
+                                 (format nil "~A@~A" module committish)
+                                 spec)))
           (when (and module
                      content-hash
                      (null package-filter)
                      (null name-filter)
                      (test-cache-hit-p module test-mode content-hash))
-            (format t "~&  --   ~A  (up-to-date)~%" module)
+            (format t "~&  --   ~A  (up-to-date)~%" display-spec)
             (go :next-spec))
-
           ;; Create work directory for this module's test run
           (let* ((run-dir (workdir:make-run-directory (or module "unknown")))
                  (tmp-dir (fs:join-paths run-dir "tmp"))
                  (*test-work-root* run-dir)
                  (fs:*work-directory* tmp-dir)
-                 (path:*work-directory* tmp-dir))
-            (unwind-protect
-                 (progn
-                   ;; Set up file logging when verbose
-                   (when verbose
-                     (let ((log-file (fs:join-paths run-dir "test.log")))
-                       (log:add-appender (log:get-logger)
-                                         (make-instance 'log:file-appender
-                                                        :filename log-file))))
-                   ;; Run tests with filters.  When not verbose, buffer output
-                   ;; so we can emit a compact one-line status per module.
-                   (let* ((format-kw (if verbose :verbose :dot))
-                          (output-buffer (unless verbose
-                                          (make-string-output-stream)))
-                          (start-time (get-internal-real-time))
-                          (result (if output-buffer
-                                     (let ((*standard-output* output-buffer))
-                                       (run environment module
-                                            :package package-filter
-                                            :test-name name-filter
-                                            :format format-kw
-                                            :test-mode test-mode))
-                                     (run environment module
-                                          :package package-filter
-                                          :test-name name-filter
-                                          :format format-kw
-                                          :test-mode test-mode)))
-                          (elapsed (/ (- (get-internal-real-time) start-time)
-                                      internal-time-units-per-second))
-                          (n-tests (suite:test-count result)))
-                     (log:debug "EPSILON.TEST:RUN returned: ~A" result)
-                     (cond
-                       ((success-p result)
-                        (format t "~&  ok   ~A  ~D test~:P  ~,2Fs~%"
-                                spec n-tests elapsed)
-                        ;; Record content hash in cache
-                        (when (and module content-hash
-                                   (null package-filter) (null name-filter))
-                          (test-cache-store module test-mode content-hash)))
-                       (t
-                        (format t "~&  FAIL ~A  ~D test~:P  ~,2Fs~%"
-                                spec n-tests elapsed)
-                        ;; Dump buffered output so failure details are visible
-                        (when output-buffer
-                          (let ((captured (get-output-stream-string output-buffer)))
-                            (unless (string= captured "")
-                              (write-string captured))))
-                        (push (cons spec :test-failure) failed-modules)))))
+                 (path:*work-directory* tmp-dir)
+                 (log-appender nil))
+            (unwind-protect (progn
+              ;; Set up file logging when verbose
+              (when verbose
+                (let ((log-file (fs:join-paths run-dir "test.log")))
+                  (setf log-appender (make-instance 'log:file-appender :filename log-file))
+                  (log:add-appender (log:get-logger) log-appender)))
+              ;; Measure heap before module tests (when profiling)
+              (let ((heap-before (when heap-profile
+                                  (sb-ext:gc :full t)
+                                  (sb-kernel:dynamic-usage))))
+              ;; Run tests with filters.  When not verbose, buffer output
+              ;; so we can emit a compact one-line status per module.
+              (let* ((format-kw (if verbose
+                                  :verbose
+                                  :dot))
+                     (output-buffer (unless verbose
+                                      (make-string-output-stream)))
+                     (start-time (get-internal-real-time))
+                     (result (if output-buffer
+                               (let ((*standard-output* output-buffer))
+                                 (run module
+                                      :package
+                                      package-filter
+                                      :test-name
+                                      name-filter
+                                      :format
+                                      format-kw
+                                      :test-mode
+                                      test-mode
+                                      :tags
+                                      tags
+                                      :exclude-tags
+                                      exclude-tags))
+                               (run module
+                                    :package
+                                    package-filter
+                                    :test-name
+                                    name-filter
+                                    :format
+                                    format-kw
+                                    :test-mode
+                                    test-mode
+                                    :tags
+                                    tags
+                                    :exclude-tags
+                                    exclude-tags)))
+                     (elapsed (/ (- (get-internal-real-time) start-time)
+                                 internal-time-units-per-second))
+                     (n-tests (suite:test-count result)))
+                (log:debug "EPSILON.TEST:RUN returned: ~A" result)
+                (cond
+                  ((success-p result)
+                   (format t "~&  ok   ~A  ~D test~:P  ~,2Fs~%" display-spec n-tests elapsed)
+                   ;; Record content hash in cache
+                   (when (and module content-hash (null package-filter) (null name-filter))
+                     (test-cache-store module test-mode content-hash)))
+                  (t
+                   (format t "~&  FAIL ~A  ~D test~:P  ~,2Fs~%" display-spec n-tests elapsed)
+                   ;; Dump buffered output so failure details are visible
+                   (when output-buffer
+                     (let ((captured (get-output-stream-string output-buffer)))
+                       (unless (string= captured "")
+                         (write-string captured))))
+                   (push (cons spec :test-failure) failed-modules)))
+                ;; Record per-module heap delta
+                (when heap-before
+                  (sb-ext:gc :full t)
+                  (let ((delta (- (sb-kernel:dynamic-usage) heap-before)))
+                    (push (cons spec delta) heap-profile))))))
+              ;; Remove per-module log appender and close its stream
+              (when log-appender
+                (log:remove-appender (log:get-logger) log-appender)
+                (let ((s (slot-value log-appender 'stream)))
+                  (when s (ignore-errors (close s)))))
               ;; Cleanup unless --noclean
               (if *test-noclean*
-                  (format t "~&;;; Test artifacts retained at ~A~%" run-dir)
-                  (workdir:cleanup-run-directory run-dir))))))
+                (format t "~&;;; Test artifacts retained at ~A~%" run-dir)
+                (workdir:cleanup-run-directory run-dir))))))
       :next-spec)
+    ;; Print heap profile summary
+    (when (and heap-profile (some (lambda (p) (> (cdr p) (* 64 1024)))
+                                  heap-profile))
+      (let ((sorted (sort (copy-list heap-profile) #'> :key #'cdr)))
+        (format t "~%Heap growth by module (> 64 KiB):~%")
+        (dolist (entry sorted)
+          (when (> (cdr entry) (* 64 1024))
+            (format t "  ~8,1F KiB  ~A~%"
+                    (/ (cdr entry) 1024.0)
+                    (car entry))))))
     ;; Return accumulated results
     (values (null failed-modules) (nreverse failed-modules))))
 
 (defun success-p (run)
   "Return T if test RUN completed successfully with no failures.
    Example: (success-p test-result) => T"
-  (zerop (+ (length (suite:failures run))
-            (length (suite:errors run)))))
+  (zerop (+ (length (suite:failures run)) (length (suite:errors run)))))
 
 (defun skip (&optional (message "Test skipped"))
   "Skip the current test with an optional MESSAGE.
@@ -479,26 +567,25 @@
   "Execute BODY with a descriptive label for grouping assertions.
    The label is recorded with test results for better reporting."
   `(let ((label-start-time (get-internal-real-time)))
-     (when suite:*test*
-       (push (list :label-start ,label label-start-time)
-             (suite:assertions suite:*test*)))
-     (unwind-protect
-         (progn ,@body)
-       (when suite:*test*
-         (push (list :label-end ,label (get-internal-real-time))
-               (suite:assertions suite:*test*))))))
+        (when suite:*test*
+              (push (list :label-start ,label label-start-time) (suite:assertions suite:*test*)))
+        (unwind-protect (progn ,@body)
+                        (when suite:*test*
+                              (push (list :label-end ,label (get-internal-real-time))
+                                    (suite:assertions suite:*test*))))))
 
 ;;; Improved Assertion Output
-
 (defun format-value-for-display (value &optional (max-length 200))
   "Format a value for display in assertion output"
   (let ((str (format nil "~S" value)))
     (if (> (length str) max-length)
-        (concatenate 'string (subseq str 0 (- max-length 3)) "...")
-        str)))
+      (concatenate 'string (subseq str 0 (- max-length 3)) "...")
+      str)))
 
-(defun format-assertion-failure (predicate-name actual-form expected-form
-                                  actual-value expected-value)
+(defun format-assertion-failure (predicate-name actual-form
+                                                expected-form
+                                                actual-value
+                                                expected-value)
   "Format a detailed assertion failure message"
   (with-output-to-string (s)
     (format s "~&Assertion failed: ~A~%~%" predicate-name)
@@ -506,80 +593,88 @@
     (format s "  Expected: ~A~%" (format-value-for-display expected-value))
     (format s "    Actual: ~A~%" (format-value-for-display actual-value))
     ;; Add diff for complex structures
-    (when (and (or (listp expected-value) (hash-table-p expected-value)
-                   (vectorp expected-value))
-               (or (listp actual-value) (hash-table-p actual-value)
-                   (vectorp actual-value)))
+    (when (and (or (listp expected-value) (hash-table-p expected-value) (vectorp expected-value))
+               (or (listp actual-value) (hash-table-p actual-value) (vectorp actual-value)))
       (let ((diff (compute-value-diff expected-value actual-value)))
         (when diff
           (format s "~%  Differences:~%")
-          (dolist (d diff)
-            (format s "    ~A~%" d)))))))
+          (dolist (d diff) (format s "    ~A~%" d)))))))
 
 (defun compute-value-diff (expected actual &optional (path nil) (max-diffs 5))
   "Compute differences between expected and actual values.
    Returns list of diff descriptions."
   (let ((diffs nil))
     (labels ((add-diff (desc)
-               (when (< (length diffs) max-diffs)
-                 (push desc diffs)))
+                       (when (< (length diffs) max-diffs)
+                         (push desc diffs)))
              (path-str ()
-               (if path
-                   (format nil "~{~A~^.~}" (reverse path))
-                   "root"))
+                       (if path
+                         (format nil "~{~A~^.~}" (reverse path))
+                         "root"))
              (diff-lists (exp act)
-               (let ((exp-len (length exp))
-                     (act-len (length act)))
-                 (when (/= exp-len act-len)
-                   (add-diff (format nil "~A: length differs (expected ~D, got ~D)"
-                                     (path-str) exp-len act-len)))
-                 (loop for i from 0 below (min exp-len act-len)
-                       for e = (nth i exp)
-                       for a = (nth i act)
-                       unless (equal e a)
-                       do (if (and (listp e) (listp a))
-                              (let ((sub-diffs (compute-value-diff e a (cons (format nil "[~D]" i) path))))
-                                (dolist (d sub-diffs)
-                                  (add-diff d)))
-                              (add-diff (format nil "~A[~D]: expected ~S, got ~S"
-                                                (path-str) i e a)))))))
+                         (let ((exp-len (length exp))
+                               (act-len (length act)))
+                           (when (/= exp-len act-len)
+                             (add-diff (format nil
+                                               "~A: length differs (expected ~D, got ~D)"
+                                               (path-str)
+                                               exp-len
+                                               act-len)))
+                           (loop for i from 0 below (min exp-len act-len)
+                                 for e = (nth i exp)
+                                 for a = (nth i act)
+                                 unless (equal e a)
+                                 do (if (and (listp e) (listp a))
+                                   (let ((sub-diffs (compute-value-diff e
+                                                                        a
+                                                                        (cons (format nil "[~D]" i)
+                                                                              path))))
+                                     (dolist (d sub-diffs) (add-diff d)))
+                                   (add-diff (format nil
+                                                     "~A[~D]: expected ~S, got ~S"
+                                                     (path-str)
+                                                     i
+                                                     e
+                                                     a)))))))
       (cond
-        ((equal expected actual) nil)
+        ((equal expected actual)
+         nil)
         ((and (listp expected) (listp actual))
          (diff-lists expected actual))
         ((and (vectorp expected) (vectorp actual))
          (diff-lists (coerce expected 'list) (coerce actual 'list)))
-        (t (add-diff (format nil "~A: expected ~S, got ~S"
-                             (path-str) expected actual)))))
+        (t
+         (add-diff (format nil "~A: expected ~S, got ~S" (path-str) expected actual)))))
     (nreverse diffs)))
 
 (defmacro assert-p (predicate actual expected &optional (message nil message-p) &rest message-args)
   "Test that (PREDICATE ACTUAL EXPECTED) is true.
    On failure, shows detailed comparison of actual vs expected values."
   (with-gensyms (actual-var expected-var pred-name)
-    `(let ((,actual-var ,actual)
-           (,expected-var ,expected)
-           (,pred-name (if (functionp ,predicate)
-                           (or (ignore-errors
-                                 (let ((fn ,predicate))
-                                   (typecase fn
-                                     (compiled-function
-                                      (multiple-value-bind (lambda-expression closure-p name)
-                                          (function-lambda-expression fn)
-                                        (declare (ignore lambda-expression closure-p))
-                                        name))
-                                     (t nil))))
-                               ',predicate)
-                           ',predicate)))
-       (declare (ignorable ,pred-name))
-       (if (funcall ,predicate ,actual-var ,expected-var)
-           (suite:pass)
-           (suite:fail '(,predicate ,actual ,expected)
-                       ,(if message-p
-                            `(format nil ,message ,@message-args)
-                            `(format-assertion-failure
-                              ,pred-name ',actual ',expected
-                              ,actual-var ,expected-var)))))))
+    `(let ((,actual-var ,actual) (,expected-var ,expected)
+                                 (,pred-name (if (functionp ,predicate)
+                                                 (or (ignore-errors (let ((fn ,predicate))
+                                                                         (typecase fn
+                                                                                   (compiled-function (multiple-value-bind (lambda-expression closure-p
+                                                                                                                                              name)
+                                                                                                                           (function-lambda-expression fn)
+                                                                                                                           (declare (ignore lambda-expression
+                                                                                                                                            closure-p))
+                                                                                                                           name))
+                                                                                   (t nil))))
+                                                     ',predicate)
+                                                 ',predicate)))
+          (declare (ignorable ,pred-name))
+          (if (funcall ,predicate ,actual-var ,expected-var)
+              (suite:pass)
+              (suite:fail '(,predicate ,actual ,expected)
+                          ,(if message-p
+                               `(format nil ,message ,@message-args)
+                               `(format-assertion-failure ,pred-name
+                                                          ',actual
+                                                          ',expected
+                                                          ,actual-var
+                                                          ,expected-var)))))))
 
 (defmacro assert-true (actual &rest optargs)
   `(assert-p #'eq (not (null ,actual)) t ,@optargs))
@@ -599,6 +694,9 @@
 (defmacro assert-equalp (actual expected &rest optargs)
   `(assert-p #'equalp ,actual ,expected ,@optargs))
 
+(defmacro assert-false (actual &rest optargs)
+  `(assert-p #'eq (not (null ,actual)) nil ,@optargs))
+
 (defmacro assert-not (form &rest optargs)
   `(assert-p #'eq (not ,form) t ,@optargs))
 
@@ -614,26 +712,26 @@
   "Test that BODY throws a condition of type CONDITION-CLASS."
   (with-gensyms (condition-var caught-var)
     `(let ((,caught-var nil))
-       (declare (ignorable ,caught-var))
-       (handler-case
-           (progn
-             ,@body
-             (suite:fail '(assert-condition ,condition-class ,@body)
-                         (format nil "Expected ~S but no condition was thrown"
-                                 ',condition-class)))
-         (,condition-class (,condition-var)
-           (declare (ignorable ,condition-var))
-           (setf ,caught-var t)
-           (suite:pass))
-         (condition (,condition-var)
-           (when ,caught-var
-             (suite:fail '(assert-condition ,condition-class ,@body)
-                         (format nil "Expected ~S but got ~S: ~A"
-                                 ',condition-class
-                                 (type-of ,condition-var) ,condition-var))))))))
+          (declare (ignorable ,caught-var))
+          (handler-case (progn ,@body
+                               (suite:fail '(assert-condition ,condition-class ,@body)
+                                           (format nil
+                                                   "Expected ~S but no condition was thrown"
+                                                   ',condition-class)))
+                        (,condition-class (,condition-var)
+                                          (declare (ignorable ,condition-var))
+                                          (setf ,caught-var t)
+                                          (suite:pass))
+                        (condition (,condition-var)
+                                   (when ,caught-var
+                                         (suite:fail '(assert-condition ,condition-class ,@body)
+                                                     (format nil
+                                                             "Expected ~S but got ~S: ~A"
+                                                             ',condition-class
+                                                             (type-of ,condition-var)
+                                                             ,condition-var))))))))
 
 ;; Re-export fixture functionality
-
 (defmacro fixture (&rest args)
   `(fixture:fixture ,@args))
 
@@ -641,7 +739,6 @@
   `(fixture:with-fixture ,@args))
 
 ;; Re-export subtest functionality
-
 (defmacro subtest (name &body body)
   "Execute BODY as a named subtest within the current test.
    Subtests can be nested to create hierarchical test structures.
@@ -656,13 +753,12 @@
   `(subtest:subtest ,name ,@body))
 
 ;;; Table-Driven Tests
-
 (defun keyword-to-symbol (kw)
   "Convert a keyword to a symbol in the current package.
    :input -> INPUT"
   (if (keywordp kw)
-      (intern (symbol-name kw))
-      kw))
+    (intern (symbol-name kw))
+    kw))
 
 (defmacro deftest-table (name docstring columns &body rows-and-body)
   "Define a table-driven test where each row becomes a subtest.
@@ -689,11 +785,11 @@
          (var-names (mapcar #'keyword-to-symbol columns))
          (first-var (first var-names)))
     `(deftest ,name
-       ,docstring
-       (dolist (,row-var ',rows)
-         (destructuring-bind ,var-names ,row-var
-           (subtest (format nil "~A" ,first-var)
-             ,body))))))
+              ,docstring
+              (dolist (,row-var ',rows)
+                      (destructuring-bind ,var-names
+                                          ,row-var
+                                          (subtest (format nil "~A" ,first-var) ,body))))))
 
 (defmacro deftest-cases (name docstring cases &body body)
   "Define a test with named cases, each becoming a subtest.
@@ -704,33 +800,39 @@
      ((\"positive\"   :input \"42\"    :expected 42)
       (\"negative\"   :input \"-17\"   :expected -17))
      (assert-= (parse-integer input) expected))"
-  (let ((expanded-subtests
-         (loop for case-spec in cases
-               for case-name = (first case-spec)
-               for bindings = (rest case-spec)
-               collect `(subtest ,case-name
-                          (let ,(loop for (key val) on bindings by #'cddr
-                                      ;; Keyword symbol-name is just the name without colon
-                                      ;; e.g., (symbol-name :input) => "INPUT"
-                                      collect `(,(intern (symbol-name key) *package*)
-                                                ,val))
-                            ,@body)))))
-    `(deftest ,name
-       ,docstring
-       ,@expanded-subtests)))
+  (let ((expanded-subtests (loop for case-spec in cases
+                                 for case-name = (first case-spec)
+                                 for bindings = (rest case-spec)
+                                 collect `(subtest ,case-name
+                                                   (let ,(loop
+                                                          for
+                                                          (key val)
+                                                          on
+                                                          bindings
+                                                          by
+                                                          #'cddr
+                                                          ;; Keyword symbol-name is just the name without colon
+                                                          ;; e.g., (symbol-name :input) => "INPUT"
+                                                          collect
+                                                          `(,(intern (symbol-name key) *package*) ,val))
+                                                        ,@body)))))
+    `(deftest ,name ,docstring ,@expanded-subtests)))
 
 ;;; Before/After Hooks
-
-(defvar *before-all-hooks* map:+empty+
+(defvar *before-all-hooks*
+  map:+empty+
   "Map from package name to list of before-all hook functions")
 
-(defvar *after-all-hooks* map:+empty+
+(defvar *after-all-hooks*
+  map:+empty+
   "Map from package name to list of after-all hook functions")
 
-(defvar *before-each-hooks* map:+empty+
+(defvar *before-each-hooks*
+  map:+empty+
   "Map from package name to list of before-each hook functions")
 
-(defvar *after-each-hooks* map:+empty+
+(defvar *after-each-hooks*
+  map:+empty+
   "Map from package name to list of after-each hook functions")
 
 (defmacro before-all ((&key package) &body body)
@@ -741,9 +843,9 @@
      (start-test-database))"
   (let ((pkg-name (or package '*package*)))
     `(setf *before-all-hooks*
-           (map:assoc *before-all-hooks* ,pkg-name
-                      (cons (lambda () ,@body)
-                            (or (map:get *before-all-hooks* ,pkg-name) nil))))))
+           (map:assoc *before-all-hooks*
+                      ,pkg-name
+                      (cons (lambda () ,@body) (or (map:get *before-all-hooks* ,pkg-name) nil))))))
 
 (defmacro after-all ((&key package) &body body)
   "Register a hook to run once after all tests in PACKAGE.
@@ -753,9 +855,9 @@
      (stop-test-database))"
   (let ((pkg-name (or package '*package*)))
     `(setf *after-all-hooks*
-           (map:assoc *after-all-hooks* ,pkg-name
-                      (cons (lambda () ,@body)
-                            (or (map:get *after-all-hooks* ,pkg-name) nil))))))
+           (map:assoc *after-all-hooks*
+                      ,pkg-name
+                      (cons (lambda () ,@body) (or (map:get *after-all-hooks* ,pkg-name) nil))))))
 
 (defmacro before-each ((&key package) &body body)
   "Register a hook to run before each test in PACKAGE.
@@ -765,9 +867,9 @@
      (begin-transaction))"
   (let ((pkg-name (or package '*package*)))
     `(setf *before-each-hooks*
-           (map:assoc *before-each-hooks* ,pkg-name
-                      (cons (lambda () ,@body)
-                            (or (map:get *before-each-hooks* ,pkg-name) nil))))))
+           (map:assoc *before-each-hooks*
+                      ,pkg-name
+                      (cons (lambda () ,@body) (or (map:get *before-each-hooks* ,pkg-name) nil))))))
 
 (defmacro after-each ((&key package) &body body)
   "Register a hook to run after each test in PACKAGE.
@@ -777,32 +879,27 @@
      (rollback-transaction))"
   (let ((pkg-name (or package '*package*)))
     `(setf *after-each-hooks*
-           (map:assoc *after-each-hooks* ,pkg-name
-                      (cons (lambda () ,@body)
-                            (or (map:get *after-each-hooks* ,pkg-name) nil))))))
+           (map:assoc *after-each-hooks*
+                      ,pkg-name
+                      (cons (lambda () ,@body) (or (map:get *after-each-hooks* ,pkg-name) nil))))))
 
 (defun run-before-all-hooks (package-name)
   "Run all before-all hooks for a package"
-  (dolist (hook (reverse (map:get *before-all-hooks* package-name)))
-    (funcall hook)))
+  (dolist (hook (reverse (map:get *before-all-hooks* package-name))) (funcall hook)))
 
 (defun run-after-all-hooks (package-name)
   "Run all after-all hooks for a package"
-  (dolist (hook (reverse (map:get *after-all-hooks* package-name)))
-    (funcall hook)))
+  (dolist (hook (reverse (map:get *after-all-hooks* package-name))) (funcall hook)))
 
 (defun run-before-each-hooks (package-name)
   "Run all before-each hooks for a package"
-  (dolist (hook (reverse (map:get *before-each-hooks* package-name)))
-    (funcall hook)))
+  (dolist (hook (reverse (map:get *before-each-hooks* package-name))) (funcall hook)))
 
 (defun run-after-each-hooks (package-name)
   "Run all after-each hooks for a package"
-  (dolist (hook (reverse (map:get *after-each-hooks* package-name)))
-    (funcall hook)))
+  (dolist (hook (reverse (map:get *after-each-hooks* package-name))) (funcall hook)))
 
 ;;; Initialize Suite Callbacks
-
 (defun setup-suite-callbacks ()
   "Set up callbacks in epsilon.test.suite for hooks and timeouts"
   ;; Set timeout callback
@@ -817,7 +914,6 @@
 (setup-suite-callbacks)
 
 ;;; Thread-local Test State Isolation
-
 (defun call-with-fresh-test-state (fn)
   "Call FN with all mutable test globals rebound to fresh values.
    Used by parallel module runners so each worker thread gets isolated state."
@@ -825,7 +921,7 @@
         (suite:*test-root* nil)
         (suite:*test-hash-map* map:+empty+)
         (suite:*test-id-map* map:+empty+)
-        (suite:*test-categories* map:+empty+)
+        (suite:*test-tags* map:+empty+)
         (suite:*test* nil)
         ;; Test-level state
         (*test-timeouts* map:+empty+)
@@ -842,8 +938,8 @@
     (funcall fn)))
 
 ;;; Snapshot Testing
-
-(defvar *update-snapshots* nil
+(defvar *update-snapshots*
+  nil
   "When T, update snapshot files instead of comparing.
    Set via --update-snapshots command line flag.")
 
@@ -859,7 +955,8 @@
        (subseq pkg-name 0 (- (length pkg-name) 6)))
       ((str:ends-with-p (string-downcase pkg-name) ".tests")
        (subseq pkg-name 0 (- (length pkg-name) 6)))
-      (t pkg-name))))
+      (t
+       pkg-name))))
 
 (defmacro snapshot-matches (snapshot-name actual &key (format :lisp) redact)
   "Assert that ACTUAL matches the stored snapshot.
@@ -885,21 +982,25 @@
                        :format :json))"
   (let ((module-name-var (gensym "MODULE"))
         (test-name-var (gensym "TEST")))
-    `(let ((,module-name-var (get-current-module-name))
-           (,test-name-var (format nil "~A:~A"
-                                   (package-name *package*)
-                                   ,(if (boundp 'suite:*test*)
-                                        '(when suite:*test*
-                                           (symbol-name (suite:test suite:*test*)))
-                                        "unknown"))))
-       ;; Sync update flag
-       (setf snapshot:*update-snapshots* *update-snapshots*)
-       (snapshot:snapshot-matches-impl ,module-name-var
-                                       ,snapshot-name
-                                       ,actual
-                                       :format ,format
-                                       :redact ,redact
-                                       :test-name ,test-name-var))))
+    `(let
+      ((,module-name-var (get-current-module-name)) (,test-name-var (format nil
+                                                                            "~A:~A"
+                                                                            (package-name *package*)
+                                                                            ,(if (boundp 'suite:*test*)
+                                                                                 '(when suite:*test*
+                                                                                        (symbol-name (suite:test suite:*test*)))
+                                                                                 "unknown"))))
+      ;; Sync update flag
+      (setf snapshot:*update-snapshots* *update-snapshots*)
+      (snapshot:snapshot-matches-impl ,module-name-var
+                                      ,snapshot-name
+                                      ,actual
+                                      :format
+                                      ,format
+                                      :redact
+                                      ,redact
+                                      :test-name
+                                      ,test-name-var))))
 
 (defun set-update-snapshots (value)
   "Set whether to update snapshots instead of comparing.
@@ -916,17 +1017,11 @@
    (with-redactions ((\"[0-9a-f-]{36}\" \"<UUID>\")
                      (\"\\\\d{4}-\\\\d{2}-\\\\d{2}\" \"<DATE>\"))
      (snapshot-matches \"output\" (generate-report)))"
-  `(progn
-     (snapshot:clear-redactions)
-     ,@(mapcar (lambda (r)
-                 `(snapshot:add-redaction ,(first r) ,(second r)))
-               redactions)
-     (unwind-protect
-         (progn ,@body)
-       (snapshot:clear-redactions))))
+  `(progn (snapshot:clear-redactions)
+          ,@(mapcar (lambda (r) `(snapshot:add-redaction ,(first r) ,(second r))) redactions)
+          (unwind-protect (progn ,@body) (snapshot:clear-redactions))))
 
 ;;; Property-Based Testing
-
 (defmacro deftest-property (name docstring (&key generators (num-tests 100) seed) &body body)
   "Define a property-based test.
 
@@ -954,14 +1049,16 @@
          (property-fn (gensym "PROPERTY"))
          (result-var (gensym "RESULT")))
     `(deftest ,name
-       ,docstring
-       (let ((,property-fn (lambda ,gen-vars ,@body))
-             (gens (list ,@gen-exprs)))
-         (let ((,result-var (property:run-property ,property-fn gens
-                                                   :num-tests ,num-tests
-                                                   :seed ,seed)))
-           (unless (property:property-success-p ,result-var)
-             (error "~A" (property:format-property-failure ,result-var))))))))
+              ,docstring
+              (let ((,property-fn (lambda ,gen-vars ,@body)) (gens (list ,@gen-exprs)))
+                   (let ((,result-var (property:run-property ,property-fn
+                                                             gens
+                                                             :num-tests
+                                                             ,num-tests
+                                                             :seed
+                                                             ,seed)))
+                        (unless (property:property-success-p ,result-var)
+                                (error "~A" (property:format-property-failure ,result-var))))))))
 
 ;; Re-export commonly used generators for convenience
 (defun gen-integer (&key (min most-negative-fixnum) (max most-positive-fixnum))
@@ -1025,7 +1122,6 @@
   (property:gen-constant value))
 
 ;;; Mocking and Stubbing
-
 (defmacro with-stub ((fn-spec replacement) &body body)
   "Execute BODY with FN-SPEC stubbed to REPLACEMENT.
 
@@ -1052,10 +1148,7 @@
                           :with-args (\"alice@test.com\" :any :any)
                           :returns t)
      (register-user \"alice\" \"alice@test.com\"))"
-  `(mock:with-mock (,fn-spec :returns ,returns
-                             :times ,times
-                             :with-args ,with-args)
-     ,@body))
+  `(mock:with-mock (,fn-spec :returns ,returns :times ,times :with-args ,with-args) ,@body))
 
 (defmacro with-spy ((fn-spec calls-var) &body body)
   "Execute BODY with FN-SPEC spied on, binding calls to CALLS-VAR.

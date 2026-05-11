@@ -3,11 +3,12 @@
    cl
    epsilon.syntax
    epsilon.test)
-  (:local-nicknames
-   (lib epsilon.foreign)
-   (callback epsilon.foreign.callback)
-   (marshalling epsilon.foreign.marshalling))
-  (:enter t))
+  (:import
+   (epsilon.foreign lib)
+   (epsilon.foreign.callback callback)
+   (epsilon.foreign.marshalling marshalling)
+   (epsilon.sys.lock lock)
+   (epsilon.sys.thread thread)))
 
 ;;;; Tests for Phase 4: Callback Support
 
@@ -173,20 +174,20 @@
 (deftest test-callback-thread-safety
   "Test that callbacks work correctly from multiple threads"
   (let* ((counter 0)
-         (lock (sb-thread:make-mutex))
+         (lock (lock:make-lock))
          (increment-cb (callback:make-callback
                         (lambda ()
-                          (sb-thread:with-mutex (lock)
+                          (lock:with-lock (lock)
                             (incf counter)))
                         :int '()))
          (threads (loop for i from 1 to 5
-                       collect (sb-thread:make-thread
+                       collect (thread:make-thread
                                 (lambda ()
                                   (dotimes (j 100)
                                     (callback:call-callback increment-cb)))))))
     ;; Wait for all threads
     (dolist (thread threads)
-      (sb-thread:join-thread thread))
+      (thread:join-thread thread))
     ;; Check total count
     (assert-true (= counter 500))))
 

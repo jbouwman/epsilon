@@ -6,7 +6,7 @@
 ;;;; Algorithms:
 ;;;; - BLAKE3: Cryptographic, fastest crypto hash, XOF/KDF/MAC support
 ;;;; - xxHash3: Non-cryptographic, ultra-fast, 64/128-bit variants
-;;;; - SHA-2/SHA-3: Traditional cryptographic hashes via epsilon.ssl
+;;;; - SHA-2/SHA-3: Traditional cryptographic hashes via epsilon.crypto
 ;;;; - MD5/SHA-1: Legacy hashes (for compatibility only)
 ;;;; - CRC-32: Non-cryptographic checksum
 ;;;;
@@ -28,15 +28,13 @@
 
 (defpackage epsilon.digest
   (:use :cl)
-  (:require (epsilon.symbol sym)
+  (:import (epsilon.symbol sym)
             (epsilon.digest.protocol proto)
             (epsilon.digest.blake3 blake3)
             (epsilon.digest.xxhash3 xxh)
             (epsilon.digest.crc32 crc)
             (epsilon.digest.io dio)
-            (epsilon.digest.ssl-hashers ssl-hashers)
-            (epsilon.ssl ssl))
-  (:enter t))
+            (epsilon.digest.ssl-hashers ssl-hashers)))
 
 ;;; Re-export protocol
 (sym:reexport :epsilon.digest.protocol
@@ -67,9 +65,12 @@
                 xxhash64 xxhash128 xxhash64-bytes xxhash128-bytes xxh64
                 xxhash-available-p xxhash64-to-hex xxhash128-to-hex))
 
-;;; Re-export pure-Lisp hash functions from epsilon.ssl (always available)
-(sym:reexport :epsilon.ssl
-              '(md5 sha1 sha256 sha384 sha512 sha3-256 sha3-384 sha3-512))
+;;; Re-export pure-Lisp hash functions from each primitive submodule.
+(sym:reexport :epsilon.crypto.md5    '(md5))
+(sym:reexport :epsilon.crypto.sha1   '(sha1))
+(sym:reexport :epsilon.crypto.sha256 '(sha256))
+(sym:reexport :epsilon.crypto.sha512 '(sha384 sha512))
+(sym:reexport :epsilon.crypto.sha3   '(sha3-256 sha3-384 sha3-512))
 
 ;;; Re-export CRC-32
 (sym:reexport :epsilon.digest.crc32
@@ -98,7 +99,7 @@
     :blake3-derive
     :xxhash64
     :xxhash128
-    ;; Traditional cryptographic algorithms via epsilon.ssl
+    ;; Traditional cryptographic algorithms via epsilon.crypto
     :md5
     :sha1
     :sha256
@@ -116,8 +117,8 @@
    ALGORITHM can be:
    - :blake3, :blake3-keyed, :blake3-derive (modern cryptographic)
    - :xxhash64, :xxhash128 (non-cryptographic)
-   - :md5, :sha1, :sha256, :sha384, :sha512 (traditional via epsilon.ssl)
-   - :sha3-256, :sha3-384, :sha3-512 (SHA-3 via epsilon.ssl)
+   - :md5, :sha1, :sha256, :sha384, :sha512 (traditional via epsilon.crypto)
+   - :sha3-256, :sha3-384, :sha3-512 (SHA-3 via epsilon.crypto)
    - :crc32 (checksum)
 
    ARGS are algorithm-specific keyword arguments."
@@ -130,7 +131,7 @@
     (:xxhash128 (apply #'xxh:make-xxhash128-hasher args))
     ;; Checksum
     (:crc32 (crc:make-crc32-hasher))
-    ;; Traditional via epsilon.ssl (wrapped for hasher protocol)
+    ;; Traditional via epsilon.crypto (wrapped for hasher protocol)
     ((:md5 :sha1 :sha256 :sha384 :sha512 :sha3-256 :sha3-384 :sha3-512)
      (ssl-hashers:make-ssl-hasher algorithm))
     (t (error "Unknown hash algorithm: ~A" algorithm))))

@@ -12,10 +12,9 @@
 
 (defpackage epsilon.io.buffer
   (:use :cl)
-  (:require (epsilon.sys.lock lock)
+  (:import (epsilon.sys.lock lock)
             (epsilon.io.protocol proto)
-            (epsilon.io.conditions cond))
-  (:enter t))
+            (epsilon.io.conditions cond)))
 
 ;;; ============================================================================
 ;;; Buffer Structure

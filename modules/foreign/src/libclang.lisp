@@ -143,8 +143,7 @@
    #:+cxchildvisit-recurse+
 
    ;; Cleanup
-   #:cleanup)
-  (:enter t))
+   #:cleanup))
 
 ;;; ============================================================================
 ;;; Signal Handler Management

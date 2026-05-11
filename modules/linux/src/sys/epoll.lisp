@@ -2,8 +2,8 @@
 
 (defpackage :epsilon.sys.epoll
   (:use :cl)
-  (:local-nicknames
-   (lib epsilon.foreign))
+  (:import
+   (epsilon.foreign lib))
   (:export
    ;; Core epoll operations
    #:epoll-create
@@ -58,8 +58,7 @@
    #:epoll-event-readable-p
    #:epoll-event-writable-p
    #:epoll-event-error-p
-   #:epoll-event-hangup-p)
-  (:enter t))
+   #:epoll-event-hangup-p))
 
 ;;;; epoll Constants
 

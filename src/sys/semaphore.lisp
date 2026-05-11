@@ -6,8 +6,7 @@
    #:semaphore
    #:semaphore-p
    #:signal-semaphore
-   #:wait-on-semaphore)
-  (:enter t))
+   #:wait-on-semaphore))
 
 ;;; Semaphores
 

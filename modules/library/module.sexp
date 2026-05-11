@@ -1,0 +1,4 @@
+(:name "epsilon.library"
+ :module-set "epsilon-core"
+ :description "shared library management")
+ :stability :stable

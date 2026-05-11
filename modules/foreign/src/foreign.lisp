@@ -1,17 +1,18 @@
 (defpackage epsilon.foreign
   (:use cl)
-  (:local-nicknames
-   (sym epsilon.symbol)
-   (map epsilon.map)
-   (seq epsilon.sequence)
-   (path epsilon.path)
-   (lib epsilon.library)
-   (log epsilon.log)
-   (trampoline epsilon.foreign.trampoline)
-   (marshalling epsilon.foreign.marshalling)
-   (callback epsilon.foreign.callback)
+  (:import
+   (epsilon.symbol sym)
+   (epsilon.map map)
+   (epsilon.sequence seq)
+   (epsilon.fs path)
+   (epsilon.library lib)
+   (epsilon.log log)
+   (epsilon.foreign.trampoline trampoline)
+   (epsilon.foreign.marshalling marshalling)
+   (epsilon.foreign.callback callback)
    ;; Struct support (JIT-based)
-   (jit-struct epsilon.foreign.jit.struct))
+   (epsilon.foreign.jit.struct jit-struct)
+   (epsilon.sys.lock lock))
   (:export
    ;; Core FFI
    shared-call
@@ -85,8 +86,7 @@
    ;; Re-exported from callback module via sym:reexport at end of file
 
    ;; Public API and configuration
-   ffi-system-status)
-  (:enter t))
+   ffi-system-status))
 
 ;;;; Core FFI Functions
 
@@ -362,7 +362,7 @@
 (defvar *allocated-memory* (make-hash-table :test 'eql)
   "Maps SAPs to their underlying alien pointers for proper cleanup")
 
-(defvar *allocated-memory-mutex* (sb-thread:make-mutex :name "allocated-memory")
+(defvar *allocated-memory-mutex* (lock:make-lock "allocated-memory")
   "Mutex for thread-safe access to *allocated-memory*")
 
 (defun foreign-alloc (type-or-size &key count initial-element initial-contents finalize)
@@ -375,7 +375,7 @@
          (sap (sb-alien:alien-sap alien-ptr)))
 
     ;; Store the alien pointer for later cleanup
-    (sb-thread:with-mutex (*allocated-memory-mutex*)
+    (lock:with-lock (*allocated-memory-mutex*)
       (setf (gethash (sb-sys:sap-int sap) *allocated-memory*) alien-ptr))
 
     ;; Initialize memory if requested
@@ -396,7 +396,7 @@
     (when finalize
       (let ((sap-int (sb-sys:sap-int sap)))
         (sb-ext:finalize sap (lambda ()
-                               (sb-thread:with-mutex (*allocated-memory-mutex*)
+                               (lock:with-lock (*allocated-memory-mutex*)
                                  (let ((ptr (gethash sap-int *allocated-memory*)))
                                    (when ptr
                                      (sb-alien:free-alien ptr)
@@ -411,7 +411,7 @@
     (let* ((sap-int (if (sb-sys:system-area-pointer-p pointer)
                         (sb-sys:sap-int pointer)
                         pointer)))
-      (sb-thread:with-mutex (*allocated-memory-mutex*)
+      (lock:with-lock (*allocated-memory-mutex*)
         (let ((alien-ptr (gethash sap-int *allocated-memory*)))
           (when alien-ptr
             ;; Free the alien memory

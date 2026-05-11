@@ -4,8 +4,10 @@
 
 (defpackage epsilon.foreign.jit
   (:use cl)
-  (:local-nicknames
-   (lib epsilon.library))
+  (:import
+   (epsilon.library lib)
+   (epsilon.sys.thread thread)
+   (epsilon.sys.lock lock))
   (:export
    ;; Stub cache
    #:*stub-cache*
@@ -28,8 +30,7 @@
 
    ;; Platform detection
    #:*current-platform*
-   #:platform-supported-p)
-  (:enter t))
+   #:platform-supported-p))
 
 ;;; ============================================================================
 ;;; Platform Detection
@@ -82,15 +83,24 @@
   (length sb-alien:unsigned-long)
   (prot sb-alien:int))
 
-;; ARM64: instruction cache must be invalidated after writing code
-#+arm64
+;; ARM64: instruction cache must be invalidated after writing code.
+;; macOS: sys_icache_invalidate (libsystem)
+;; Linux: __clear_cache (GCC builtin, exposed via libc)
+#+(and arm64 darwin)
 (sb-alien:define-alien-routine ("sys_icache_invalidate" sys-icache-invalidate)
     sb-alien:void
   (start sb-alien:system-area-pointer)
   (size sb-alien:unsigned-long))
 
+#+(and arm64 linux)
+(sb-alien:define-alien-routine ("__clear_cache" %clear-cache)
+    sb-alien:void
+  (start sb-alien:system-area-pointer)
+  (end sb-alien:system-area-pointer))
+
 ;; macOS ARM64: SBCL provides sb-vm::jit-memcpy which handles W^X correctly
-;; It uses pthread_jit_write_protect_np internally in a signal-safe way
+;; via pthread_jit_write_protect_np. On Linux ARM64, W^X is not enforced --
+;; mmap with PROT_WRITE|PROT_EXEC works directly.
 
 (defstruct executable-region
   "A region of executable memory"
@@ -118,26 +128,32 @@
 
 (defun write-to-executable (region offset bytes)
   "Write BYTES to REGION at OFFSET.
-   Uses SBCL's jit-memcpy on ARM64 which handles W^X correctly."
+   On ARM64 macOS, uses SBCL's jit-memcpy for W^X compliance.
+   On ARM64 Linux, writes directly (no W^X enforcement) then flushes icache.
+   On x86-64, writes directly (coherent icache)."
   (let ((dest (sb-sys:sap+ (executable-region-address region) offset))
         (len (length bytes)))
-    ;; On ARM64, sb-vm::jit-memcpy handles pthread_jit_write_protect_np
+    ;; macOS ARM64: sb-vm::jit-memcpy handles pthread_jit_write_protect_np
     ;; in a signal-safe way. It requires a simple-array, so coerce if needed.
-    #+ARM64
+    #+(and arm64 darwin)
     (let ((simple-bytes (if (typep bytes '(simple-array (unsigned-byte 8) (*)))
                             bytes
                             (coerce bytes '(simple-array (unsigned-byte 8) (*))))))
       (sb-sys:with-pinned-objects (simple-bytes)
         (sb-vm::jit-memcpy dest (sb-sys:vector-sap simple-bytes) len)))
-    #-ARM64
+    ;; ARM64 Linux and x86-64: direct byte writes
+    #-(and arm64 darwin)
     (loop for i from 0 below len
           do (setf (sb-sys:sap-ref-8 dest i) (aref bytes i))))
   ;; Memory barrier to ensure writes are visible before execution
-  (sb-thread:barrier (:memory))
+  (thread:memory-barrier :memory)
   ;; ARM64: invalidate instruction cache so CPU fetches the new code
-  #+arm64
+  #+(and arm64 darwin)
   (sys-icache-invalidate (sb-sys:sap+ (executable-region-address region) offset)
                          (length bytes))
+  #+(and arm64 linux)
+  (let ((start (sb-sys:sap+ (executable-region-address region) offset)))
+    (%clear-cache start (sb-sys:sap+ start (length bytes))))
   (values))
 
 ;;; ============================================================================
@@ -161,7 +177,7 @@
 (defvar *stub-region-size* (* 64 1024)
   "Size of stub region (64KB)")
 
-(defvar *stub-lock* (sb-thread:make-mutex :name "jit-stub-lock")
+(defvar *stub-lock* (lock:make-lock "jit-stub-lock")
   "Mutex protecting stub cache and region from concurrent access.")
 
 (defun ensure-stub-region ()
@@ -180,7 +196,7 @@
   "Get a cached stub or create a new one for the given signature.
    Thread-safe: all stub allocation and compilation is serialized."
   (let ((key (list* fn-addr return-type arg-types)))
-    (sb-thread:with-mutex (*stub-lock*)
+    (lock:with-lock (*stub-lock*)
       (or (gethash key *stub-cache*)
           (let ((stub (allocate-stub fn-addr return-type arg-types)))
             ;; Compile specialized caller under lock - SBCL's compiler
@@ -193,7 +209,7 @@
 
 (defun clear-stub-cache ()
   "Clear the stub cache and free memory."
-  (sb-thread:with-mutex (*stub-lock*)
+  (lock:with-lock (*stub-lock*)
     (clrhash *stub-cache*)
     (when *stub-region*
       (free-executable-memory *stub-region*)
@@ -233,7 +249,7 @@
   "Compile a call stub for the given signature.
    Allocates machine code and creates a specialized caller function.
    Thread-safe."
-  (sb-thread:with-mutex (*stub-lock*)
+  (lock:with-lock (*stub-lock*)
     (let ((stub (allocate-stub fn-addr return-type arg-types)))
       (setf (jit-stub-caller stub)
             (make-specialized-caller (sb-sys:sap-int (jit-stub-address stub))

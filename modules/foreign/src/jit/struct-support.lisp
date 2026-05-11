@@ -13,8 +13,8 @@
 
 (defpackage epsilon.foreign.jit.struct
   (:use cl)
-  (:local-nicknames
-   (jit epsilon.foreign.jit))
+  (:import
+   (epsilon.foreign.jit jit))
   (:export
    ;; Struct definition
    #:define-jit-struct
@@ -32,8 +32,7 @@
    #:struct-field-ref
 
    ;; sb-alien type conversion
-   #:jit-type-to-alien-field-type)
-  (:enter t))
+   #:jit-type-to-alien-field-type))
 
 ;;; ============================================================================
 ;;; Struct Definition

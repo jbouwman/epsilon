@@ -8,11 +8,10 @@
 
 (defpackage epsilon.digest.tests
   (:use :cl :epsilon.test)
-  (:require (epsilon.digest digest)
+  (:import (epsilon.digest digest)
             (epsilon.digest.protocol proto)
             (epsilon.io.buffer buf)
-            (epsilon.io.byte-stream byte-stream))
-  (:enter t))
+            (epsilon.io.byte-stream byte-stream)))
 
 ;;; ============================================================================
 ;;; Test Helpers

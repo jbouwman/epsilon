@@ -1,8 +1,7 @@
 (defpackage epsilon.data-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.data data)
-            (epsilon.match m))
-  (:enter t))
+  (:import (epsilon.data data)
+            (epsilon.match m)))
 
 ;;; Define test data types
 

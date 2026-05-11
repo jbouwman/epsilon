@@ -1,7 +1,7 @@
 ;;;; epsilon.digest.xxhash3 - xxHash implementation (pure-Lisp)
 ;;;;
 ;;;; Provides xxHash64 and xxHash32 non-cryptographic hash functions
-;;;; using the pure-Lisp implementation from epsilon.ssl.xxhash.
+;;;; using the pure-Lisp implementation from epsilon.crypto.xxhash.
 ;;;;
 ;;;; Use cases:
 ;;;; - Hash tables and data structures
@@ -13,10 +13,9 @@
 
 (defpackage epsilon.digest.xxhash3
   (:use :cl)
-  (:require (epsilon.digest.protocol proto)
+  (:import (epsilon.digest.protocol proto)
             (epsilon.typeclass tc)
-            (epsilon.ssl.xxhash xxh))
-  (:enter t))
+            (epsilon.crypto.xxhash xxh)))
 
 ;;; ============================================================================
 ;;; xxHash64 Hasher (pure-Lisp, streaming)

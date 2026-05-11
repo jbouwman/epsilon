@@ -2,9 +2,8 @@
 
 (defpackage epsilon.channel-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.channel channel)
-            (epsilon.sequence seq))
-  (:enter t))
+  (:import (epsilon.channel channel)
+            (epsilon.sequence seq)))
 
 ;;;; Channel Tests
 

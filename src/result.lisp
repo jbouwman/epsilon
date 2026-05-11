@@ -3,7 +3,7 @@
 ;;;; Explicit error handling without exceptions. Errors are values that compose.
 ;;;; Result values are either Ok(value) or Err(error).
 
-(defpackage :epsilon.result
+(cl:defpackage :epsilon.result
   (:use :cl)
   (:local-nicknames
    (:opt :epsilon.option))

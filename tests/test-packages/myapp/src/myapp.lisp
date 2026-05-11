@@ -1,8 +1,7 @@
 (defpackage :myapp
   (:use :cl)
-  (:local-nicknames (:lib :mylib))
-  (:export #:test-greeting)
-  (:enter t))
+  (:import (mylib lib))
+  (:export #:test-greeting))
 
 (defun test-greeting ()
   "Test the greeting function from mylib"

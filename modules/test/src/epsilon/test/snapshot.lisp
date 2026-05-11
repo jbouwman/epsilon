@@ -7,13 +7,12 @@
 
 (defpackage epsilon.test.snapshot
   (:use :cl :epsilon.symbol)
-  (:require (epsilon.map map)
-            (epsilon.path path)
-            (epsilon.file fs)
+  (:import (epsilon.map map)
+            (epsilon.fs path)
+            (epsilon.fs fs)
             (epsilon.string str)
             (epsilon.sequence seq)
-            (epsilon.log log))
-  (:enter t))
+            (epsilon.log log)))
 
 ;;; Configuration
 
@@ -35,7 +34,7 @@
 (defun snapshot-path (module-name snapshot-name)
   "Return the full path to a snapshot file.
    SNAPSHOT-NAME can include subdirectories like \"compiler/parse-defun\"."
-  (let* ((module (epsilon.loader:get-module (epsilon.loader:environment) module-name :error-p t))
+  (let* ((module (epsilon.loader:get-module module-name :error-p t))
          (module-dir (path::path-from-uri (epsilon.loader:module-uri module)))
          (snapshot-file (format nil "~A/~A.snap" *snapshot-dir* snapshot-name)))
     (path:string-path-join module-dir snapshot-file)))

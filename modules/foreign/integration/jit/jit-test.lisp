@@ -2,9 +2,8 @@
 
 (defpackage :epsilon.foreign.jit.test
   (:use :cl :epsilon.syntax :epsilon.test)
-  (:local-nicknames
-   (:jit :epsilon.foreign.jit))
-  (:enter t))
+  (:import
+   (epsilon.foreign.jit jit)))
 
 (deftest platform-supported-p-returns-boolean
   "platform-supported-p returns boolean"

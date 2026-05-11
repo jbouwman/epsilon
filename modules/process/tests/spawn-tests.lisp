@@ -5,11 +5,10 @@
 
 (defpackage epsilon.process.spawn-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.process.spawn spawn)
+  (:import (epsilon.process.spawn spawn)
             (epsilon.process.posix posix)
-            (epsilon.file fs))
-  (:local-nicknames (lib epsilon.foreign))
-  (:enter t))
+            (epsilon.fs fs))
+  (:import (epsilon.foreign lib)))
 
 ;;; ============================================================================
 ;;; Spawn Spec Construction Tests

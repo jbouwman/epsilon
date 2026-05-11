@@ -2,8 +2,7 @@
 
 (defpackage epsilon.mutable-map-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.mutable-map mmap))
-  (:enter t))
+  (:import (epsilon.mutable-map mmap)))
 
 ;;; Construction tests
 

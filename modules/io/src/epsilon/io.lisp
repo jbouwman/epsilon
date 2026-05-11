@@ -5,7 +5,7 @@
 
 (defpackage epsilon.io
   (:use :cl)
-  (:require (epsilon.symbol sym)
+  (:import (epsilon.symbol sym)
             (epsilon.io.protocol proto)
             (epsilon.io.conditions cond)
             (epsilon.io.buffer buf)
@@ -14,8 +14,7 @@
             (epsilon.io.combinators comb)
             (epsilon.io.async async)
             (epsilon.io.net-adapters net-adapters)
-            (epsilon.io.cl-stream-adapters cl-adapters))
-  (:enter t))
+            (epsilon.io.cl-stream-adapters cl-adapters)))
 
 ;;; Re-export protocol (excluding macros)
 (sym:reexport :epsilon.io.protocol

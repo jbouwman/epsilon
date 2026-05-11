@@ -7,11 +7,11 @@
 
 (defpackage epsilon.process.io
   (:use :cl)
-  (:local-nicknames
-   (posix epsilon.process.posix)
-   (spawn epsilon.process.spawn)
-   (lib   epsilon.foreign)
-   (async epsilon.async))
+  (:import
+   (epsilon.process.posix posix)
+   (epsilon.process.spawn spawn)
+   (epsilon.foreign lib)
+   (epsilon.async async))
   (:export
    ;; Line buffer
    #:line-buffer #:make-line-buffer #:line-buffer-feed
@@ -22,8 +22,7 @@
    #:collect-output
 
    ;; Condition
-   #:monitor-timeout)
-  (:enter t))
+   #:monitor-timeout))
 
 ;;; ============================================================================
 ;;; Condition

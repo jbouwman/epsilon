@@ -1,0 +1,5 @@
+(:name "epsilon.stacktrace"
+ :module-set "epsilon-devtools"
+ :description "Stack trace capture, source context, and formatting"
+ :stability :stable
+ :requires ())

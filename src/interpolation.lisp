@@ -9,11 +9,10 @@
 ;;;;   #~"100~~ complete"            ; Escaped tilde
 ;;;;   #~"Line1\nLine2"              ; Standard escape sequences
 
-(defpackage :epsilon.interpolation
+(cl:defpackage :epsilon.interpolation
   (:use :cl)
   (:export
    #:install-interpolation-reader
-   #:uninstall-interpolation-reader
    #:with-interpolation-reader
    #:parse-interpolated-string))
 
@@ -170,16 +169,6 @@
   (set-dispatch-macro-character #\# #\~ #'parse-interpolated-string *readtable*)
   (setf *interp-readtable* *readtable*)
   t)
-
-(defun uninstall-interpolation-reader ()
-  "Remove the interpolation reader macro from the current readtable.
-   Returns T on success, NIL if no reader was installed."
-  (when *interp-original-readtable*
-    ;; Remove the dispatch function by setting it to NIL
-    (set-dispatch-macro-character #\# #\~ nil *readtable*)
-    (setf *interp-original-readtable* nil)
-    (setf *interp-readtable* nil)
-    t))
 
 (defmacro with-interpolation-reader (&body body)
   "Execute BODY with interpolation reader extensions enabled.

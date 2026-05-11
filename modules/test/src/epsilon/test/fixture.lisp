@@ -2,8 +2,7 @@
 
 (defpackage epsilon.test.fixture
   (:use :cl)
-  (:require (epsilon.map map))
-  (:enter t))
+  (:import (epsilon.map map)))
 
 (defstruct fixture
   "A test fixture with setup and teardown functions"

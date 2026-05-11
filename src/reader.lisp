@@ -5,10 +5,10 @@
 ;;;; - #{1 2 3}     -> HAMT set literal
 ;;;; - #f(+ % 1)    -> anonymous function shorthand
 ;;;; - #~"..."      -> string interpolation (via epsilon.interpolation)
-;;;; - #@(key val)  -> annotation (via epsilon.annotation)
+;;;; - #@(key val)  -> annotation (via epsilon.annotate)
 ;;;; - #@:keyword   -> bare annotation shorthand for #@(:keyword t)
 
-(defpackage epsilon.reader
+(cl:defpackage epsilon.readtable
   (:use cl)
   (:local-nicknames
    (map epsilon.map)
@@ -32,7 +32,7 @@
    uninstall-reader-macros
    with-epsilon-reader))
 
-(in-package :epsilon.reader)
+(in-package :epsilon.readtable)
 
 ;;;; ==========================================================================
 ;;;; Annotation Reader Function
@@ -40,16 +40,16 @@
 
 (defun read-annotation (stream char n)
   "Read #@(...) or #@:keyword annotation syntax.
-   #@(:key value) form  =>  (epsilon.annotation:with-annotations (:key value) form)
-   #@:keyword form      =>  (epsilon.annotation:with-annotations (:keyword t) form)"
+   #@(:key value) form  =>  (epsilon.annotate:with-annotations (:key value) form)
+   #@:keyword form      =>  (epsilon.annotate:with-annotations (:keyword t) form)"
   (declare (ignore char n))
   (let* ((annotation (read stream t nil t))
          (key (if (keywordp annotation) annotation (first annotation)))
          (value (if (keywordp annotation) t (second annotation)))
          (form (read stream t nil t))
-         ;; Defer package lookup: epsilon.annotation may not exist when core loads
-         (pkg (or (find-package "EPSILON.ANNOTATION")
-                  (error "#@ annotation syntax requires epsilon.annotation module")))
+         ;; Defer package lookup: epsilon.annotate may not exist when core loads
+         (pkg (or (find-package "EPSILON.ANNOTATE")
+                  (error "#@ annotation syntax requires epsilon.annotate module")))
          (wa-sym (intern "WITH-ANNOTATIONS" pkg)))
     `(,wa-sym (,key ,value)
        ,form)))
@@ -250,7 +250,7 @@
          (setf *readtable* ,saved)))))
 
 ;;;; ==========================================================================
-;;;; Legacy Compatibility (for epsilon.reader)
+;;;; Legacy Compatibility (for epsilon.readtable)
 ;;;; ==========================================================================
 
 (defun install-reader-macros ()

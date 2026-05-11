@@ -3,7 +3,7 @@
 ;;;; The adjacency function takes a node and returns its successors
 ;;;; (dependencies in the "depends on" direction).
 
-(defpackage epsilon.graph
+(cl:defpackage epsilon.graph
   (:use cl)
   (:export
    tarjan-scc

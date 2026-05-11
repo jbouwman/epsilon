@@ -4,9 +4,10 @@ Notable changes to Epsilon are documented in this file.
 
 ## [Unreleased]
 
-## [0.16.0]
+## [1.0.0c]
 
-- Refocus of bootstrapped runtime on module loading
+- Widespread tuning
+- Worker-based parallel build
 
 ## [0.15.0] - 2026-02-25
 
@@ -18,7 +19,7 @@ Notable changes to Epsilon are documented in this file.
 ### Changed
 - Ejected devtools modules (lint, server, benchmark) into `epsilon-contrib/` (originally `epsilon-devtools/`, later merged back)
 - Consolidated `epsilon.digest` and `epsilon.html` into `epsilon.crypto` and `epsilon.markup` respectively
-- Cleaned workspace.plist: removed phantom entries for non-existent modules
+- Cleaned workspace.sexp: removed phantom entries for non-existent modules
 - Updated `epsilon.pkg` registry URL and fixed hardcoded timestamp
 - Replaced Unicode status symbols with ASCII equivalents for terminal portability
 - Updated HTTP module description to accurately reflect HTTP/3 as experimental

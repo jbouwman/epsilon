@@ -1,4 +1,4 @@
-(defpackage #:epsilon.sys.pkg
+(cl:defpackage #:epsilon.sys.pkg
   (:use #:cl)
   (:local-nicknames
    (#:seq #:epsilon.sequence)
@@ -16,5 +16,7 @@
                       (string package-name))))
 
 (defun normalize (sym)
+  "Lowercase the dotted-component form of SYM's symbol-name, returning
+   it as a string.  Inverse-of-sorts of `parse'.  NIL passes through."
   (when sym
     (str:join #\. (parse (symbol-name sym)))))

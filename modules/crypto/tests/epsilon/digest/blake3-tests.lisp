@@ -6,10 +6,9 @@
 ;;;; Context: "BLAKE3 2019-12-27 16:29:52 test vectors context"
 
 (defpackage epsilon.digest.blake3-tests
-  (:use :cl :epsilon.test :epsilon.ssl.test-support)
-  (:local-nicknames
-   (#:blake3 #:epsilon.digest.blake3))
-  (:enter t))
+  (:use :cl :epsilon.test :epsilon.crypto.test-support)
+  (:import
+   (epsilon.digest.blake3 blake3)))
 
 (in-package :epsilon.digest.blake3-tests)
 

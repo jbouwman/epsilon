@@ -7,10 +7,9 @@
 
 (defpackage epsilon.io.async
   (:use :cl)
-  (:require (epsilon.async async)
+  (:import (epsilon.async async)
             (epsilon.sys.lock lock)
-            (epsilon.sys.variable cv))
-  (:enter t))
+            (epsilon.sys.variable cv)))
 
 ;;; ============================================================================
 ;;; Local Condition Types

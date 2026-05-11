@@ -1,7 +1,6 @@
 (defpackage :mylib
   (:use :cl)
-  (:export #:greet)
-  (:enter t))
+  (:export #:greet))
 
 (defun greet (name)
   "Return a greeting for NAME"

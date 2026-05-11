@@ -15,6 +15,7 @@
 
 (defpackage epsilon.crypto.errors
   (:use :cl)
+  (:import-from :epsilon.symbol #:define-condition-predicates)
   (:export crypto-error
            crypto-error-p
            crypto-error-message
@@ -44,8 +45,7 @@
            signal-tls-error
            signal-certificate-error
            signal-key-error
-           with-crypto-errors)
-  (:enter t))
+           with-crypto-errors))
 
 ;;;; Base Condition
 
@@ -163,15 +163,7 @@ Includes an error code (typically from OpenSSL), a message, and optional context
            :documentation "Expected format (PEM, DER, etc.)"))
   (:documentation "Error in key format or parsing"))
 
-;;;; Predicates
-
-(defmacro define-condition-predicates (&rest names)
-  "Generate type-checking predicates for condition types."
-  `(progn
-     ,@(loop for name in names
-             collect `(defun ,(intern (format nil "~A-P" name)) (obj)
-                        ,(format nil "Test if OBJ is a ~(~A~)." name)
-                        (typep obj ',name)))))
+;;;; Predicates (macro lives in epsilon.symbol)
 
 (define-condition-predicates
   crypto-error

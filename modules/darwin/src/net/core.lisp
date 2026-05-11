@@ -27,6 +27,8 @@
    #:tcp-listener-local-address
    #:tcp-listener-kqueue
    #:tcp-listener-backlog
+   #:tcp-listener-shutdown-read-fd
+   #:tcp-listener-shutdown-write-fd
 
    #:tcp-stream
    #:tcp-stream-handle
@@ -43,6 +45,20 @@
    #:udp-socket-local-address
    #:udp-socket-connected-peer
 
+   #:unix-socket-address
+   #:unix-socket-address-path
+   #:unix-socket-stream
+   #:unix-socket-stream-handle
+   #:unix-socket-stream-connected-p
+   #:unix-socket-stream-io-stream
+   #:unix-socket-listener
+   #:unix-socket-listener-handle
+   #:unix-socket-listener-path
+
+   #:unix-dgram-socket
+   #:unix-dgram-socket-handle
+   #:unix-dgram-socket-path
+
    ;; Error conditions
    #:network-error
    #:connection-refused
@@ -56,8 +72,7 @@
 
    ;; Error utilities
    #:get-errno
-   #:errno-to-string)
-  (:enter t))
+   #:errno-to-string))
 
 ;;; ============================================================================
 ;;; Address Types
@@ -103,7 +118,13 @@
            :documentation "Kqueue instance for async operations")
    (backlog :initarg :backlog :reader tcp-listener-backlog
             :initform 128
-            :documentation "Connection backlog"))
+            :documentation "Connection backlog")
+   (shutdown-read-fd :initarg :shutdown-read-fd :reader tcp-listener-shutdown-read-fd
+                     :initform nil
+                     :documentation "Read end of shutdown notification pipe")
+   (shutdown-write-fd :initarg :shutdown-write-fd :reader tcp-listener-shutdown-write-fd
+                      :initform nil
+                      :documentation "Write end of shutdown notification pipe"))
   (:documentation "TCP server socket"))
 
 (defclass tcp-stream ()
@@ -142,6 +163,51 @@
                    :initform nil
                    :documentation "Connected peer for connected UDP"))
   (:documentation "UDP socket"))
+
+;;; ============================================================================
+;;; Unix Domain Socket Types
+;;; ============================================================================
+
+(defclass unix-socket-address ()
+  ((path :initarg :path :reader unix-socket-address-path
+         :type string
+         :documentation "Filesystem path for the Unix socket"))
+  (:documentation "Unix domain socket address"))
+
+(defmethod print-object ((addr unix-socket-address) stream)
+  (print-unreadable-object (addr stream :type t)
+    (format stream "~A" (unix-socket-address-path addr))))
+
+(defclass unix-socket-stream ()
+  ((handle :initarg :handle :accessor unix-socket-stream-handle
+           :documentation "OS socket file descriptor")
+   (io-stream :initform nil :accessor unix-socket-stream-io-stream
+              :documentation "Bidirectional (unsigned-byte 8) stream")
+   (connected-p :initarg :connected-p :initform t :accessor unix-socket-stream-connected-p
+                :documentation "Connection status"))
+  (:documentation "Unix domain socket connection"))
+
+(defmethod print-object ((stream unix-socket-stream) stream-obj)
+  (print-unreadable-object (stream stream-obj :type t)
+    (format stream-obj "fd=~D (~A)"
+            (unix-socket-stream-handle stream)
+            (if (unix-socket-stream-connected-p stream) "connected" "disconnected"))))
+
+(defclass unix-socket-listener ()
+  ((handle :initarg :handle :accessor unix-socket-listener-handle
+           :documentation "OS socket file descriptor")
+   (path :initarg :path :reader unix-socket-listener-path
+         :type string
+         :documentation "Filesystem path this listener is bound to"))
+  (:documentation "Unix domain socket listener"))
+
+(defclass unix-dgram-socket ()
+  ((handle :initarg :handle :accessor unix-dgram-socket-handle
+           :documentation "OS socket file descriptor")
+   (path :initarg :path :initform nil :accessor unix-dgram-socket-path
+         :type (or string null)
+         :documentation "Filesystem path this socket is bound to (nil for connected-only)"))
+  (:documentation "Unix domain datagram socket"))
 
 ;;; ============================================================================
 ;;; Error Conditions (base conditions imported from epsilon.net.conditions)

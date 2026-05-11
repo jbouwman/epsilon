@@ -5,12 +5,12 @@
 
 (defpackage epsilon.foreign.signatures
   (:use cl)
-  (:local-nicknames
-   (jit epsilon.foreign.jit)
-   (lc epsilon.foreign.libclang)
-   (struct epsilon.foreign.jit.struct)
-   (var epsilon.foreign.jit.variadic)
-   (fs epsilon.file))
+  (:import
+   (epsilon.foreign.jit jit)
+   (epsilon.foreign.libclang lc)
+   (epsilon.foreign.jit.struct struct)
+   (epsilon.foreign.jit.variadic var)
+   (epsilon.fs fs))
   (:export
    ;; Automatic JIT from headers
    #:auto-jit
@@ -55,8 +55,7 @@
    #:describe-function
    #:describe-struct
    #:list-functions
-   #:list-structs)
-  (:enter t))
+   #:list-structs))
 
 ;;; ============================================================================
 ;;; Include Path Management

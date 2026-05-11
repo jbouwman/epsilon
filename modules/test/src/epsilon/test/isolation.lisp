@@ -9,14 +9,13 @@
 
 (defpackage epsilon.test.isolation
   (:use :cl :epsilon.symbol)
-  (:require (epsilon.map map)
+  (:import (epsilon.map map)
             (epsilon.result result)
             (epsilon.process process)
             (epsilon.syntax th)
             (epsilon.log log)
-            (epsilon.path path)
-            (epsilon.file fs))
-  (:enter t))
+            (epsilon.fs path)
+            (epsilon.fs fs)))
 
 ;;; Configuration
 

@@ -2,7 +2,7 @@
 ;;;; splitting, joining, trimming, case conversion, and Unicode-aware
 ;;;; operations.
 
-(defpackage :epsilon.string
+(cl:defpackage :epsilon.string
   (:use
    :cl
    :epsilon.syntax)

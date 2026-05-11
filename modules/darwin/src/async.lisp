@@ -1,14 +1,21 @@
 ;;;; Darwin Async I/O Implementation using kqueue
 ;;;;
-;;;; This module provides the epsilon.async interface for Darwin systems
-;;;; using direct kqueue integration for all file descriptor types.
+;;;; Parallel to epsilon/modules/linux/src/async.lisp -- delegates all
+;;;; kqueue bookkeeping to epsilon.net.reactor, whose reactor
+;;;; thread is the sole caller of kevent().  This keeps the event-loop
+;;;; and per-FD dispatch logic in one place and lets both the async
+;;;; submit/poll API and the scheduler's io-wait *fd-wait-register* hook
+;;;; share a single kqueue fd.
 
 (defpackage #:epsilon.async
   (:use #:cl)
-  (:local-nicknames
-   (#:kqueue #:epsilon.kqueue)
-   (#:constants #:epsilon.net.constants)
-   (#:log #:epsilon.log))
+  (:import
+   (epsilon.kqueue kqueue)
+   (epsilon.net.reactor reactor)
+   (epsilon.net.constants constants)
+   (epsilon.log log)
+   (epsilon.sys.thread thread)
+   (epsilon.sys.lock lock))
   (:export
    ;; Async operation struct
    #:async-operation
@@ -51,8 +58,7 @@
    #:process-monitor-add-pid
    #:process-monitor-remove-read
    #:process-monitor-wait
-   #:process-monitor-close)
-  (:enter t))
+   #:process-monitor-close))
 
 ;;; ============================================================================
 ;;; Async Operation Struct
@@ -73,14 +79,11 @@
 ;;; Darwin Kqueue-based Async System
 ;;; ============================================================================
 
-(defvar *global-kqueue* nil
-  "Global kqueue file descriptor for async operations")
-
 (defvar *pending-operations* (make-hash-table :test 'equal)
-  "Hash table mapping (fd . filter) to async-operation.
+  "Hash table mapping (fd . operation-type) to async-operation.
    All access must be guarded by *pending-lock*.")
 
-(defvar *pending-lock* (sb-thread:make-mutex :name "pending-operations")
+(defvar *pending-lock* (lock:make-lock "pending-operations")
   "Mutex protecting *pending-operations*.")
 
 (defvar *async-thread* nil
@@ -92,22 +95,25 @@
 (defvar *completion-queue* '()
   "Queue of completed operations")
 
-(defvar *completion-lock* (sb-thread:make-mutex :name "completion-queue"))
+(defvar *completion-lock* (lock:make-lock "completion-queue"))
+
+(defvar *cancel-in-progress* nil
+  "Defense-in-depth guard: when non-nil, cancel-async-operation is already
+   on the call stack and re-entrant invocations return immediately.")
 
 (defvar *event-loop-generation* 0
   "Monotonically increasing counter incremented each async event loop iteration.")
 
 (defvar *event-loop-generation-lock*
-  (sb-thread:make-mutex :name "event-loop-generation"))
+  (lock:make-lock "event-loop-generation"))
 
 (defvar *event-loop-generation-cv*
-  (sb-thread:make-waitqueue :name "event-loop-generation-cv"))
+  (lock:make-condition-variable :name "event-loop-generation-cv"))
 
 (defun validate-file-descriptor (fd)
   "Validate that a file descriptor is valid before using with kqueue"
   (and (integerp fd)
        (>= fd 0)
-       ;; Simple validation - try to get flags
        (handler-case
            (progn
              (constants:%fcntl fd constants:+f-getfl+ 0)
@@ -116,87 +122,96 @@
 
 (defun ensure-async-system ()
   "Ensure the async system is initialized"
-  (unless *global-kqueue*
-    (setf *global-kqueue* (kqueue:kqueue))
-    (start-async-thread)))
+  (handler-case
+      (progn
+        (reactor:boot-reactor)
+        (start-async-thread))
+    (error (e)
+      (warn "Failed to initialize async system: ~A" e)
+      (error e))))
 
 (defun start-async-thread ()
   "Start the background async event processing thread"
-  (unless (and *async-thread* (sb-thread:thread-alive-p *async-thread*))
+  (unless (and *async-thread* (thread:thread-alive-p *async-thread*))
     (setf *async-running* t)
     (setf *async-thread*
-          (sb-thread:make-thread #'async-event-loop :name "darwin-async-loop"))))
+          (thread:make-thread #'async-event-loop :name "darwin-async-loop"))))
 
 (defun stop-async-system ()
   "Stop the async system and clean up resources"
   (setf *async-running* nil)
-  (when (and *async-thread* (sb-thread:thread-alive-p *async-thread*))
-    (sb-thread:join-thread *async-thread*))
-  (when *global-kqueue*
-    (kqueue:kqueue-close *global-kqueue*)
-    (setf *global-kqueue* nil))
-  (clrhash *pending-operations*)
-  (setf *completion-queue* '()))
+  (when (and *async-thread* (thread:thread-alive-p *async-thread*))
+    (handler-case
+        (thread:join-thread *async-thread*)
+      (error (e)
+        (warn "Error joining async thread: ~A" e))))
+  (setf *async-thread* nil)
+  (reactor:shutdown-reactor)
+  (lock:with-lock (*pending-lock*)
+    (clrhash *pending-operations*))
+  (lock:with-lock (*completion-lock*)
+    (setf *completion-queue* '()))
+  (lock:with-lock (*event-loop-generation-lock*)
+    (setf *event-loop-generation* 0)))
 
 (defun async-event-loop ()
-  "Main async event processing loop"
+  "Main async event processing loop.
+   Consumes events from the kqueue manager's any-queue (i.e. events for
+   FDs that have no specific register-socket-callback waiter) and routes
+   them to submit-async-operation-registered pending operations."
   (loop while *async-running* do
-        (handler-case
-            (let ((events (kqueue:wait-for-events *global-kqueue* 64 1))) ; 1 second timeout
-              (dolist (event events)
-                (process-async-event event)))
-          (error (e)
-            (log:error "Async event loop error: ~A" e)
-            (sleep 0.1)))
-        (sb-thread:with-mutex (*event-loop-generation-lock*)
-          (incf *event-loop-generation*)
-          (sb-thread:condition-broadcast *event-loop-generation-cv*))))
+    (handler-case
+        (let ((events (reactor:wait-for-any-socket 100)))
+          (dolist (event events)
+            (process-async-event event))
+          (when (null events)
+            (sleep 0.001)))
+      (error (e)
+        (log:error "Darwin async event loop error: ~A" e)
+        (sleep 0.1)))
+    (lock:with-lock (*event-loop-generation-lock*)
+      (incf *event-loop-generation*)
+      (lock:condition-broadcast *event-loop-generation-cv*))))
+
+(defun %filter-to-op-types (filter)
+  "Return the list of operation types that match a kqueue filter."
+  (cond
+    ((= filter kqueue:+evfilt-read+)  '(:read :accept))
+    ((= filter kqueue:+evfilt-write+) '(:write :connect))
+    (t '())))
 
 (defun process-async-event (event)
-  "Process a single kqueue event"
+  "Process a single kqueue event from the manager's any-queue."
   (let* ((fd (kqueue:kevent-struct-ident event))
          (filter (kqueue:kevent-struct-filter event))
          (flags (kqueue:kevent-struct-flags event))
-         (key (cons fd filter)))
-
-    ;; Check for real errors (EV_ERROR indicates actual error)
-    ;; Note: EV_EOF for read operations is NOT an error - it means data may be
-    ;; available and connection was closed. We should still process it normally.
-    (when (not (zerop (logand flags kqueue:+ev-error+)))
-      (let ((async-op (sb-thread:with-mutex (*pending-lock*)
-                        (prog1 (gethash key *pending-operations*)
-                          (remhash key *pending-operations*)))))
+         (op-types (%filter-to-op-types filter))
+         (errored (not (zerop (logand flags kqueue:+ev-error+)))))
+    (dolist (op-type op-types)
+      (let* ((key (cons fd op-type))
+             (async-op (lock:with-lock (*pending-lock*)
+                         (prog1 (gethash key *pending-operations*)
+                           (remhash key *pending-operations*)))))
         (when async-op
-          (sb-thread:with-mutex (*completion-lock*)
-            (push async-op *completion-queue*))
-          (when (async-operation-error-callback async-op)
-            (funcall (async-operation-error-callback async-op) "I/O error"))))
-      (return-from process-async-event))
-
-    ;; Handle successful events (normal read/write readiness)
-    (let ((async-op (sb-thread:with-mutex (*pending-lock*)
-                      (prog1 (gethash key *pending-operations*)
-                        (remhash key *pending-operations*)))))
-      (when async-op
-        ;; Perform the actual I/O operation based on stored operation type
-        (case (async-operation-type async-op)
-          (:read
-           (perform-read-operation async-op))
-          (:write
-           (perform-write-operation async-op))
-          (:accept
-           (perform-accept-operation async-op))
-          (:connect
-           (perform-write-operation async-op)))
-
-        (sb-thread:with-mutex (*completion-lock*)
-          (push async-op *completion-queue*))))))
+          (cond
+            (errored
+             (when (async-operation-error-callback async-op)
+               (handler-case
+                   (funcall (async-operation-error-callback async-op)
+                            "I/O error")
+                 (error (e)
+                   (warn "Error in error callback: ~A" e)))))
+            (t
+             (case op-type
+               (:read    (perform-read-operation async-op))
+               (:write   (perform-write-operation async-op))
+               (:accept  (perform-accept-operation async-op))
+               (:connect (perform-write-operation async-op)))))
+          (lock:with-lock (*completion-lock*)
+            (push async-op *completion-queue*)))))))
 
 (defun perform-read-operation (async-op)
-  "Perform the actual read operation"
   (handler-case
-      ;; Signal completion - the fd is ready for reading
-      ;; The callback (waker) is a nullary function
       (progn
         (setf (async-operation-result async-op) :ready)
         (when (async-operation-callback async-op)
@@ -207,10 +222,7 @@
         (funcall (async-operation-error-callback async-op) e)))))
 
 (defun perform-write-operation (async-op)
-  "Perform the actual write operation"
   (handler-case
-      ;; Signal completion - the fd is ready for writing
-      ;; The callback (waker) is a nullary function
       (progn
         (setf (async-operation-result async-op) :ready)
         (when (async-operation-callback async-op)
@@ -221,10 +233,7 @@
         (funcall (async-operation-error-callback async-op) e)))))
 
 (defun perform-accept-operation (async-op)
-  "Perform the actual accept operation"
   (handler-case
-      ;; Signal completion - the fd is ready for accepting
-      ;; The callback (waker) is a nullary function
       (progn
         (setf (async-operation-result async-op) :ready)
         (when (async-operation-callback async-op)
@@ -238,68 +247,68 @@
 ;;; Async Operation Interface
 ;;; ============================================================================
 
+(defun %op-type-events (op-type)
+  "Map an operation type to the reactor event keyword list."
+  (case op-type
+    (:read    '(:in))
+    (:write   '(:out))
+    (:accept  '(:in))
+    (:connect '(:out))
+    (t (error "Unknown operation type: ~A" op-type))))
+
 (defun submit-async-operation (operation)
-  "Submit an async operation for processing"
+  "Submit an async operation for processing.
+   If the fd is already registered with the kqueue manager, uses
+   modify-socket-events to add the new interest; otherwise registers."
   (ensure-async-system)
   (let ((fd (async-operation-fd operation))
         (op-type (async-operation-type operation)))
-
-    ;; Validate file descriptor
     (unless (validate-file-descriptor fd)
       (error "Invalid file descriptor: ~A" fd))
-
-    ;; Register with kqueue
-    (let ((filter (case op-type
-                    (:read kqueue:+evfilt-read+)
-                    (:write kqueue:+evfilt-write+)
-                    (:accept kqueue:+evfilt-read+) ; Accept uses read filter
-                    (:connect kqueue:+evfilt-write+) ; Connect uses write filter
-                    (t (error "Unknown operation type: ~A" op-type)))))
-      (let ((key (cons fd filter)))
-        ;; Store the operation and register with kqueue
-        (sb-thread:with-mutex (*pending-lock*)
-          (setf (gethash key *pending-operations*) operation))
-
-        (handler-case
-            (kqueue:add-event *global-kqueue* fd filter)
-          (error (e)
-            (sb-thread:with-mutex (*pending-lock*)
-              (remhash key *pending-operations*))
-            (error "Failed to register with kqueue: ~A" e)))))))
+    (let ((key (cons fd op-type))
+          (events (%op-type-events op-type)))
+      (lock:with-lock (*pending-lock*)
+        (setf (gethash key *pending-operations*) operation))
+      (handler-case
+          (if (reactor:socket-registered-p fd)
+              (reactor:modify-socket-events fd events)
+              (reactor:register-socket fd events))
+        (error (e)
+          ;; Best-effort: fall back to immediate completion so callers
+          ;; using stdin/stdout or already-closed fds don't hang.
+          (warn "Socket registration failed for fd ~A: ~A" fd e)
+          (lock:with-lock (*pending-lock*)
+            (remhash key *pending-operations*))
+          (lock:with-lock (*completion-lock*)
+            (push operation *completion-queue*)))))))
 
 (defun cancel-async-operation (operation)
-  "Cancel a specific async operation. Removes it from the pending table
-   and invokes its error callback."
-  (let* ((fd (async-operation-fd operation))
+  "Cancel a specific async operation.  Removes it from the pending table
+   and invokes its error callback.  Uses *cancel-in-progress* as a
+   re-entrancy guard."
+  (when *cancel-in-progress*
+    (return-from cancel-async-operation nil))
+  (let* ((*cancel-in-progress* t)
+         (fd (async-operation-fd operation))
          (op-type (async-operation-type operation))
-         (filter (case op-type
-                   (:read kqueue:+evfilt-read+)
-                   (:write kqueue:+evfilt-write+)
-                   (:accept kqueue:+evfilt-read+)
-                   (:connect kqueue:+evfilt-write+)
-                   (t (return-from cancel-async-operation nil))))
-         (key (cons fd filter)))
-    (let ((found (sb-thread:with-mutex (*pending-lock*)
-                   (when (gethash key *pending-operations*)
-                     (remhash key *pending-operations*)
-                     t))))
-      (when found
-        ;; Remove from kqueue (ignore errors -- fd may already be closed)
-        (when *global-kqueue*
-          (handler-case (kqueue:remove-event *global-kqueue* fd filter)
-            (error () nil)))
-        ;; Invoke error callback
-        (when (async-operation-error-callback operation)
-          (handler-case
-              (funcall (async-operation-error-callback operation) "Operation cancelled")
-            (error (e)
-              (warn "Error in cancel error callback: ~A" e))))
-        t))))
+         (key (cons fd op-type))
+         (found (lock:with-lock (*pending-lock*)
+                  (when (gethash key *pending-operations*)
+                    (remhash key *pending-operations*)
+                    t))))
+    (when found
+      (when (async-operation-error-callback operation)
+        (handler-case
+            (funcall (async-operation-error-callback operation)
+                     "Operation cancelled")
+          (error (e)
+            (warn "Error in cancel error callback: ~A" e))))
+      t)))
 
 (defun poll-completions (&optional (timeout-ms 0))
   "Poll for completed operations"
   (declare (ignore timeout-ms))
-  (sb-thread:with-mutex (*completion-lock*)
+  (lock:with-lock (*completion-lock*)
     (prog1 *completion-queue*
       (setf *completion-queue* '()))))
 
@@ -308,8 +317,7 @@
 ;;; ============================================================================
 
 (defun async-read (fd buffer &key (start 0) (end (length buffer)) on-complete on-error)
-  "Perform async read operation.
-   START and END specify the region of BUFFER to read into."
+  "Perform async read operation."
   (let ((operation (make-async-operation
                     :fd fd
                     :type :read
@@ -322,8 +330,7 @@
     operation))
 
 (defun async-write (fd buffer &key (start 0) (end (length buffer)) on-complete on-error)
-  "Perform async write operation.
-   START and END specify the region of BUFFER to write from."
+  "Perform async write operation."
   (let ((operation (make-async-operation
                     :fd fd
                     :type :write
@@ -363,11 +370,11 @@
 (defun cleanup-fd-operations (fd)
   "Clean up all pending operations for a specific file descriptor.
    Invokes error callbacks on each pending operation, then removes them
-   from the pending table and unregisters each kqueue filter for FD.
-   Returns the number of operations removed."
+   from the pending table and unregisters the fd.  Returns the number of
+   operations removed."
   (let ((keys-to-remove '())
         (callbacks '()))
-    (sb-thread:with-mutex (*pending-lock*)
+    (lock:with-lock (*pending-lock*)
       (maphash (lambda (key operation)
                  (when (= (car key) fd)
                    (push key keys-to-remove)
@@ -376,52 +383,41 @@
                *pending-operations*)
       (dolist (key keys-to-remove)
         (remhash key *pending-operations*)))
-    ;; Invoke callbacks and remove kqueue filters outside the lock
     (dolist (cb callbacks)
       (handler-case (funcall cb "File descriptor closed")
         (error (e) (warn "Error in cleanup error callback: ~A" e))))
-    (dolist (key keys-to-remove)
-      (when *global-kqueue*
-        (handler-case (kqueue:remove-event *global-kqueue* fd (cdr key))
-          (error () nil))))
+    (handler-case (reactor:unregister-socket fd) (error () nil))
     (length keys-to-remove)))
 
 (defun quiesce-fd (fd)
   "Silently remove FD from the async system without invoking callbacks.
-   Removes all pending operations for FD from the pending table and
-   unregisters each kqueue filter for FD.  Unlike cancel-async-operation,
-   this does NOT invoke error callbacks, avoiding re-entrancy issues during
-   pool teardown.  Use fence-async-event-loop after quiescing to ensure any
-   currently-executing callbacks for FD have completed."
+   Unlike cleanup-fd-operations, this does NOT invoke error callbacks,
+   avoiding re-entrancy issues during pool teardown.  Use
+   fence-async-event-loop after quiescing to ensure any currently-executing
+   callbacks for FD have completed."
   (let ((keys-to-remove '()))
-    (sb-thread:with-mutex (*pending-lock*)
+    (lock:with-lock (*pending-lock*)
       (maphash (lambda (key op)
                  (declare (ignore op))
                  (when (= (car key) fd)
                    (push key keys-to-remove)))
                *pending-operations*)
       (dolist (key keys-to-remove)
-        (remhash key *pending-operations*)))
-    ;; Remove kqueue filters outside the lock
-    (dolist (key keys-to-remove)
-      (when *global-kqueue*
-        (handler-case (kqueue:remove-event *global-kqueue* fd (cdr key))
-          (error () nil))))))
+        (remhash key *pending-operations*))))
+  (handler-case (reactor:unregister-socket fd) (error () nil)))
 
 (defun fence-async-event-loop ()
   "Wait for the async event loop to complete its current iteration.
-   Guarantees that any callbacks in-flight when this function is called
-   have finished executing before this function returns.
    Returns immediately if the async system is not running."
-  (unless (and *async-thread* (sb-thread:thread-alive-p *async-thread*))
+  (unless (and *async-thread* (thread:thread-alive-p *async-thread*))
     (return-from fence-async-event-loop))
-  (sb-thread:with-mutex (*event-loop-generation-lock*)
+  (lock:with-lock (*event-loop-generation-lock*)
     (let ((target (1+ *event-loop-generation*)))
       (loop while (and *async-running*
                        (< *event-loop-generation* target))
-            do (sb-thread:condition-wait *event-loop-generation-cv*
-                                        *event-loop-generation-lock*
-                                        :timeout 1)))))
+            do (lock:condition-wait *event-loop-generation-cv*
+                                    *event-loop-generation-lock*
+                                    :timeout 1)))))
 
 ;;; ============================================================================
 ;;; Utilities
@@ -429,7 +425,9 @@
 
 (defun set-nonblocking (fd)
   "Set a file descriptor to non-blocking mode.
-   Uses direct SBCL FFI for simplicity."
+   Uses direct SBCL FFI because epsilon.foreign's fcntl wrapper has a
+   known bug where F_SETFL returns success but doesn't actually modify
+   flags."
   (let ((flags (sb-alien:alien-funcall
                 (sb-alien:extern-alien "fcntl"
                                        (function sb-alien:int sb-alien:int sb-alien:int sb-alien:int))
@@ -485,8 +483,6 @@
                        '())
         t)
     (error (e)
-      ;; ESRCH (errno 3) means the process already exited before we could
-      ;; register the kevent - a normal race for fast commands.
       (if (search "errno 3" (princ-to-string e))
           nil
           (error e)))))

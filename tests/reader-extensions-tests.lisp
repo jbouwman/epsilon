@@ -1,7 +1,6 @@
 (defpackage epsilon.reader-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.reader reader))
-  (:enter t))
+  (:import (epsilon.readtable reader)))
 
 ;;; Helper to read with epsilon syntax
 

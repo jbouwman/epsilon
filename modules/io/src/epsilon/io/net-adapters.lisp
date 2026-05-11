@@ -6,10 +6,12 @@
 
 (defpackage epsilon.io.net-adapters
   (:use :cl)
-  (:require (epsilon.io.protocol proto)
+  (:import (epsilon.io.protocol proto)
             (epsilon.net net)
-            (epsilon.typeclass tc))
-  (:enter t))
+            (epsilon.typeclass tc)
+            (epsilon.sys.semaphore sem)
+            (epsilon.scheduler.coroutine coro)
+            (epsilon.scheduler.io-wait io-wait)))
 
 ;;; ============================================================================
 ;;; TCP Reader - wraps tcp-stream for reading
@@ -48,32 +50,76 @@
 (tc:definstance proto:reader tcp-reader
   (proto:read-into (reader buffer &key (start 0) (end (length buffer)))
     "Read bytes from the TCP stream into BUFFER.
-     Blocks until data is available or connection is closed."
+     Blocks until data is available or connection is closed.
+
+     When called from inside an epsilon.scheduler coroutine, parks the
+     fiber on fd readiness via io-wait:park-on-fd, so the carrier
+     thread returns to its loop and can run other coroutines while
+     the wait is in flight. When called from a non-coroutine thread
+     (REPL, tests, ad-hoc code), falls back to the legacy
+     poll-and-semaphore path which blocks the calling thread.
+
+     IMPL-398 stage 5 -- before this change, the :pending branch
+     called sem:wait-on-semaphore with a 5-second timeout, blocking
+     the carrier OS thread for the full timeout. Under HTTP keepalive
+     idle-wait this pinned the carrier for the entire idle window,
+     which the watchdog flagged as carrier-stall. Parking on the fd
+     instead lets the carrier iterate freely."
     (when (tcp-reader-closed-p reader)
       (error "TCP reader is closed"))
     (when (null (tcp-reader-stream reader))
       (return-from proto:read-into 0))
-    (let ((stream (tcp-reader-stream reader)))
-      ;; Loop until we get data or detect EOF
-      (loop
-        (let* ((sem (sb-thread:make-semaphore :name "poll-read" :count 0))
-               (result (net:tcp-poll-read stream
-                                          (lambda ()
-                                            (sb-thread:signal-semaphore sem)))))
-          (ecase result
-            (:ready
-             ;; Data is available, read it
-             (let ((n (net:tcp-read stream buffer :start start :end end)))
-               (when (zerop n)
-                 (setf (tcp-reader-closed-p reader) t))
-               (return n)))
-            (:pending
-             ;; Wait for waker notification (timeout 5 seconds, will retry)
-             (sb-thread:wait-on-semaphore sem :timeout 5)
-             ;; Check if connection is still alive
-             (unless (net:tcp-connected-p stream)
-               (setf (tcp-reader-closed-p reader) t)
-               (return 0)))))))))
+    (let* ((stream (tcp-reader-stream reader)))
+      (cond
+        ;; Fiber-aware path: we're inside a coroutine AND the platform
+        ;; reactor that backs park-on-fd is registered. Use the
+        ;; existing tcp-poll-read for the readiness check (it does the
+        ;; MSG_PEEK), but for the wait we park through the scheduler.
+        ((and coro:*current-coroutine* io-wait:*fd-wait-register*)
+         (loop
+           (let* ((stale-waker (lambda () nil))
+                  (result (net:tcp-poll-read stream stale-waker))
+                  (fd (handler-case (net:tcp-stream-handle stream)
+                        (error () nil))))
+             (ecase result
+               (:ready
+                (let ((n (net:tcp-read stream buffer :start start :end end)))
+                  (when (zerop n)
+                    (setf (tcp-reader-closed-p reader) t))
+                  (return n)))
+               (:pending
+                (cond
+                  (fd
+                   (handler-case
+                       (io-wait:park-on-fd fd '(:in) :timeout 5)
+                     (error () nil)))
+                  (t
+                   ;; Couldn't get an fd; degrade to a short coroutine
+                   ;; sleep so we yield and try again.
+                   (epsilon.scheduler:coroutine-sleep 0.05)))
+                (unless (net:tcp-connected-p stream)
+                  (setf (tcp-reader-closed-p reader) t)
+                  (return 0)))))))
+        ;; Non-coroutine fallback: legacy semaphore-wait path. Reached
+        ;; only from tests / REPL; production carriers always run
+        ;; through the fiber-aware branch above.
+        (t
+         (loop
+           (let* ((s (sem:make-semaphore :name "poll-read" :count 0))
+                  (result (net:tcp-poll-read stream
+                                             (lambda ()
+                                               (sem:signal-semaphore s)))))
+             (ecase result
+               (:ready
+                (let ((n (net:tcp-read stream buffer :start start :end end)))
+                  (when (zerop n)
+                    (setf (tcp-reader-closed-p reader) t))
+                  (return n)))
+               (:pending
+                (sem:wait-on-semaphore s :timeout 5)
+                (unless (net:tcp-connected-p stream)
+                  (setf (tcp-reader-closed-p reader) t)
+                  (return 0)))))))))))
 
 ;;; ============================================================================
 ;;; TCP Writer - wraps tcp-stream for writing

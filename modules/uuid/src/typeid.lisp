@@ -8,8 +8,8 @@
 
 (defpackage epsilon.typeid
   (:use cl epsilon.syntax)
-  (:local-nicknames
-   (uuid epsilon.uuid))
+  (:import
+   (epsilon.uuid uuid))
   (:export
    ;; TypeID type and predicates
    #:typeid
@@ -36,8 +36,7 @@
 
    ;; Base32 encoding/decoding (Crockford's)
    #:encode-base32
-   #:decode-base32)
-  (:enter t))
+   #:decode-base32))
 
 ;;; Crockford's Base32 Encoding
 ;;; Alphabet: 0123456789abcdefghjkmnpqrstvwxyz (excludes i, l, o, u)

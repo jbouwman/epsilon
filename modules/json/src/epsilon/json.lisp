@@ -2,11 +2,10 @@
 
 (defpackage epsilon.json
   (:use :cl)
-  (:require (epsilon.parser p)
+  (:import (epsilon.parser p)
             (epsilon.sequence seq)
             (epsilon.lexer lexer)
-            (epsilon.map map))
-  (:enter t))
+            (epsilon.map map)))
 
 ;;; Dynamic variables for hooks during parsing/encoding
 
@@ -19,6 +18,10 @@
   "Function called for values that cannot be directly serialized to JSON.
    If set, receives the value and should return a JSON-serializable value.
    If the function returns the same value, it will be converted to string.")
+
+(defvar *jcs-numbers* nil
+  "When non-nil, WRITE-JSON-NUMBER formats reals per ECMA-262
+   §7.1.12.1 ToString (RFC 8785 §3.2.2). Bound by ENCODE-JCS.")
 
 ;;; Tokenizer
 
@@ -105,8 +108,14 @@
                                     while (and ch (digit-char-p ch))
                                     do (write-char (lexer:next lexer) s)))))))
 
+        ;; Bind *read-default-float-format* so numeric literals in JSON
+        ;; parse to double-float regardless of caller environment.
+        ;; JSON's RFC 8259 reference implementation is IEEE 754 binary64
+        ;; (the ECMAScript Number type); single-float would silently
+        ;; truncate the precision producers care about preserving.
         (let ((value (if (or has-decimal has-exponent)
-                         (read-from-string number-str)
+                         (let ((*read-default-float-format* 'double-float))
+                           (read-from-string number-str))
                          (parse-integer number-str))))
           (lexer:make-token :type :number
                              :value value
@@ -241,6 +250,12 @@
   (:report (lambda (condition stream)
              (let ((msg (error-message condition)))
                (write-string #~"JSON parse error: ~{msg}" stream)))))
+
+(define-condition json-encode-error (error)
+  ((value :initarg :value :reader json-encode-error-value)
+   (message :initarg :message :reader error-message))
+  (:report (lambda (condition stream)
+             (write-string (error-message condition) stream))))
 
 (defun apply-object-hook (value)
   "Apply object hook to value if it's an object and hook is set."
@@ -435,14 +450,66 @@
       (t (write-char char stream))))
   (write-char #\" stream))
 
-(defun write-json-value (value stream &key pretty (indent 0) default)
+(defun %sort-pairs-by-key (pairs)
+  "Sort an alist of (KEY . VALUE) pairs lexicographically by KEY string."
+  (stable-sort (copy-list pairs) #'string< :key (lambda (p) (string (car p)))))
+
+(defun %nan-p (value)
+  "True iff VALUE is a floating-point NaN."
+  (and (floatp value) (sb-ext:float-nan-p value)))
+
+(defun %infinity-p (value)
+  "True iff VALUE is a floating-point infinity."
+  (and (floatp value) (sb-ext:float-infinity-p value)))
+
+(defun write-json-number (value stream)
+  "Write VALUE as a JSON-conformant number on STREAM.
+
+   Integers and ratios print as decimal (ratios coerced to double).
+   Floats print with no float-format marker when the exponent is zero
+   (e.g. 1.5d0 -> \"1.5\") and with the JSON-valid 'e' marker
+   otherwise (e.g. 1.5d10 -> \"1.5e10\"). This matters because Common
+   Lisp's default float printer emits subtype-specific markers
+   (d for double, s for short, l for long, f for single) that JSON
+   parsers reject; rebinding *read-default-float-format* to the
+   value's own type forces the markerless / 'e'-marked form.
+
+   NaN and infinity signal JSON-ENCODE-ERROR; JSON has no
+   representation for either."
+  (cond
+    ((not (realp value))
+     (error 'json-encode-error
+            :value value
+            :message (format nil "Not a JSON number: ~S" value)))
+    ((%nan-p value)
+     (error 'json-encode-error
+            :value value
+            :message "Cannot encode NaN as JSON."))
+    ((%infinity-p value)
+     (error 'json-encode-error
+            :value value
+            :message (format nil "Cannot encode ~A as JSON (infinity)." value)))
+    (*jcs-numbers*
+     (write-string (format-jcs-number value) stream))
+    ((integerp value)
+     (princ value stream))
+    ((rationalp value)
+     (write-json-number (coerce value 'double-float) stream))
+    (t
+     (let ((*read-default-float-format* (type-of value)))
+       (prin1 value stream)))))
+
+(defun write-json-value (value stream &key pretty (indent 0) default sort-keys)
   "Write a Lisp value as JSON to stream.
 
    Keyword arguments:
-     :pretty - Enable pretty-printing with indentation
-     :indent - Current indentation level (internal use)
-     :default - Function to encode non-standard types. Receives the value
-                and should return a JSON-serializable value."
+     :pretty    - Enable pretty-printing with indentation
+     :indent    - Current indentation level (internal use)
+     :default   - Function to encode non-standard types. Receives the value
+                  and should return a JSON-serializable value.
+     :sort-keys - When non-nil, object members are emitted in lexicographic
+                  order of their keys. Required for canonical forms such as
+                  RFC 7638 (JWK Thumbprint) and RFC 8785 (JCS)."
   (let ((indent-str (when pretty (make-string (* indent 2) :initial-element #\Space))))
     (typecase value
       ((eql :null) (write-string "null" stream))
@@ -450,7 +517,7 @@
       (null (write-string "null" stream))
       ((eql t) (write-string "true" stream))
       (string (write-json-string value stream))
-      (number (princ value stream))
+      (real (write-json-number value stream))
       (list
        (cond
          ;; Check if it's an alist (association list)
@@ -458,7 +525,7 @@
           ;; Treat as object
           (write-char #\{ stream)
           (when pretty (terpri stream))
-          (loop for (key . val) in value
+          (loop for (key . val) in (if sort-keys (%sort-pairs-by-key value) value)
                 for first-p = t then nil
                 unless first-p do
                   (write-char #\, stream)
@@ -469,7 +536,8 @@
                   (write-json-string (string key) stream)
                   (write-char #\: stream)
                   (when pretty (write-char #\Space stream))
-                  (write-json-value val stream :pretty pretty :indent (1+ indent) :default default))
+                  (write-json-value val stream :pretty pretty :indent (1+ indent)
+                                               :default default :sort-keys sort-keys))
           (when pretty
             (terpri stream)
             (write-string indent-str stream))
@@ -486,7 +554,8 @@
                 do
                   (when pretty
                     (write-string (make-string (* (1+ indent) 2) :initial-element #\Space) stream))
-                  (write-json-value item stream :pretty pretty :indent (1+ indent) :default default))
+                  (write-json-value item stream :pretty pretty :indent (1+ indent)
+                                                :default default :sort-keys sort-keys))
           (when pretty
             (terpri stream)
             (write-string indent-str stream))
@@ -503,7 +572,8 @@
              do
                (when pretty
                  (write-string (make-string (* (1+ indent) 2) :initial-element #\Space) stream))
-               (write-json-value item stream :pretty pretty :indent (1+ indent) :default default))
+               (write-json-value item stream :pretty pretty :indent (1+ indent)
+                                             :default default :sort-keys sort-keys))
        (when pretty
          (terpri stream)
          (write-string indent-str stream))
@@ -512,18 +582,24 @@
       (hash-table
        (write-char #\{ stream)
        (when pretty (terpri stream))
-       (loop for key being the hash-keys of value using (hash-value val)
-             for first-p = t then nil
-             unless first-p do
-               (write-char #\, stream)
-               (when pretty (terpri stream))
-             do
-               (when pretty
-                 (write-string (make-string (* (1+ indent) 2) :initial-element #\Space) stream))
-               (write-json-string (if (stringp key) key (princ-to-string key)) stream)
-               (write-char #\: stream)
-               (when pretty (write-char #\Space stream))
-               (write-json-value val stream :pretty pretty :indent (1+ indent) :default default))
+       (let ((entries (let (acc)
+                        (maphash (lambda (k v)
+                                   (push (cons (if (stringp k) k (princ-to-string k)) v) acc))
+                                 value)
+                        (if sort-keys (%sort-pairs-by-key acc) (nreverse acc)))))
+         (loop for (key . val) in entries
+               for first-p = t then nil
+               unless first-p do
+                 (write-char #\, stream)
+                 (when pretty (terpri stream))
+               do
+                 (when pretty
+                   (write-string (make-string (* (1+ indent) 2) :initial-element #\Space) stream))
+                 (write-json-string key stream)
+                 (write-char #\: stream)
+                 (when pretty (write-char #\Space stream))
+                 (write-json-value val stream :pretty pretty :indent (1+ indent)
+                                              :default default :sort-keys sort-keys)))
        (when pretty
          (terpri stream)
          (write-string indent-str stream))
@@ -534,7 +610,8 @@
          ;; Epsilon map - convert to object
          ((and (fboundp 'epsilon.map:map-p)
                (funcall (symbol-function 'epsilon.map:map-p) value))
-          (let ((pairs (coerce (funcall (symbol-function 'epsilon.map:to-alist) value) 'list)))
+          (let* ((raw-pairs (coerce (funcall (symbol-function 'epsilon.map:to-alist) value) 'list))
+                 (pairs (if sort-keys (%sort-pairs-by-key raw-pairs) raw-pairs)))
             (write-char #\{ stream)
             (when pretty (terpri stream))
             (loop for pair in pairs
@@ -548,7 +625,8 @@
                     (write-json-string (string (car pair)) stream)
                     (write-char #\: stream)
                     (when pretty (write-char #\Space stream))
-                    (write-json-value (cdr pair) stream :pretty pretty :indent (1+ indent) :default default))
+                    (write-json-value (cdr pair) stream :pretty pretty :indent (1+ indent)
+                                                        :default default :sort-keys sort-keys))
             (when pretty
               (terpri stream)
               (write-string indent-str stream))
@@ -560,18 +638,22 @@
                 ;; Default returned same value, fall back to string
                 (write-json-string (princ-to-string value) stream)
                 ;; Default returned different value, encode it
-                (write-json-value encoded stream :pretty pretty :indent indent :default default))))
+                (write-json-value encoded stream :pretty pretty :indent indent
+                                                 :default default :sort-keys sort-keys))))
          ;; Unknown type - convert to string
          (t
           (write-json-string (princ-to-string value) stream)))))))
 
-(defun encode (value stream &key pretty default)
+(defun encode (value stream &key pretty default sort-keys)
   "Encode a Lisp value as JSON to a stream.
 
    Keyword arguments:
-     :pretty - Enable pretty-printing with indentation
-     :default - Function to encode non-standard types. Receives the value
-                and should return a JSON-serializable value.
+     :pretty    - Enable pretty-printing with indentation
+     :default   - Function to encode non-standard types. Receives the value
+                  and should return a JSON-serializable value.
+     :sort-keys - When non-nil, object members are emitted in lexicographic
+                  key order. Required for canonical JSON forms (RFC 7638
+                  JWK Thumbprint, RFC 8785 JCS).
 
    Example:
      ;; Encode with custom default handler
@@ -580,14 +662,132 @@
                   (typecase val
                     (timestamp (timestamp-to-string val))
                     (otherwise val))))"
-  (write-json-value value stream :pretty pretty :default default)
+  (write-json-value value stream :pretty pretty :default default :sort-keys sort-keys)
   (when pretty (terpri stream)))
 
-(defun encode-to-string (value &key pretty default)
+(defun encode-to-string (value &key pretty default sort-keys)
   "Encode a Lisp value as JSON to a string.
    See ENCODE for keyword arguments."
   (with-output-to-string (stream)
-    (encode value stream :pretty pretty :default default)))
+    (encode value stream :pretty pretty :default default :sort-keys sort-keys)))
+
+(defun encode-canonical (value &key default)
+  "Encode VALUE as canonical JSON: no whitespace, object members in
+   lexicographic key order. Suitable for RFC 7638 (JWK Thumbprint),
+   which only uses string-typed members. For RFC 8785 (JCS) hashing
+   over inputs that include floating-point values, use ENCODE-JCS,
+   which additionally applies ECMA-262 §7.1.12.1 ToString to numbers."
+  (encode-to-string value :sort-keys t :default default))
+
+;;; ---------------------------------------------------------------------------
+;;; RFC 8785 (JCS) number formatting
+;;; ---------------------------------------------------------------------------
+;;;
+;;; RFC 8785 §3.2.2 mandates that JSON Numbers be emitted in their
+;;; ECMA-262 §7.1.12.1 ToString form. This differs from CL's default
+;;; PRIN1 in two practical places:
+;;;
+;;;   - integer-valued floats lose the ".0" (e.g. 1.0d0 -> "1");
+;;;   - the decimal/scientific switch is governed strictly by whether
+;;;     the most-significant-digit position N is in (-6, 21], not by
+;;;     PRIN1's heuristic.
+;;;
+;;; Trailing zeros in the significand are stripped; the exponent
+;;; marker is the lowercase 'e' with no '+' sign.
+
+(defun %normalize-decimal (digits scale)
+  "Strip leading and trailing zeros from DIGITS, adjusting SCALE for
+   each trailing zero removed (leading zeros do not change the value).
+   Returns (values normalized-digits adjusted-scale). DIGITS may be
+   empty after normalization, indicating the value is zero."
+  (let* ((leading (or (position-if-not (lambda (c) (char= c #\0)) digits)
+                      (length digits)))
+         (trimmed (subseq digits leading))
+         (end (length trimmed)))
+    (loop while (and (> end 0)
+                     (char= (char trimmed (1- end)) #\0))
+          do (decf end)
+             (incf scale))
+    (values (subseq trimmed 0 end) scale)))
+
+(defun %decompose-prin1-float (s)
+  "Parse the PRIN1 representation of a positive non-zero float and
+   return (values digits scale) such that
+       (parse-integer digits) * 10^scale = original value
+   with DIGITS normalized (no leading or trailing zeros)."
+  (let* ((e-pos (or (position #\e s) (position #\E s)))
+         (mant-str (if e-pos (subseq s 0 e-pos) s))
+         (exp-val (if e-pos (parse-integer s :start (1+ e-pos)) 0))
+         (dot-pos (position #\. mant-str))
+         (raw-digits (if dot-pos
+                         (concatenate 'string
+                                      (subseq mant-str 0 dot-pos)
+                                      (subseq mant-str (1+ dot-pos)))
+                         mant-str))
+         (frac-len (if dot-pos
+                       (- (length mant-str) dot-pos 1)
+                       0)))
+    (%normalize-decimal raw-digits (- exp-val frac-len))))
+
+(defun %ecma-format-positive-decimal (digits scale)
+  "Format a positive normalized decimal (DIGITS, SCALE) per
+   ECMA-262 §7.1.12.1 ToString. DIGITS must be non-empty and have
+   no leading or trailing zeros."
+  (let* ((k (length digits))
+         (n (+ k scale)))
+    (cond
+      ((and (<= k n) (<= n 21))
+       (concatenate 'string digits
+                    (make-string (- n k) :initial-element #\0)))
+      ((and (<= 1 n) (<= n 21))
+       (concatenate 'string (subseq digits 0 n) "." (subseq digits n)))
+      ((and (<= -5 n) (<= n 0))
+       (concatenate 'string "0."
+                    (make-string (- n) :initial-element #\0)
+                    digits))
+      (t
+       (let ((mantissa (if (= k 1)
+                           digits
+                           (concatenate 'string
+                                        (subseq digits 0 1) "."
+                                        (subseq digits 1)))))
+         (format nil "~Ae~D" mantissa (1- n)))))))
+
+(defun format-jcs-number (n)
+  "Format real N per ECMA-262 §7.1.12.1 ToString (RFC 8785 §3.2.2).
+   Signals JSON-ENCODE-ERROR for NaN or infinity (JCS forbids both)."
+  (cond
+    ((not (realp n))
+     (error 'json-encode-error :value n
+            :message (format nil "Not a JSON number: ~S" n)))
+    ((and (floatp n) (or (%nan-p n) (%infinity-p n)))
+     (error 'json-encode-error :value n
+            :message (format nil "Cannot encode ~A in canonical JSON" n)))
+    ((zerop n) "0")
+    ((minusp n) (concatenate 'string "-" (format-jcs-number (- n))))
+    ((integerp n)
+     (if (< n (expt 10 21))
+         (princ-to-string n)
+         (multiple-value-bind (digits scale)
+             (%normalize-decimal (princ-to-string n) 0)
+           (%ecma-format-positive-decimal digits scale))))
+    ((rationalp n)
+     (format-jcs-number (coerce n 'double-float)))
+    (t
+     (multiple-value-bind (digits scale)
+         (%decompose-prin1-float
+          (let ((*read-default-float-format* (type-of n)))
+            (prin1-to-string n)))
+       (%ecma-format-positive-decimal digits scale)))))
+
+(defun encode-jcs (value &key default)
+  "Encode VALUE per RFC 8785 (JSON Canonicalization Scheme): object
+   members emitted in lexicographic UTF-16 key order, numbers per
+   ECMA-262 §7.1.12.1 ToString, no insignificant whitespace.
+   Suitable for content-addressable hashing of JSON documents
+   that include floating-point values."
+  (let ((*jcs-numbers* t))
+    (encode-to-string value :sort-keys t :default default)))
 
 ;;; JSON Pointer (RFC 6901)
 ;;;

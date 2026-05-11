@@ -1,60 +1,57 @@
 ;;;; This module provides immutable, persistent hash maps using the Hash Array
 ;;;; Mapped Trie data structure. HAMT offers O(log32 n) operations for get, assoc,
 ;;;; and dissoc with structural sharing for memory efficiency.
-
-(defpackage :epsilon.map
-  (:use
-   :cl
-   :epsilon.syntax)
+(cl:defpackage :epsilon.map
+  (:use :cl :epsilon.syntax)
   (:import-from #:epsilon.hamt
-   #:+bit-partition+ #:+partition-size+ #:+partition-mask+
-   #:bitmap-node #:make-bitmap-node #:bitmap-node-bitmap #:bitmap-node-array
-   #:get-index #:bitmap-present-p #:bitmap-index
-   #:insert-node #:replace-node #:delete-bitmap-entry)
-  (:shadow
-   :assoc
-   :count
-   :dissoc
-   :filter
-   :get
-   :map
-   :merge
-   :reduce)
-  (:export
-   :+empty+
-   :assoc
-   :assoc!
-   :assoc-in
-   :contains-p
-   :contains-key-p
-   :count
-   :difference
-   :dissoc
-   :dissoc!
-   :each
-   :enable-syntax
-   :filter
-   :from-pairs
-   :get
-   :get-in
-   :hamt
-   :invert
-   :keys
-   :make-map
-   :map
-   :map=
-   :map-p
-   :merge
-   :put
-   :reduce
-   :select-keys
-   :to-alist
-   :size
-   :subset-p
-   :update
-   :update!
-   :update-in
-   :vals))
+                #:+bit-partition+
+                #:+partition-size+
+                #:+partition-mask+
+                #:bitmap-node
+                #:make-bitmap-node
+                #:bitmap-node-bitmap
+                #:bitmap-node-array
+                #:get-index
+                #:bitmap-present-p
+                #:bitmap-index
+                #:insert-node
+                #:replace-node
+                #:delete-bitmap-entry)
+  (:shadow :assoc :count :dissoc :filter :get :map :merge :reduce)
+  (:export :+empty+
+           :assoc
+           :assoc!
+           :assoc-in
+           :contains-p
+           :contains-key-p
+           :count
+           :difference
+           :dissoc
+           :dissoc!
+           :each
+           :enable-syntax
+           :filter
+           :from-pairs
+           :get
+           :get-in
+           :hamt
+           :invert
+           :keys
+           :make-map
+           :map
+           :map=
+           :map-p
+           :merge
+           :put
+           :reduce
+           :select-keys
+           :to-alist
+           :size
+           :subset-p
+           :update
+           :update!
+           :update-in
+           :vals))
 
 (in-package :epsilon.map)
 
@@ -65,10 +62,8 @@
 (declaim (ftype (function (t) fixnum) node-hash))
 
 ;; Node types
-
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (defstruct (hamt
-              (:constructor make-hamt (root count)))
+  (defstruct (hamt (:constructor make-hamt (root count)))
     (count 0 :type fixnum)
     root))
 
@@ -85,15 +80,15 @@
 (defmethod make-load-form ((self hamt) &optional environment)
   (make-load-form-saving-slots self :environment environment))
 
-(define-constant +empty+ (make-hamt nil 0))
+(define-constant +empty+
+  (make-hamt nil 0))
 
 (defstruct leaf-node
   (hash 0 :type fixnum)
   key
   value)
 
-(defstruct (collision-node
-            (:constructor make-collision-node (hash entries)))
+(defstruct (collision-node (:constructor make-collision-node (hash entries)))
   (hash 0 :type fixnum)
   entries)
 
@@ -108,15 +103,14 @@
    Example: (get (assoc +empty+ :name \"Bob\") :name) => \"Bob\""
   (let ((root (hamt-root map)))
     (if root
-        (node-get root (sxhash key) 0 key default)
-        default)))
+      (node-get root (sxhash key) 0 key default)
+      default)))
 
 (defun contains-p (map key)
   "Return T if MAP contains KEY.
    Example: (contains-p (assoc +empty+ :id 42) :id) => T"
   (let ((not-found (gensym)))
-    (not (eq (get map key not-found)
-             not-found))))
+    (not (eq (get map key not-found) not-found))))
 
 (defun contains-key-p (map key)
   "Return T if MAP contains KEY (alias for contains-p).
@@ -128,17 +122,16 @@
    Example: (to-alist (assoc +empty+ :a 1 :b 2)) => ((:A . 1) (:B . 2))"
   (let ((result nil))
     (labels ((collect (node)
-               (etypecase node
-                 (null nil)
-                 (leaf-node
-                  (push (cons (leaf-node-key node)
-                              (leaf-node-value node))
-                        result))
-                 (bitmap-node
-                  (loop for child across (bitmap-node-array node)
-                        do (collect child)))
-                 (collision-node
-                  (setf result (append (collision-node-entries node) result))))))
+                      (etypecase node
+                        (null
+                         nil)
+                        (leaf-node
+                         (push (cons (leaf-node-key node) (leaf-node-value node)) result))
+                        (bitmap-node
+                         (loop for child across (bitmap-node-array node)
+                               do (collect child)))
+                        (collision-node
+                         (setf result (append (collision-node-entries node) result))))))
       (collect (hamt-root map))
       (nreverse result))))
 
@@ -146,9 +139,7 @@
   "Return true if maps are equal"
   (and (= (hamt-count map1) (hamt-count map2))
        (every (lambda (pair)
-                (and (contains-p map2 (car pair))
-                     (equalp (get map2 (car pair))
-                             (cdr pair))))
+                (and (contains-p map2 (car pair)) (equalp (get map2 (car pair)) (cdr pair))))
               (to-alist map1))))
 
 (defun print-map-pairs (map stream &key (format-fn #'write))
@@ -156,8 +147,8 @@
   (let ((first t))
     (dolist (pair (to-alist map))
       (if first
-          (setf first nil)
-          (write-char #\Space stream))
+        (setf first nil)
+        (write-char #\Space stream))
       (funcall format-fn (car pair) stream)
       (write-char #\Space stream)
       (funcall format-fn (cdr pair) stream)))
@@ -165,23 +156,28 @@
 
 (defmethod print-object ((map hamt) stream)
   (if *print-readably*
-      (print-map-pairs map stream)
-      (print-unreadable-object (map stream :type t)
-        (print-map-pairs map stream :format-fn
-                         (lambda (obj s) (format s "~S" obj))))))
+    (print-map-pairs map stream)
+    (print-unreadable-object (map stream :type t)
+                             (print-map-pairs map
+                                              stream
+                                              :format-fn
+                                              (lambda (obj s)
+                                                (format s "~S" obj))))))
 
 ;;; Node hash function
-
 (defun node-hash (node)
   "Get the hash value for a node"
   (etypecase node
-    (leaf-node (leaf-node-hash node))
-    (collision-node (collision-node-hash node))
-    (bitmap-node 0)
-    (null 0)))
+    (leaf-node
+     (leaf-node-hash node))
+    (collision-node
+     (collision-node-hash node))
+    (bitmap-node
+     0)
+    (null
+     0)))
 
 ;;; leaf-node operations
-
 (defun merge-nodes (parent node1 node2 shift)
   "Merge two nodes at the given shift level"
   (let* ((h1 (node-hash node1))
@@ -191,64 +187,64 @@
     (cond
       ;; Check for hash collision
       ((and (= h1 h2) (>= shift 32))
-       (make-collision-node
-        h1
-        (append (if (typep node1 'collision-node)
-                    (collision-node-entries node1)
-                    (list (cons (leaf-node-key node1)
-                                (leaf-node-value node1))))
-                (if (typep node2 'collision-node)
-                    (collision-node-entries node2)
-                    (list (cons (leaf-node-key node2)
-                                (leaf-node-value node2)))))))
-
+       (make-collision-node h1
+                            (append (if (typep node1 'collision-node)
+                                      (collision-node-entries node1)
+                                      (list (cons (leaf-node-key node1) (leaf-node-value node1))))
+                                    (if (typep node2 'collision-node)
+                                      (collision-node-entries node2)
+                                      (list (cons (leaf-node-key node2) (leaf-node-value node2)))))))
       ;; Same index: recurse deeper
       ((= index1 index2)
        (let ((new-child (merge-nodes (make-bitmap-node :bitmap 0 :array #())
-                                     node1 node2 (+ shift +bit-partition+))))
+                                     node1
+                                     node2
+                                     (+ shift +bit-partition+))))
          (insert-node parent (ash 1 index1) 0 new-child)))
-
       ;; Different indices: store both
       (t
        (let ((bitmap (logior (ash 1 index1) (ash 1 index2)))
              (array (make-array 2)))
          (if (< index1 index2)
-             (setf (aref array 0) node1
-                   (aref array 1) node2)
-             (setf (aref array 0) node2
-                   (aref array 1) node1))
+           (setf (aref array 0) node1 (aref array 1) node2)
+           (setf (aref array 0) node2 (aref array 1) node1))
          (make-bitmap-node :bitmap bitmap :array array))))))
 
 (defun compact-node (node array-index)
   "Attempt to collapse a bitmap-node with only one child"
   (let ((remaining-child (aref (bitmap-node-array node) array-index)))
     (etypecase remaining-child
-      (leaf-node remaining-child)
-      (bitmap-node node))))  ; Don't collapse bitmap nodes
+      (leaf-node
+       remaining-child)
+      (bitmap-node
+       node))))
+
+; Don't collapse bitmap nodes
 
 ;;; Unified node operations using etypecase dispatch
-
 (defun node-get (node hash shift key default)
   "Get value from node structure"
   (etypecase node
-    (null default)
+    (null
+     default)
     (leaf-node
-     (if (and (= (leaf-node-hash node) hash)
-              (equalp (leaf-node-key node) key))
-         (leaf-node-value node)
-         default))
+     (if (and (= (leaf-node-hash node) hash) (equalp (leaf-node-key node) key))
+       (leaf-node-value node)
+       default))
     (collision-node
      (if (= hash (collision-node-hash node))
-         (let ((entry (cl:assoc key (collision-node-entries node) :test #'equalp)))
-           (if entry (cdr entry) default))
-         default))
+       (let ((entry (cl:assoc key (collision-node-entries node) :test #'equalp)))
+         (if entry
+           (cdr entry)
+           default))
+       default))
     (bitmap-node
      (let ((index (get-index hash shift)))
        (if (bitmap-present-p (bitmap-node-bitmap node) index)
-           (let* ((array-index (bitmap-index (bitmap-node-bitmap node) index))
-                  (child (aref (bitmap-node-array node) array-index)))
-             (node-get child hash (+ shift +bit-partition+) key default))
-           default)))))
+         (let* ((array-index (bitmap-index (bitmap-node-bitmap node) index))
+                (child (aref (bitmap-node-array node) array-index)))
+           (node-get child hash (+ shift +bit-partition+) key default))
+         default)))))
 
 (defun node-assoc (node hash shift key value)
   "Associate key-value pair in node structure.
@@ -259,84 +255,76 @@
     (leaf-node
      (cond
        ;; Same key - replace value
-       ((and (= (leaf-node-hash node) hash)
-             (equalp (leaf-node-key node) key))
+       ((and (= (leaf-node-hash node) hash) (equalp (leaf-node-key node) key))
         (values (make-leaf-node :hash hash :key key :value value) nil))
        ;; Hash collision at maximum depth - create collision node
        ((>= shift 32)
         (if (= hash (leaf-node-hash node))
-            (values
-             (make-collision-node hash
-                                  (list (cons key value)
-                                        (cons (leaf-node-key node)
-                                              (leaf-node-value node))))
-             t)
-            ;; Different hashes at max depth - preserve original
-            (values node nil)))
+          (values (make-collision-node hash
+                                       (list (cons key value)
+                                             (cons (leaf-node-key node) (leaf-node-value node))))
+                  t)
+          ;; Different hashes at max depth - preserve original
+          (values node nil)))
        ;; Different slots - create bitmap node with both entries
        (t
         (let ((new-node (make-bitmap-node :bitmap 0 :array #())))
-          (values
-           (merge-nodes new-node node
-                        (make-leaf-node :hash hash :key key :value value)
-                        shift)
-           t)))))
+          (values (merge-nodes new-node
+                               node
+                               (make-leaf-node :hash hash :key key :value value)
+                               shift)
+                  t)))))
     (collision-node
      (if (= hash (collision-node-hash node))
-         ;; Same hash - update or add to collision entries
-         (let ((entries (collision-node-entries node)))
-           (if (cl:assoc key entries :test #'equalp)
-               (values
-                (make-collision-node
-                 hash
-                 (mapcar (lambda (entry)
-                           (if (equalp (car entry) key)
-                               (cons key value)
-                               entry))
-                         entries))
-                nil)
-               (values
-                (make-collision-node hash (cons (cons key value) entries))
-                t)))
-         (values node nil)))
+       ;; Same hash - update or add to collision entries
+       (let ((entries (collision-node-entries node)))
+         (if (cl:assoc key entries :test #'equalp)
+           (values (make-collision-node hash
+                                        (mapcar (lambda (entry)
+                                                  (if (equalp (car entry) key)
+                                                    (cons key value)
+                                                    entry))
+                                                entries))
+                   nil)
+           (values (make-collision-node hash (cons (cons key value) entries)) t)))
+       (values node nil)))
     (bitmap-node
      (let* ((bit (ash 1 (get-index hash shift)))
             (index (bitmap-index (bitmap-node-bitmap node) (get-index hash shift))))
        (cond
          ;; Bit not set - insert new entry
          ((zerop (logand (bitmap-node-bitmap node) bit))
-          (values
-           (insert-node node bit index
-                        (make-leaf-node :hash hash :key key :value value))
-           t))
+          (values (insert-node node bit index (make-leaf-node :hash hash :key key :value value)) t))
          ;; Bit set - recurse and update existing entry
          (t
           (let ((existing (aref (bitmap-node-array node) index)))
-            (multiple-value-bind (new-node inserted)
-                (node-assoc existing hash (+ shift +bit-partition+) key value)
+            (multiple-value-bind (new-node inserted) (node-assoc existing
+                                                                 hash
+                                                                 (+ shift +bit-partition+)
+                                                                 key
+                                                                 value)
               (values (replace-node node index new-node) inserted)))))))))
 
 (defun node-dissoc (node hash shift key parent)
   "Remove key from node structure"
   (etypecase node
-    (null nil)
+    (null
+     nil)
     (leaf-node
-     (if (and (= (leaf-node-hash node) hash)
-              (equalp (leaf-node-key node) key))
-         nil  ; Remove this leaf
-         node))  ; Key not found, return unchanged
+     (if (and (= (leaf-node-hash node) hash) (equalp (leaf-node-key node) key))
+       nil ; Remove this leaf
+       node)) ; Key not found, return unchanged
     (collision-node
      (if (= hash (collision-node-hash node))
-         (let ((new-entries (remove key (collision-node-entries node)
-                                    :key #'car :test #'equalp)))
-           (cond
-             ((null new-entries) nil)
-             ((null (cdr new-entries))
-              (make-leaf-node :hash hash
-                              :key (caar new-entries)
-                              :value (cdar new-entries)))
-             (t (make-collision-node hash new-entries))))
-         node))
+       (let ((new-entries (remove key (collision-node-entries node) :key #'car :test #'equalp)))
+         (cond
+           ((null new-entries)
+            nil)
+           ((null (cdr new-entries))
+            (make-leaf-node :hash hash :key (caar new-entries) :value (cdar new-entries)))
+           (t
+            (make-collision-node hash new-entries))))
+       node))
     (bitmap-node
      (let* ((index (get-index hash shift))
             (bit (ash 1 index)))
@@ -348,18 +336,19 @@
          (cond
            (new-child
             (if (eq new-child child)
-                node
-                (replace-node node array-index new-child)))
+              node
+              (replace-node node array-index new-child)))
            (t
             (let ((new-bitmap (logxor (bitmap-node-bitmap node) bit)))
               (cond
-                ((zerop new-bitmap) nil)
+                ((zerop new-bitmap)
+                 nil)
                 ((and (= (logcount new-bitmap) 1) parent)
                  (compact-node node array-index))
-                (t (delete-bitmap-entry node new-bitmap array-index)))))))))))
+                (t
+                 (delete-bitmap-entry node new-bitmap array-index)))))))))))
 
 ;;; Public functions
-
 (defun assoc (map key value &rest more-kvs)
   "Return a new map with key-value pairs added/updated.
    Accepts multiple key-value pairs: (assoc m :a 1 :b 2 :c 3)
@@ -367,16 +356,17 @@
   (when (oddp (length more-kvs))
     (error "assoc requires an even number of additional arguments (key-value pairs)"))
   (let* ((hash (sxhash key))
-         (result
-           (multiple-value-bind (new-root inserted)
-               (if (hamt-root map)
+         (result (multiple-value-bind (new-root inserted) (if (hamt-root map)
                    (node-assoc (hamt-root map) hash 0 key value)
                    (values (make-leaf-node :hash hash :key key :value value) t))
-             (make-hamt new-root (+ (hamt-count map)
-                                    (if inserted 1 0))))))
+                   (make-hamt new-root
+                              (+ (hamt-count map)
+                                 (if inserted
+                                   1
+                                   0))))))
     (if more-kvs
-        (apply #'assoc result more-kvs)
-        result)))
+      (apply #'assoc result more-kvs)
+      result)))
 
 (defun put (map key value &rest more-kvs)
   "Return a new map with key-value pairs added/updated (alias for assoc).
@@ -388,18 +378,19 @@
    and value is the new value to be associated and return a new nested structure.
    Maps are created for nonexistent intermediate levels."
   (if (null keys)
-      value
-      (let ((k (car keys)))
-        (if (null (cdr keys))
-            (assoc map k value)
-            (assoc map k (assoc-in (get map k +empty+) (cdr keys) value))))))
+    value
+    (let ((k (car keys)))
+      (if (null (cdr keys))
+        (assoc map k value)
+        (assoc map k (assoc-in (get map k +empty+) (cdr keys) value))))))
 
 (defun reduce (function map &optional (initial-value +empty+))
   "Reduce over key-value pairs in the map"
   (cl:reduce (lambda (acc pair)
                (funcall function acc (car pair) (cdr pair)))
              (to-alist map)
-             :initial-value initial-value))
+             :initial-value
+             initial-value))
 
 (defun map (fn map)
   "Apply FN to each value in MAP, returning a new map with the same keys but transformed values.
@@ -423,65 +414,61 @@
   "Return a new map containing only the specified keys"
   (cl:reduce (lambda (m k)
                (if (contains-p map k)
-                   (assoc m k (get map k))
-                   m))
+                 (assoc m k (get map k))
+                 m))
              keys
-             :initial-value +empty+))
+             :initial-value
+             +empty+))
 
 (defun filter (pred map)
   "Return a new map containing only entries satisfying pred"
   (reduce (lambda (m k v)
             (if (funcall pred k v)
-                (assoc m k v)
-                m))
+              (assoc m k v)
+              m))
           map))
 
 (defun make-map (&rest kvs)
   "Create a map from alternating keys and values"
   (when (oddp (length kvs))
     (error "Odd number of arguments to map"))
-  (loop :with m := +empty+
-        :for (k v) :on kvs :by #'cddr
-        :do (setf m (assoc m k v))
-        :finally (return m)))
+  (loop :with m := +empty+ :for (k v) :on kvs :by #'cddr :do (setf m (assoc m k v)) :finally (return m)))
 
 (defun from-pairs (pairs)
   "Create a map from a list of cons pairs"
   (cl:reduce (lambda (m pair)
                (assoc m (car pair) (cdr pair)))
              pairs
-             :initial-value +empty+))
+             :initial-value
+             +empty+))
 
 (defun subset-p (map1 map2)
   "Return true if map1 is a subset of map2"
   (every (lambda (pair)
-           (and (contains-p map2 (car pair))
-                (equalp (get map2 (car pair))
-                        (cdr pair))))
+           (and (contains-p map2 (car pair)) (equalp (get map2 (car pair)) (cdr pair))))
          (to-alist map1)))
 
 (defun difference (map1 map2)
   "Return a map of key/value pairs in map1 but not in map2"
   (reduce (lambda (m k v)
             (if (contains-p map2 k)
-                m
-                (assoc m k v)))
+              m
+              (assoc m k v)))
           map1))
 
 (defun dissoc (map key &rest more-keys)
   "Return a new map with keys removed.
    Accepts multiple keys: (dissoc m :a :b :c)
    Example: (dissoc (assoc +empty+ :a 1 :b 2 :c 3) :a :b) => {:c 3}"
-  (let ((result
-          (if (contains-p map key)
-              (let* ((hash (sxhash key))
-                     (new-root (and (hamt-root map)
-                                    (node-dissoc (hamt-root map) hash 0 key nil))))
-                (make-hamt new-root (1- (hamt-count map))))
-              map)))
+  (let ((result (if (contains-p map key)
+                  (let* ((hash (sxhash key))
+                         (new-root (and (hamt-root map)
+                                        (node-dissoc (hamt-root map) hash 0 key nil))))
+                    (make-hamt new-root (1- (hamt-count map))))
+                  map)))
     (if more-keys
-        (apply #'dissoc result more-keys)
-        result)))
+      (apply #'dissoc result more-keys)
+      result)))
 
 (defun keys (map)
   "Return a list of all keys in the map"
@@ -504,11 +491,11 @@
 (defun get-in (map keys &optional default)
   "Get value in nested map structure following key sequence"
   (if (null keys)
-      map
-      (let ((v (get map (car keys) nil)))
-        (if (null (cdr keys))
-            (or v default)
-            (get-in v (cdr keys) default)))))
+    map
+    (let ((v (get map (car keys) nil)))
+      (if (null (cdr keys))
+        (or v default)
+        (get-in v (cdr keys) default)))))
 
 (defun update (map key f &rest args)
   "Update value in map at key by applying f"
@@ -517,18 +504,18 @@
 (defun update-in (map keys f &rest args)
   "Update value in nested map structure at key sequence by applying f"
   (if (null keys)
-      (apply f map args)
-      (let* ((k (car keys))
-             (v (get map k nil)))
-        (assoc map k
-               (if (null (cdr keys))
-                   (apply f (or v nil) args)
-                   (apply #'update-in v (cdr keys) f args))))))
+    (apply f map args)
+    (let* ((k (car keys))
+           (v (get map k nil)))
+      (assoc map
+             k
+             (if (null (cdr keys))
+               (apply f (or v nil) args)
+               (apply #'update-in v (cdr keys) f args))))))
 
 (defun map-entry-p (x)
   "Returns true if x is a map entry (key-value pair)"
-  (and (consp x)
-       (not (consp (cdr x)))))
+  (and (consp x) (not (consp (cdr x)))))
 
 (defun map-p (x)
   "Returns true if x is a map"
@@ -536,8 +523,8 @@
 
 (defun map-concat (&rest maps)
   "Returns a map that consists of the rest of the maps conj-ed onto
-      the first. If a key occurs in more than one map, the mapping from
-      the latter (left-to-right) will be the mapping in the result."
+   the first. If a key occurs in more than one map, the mapping from
+   the latter (left-to-right) will be the mapping in the result."
   (cl:reduce #'merge maps :initial-value +empty+))
 
 (defun rename-keys (map kmap)
@@ -545,14 +532,11 @@
   (reduce (lambda (m k v)
             (let ((new-key (get kmap k k)))
               (if (eq k new-key)
-                  m
-                  (-> m
-                      (dissoc k)
-                      (assoc new-key v)))))
+                m
+                (-> m (dissoc k) (assoc new-key v)))))
           map))
 
 ;;; Reader syntax
-
 (defun read-map (stream char)
   (declare (ignore char))
   (let ((forms (read-delimited-list #\} stream t)))
@@ -566,7 +550,6 @@
   (set-macro-character #\} (get-macro-character #\))))
 
 ;; Destructive update macros
-
 (defmacro assoc! (place key value &rest more-kvs)
   "Destructively associate key-value pairs in the map at PLACE.
    Accepts multiple key-value pairs: (assoc! m :a 1 :b 2 :c 3)"
@@ -580,3 +563,4 @@
 (defmacro update! (place key function &rest args)
   "Destructively update the value at KEY in the map at PLACE using FUNCTION"
   `(setf ,place (update ,place ,key ,function ,@args)))
+;;

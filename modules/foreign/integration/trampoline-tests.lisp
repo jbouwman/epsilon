@@ -3,10 +3,9 @@
    cl
    epsilon.syntax
    epsilon.test)
-  (:local-nicknames
-   (lib epsilon.foreign)
-   (trampoline epsilon.foreign.trampoline))
-  (:enter t))
+  (:import
+   (epsilon.foreign lib)
+   (epsilon.foreign.trampoline trampoline)))
 
 ;;;; Tests for the new trampoline-based FFI system
 

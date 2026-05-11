@@ -1,8 +1,7 @@
 (defpackage epsilon.option-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.option opt)
-            (epsilon.sequence seq))
-  (:enter t))
+  (:import (epsilon.option opt)
+            (epsilon.sequence seq)))
 
 ;;; Constructor tests
 
@@ -190,10 +189,6 @@
   (let ((s (opt:to-seq (opt:none))))
     (assert-true (seq:sequence-p s))
     (assert-true (seq:empty-p s))))
-
-(deftest test-from-nullable
-  (assert-true (opt:some-p (opt:from-nullable 42)))
-  (assert-true (opt:none-p (opt:from-nullable nil))))
 
 ;;; Print representation test
 

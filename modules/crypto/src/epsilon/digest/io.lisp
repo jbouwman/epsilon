@@ -7,11 +7,12 @@
 
 (defpackage epsilon.digest.io
   (:use :cl)
-  (:require (epsilon.digest.protocol proto)
+  (:import (epsilon.digest.protocol proto)
             (epsilon.io.protocol io-proto)
             (epsilon.io.buffer buf)
-            (epsilon.ssl ssl))
-  (:enter t))
+            (epsilon.crypto.md5 md5)
+            (epsilon.crypto.sha256 sha256)
+            (epsilon.crypto.sha512 sha512)))
 
 ;;; ============================================================================
 ;;; Hashing Reader - Hash data as it is read
@@ -149,32 +150,32 @@
   "Hash all data from READER using MD5.
    Returns 16-byte hash digest.
    WARNING: MD5 is cryptographically broken."
-  (let ((state (ssl:make-md5-state))
+  (let ((state (md5:make-md5-state))
         (buffer (make-array buffer-size :element-type '(unsigned-byte 8))))
     (loop (let ((n (io-proto:read-into reader buffer)))
             (when (zerop n)
-              (return (ssl:md5-finalize state)))
-            (ssl:md5-update state buffer :start 0 :end n)))))
+              (return (md5:md5-finalize state)))
+            (md5:md5-update state buffer :start 0 :end n)))))
 
 (defun hash-reader-sha256 (reader &key (buffer-size +default-hash-buffer-size+))
   "Hash all data from READER using SHA-256.
    Returns 32-byte hash digest."
-  (let ((state (ssl:make-sha256-state))
+  (let ((state (sha256:make-sha256-state))
         (buffer (make-array buffer-size :element-type '(unsigned-byte 8))))
     (loop (let ((n (io-proto:read-into reader buffer)))
             (when (zerop n)
-              (return (ssl:sha256-finalize state)))
-            (ssl:sha256-update state buffer :start 0 :end n)))))
+              (return (sha256:sha256-finalize state)))
+            (sha256:sha256-update state buffer :start 0 :end n)))))
 
 (defun hash-reader-sha512 (reader &key (buffer-size +default-hash-buffer-size+))
   "Hash all data from READER using SHA-512.
    Returns 64-byte hash digest."
-  (let ((state (ssl:make-sha512-state))
+  (let ((state (sha512:make-sha512-state))
         (buffer (make-array buffer-size :element-type '(unsigned-byte 8))))
     (loop (let ((n (io-proto:read-into reader buffer)))
             (when (zerop n)
-              (return (ssl:sha512-finalize state)))
-            (ssl:sha512-update state buffer :start 0 :end n)))))
+              (return (sha512:sha512-finalize state)))
+            (sha512:sha512-update state buffer :start 0 :end n)))))
 
 ;;; ============================================================================
 ;;; Buffer Hashing Utilities
@@ -216,7 +217,7 @@
   (let ((data (buf:buf-data buffer))
         (start (buf:buf-position buffer))
         (end (buf:buf-limit buffer)))
-    (ssl:md5 data :start start :end end)))
+    (md5:md5 data :start start :end end)))
 
 (defun hash-buffer-sha256 (buffer)
   "Hash the readable content of BUFFER using SHA-256.
@@ -224,7 +225,7 @@
   (let ((data (buf:buf-data buffer))
         (start (buf:buf-position buffer))
         (end (buf:buf-limit buffer)))
-    (ssl:sha256 data :start start :end end)))
+    (sha256:sha256 data :start start :end end)))
 
 ;;; ============================================================================
 ;;; Protocol Methods for hash-reader

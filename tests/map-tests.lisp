@@ -1,7 +1,6 @@
 (defpackage epsilon.map-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.map map))
-  (:enter t))
+  (:import (epsilon.map map)))
 
 (deftest empty-map-has-zero-count
   (let ((m map:+empty+))

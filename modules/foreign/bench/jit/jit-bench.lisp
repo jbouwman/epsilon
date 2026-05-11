@@ -6,10 +6,9 @@
 
 (defpackage :epsilon.foreign.jit.bench
   (:use :cl)
-  (:local-nicknames
-   (:jit :epsilon.foreign.jit))
-  (:export #:run-benchmarks)
-   (:enter t))
+  (:import
+   (epsilon.foreign.jit jit))
+  (:export #:run-benchmarks))
 
 ;;; ============================================================================
 ;;; Benchmark Infrastructure

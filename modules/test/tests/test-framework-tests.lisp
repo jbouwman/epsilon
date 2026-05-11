@@ -3,8 +3,7 @@
 ;;;; Basic tests to verify the epsilon.test module works correctly
 
 (defpackage :epsilon.test-tests
-  (:use :cl :epsilon.test)
-  (:enter t))
+  (:use :cl :epsilon.test))
 
 (deftest basic-assertion
   "Test that basic assertions work"

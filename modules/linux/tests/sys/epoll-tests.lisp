@@ -3,10 +3,9 @@
    cl
    epsilon.syntax
    epsilon.test)
-  (:local-nicknames
-   (epoll epsilon.sys.epoll)
-   (lib epsilon.foreign))
-  (:enter t))
+  (:import
+   (epsilon.sys.epoll epoll)
+   (epsilon.foreign lib)))
 
 (deftest test-epoll-create
   "Test basic epoll creation"

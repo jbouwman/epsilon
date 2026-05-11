@@ -4,11 +4,10 @@
 
 (defpackage :epsilon.foreign.macro-extraction.tests
   (:use :cl :epsilon.syntax :epsilon.test)
-  (:local-nicknames
-   (#:lc #:epsilon.foreign.libclang)
-   (#:ab #:epsilon.foreign.auto-binding)
-   (#:fs #:epsilon.file))
-  (:enter t))
+  (:import
+   (epsilon.foreign.libclang lc)
+   (epsilon.foreign.auto-binding ab)
+   (epsilon.fs fs)))
 
 ;;; ============================================================================
 ;;; Test Utilities

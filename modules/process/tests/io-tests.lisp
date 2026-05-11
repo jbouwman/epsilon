@@ -5,10 +5,9 @@
 
 (defpackage epsilon.process.io-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.process.io io)
+  (:import (epsilon.process.io io)
             (epsilon.process.spawn spawn)
-            (epsilon.process.posix posix))
-  (:enter t))
+            (epsilon.process.posix posix)))
 
 ;;; ============================================================================
 ;;; Line Buffer Unit Tests

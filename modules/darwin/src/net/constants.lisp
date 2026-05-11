@@ -2,12 +2,17 @@
 
 (defpackage epsilon.net.constants
   (:use cl)
-  (:local-nicknames
-   (lib epsilon.foreign))
+  (:import
+   (epsilon.foreign lib))
   (:export
    ;; Address families
    +af-inet+
    +af-inet6+
+   +af-unix+
+
+   ;; Unix socket sizes
+   +sockaddr-un-path-max+
+   +sockaddr-un-size+
 
    ;; Socket types
    +sock-stream+
@@ -62,8 +67,8 @@
    %getsockopt
    %getsockname
    %getpeername
-   %fcntl)
-  (:enter t))
+   %fcntl
+   %unlink))
 
 ;;; ============================================================================
 ;;; Darwin Constants
@@ -72,6 +77,13 @@
 ;; Address families
 (defconstant +af-inet+ 2)
 (defconstant +af-inet6+ 30)
+(defconstant +af-unix+ 1)
+
+;; Unix socket sizes
+(defconstant +sockaddr-un-path-max+ 104
+  "Maximum path length for Unix domain socket (Darwin sun_path size)")
+(defconstant +sockaddr-un-size+ 106
+  "Size of sockaddr_un structure on Darwin (2-byte header + 104-byte path)")
 
 ;; Socket types
 (defconstant +sock-stream+ 1)
@@ -178,3 +190,7 @@
 (lib:defshared %fcntl "fcntl" "libc" :int
   (fd :int) (cmd :int) (arg :int)
   :documentation "File control operations")
+
+(lib:defshared %unlink "unlink" "libc" :int
+  (pathname :string)
+  :documentation "Remove a file or socket path")

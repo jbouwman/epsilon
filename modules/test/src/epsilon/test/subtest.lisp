@@ -4,10 +4,9 @@
 
 (defpackage epsilon.test.subtest
   (:use :cl)
-  (:require (epsilon.map map)
+  (:import (epsilon.map map)
             (epsilon.sequence seq)
-            (epsilon.string str))
-  (:enter t))
+            (epsilon.string str)))
 
 ;;; Subtest Result Structure
 

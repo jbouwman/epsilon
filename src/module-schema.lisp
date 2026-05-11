@@ -1,19 +1,23 @@
 ;;;; Module schema validation
-;;;; Validates module.plist files with error accumulation.
+;;;; Validates module.sexp files with error accumulation.
 
 (defpackage epsilon.module-schema
   (:use :cl)
-  (:require (epsilon.file fs)
+  (:import (epsilon.file fs)
             (epsilon.path path))
-  (:export validate-module-metadata)
-  (:enter t))
+  (:export validate-module-metadata))
 
 (defvar *valid-keys*
-  '(:name :module-set :description :author :platform
+  '(:name :version :module-set :description :author :platform
     :sources :tests :benchmarks :examples :experiments
     :docs :data :requires :provides :source-type
-    :resources :integration :commands :main :shape)
-  "Recognized keys in module.plist files.")
+    :resources :integration :commands :main
+    :cl-systems :stability)
+  "Recognized keys in module.sexp files.")
+
+(defvar *valid-stability-tiers*
+  '(:stable :experimental :internal)
+  "Recognized values for the :stability key, per epsilon/STABILITY.md.")
 
 ;;;; Internal helpers
 
@@ -53,7 +57,7 @@
 ;;;; Main validator
 
 (defun validate-module-metadata (metadata filepath)
-  "Validate module.plist metadata with error accumulation.
+  "Validate module.sexp metadata with error accumulation.
    Returns (values valid-p errors) where errors is a list of error strings."
   (let ((errors '())
         (base-path (path:path-parent (path:make-path filepath))))
@@ -65,7 +69,7 @@
 
       ;; Stage 1: Structure -- must be a plist to continue
       (unless (check-plist-p metadata)
-        (fail nil (format nil "Invalid module.plist format in ~A: must be a property list"
+        (fail nil (format nil "Invalid module.sexp format in ~A: must be a property list"
                           filepath))
         (return-from validate-module-metadata
           (values nil (nreverse errors))))
@@ -90,6 +94,11 @@
           ((not (check-no-whitespace-p name))
            (fail "name" "must be a valid module name (no whitespace)"))))
 
+      ;; :version -- optional string (semver)
+      (let ((version (getf metadata :version)))
+        (when (and version (not (stringp version)))
+          (fail "version" "must be a string")))
+
       ;; :description -- optional string
       (let ((description (getf metadata :description)))
         (when (and description (not (stringp description)))
@@ -105,10 +114,12 @@
         (when (and platform (not (stringp platform)))
           (fail "platform" "must be a string")))
 
-      ;; :shape -- optional string (content-addressed shape name)
-      (let ((shape (getf metadata :shape)))
-        (when (and shape (not (stringp shape)))
-          (fail "shape" "must be a string")))
+      ;; :stability -- optional keyword from *valid-stability-tiers*
+      (let ((stability (getf metadata :stability)))
+        (when stability
+          (unless (member stability *valid-stability-tiers*)
+            (fail "stability"
+                  (format nil "must be one of ~{~S~^, ~}" *valid-stability-tiers*)))))
 
       ;; String-list fields: sources, tests, benchmarks, examples, experiments, docs, data
       (dolist (key '(:sources :tests :benchmarks :examples :experiments :docs :data))
@@ -144,6 +155,39 @@
             ((not (check-unique-p provides))
              (fail "provides" "must contain unique items")))))
 
+      ;; :cl-systems -- optional list of ASDF system specs.
+      ;; Each entry is either a non-empty string (system name) or a
+      ;; (NAME &key :version) plist whose name is a non-empty string.
+      ;; System names must be unique across the list.
+      (let ((cl-systems (getf metadata :cl-systems)))
+        (when cl-systems
+          (cond
+            ((not (listp cl-systems))
+             (fail "cl-systems" "must be a list"))
+            (t
+             (let ((names '()))
+               (dolist (entry cl-systems)
+                 (let ((name
+                         (cond
+                           ((and (stringp entry) (> (length entry) 0))
+                            entry)
+                           ((and (consp entry)
+                                 (stringp (car entry))
+                                 (> (length (car entry)) 0)
+                                 (evenp (length (cdr entry)))
+                                 (loop for k in (cdr entry) by #'cddr
+                                       always (keywordp k)))
+                            (car entry))
+                           (t
+                            (fail "cl-systems"
+                                  (format nil "entry ~S must be a non-empty string or (NAME &key :version)"
+                                          entry))
+                            nil))))
+                   (when name
+                     (push name names))))
+               (unless (check-unique-p (nreverse names))
+                 (fail "cl-systems" "system names must be unique")))))))
+
       ;; :commands -- optional list of command declarations
       (let ((commands (getf metadata :commands)))
         (when commands
@@ -157,16 +201,29 @@
                   (fail "commands" "each entry must be a plist"))
                  (t
                   (let ((cmd-name (getf cmd :name))
-                        (handler (getf cmd :handler)))
+                        (handler (getf cmd :handler))
+                        (subcommands (getf cmd :subcommands)))
                     (unless (and cmd-name (stringp cmd-name))
                       (fail "commands" ":name is required and must be a string"))
-                    (unless (and handler (stringp handler))
-                      (fail "commands" ":handler is required and must be a string"))
+                    (unless (or (and handler (stringp handler))
+                                (and subcommands (listp subcommands)))
+                      (fail "commands" ":handler or :subcommands is required"))
                     (when (and handler (stringp handler)
                                (not (position #\: handler)))
                       (fail "commands"
                             (format nil ":handler ~A must be package:function format"
-                                    handler)))))))))))
+                                    handler)))
+                    ;; Validate subcommand specs
+                    (when subcommands
+                      (dolist (sub subcommands)
+                        (let ((sub-name (getf sub :name))
+                              (sub-handler (getf sub :handler)))
+                          (unless (and sub-name (stringp sub-name))
+                            (fail "commands" ":subcommands entry :name is required"))
+                          (unless (and sub-handler (stringp sub-handler))
+                            (fail "commands"
+                                  (format nil "subcommand ~A :handler is required"
+                                          sub-name))))))))))))))
 
       ;; Stage 4: Cross-field -- sources/tests must not overlap
       (let ((sources (getf metadata :sources))

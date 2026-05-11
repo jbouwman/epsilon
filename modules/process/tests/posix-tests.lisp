@@ -5,9 +5,8 @@
 
 (defpackage epsilon.process.posix-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.process.posix posix))
-  (:local-nicknames (lib epsilon.foreign))
-  (:enter t))
+  (:import (epsilon.process.posix posix))
+  (:import (epsilon.foreign lib)))
 
 ;;; ============================================================================
 ;;; waitpid Status Macro Tests

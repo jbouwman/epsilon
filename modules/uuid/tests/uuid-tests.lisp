@@ -3,8 +3,7 @@
 ;;;; Tests for UUID generation and manipulation, including UUIDv7.
 
 (defpackage epsilon.uuid-test
-  (:use :cl :epsilon.test :epsilon.syntax :epsilon.uuid)
-  (:enter t))
+  (:use :cl :epsilon.test :epsilon.syntax :epsilon.uuid))
 
 ;;;; ==========================================================================
 ;;;; UUID v4 (Random) Tests

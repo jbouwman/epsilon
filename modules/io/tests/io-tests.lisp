@@ -1,8 +1,7 @@
 ;;;; Tests for the IO stream system.
 
 (defpackage epsilon.io-tests
-  (:use :cl :epsilon.test :epsilon.io)
-  (:enter t))
+  (:use :cl :epsilon.test :epsilon.io))
 
 ;;; ============================================================================
 ;;; Buffer Tests

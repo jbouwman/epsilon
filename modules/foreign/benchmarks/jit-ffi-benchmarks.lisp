@@ -1,7 +1,7 @@
 ;;;; JIT FFI Performance Benchmarks
 ;;;;
 ;;;; Comprehensive benchmarks for the epsilon.foreign.jit module.
-;;;; Uses the epsilon.tool.benchmark framework for consistent measurement.
+;;;; Uses the epsilon.benchmark framework for consistent measurement.
 ;;;;
 ;;;; Benchmark Categories:
 ;;;; 1. Call Overhead - JIT vs static alien-funcall vs libffi
@@ -9,18 +9,17 @@
 ;;;; 3. Signature Discovery - libclang parsing times
 ;;;; 4. Memory Usage - Stub region consumption
 
-(defpackage epsilon.tool.benchmark.jit-ffi
+(defpackage epsilon.benchmark.jit-ffi
   (:use cl)
-  (:local-nicknames
-   (bench epsilon.tool.benchmark)
-   (suites epsilon.tool.benchmark.suites)
-   (jit epsilon.foreign.jit))
+  (:import
+   (epsilon.benchmark bench)
+   (epsilon.benchmark.suites suites)
+   (epsilon.foreign.jit jit))
   (:export
    register-jit-ffi-benchmarks
    run-call-overhead-benchmarks
    run-callback-benchmarks
-   quick-performance-test)
-  (:enter t))
+   quick-performance-test))
 
 ;;; Static alien definitions for baseline comparison
 

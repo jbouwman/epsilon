@@ -1,12 +1,12 @@
 (defpackage #:epsilon.process
   (:use #:cl)
   (:shadow find)
-  (:require (epsilon.process.spawn spawn)
+  (:import (epsilon.process.spawn spawn)
             (epsilon.process.io io))
-  (:local-nicknames
-   (log epsilon.log)
-   (th epsilon.syntax)
-   (tc epsilon.typeclass))
+  (:import
+   (epsilon.log log)
+   (epsilon.syntax th)
+   (epsilon.typeclass tc))
   (:export #:process
            #:start #:stop #:running-p
            #:subprocess #:make-subprocess
@@ -36,8 +36,7 @@
            #:process-group #:make-process-group
            #:add-process #:start-group #:stop-group
            #:group-running-p #:wait-for-group
-           #:list-children #:terminate-all-children)
-  (:enter t))
+           #:list-children #:terminate-all-children))
 
 (tc:deftypeclass process-lifecycle ()
   "Interface for process lifecycle management."
@@ -388,7 +387,19 @@
     (when shell
       (let ((shell-cmd (detect-shell)))
         (setf actual-command shell-cmd
-              actual-args (list "-c" (build-command-line command args)))))
+              actual-args (list "-c"
+                                (if (null args)
+                                    ;; No separate args: COMMAND is already a
+                                    ;; complete shell command line; pass it
+                                    ;; verbatim so the shell parses it.
+                                    ;; build-command-line would otherwise
+                                    ;; quote a command-with-spaces as a
+                                    ;; single argument, yielding e.g.
+                                    ;;   bash -c "'systemctl reload nginx'"
+                                    ;; which bash treats as one literal
+                                    ;; command name (exit 127).
+                                    command
+                                    (build-command-line command args))))))
 
     (let* ((is-absolute (and (> (length actual-command) 0)
                              (char= (char actual-command 0) #\/)))

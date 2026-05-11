@@ -2,8 +2,7 @@
 
 (defpackage epsilon.basic-process-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.process proc))
-  (:enter t))
+  (:import (epsilon.process proc)))
 
 (deftest basic-command-execution
   "Test basic command execution"

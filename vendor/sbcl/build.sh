@@ -2,8 +2,10 @@
 #
 # build.sh - Rebuild vendored SBCL from jbouwman/sbcl fork
 #
-# This script builds SBCL from the jbouwman/sbcl fork which includes
-# extended C-call convention support (struct-by-value returns and callbacks).
+# This script builds SBCL from the jbouwman/sbcl fork. The fork is
+# maintained as a staging ground for SBCL features Epsilon needs that
+# are not in upstream SBCL — currently, an in-progress green threads
+# (fibers) implementation.
 #
 # Usage:
 #   ./epsilon/vendor/sbcl/build.sh [--clean] [--branch BRANCH]
@@ -13,13 +15,13 @@
 #   --branch    Branch to build (default: master)
 #
 # Platform behavior:
-#   - Linux: Builds in a Debian container to ensure standard interpreter paths
-#            (avoids NixOS-specific dynamic linker paths)
+#   - Linux: Builds natively on the host (glibc-linked). On NixOS, the dev
+#            shell keeps zstd/zlib reachable at runtime via LD_LIBRARY_PATH.
 #   - macOS: Builds natively on the host
 #
 # The script will:
 #   1. Clone/update jbouwman/sbcl repository
-#   2. Build SBCL with --fancy and --with-sb-core-compression
+#   2. Build SBCL with --fancy, --with-sb-core-compression, --with-sb-fiber
 #   3. Build required contribs (sb-posix, sb-rotate-byte)
 #   4. Copy binaries to <platform>/ subdirectory
 #   5. Update VERSION file with git commit hash
@@ -55,7 +57,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --branch    Branch to build (default: master)"
             echo ""
             echo "Platform behavior:"
-            echo "  Linux:  Builds in Debian container (portable binary)"
+            echo "  Linux:  Builds natively on host (glibc-linked)"
             echo "  macOS:  Builds natively on host"
             exit 0
             ;;
@@ -76,6 +78,9 @@ detect_platform() {
             case "$arch" in
                 x86_64)
                     echo "linux-x86_64"
+                    ;;
+                aarch64|arm64)
+                    echo "linux-arm64"
                     ;;
                 *)
                     echo "Unsupported Linux architecture: $arch" >&2
@@ -102,140 +107,6 @@ detect_platform() {
             exit 1
             ;;
     esac
-}
-
-# Build SBCL for Linux using a Debian container (ensures portable binary)
-build_linux_container() {
-    local platform="linux-x86_64"
-    local target_dir="$VENDOR_DIR/$platform"
-
-    # Detect container runtime
-    local container_cmd=""
-    if command -v podman &> /dev/null; then
-        container_cmd="podman"
-    elif command -v docker &> /dev/null; then
-        container_cmd="docker"
-    else
-        echo "Error: Neither podman nor docker found" >&2
-        echo "Container build is required for portable Linux binaries" >&2
-        exit 1
-    fi
-
-    echo "Container runtime: $container_cmd"
-    echo ""
-
-    # Create temporary directory for build output
-    local build_output=$(mktemp -d)
-    trap "rm -rf $build_output" EXIT
-
-    echo "Building SBCL in Debian container..."
-
-    # Run build in Debian container
-    $container_cmd run --rm \
-        -v "$build_output:/output" \
-        -e BRANCH="$BRANCH" \
-        debian:bookworm bash -c '
-set -ex
-
-# Install build dependencies (excluding sbcl - we download a recent binary)
-apt-get update
-apt-get install -y --no-install-recommends \
-    git \
-    make \
-    gcc \
-    g++ \
-    zlib1g-dev \
-    libzstd-dev \
-    ca-certificates \
-    curl \
-    bzip2
-
-# Download recent SBCL binary for bootstrapping (Debian sbcl is too old for v2.6+ sources)
-# The packaged sbcl (~v2.2) lacks IN-OUTER-ALIEN-STACK-CLEANUP-CONTEXT-P needed by newer SBCL
-echo "Downloading SBCL 2.4.11 for bootstrap..."
-curl -L -o /tmp/sbcl.tar.bz2 \
-    "https://downloads.sourceforge.net/project/sbcl/sbcl/2.4.11/sbcl-2.4.11-x86-64-linux-binary.tar.bz2"
-cd /tmp && tar xf sbcl.tar.bz2
-cd /tmp/sbcl-2.4.11-x86-64-linux
-INSTALL_ROOT=/usr/local sh install.sh
-cd /tmp
-rm -rf sbcl.tar.bz2 sbcl-2.4.11-x86-64-linux
-
-# Clone repository
-cd /tmp
-git clone '"$SBCL_REPO"' sbcl
-cd sbcl
-git checkout "$BRANCH"
-
-COMMIT=$(git rev-parse HEAD)
-SHORT_HASH=$(git rev-parse --short HEAD)
-COMMIT_COUNT=$(git rev-list --count HEAD)
-
-# Generate version
-VERSION="2.6.0.${COMMIT_COUNT}.${SHORT_HASH}.epsilon"
-echo "\"$VERSION\"" > version.lisp-expr
-echo "Building version: $VERSION"
-
-# Build SBCL
-sh make.sh --fancy --with-sb-core-compression
-
-# Copy output
-cp src/runtime/sbcl /output/
-cp output/sbcl.core /output/
-
-# Copy all contribs (--fancy builds them all)
-mkdir -p /output/contrib
-if [ -d "obj/sbcl-home/contrib" ]; then
-    cp obj/sbcl-home/contrib/*.fasl /output/contrib/ 2>/dev/null || true
-    cp obj/sbcl-home/contrib/*.asd /output/contrib/ 2>/dev/null || true
-    echo "Copied contribs:"
-    ls /output/contrib/ | head -20
-fi
-
-# Write version info
-cat > /output/VERSION << EOF
-# SBCL vendored build
-# Built: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-# Platform: linux-x86_64
-# Branch: $BRANCH
-# Commit: $COMMIT
-$COMMIT
-EOF
-
-# Verify interpreter
-echo "Binary interpreter:"
-readelf -l /output/sbcl | grep interpreter || true
-
-echo "Container build complete!"
-'
-
-    echo ""
-    echo "Installing to vendor directory..."
-
-    # Copy from build output to vendor directory
-    mkdir -p "$target_dir/contrib"
-    cp "$build_output/sbcl" "$target_dir/"
-    cp "$build_output/sbcl.core" "$target_dir/"
-    cp "$build_output/VERSION" "$target_dir/"
-
-    if [ -d "$build_output/contrib" ]; then
-        cp -r "$build_output/contrib/"* "$target_dir/contrib/" 2>/dev/null || true
-    fi
-
-    # Verify installation
-    echo ""
-    echo "Verifying installation..."
-    echo "Binary interpreter:"
-    readelf -l "$target_dir/sbcl" | grep interpreter || file "$target_dir/sbcl"
-
-    echo ""
-    echo "Installed files:"
-    ls -la "$target_dir/"
-
-    echo ""
-    echo "Testing SBCL..."
-    export SBCL_HOME="$target_dir"
-    "$target_dir/sbcl" --version || echo "Note: SBCL may not run on this host if interpreter differs"
 }
 
 # Check for required tools (native build)
@@ -301,7 +172,7 @@ generate_version() {
     local short_hash=$(git rev-parse --short HEAD)
     local commit_count=$(git rev-list --count HEAD)
 
-    local version="2.6.0.${commit_count}.${short_hash}.epsilon"
+    local version="2.6.4.${commit_count}.${short_hash}.epsilon"
 
     echo "Generating version: $version"
     echo "\"$version\"" > version.lisp-expr
@@ -321,15 +192,17 @@ build_sbcl_native() {
     fi
 
     echo "Building SBCL..."
-    echo "  Options: --fancy --with-sb-core-compression"
+    echo "  Options: --fancy --with-sb-core-compression --with-sb-fiber"
 
-    # Set SBCL_HOME for bootstrap if using vendored
+    # Make the bootstrap sbcl resolvable via PATH + SBCL_HOME, since
+    # make-config.sh invokes `sbcl` directly rather than honoring $SBCL.
     if [[ "$bootstrap_sbcl" != "sbcl" ]]; then
         local platform=$(detect_platform)
         export SBCL_HOME="$VENDOR_DIR/$platform"
+        export PATH="$(dirname "$bootstrap_sbcl"):$PATH"
     fi
 
-    sh make.sh --fancy --with-sb-core-compression
+    sh make.sh --fancy --with-sb-core-compression --with-sb-fiber
 
     echo "SBCL build complete!"
 }
@@ -344,7 +217,9 @@ install_vendor() {
     # Create target directory
     mkdir -p "$target_dir/contrib"
 
-    # Copy main binaries
+    # Copy main binaries. Unlink first so a running copy of the old sbcl
+    # (e.g. a system-level epsilon service) doesn't trigger ETXTBUSY.
+    rm -f "$target_dir/sbcl" "$target_dir/sbcl.core"
     cp "$BUILD_DIR/src/runtime/sbcl" "$target_dir/"
     cp "$BUILD_DIR/output/sbcl.core" "$target_dir/"
 
@@ -442,6 +317,17 @@ build_macos_native() {
     verify_install
 }
 
+# Build natively on Linux. Produces a glibc-linked binary; on NixOS,
+# LD_LIBRARY_PATH from the dev shell keeps zstd/zlib reachable at runtime.
+build_linux_native() {
+    check_requirements
+    setup_repository
+    generate_version
+    build_sbcl_native
+    install_vendor
+    verify_install
+}
+
 # Main
 main() {
     echo "========================================"
@@ -456,9 +342,11 @@ main() {
 
     case "$platform" in
         linux-*)
-            echo "Using container build for portable Linux binary..."
+            echo "Using native build for $platform..."
+            echo "Build dir: $BUILD_DIR"
+            echo "Vendor dir: $VENDOR_DIR"
             echo ""
-            build_linux_container
+            build_linux_native
             ;;
         darwin-*)
             echo "Using native build for macOS..."
@@ -477,9 +365,9 @@ main() {
     echo "To test with epsilon:"
     echo "  ./epsilon/epsilon --version"
     echo ""
-    echo "To commit the updated binary:"
-    echo "  git add epsilon/vendor/sbcl/$platform/"
-    echo "  git commit -m 'Rebuild SBCL $platform'"
+    echo "The per-platform directory is gitignored; do not commit it."
+    echo "Under Nix, 'nix develop' provides this SBCL automatically"
+    echo "via the sbcl-epsilon derivation."
 }
 
 main "$@"

@@ -8,8 +8,7 @@
 (defpackage epsilon.io.binary
   (:use :cl)
   (:shadow write)
-  (:require (epsilon.io io))
-  (:enter t))
+  (:import (epsilon.io io)))
 
 ;;; Configuration
 

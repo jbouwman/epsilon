@@ -1,11 +1,10 @@
 (defpackage epsilon.json-tests
   (:use :cl :epsilon.syntax :epsilon.test)
-  (:require (epsilon.file fs)
+  (:import (epsilon.fs fs)
             (epsilon.json json)
             (epsilon.map map)
             (epsilon.parser p)
-            (epsilon.path path))
-  (:enter t))
+            (epsilon.fs path)))
 
 ;; Helper function to load test JSON files
 
@@ -33,16 +32,58 @@
   (assert-equal (json:parse "\"back\\\\slash\"") "back\\slash"))
 
 (deftest parse-number
-  "Test parsing JSON numbers"
+  "Test parsing JSON numbers. Floats parse to double-float per RFC 8259
+   (JSON's reference numeric type is IEEE 754 binary64)."
   (let ((content (load-test-json "simple-number.json")))
     (assert-= (json:parse content) 42))
   (assert-equal (json:parse "42") 42)
   (assert-equal (json:parse "-42") -42)
-  (assert-equal (json:parse "3.14") 3.14)
-  (assert-equal (json:parse "1.23e4") 1.23e4)
-  (assert-equal (json:parse "1e3") 1000.0)
-  (assert-equal (json:parse "2.5e-1") 0.25)
+  (assert-= (json:parse "3.14") 3.14d0)
+  (assert-= (json:parse "1.23e4") 1.23d4)
+  (assert-= (json:parse "1e3") 1000d0)
+  (assert-= (json:parse "2.5e-1") 0.25d0)
   (assert-equal (json:parse "0") 0))
+
+(deftest encode-double-emits-no-cl-marker
+  "Doubles encode without the SBCL d0 suffix that JSON parsers reject."
+  (assert-equal (json:encode-to-string 1.5d0)  "1.5")
+  (assert-equal (json:encode-to-string -1.5d0) "-1.5")
+  (assert-equal (json:encode-to-string 0.28768207245178085d0)
+                "0.28768207245178085"))
+
+(deftest encode-float-exponent-uses-e-marker
+  "Exponent notation uses the JSON-valid 'e' marker, never d/s/l/f."
+  (assert-equal (json:encode-to-string 1.5d10)  "1.5e10")
+  (assert-equal (json:encode-to-string -1.0d-30) "-1.0e-30"))
+
+(deftest encode-single-float-also-clean
+  "Single-floats round-trip cleanly too (no f-marker leak)."
+  (assert-equal (json:encode-to-string 1.5f0)  "1.5")
+  (assert-equal (json:encode-to-string 2.5f10) "2.5e10"))
+
+(deftest encode-ratio-coerces-to-double
+  "Ratios are widened to double before encoding."
+  (assert-equal (json:encode-to-string 1/2) "0.5"))
+
+(deftest encode-then-parse-double-round-trips
+  "A double survives encode -> parse with full precision."
+  (let* ((v 0.28768207245178085d0)
+         (s (json:encode-to-string v))
+         (r (json:parse s)))
+    (assert-= r v)))
+
+(deftest encode-rejects-nan-and-infinity
+  "JSON has no representation for NaN or infinity; encoder errors."
+  (assert-true
+   (handler-case
+       (progn (json:encode-to-string sb-ext:double-float-positive-infinity)
+              nil)
+     (json:json-encode-error () t)))
+  (assert-true
+   (handler-case
+       (progn (json:encode-to-string sb-ext:double-float-negative-infinity)
+              nil)
+     (json:json-encode-error () t))))
 
 (deftest parse-literals
   "Test parsing JSON literal values"
@@ -257,6 +298,43 @@
                                 v)))))
     (assert-true (search "VALUE" result))))
 
+;;;; Canonical encoding (sorted keys)
+
+(deftest encode-sort-keys-map
+  "encode-to-string with :sort-keys produces lexicographically ordered object members"
+  ;; Insertion order must NOT influence output when :sort-keys is t.
+  (let ((m (-> map:+empty+
+                (map:assoc "z" 1)
+                (map:assoc "a" 2)
+                (map:assoc "m" 3))))
+    (assert-equal "{\"a\":2,\"m\":3,\"z\":1}"
+                  (json:encode-to-string m :sort-keys t))))
+
+(deftest encode-sort-keys-nested
+  "Nested maps are also sorted under :sort-keys"
+  (let* ((inner (-> map:+empty+ (map:assoc "y" 1) (map:assoc "x" 2)))
+         (outer (-> map:+empty+ (map:assoc "b" inner) (map:assoc "a" 1))))
+    (assert-equal "{\"a\":1,\"b\":{\"x\":2,\"y\":1}}"
+                  (json:encode-to-string outer :sort-keys t))))
+
+(deftest encode-sort-keys-alist
+  "Alists are sorted under :sort-keys"
+  (assert-equal "{\"a\":1,\"b\":2,\"z\":3}"
+                (json:encode-to-string '(("z" . 3) ("a" . 1) ("b" . 2))
+                                       :sort-keys t)))
+
+(deftest encode-canonical-rfc7638-jwk
+  "RFC 7638 canonical form: members in lexicographic order, no whitespace.
+   This is the form whose SHA-256 is the JWK thumbprint."
+  ;; Example RFC 7638 §3.1 (RSA), key members must appear: e, kty, n.
+  (let ((jwk (-> map:+empty+
+                  (map:assoc "kty" "RSA")
+                  (map:assoc "n" "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWh")
+                  (map:assoc "e" "AQAB"))))
+    (assert-equal
+     "{\"e\":\"AQAB\",\"kty\":\"RSA\",\"n\":\"0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWh\"}"
+     (json:encode-to-string jwk :sort-keys t))))
+
 ;;;; JSON Pointer tests (RFC 6901)
 
 (deftest json-pointer-get
@@ -361,3 +439,85 @@
     (assert-equal (json:get-pointer result "/name") "Bob")
     (assert-= (json:get-pointer result "/age") 30)
     (assert-equal (json:get-pointer result "/city") "NYC")))
+
+;;;; ---- RFC 8785 (JCS) number formatting ----
+
+(deftest jcs-number-integer-valued-float-loses-decimal
+  "Integer-valued floats emit as integer literals (1.0 -> 1)."
+  (assert-equal "1"   (json::format-jcs-number 1.0d0))
+  (assert-equal "100" (json::format-jcs-number 100.0d0))
+  (assert-equal "0"   (json::format-jcs-number 0.0d0)))
+
+(deftest jcs-number-non-integer-floats
+  "Plain decimals stay decimal, with no trailing zeros."
+  (assert-equal "1.5"   (json::format-jcs-number 1.5d0))
+  (assert-equal "0.1"   (json::format-jcs-number 0.1d0))
+  (assert-equal "0.001" (json::format-jcs-number 0.001d0)))
+
+(deftest jcs-number-large-magnitude-decimal-form
+  "Values up to 10^21-eps emit as integer-form decimals."
+  (assert-equal "15000000000"           (json::format-jcs-number 1.5d10))
+  (assert-equal "150000000000000000000" (json::format-jcs-number 1.5d20)))
+
+(deftest jcs-number-large-magnitude-scientific
+  "Values >= 10^21 emit as scientific (lowercase e, no '+' sign)."
+  (assert-equal "1e21" (json::format-jcs-number 1.0d21))
+  (assert-equal "1e22" (json::format-jcs-number (expt 10 22))))
+
+(deftest jcs-number-small-magnitude-scientific
+  "Values < 10^-6 emit as scientific."
+  (assert-equal "1e-7" (json::format-jcs-number 1.0d-7))
+  (assert-equal "1e-8" (json::format-jcs-number 1.0d-8)))
+
+(deftest jcs-number-small-magnitude-decimal
+  "Values in (10^-6, 1) emit as plain decimals with leading zero."
+  (assert-equal "0.000001" (json::format-jcs-number 1.0d-6))
+  (assert-equal "0.00001"  (json::format-jcs-number 1.0d-5)))
+
+(deftest jcs-number-negative
+  "Negative values prepend '-' to the absolute-value form."
+  (assert-equal "-1.5" (json::format-jcs-number -1.5d0))
+  (assert-equal "-1"   (json::format-jcs-number -1.0d0))
+  (assert-equal "-0.001" (json::format-jcs-number -0.001d0)))
+
+(deftest jcs-number-integer-types
+  "Integer Lisp values emit without going through float (no precision loss)."
+  (assert-equal "42"  (json::format-jcs-number 42))
+  (assert-equal "-42" (json::format-jcs-number -42))
+  (assert-equal "999999999999999999999"
+                (json::format-jcs-number 999999999999999999999)))
+
+(deftest jcs-number-rejects-nan-infinity
+  "NaN and infinity signal json-encode-error."
+  (assert-condition (error)
+    (json::format-jcs-number (sb-kernel:make-double-float #x7ff80000 0)))
+  (assert-condition (error)
+    (json::format-jcs-number sb-ext:double-float-positive-infinity)))
+
+(deftest encode-jcs-rfc8785-bignum-ish-example
+  "End-to-end encode-jcs over a map with mixed numeric types: object
+   members in lexicographic order, integer-valued floats stripped of
+   '.0', non-integer floats kept as plain decimals."
+  (let ((doc (-> map:+empty+
+                  (map:assoc "amount" 100.0d0)
+                  (map:assoc "ratio" 1.5d0)
+                  (map:assoc "count" 7)
+                  (map:assoc "name" "alpha"))))
+    (assert-equal
+     "{\"amount\":100,\"count\":7,\"name\":\"alpha\",\"ratio\":1.5}"
+     (json:encode-jcs doc))))
+
+(deftest encode-jcs-array-of-numbers
+  "JCS canonicalization preserves array order while applying number
+   reformatting to each element."
+  (assert-equal "[1,1.5,15000000000,1e21]"
+                (json:encode-jcs (list 1.0d0 1.5d0 1.5d10 1.0d21))))
+
+(deftest encode-jcs-no-effect-on-strings
+  "JCS reformatting only touches numbers; strings pass through
+   identical to encode-canonical."
+  (let ((doc (-> map:+empty+
+                  (map:assoc "kty" "RSA")
+                  (map:assoc "n" "0vx7agoebGcQSuuPiLJXZpt")
+                  (map:assoc "e" "AQAB"))))
+    (assert-equal (json:encode-jcs doc) (json:encode-canonical doc))))

@@ -1,16 +1,16 @@
 (defpackage epsilon.test.suite
   (:use :cl :epsilon.syntax)
   (:shadow condition)
-  (:require (epsilon.function f)
-            (epsilon.map map)
+  (:import (epsilon.map map)
             (epsilon.set set)
             (epsilon.sequence seq)
             (epsilon.string str)
             (epsilon.sys.pkg pkg)
             (epsilon.log log)
             (epsilon.digest digest)
-            (epsilon.stacktrace strace))
-  (:enter t))
+            (epsilon.stacktrace strace)
+            (epsilon.sys.thread thread)
+            (epsilon.sys.lock lock)))
 
 ;;; Event Protocol
 ;;;
@@ -95,18 +95,18 @@
   "Get the package name of a symbol."
   (package-name (symbol-package symbol)))
 
-;;; Test Categories
+;;; Test Tags
 
-(defvar *test-categories* map:+empty+
-  "Map from test symbol to category keyword")
+(defvar *test-tags* map:+empty+
+  "Map from test symbol to tag keyword")
 
-(defun register-test-category (test-symbol category)
-  "Register a category for TEST-SYMBOL."
-  (setf *test-categories* (map:assoc *test-categories* test-symbol category)))
+(defun register-test-tag (test-symbol tag)
+  "Register a tag for TEST-SYMBOL."
+  (setf *test-tags* (map:assoc *test-tags* test-symbol tag)))
 
-(defun test-category (test-symbol)
-  "Return the category of TEST-SYMBOL, or NIL."
-  (map:get *test-categories* test-symbol nil))
+(defun test-tag (test-symbol)
+  "Return the tag of TEST-SYMBOL, or NIL."
+  (map:get *test-tags* test-symbol nil))
 
 (defvar *test* nil
   "Dynamically bound to current test result during execution")
@@ -185,8 +185,8 @@
   (ensure-test-root)
   ;; Clear hash mappings
   (clear-test-hashes)
-  ;; Clear categories
-  (setf *test-categories* map:+empty+))
+  ;; Clear tags
+  (setf *test-tags* map:+empty+))
 
 ;; Test metadata and suite classes moved earlier in the file
 
@@ -219,6 +219,9 @@ Returns the leaf node for package-name."
 
 (defclass cpu-time-metric (metric)
   ((start-cpu :initform nil :accessor start-cpu)))
+
+(defclass heap-metric (metric)
+  ((start-heap :initform nil :accessor start-heap)))
 
 ;;; Test results
 
@@ -322,6 +325,27 @@ Returns the leaf node for package-name."
 (defmethod format-metric ((type (eql :cpu-time)) value stream)
   (format stream "~,3F seconds" value))
 
+(defmethod start-metric ((type (eql :heap)) result)
+  (sb-ext:gc :full t)
+  (let ((metric (make-instance 'heap-metric :name :heap)))
+    (setf (start-heap metric) (sb-kernel:dynamic-usage))
+    (set-metric result :heap metric)))
+
+(defmethod end-metric ((type (eql :heap)) result)
+  (sb-ext:gc :full t)
+  (let ((metric (get-metric result :heap)))
+    (setf (metric-value metric)
+          (- (sb-kernel:dynamic-usage) (start-heap metric)))))
+
+(defmethod format-metric ((type (eql :heap)) value stream)
+  (cond
+    ((> (abs value) (* 1024 1024))
+     (format stream "~,1F MiB" (/ value 1024.0 1024.0)))
+    ((> (abs value) 1024)
+     (format stream "~,1F KiB" (/ value 1024.0)))
+    (t
+     (format stream "~D bytes" value))))
+
 ;;; Configurable Timeouts
 
 (defvar *current-timeout* 10
@@ -330,6 +354,10 @@ Returns the leaf node for package-name."
    This is typically bound by the test runner based on per-test settings.")
 
 ;;; Output Capture Mode
+
+(defvar *profile-heap* nil
+  "When T, run a full GC before and after each test and record the heap
+   delta as a :heap metric. Adds significant overhead; use to find leaks.")
 
 (defvar *capture-only* t
   "When T, test stdout/stderr is captured to string streams only (no terminal output).
@@ -354,7 +382,7 @@ Returns the leaf node for package-name."
     (setf (log:console-stream (car pair)) (cdr pair))))
 
 (defun run-test-body (test args result)
-  (let ((metrics '(:cpu-time))  ; removed :wall-time
+  (let ((metrics '(:cpu-time))
         (stdout-stream (make-string-output-stream))
         (stderr-stream (make-string-output-stream))
         (return-value nil)
@@ -407,7 +435,10 @@ Returns the leaf node for package-name."
              (map:to-alist))
         #'string< :key #'car))
 
-(defun select (&key package name)
+(defun select (&key package name tags exclude-tags)
+  "Select tests matching filters.
+   TAGS - when non-nil, only include tests whose tag is in this list.
+   EXCLUDE-TAGS - when non-nil, exclude tests whose tag is in this list."
   (->> (collect (ensure-test-root))
        seq:seq
        (seq:filter (lambda (test)
@@ -416,7 +447,11 @@ Returns the leaf node for package-name."
                                                (string-downcase (symbol-package-name test))))
                           (or (null name)
                               (pattern-match-p (string-downcase name)
-                                               (string-downcase (symbol-name test)))))))
+                                               (string-downcase (symbol-name test))))
+                          (or (null tags)
+                              (member (test-tag test) tags))
+                          (or (null exclude-tags)
+                              (not (member (test-tag test) exclude-tags))))))
        seq:realize))
 
 (defun pattern-match-p (pattern string)
@@ -577,7 +612,7 @@ Returns the leaf node for package-name."
 
 (defun run-tests-in-parallel (tests package-name run workers)
   "Run TESTS concurrently using worker threads."
-  (let* ((lock (sb-thread:make-mutex :name "parallel-test-lock"))
+  (let* ((lock (lock:make-lock "parallel-test-lock"))
          (result-queue '())
          (thread-pool '()))
 
@@ -585,12 +620,12 @@ Returns the leaf node for package-name."
     (let ((test-queue (copy-list tests)))
       (dotimes (i (min workers (length tests)))
         (push
-         (sb-thread:make-thread
+         (thread:make-thread
           (lambda ()
             (loop
               ;; Get next test
               (let ((test nil))
-                (sb-thread:with-mutex (lock)
+                (lock:with-lock (lock)
                   (setf test (pop test-queue)))
                 (unless test (return))
 
@@ -618,14 +653,14 @@ Returns the leaf node for package-name."
                         (log:warn "after-each hook error: ~A" e))))
 
                   ;; Queue result
-                  (sb-thread:with-mutex (lock)
+                  (lock:with-lock (lock)
                     (push result result-queue))))))
           :name (format nil "test-worker-~D" i))
          thread-pool)))
 
     ;; Wait for all threads to complete
     (dolist (thread thread-pool)
-      (sb-thread:join-thread thread))
+      (thread:join-thread thread))
 
     ;; Report results (in order they completed)
     (dolist (result (nreverse result-queue))
@@ -635,6 +670,15 @@ Returns the leaf node for package-name."
 (defun run-success-p (run)
   (zerop (+ (length (failures run))
             (length (errors run)))))
+
+(defun list-tags ()
+  "Return a sorted list of all unique tags registered across tests."
+  (let ((tags '()))
+    (map:each (lambda (sym tag)
+                (declare (ignore sym))
+                (pushnew tag tags))
+              *test-tags*)
+    (sort tags #'string< :key #'symbol-name)))
 
 (defun list-available-packages ()
   "Return a sorted list of package names that have registered tests"

@@ -4,8 +4,8 @@
 
 (defpackage epsilon.net.errors
   (:use cl)
-  (:local-nicknames
-   (const epsilon.net.constants))
+  (:import
+   (epsilon.net.constants const))
   (:import-from #:epsilon.net.conditions
    #:network-error #:error-message #:connection-refused #:connection-reset
    #:connection-aborted #:timeout-error #:address-in-use
@@ -31,8 +31,7 @@
    #:get-errno
    #:errno-to-string
    #:errno-to-condition
-   #:check-error)
-  (:enter t))
+   #:check-error))
 
 ;;; ============================================================================
 ;;; Print Methods for Condition Reporting

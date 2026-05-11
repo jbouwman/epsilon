@@ -8,15 +8,14 @@
 
 (defpackage epsilon.test.parallel
   (:use :cl :epsilon.symbol)
-  (:require (epsilon.map map)
+  (:import (epsilon.map map)
             (epsilon.sequence seq)
             (epsilon.result result)
             (epsilon.channel channel)
             (epsilon.syntax th)
             (epsilon.test.suite suite)
             (epsilon.log log)
-            (epsilon.sys.thread thread))
-  (:enter t))
+            (epsilon.sys.thread thread)))
 
 ;;; Configuration
 

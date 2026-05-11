@@ -2,10 +2,9 @@
 
 (defpackage :epsilon.foreign.jit.variadic.test
   (:use :cl :epsilon.syntax :epsilon.test)
-  (:local-nicknames
-   (:var :epsilon.foreign.jit.variadic)
-   (:jit :epsilon.foreign.jit))
-   (:enter t))
+  (:import
+   (epsilon.foreign.jit.variadic var)
+   (epsilon.foreign.jit jit)))
 
 ;;; ============================================================================
 ;;; Type Inference Tests

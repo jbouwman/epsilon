@@ -1,4 +1,4 @@
-(defpackage epsilon.set
+(cl:defpackage epsilon.set
   (:use
    cl
    epsilon.syntax)

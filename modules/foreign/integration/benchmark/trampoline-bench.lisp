@@ -2,10 +2,9 @@
   (:use
    cl
    epsilon.syntax)
-  (:local-nicknames
-   (lib epsilon.foreign)
-   (trampoline epsilon.foreign.trampoline))
-  (:enter t))
+  (:import
+   (epsilon.foreign lib)
+   (epsilon.foreign.trampoline trampoline)))
 
 ;;;; Benchmark comparison between eval-based and trampoline-based FFI
 

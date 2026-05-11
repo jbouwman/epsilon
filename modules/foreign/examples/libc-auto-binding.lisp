@@ -6,10 +6,10 @@
 
 (defpackage epsilon.foreign.examples.libc
   (:use cl)
-  (:local-nicknames
-   (ffi epsilon.foreign)
-   (auto epsilon.foreign.auto-binding)
-   (sigs epsilon.foreign.signatures))
+  (:import
+   (epsilon.foreign ffi)
+   (epsilon.foreign.auto-binding auto)
+   (epsilon.foreign.signatures sigs))
   (:export
    ;; Time functions
    #:libc-time
@@ -29,8 +29,7 @@
    #:libc-sqrt
 
    ;; Utilities
-   #:describe-libc-api)
-  (:enter t))
+   #:describe-libc-api))
 
 ;;; ============================================================================
 ;;; Example 1: Individual function auto-binding with defauto-jit

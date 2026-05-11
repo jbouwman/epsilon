@@ -23,10 +23,10 @@ done
 # The directory where epsilon is located
 # Handle both root-level (./epsilon) and bin-level (./bin/epsilon) layouts
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT")" && pwd)"
-if [ -f "$SCRIPT_DIR/module.plist" ]; then
+if [ -f "$SCRIPT_DIR/module.sexp" ]; then
     # Script is at root level (development layout)
     export EPSILON_HOME="$SCRIPT_DIR"
-elif [ -f "$SCRIPT_DIR/../module.plist" ]; then
+elif [ -f "$SCRIPT_DIR/../module.sexp" ]; then
     # Script is in bin/ subdirectory (release layout)
     export EPSILON_HOME="$(cd "$SCRIPT_DIR/.." && pwd)"
 else
@@ -75,11 +75,16 @@ elif [ -x "$VENDOR_SBCL" ]; then
     # Set SBCL_HOME so SBCL can find vendored contribs (sb-posix)
     export SBCL_HOME="$EPSILON_HOME/vendor/sbcl/$PLATFORM"
 else
-    echo "Error: Vendored SBCL not found for platform: $PLATFORM" >&2
-    echo "Expected: $VENDOR_SBCL" >&2
+    echo "Error: SBCL not found for platform: $PLATFORM" >&2
     echo "" >&2
-    echo "Epsilon requires a custom SBCL fork with extended C-call conventions." >&2
-    echo "See: $EPSILON_HOME/vendor/sbcl/README.md for build instructions." >&2
+    echo "Epsilon requires a custom SBCL fork (github:jbouwman/sbcl) with" >&2
+    echo "extensions not present in upstream SBCL. The fork is not vendored;" >&2
+    echo "build it locally with:" >&2
+    echo "" >&2
+    echo "    ./epsilon/vendor/sbcl/build.sh" >&2
+    echo "" >&2
+    echo "Under Nix, 'nix develop' provides it automatically via sbcl-epsilon." >&2
+    echo "Override with EPSILON_SBCL=/path/to/sbcl to point at another build." >&2
     exit 1
 fi
 
@@ -103,6 +108,14 @@ while [ $# -gt 0 ]; do
             QUIET_MODE="true"
             shift
             ;;
+        --heap)
+            EPSILON_HEAP_MB="$2"
+            shift 2
+            ;;
+        --heap=*)
+            EPSILON_HEAP_MB="${1#--heap=}"
+            shift
+            ;;
         *)
             break  # Stop at first non-epsilon flag
             ;;
@@ -116,7 +129,15 @@ if [ "$REBUILD_BOOT" = "true" ]; then
     rm -f "$EPSILON_HOME/_build/epsilon.core/bootstrap.fasl"
 fi
 
-SBCL_RUNTIME_ARGS="--noinform"
+# Note: SBCL version skew is handled in-image, not here.
+# load-boot-fasl in src/boot.lisp catches SB-FASL::INVALID-FASL-VERSION
+# (and other FASL-format failures), wipes the stale boot FASLs, and
+# falls through to generate-boot-fasl to recompile from source.
+# Per-module FASLs are recovered the same way by
+# epsilon.loader::load-fasl-with-recovery.  No shell-side marker is
+# needed.
+
+SBCL_RUNTIME_ARGS="--noinform --dynamic-space-size ${EPSILON_HEAP_MB:-1024}"
 if [ "$DEBUG_MODE" = "true" ]; then
     SBCL_TOPLEVEL_ARGS="--no-sysinit --no-userinit --quit"
 else

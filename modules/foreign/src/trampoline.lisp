@@ -1,7 +1,7 @@
 (defpackage epsilon.foreign.trampoline
   (:use cl)
-  (:local-nicknames
-   (map epsilon.map))
+  (:import
+   (epsilon.map map))
   (:export
    ;; Core trampoline system
    #:make-ffi-trampoline
@@ -35,8 +35,7 @@
    #:sap-to-lisp-string
 
    ;; Integration
-   #:call-with-trampoline)
-  (:enter t))
+   #:call-with-trampoline))
 
 ;;;; FFI Trampoline System - Compiled function calls instead of eval
 

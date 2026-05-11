@@ -2,10 +2,9 @@
 
 (defpackage :epsilon.foreign.binding-ir.test
   (:use :cl :epsilon.syntax :epsilon.test)
-  (:local-nicknames
-   (:bir :epsilon.foreign.binding-ir)
-   (:lc :epsilon.foreign.libclang))
-   (:enter t))
+  (:import
+   (epsilon.foreign.binding-ir bir)
+   (epsilon.foreign.libclang lc)))
 
 ;;; ============================================================================
 ;;; BIR Structure Tests
@@ -159,10 +158,9 @@
 
 (defun get-test-headers-dir ()
   "Get the path to the test-headers directory."
-  (let* ((env (epsilon.loader:environment))
-         (module (epsilon.loader:get-module env "epsilon.foreign")))
+  (let* ((module (epsilon.loader:get-module "epsilon.foreign")))
     (when module
-      (let ((location (epsilon.path:path-string (epsilon.loader:module-location module))))
+      (let ((location (epsilon.fs:path-string (epsilon.loader:module-location module))))
         (concatenate 'string location "/tests/jit/test-headers/")))))
 
 (defparameter *test-headers-dir* (get-test-headers-dir))

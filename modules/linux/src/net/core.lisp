@@ -4,12 +4,12 @@
 
 (defpackage epsilon.net.core
   (:use cl)
-  (:local-nicknames
-   (const epsilon.net.constants)
-   (errors epsilon.net.errors)
-   (types epsilon.net.types)
-   (address epsilon.net.address)
-   (lib epsilon.foreign))
+  (:import
+   (epsilon.net.constants const)
+   (epsilon.net.errors errors)
+   (epsilon.net.types types)
+   (epsilon.net.address address)
+   (epsilon.foreign lib))
   (:export
    ;; Socket creation and management
    #:create-socket
@@ -26,8 +26,7 @@
    #:get-peer-address
 
    ;; Stream conversion
-   #:socket-to-stream)
-  (:enter t))
+   #:socket-to-stream))
 
 ;;; ============================================================================
 ;;; Socket Creation and Management
@@ -175,31 +174,24 @@
 ;;; ============================================================================
 
 (defun get-local-address (socket-fd)
-  "Get the local address of a socket"
-  (lib:with-foreign-memory ((sockaddr :char :count 16)
+  "Get the local address of a socket.
+   Handles both IPv4 and IPv6 by allocating a buffer large enough for either."
+  (lib:with-foreign-memory ((sockaddr :char :count 28)
                             (addrlen :int :count 1))
-    (setf (sb-sys:sap-ref-32 addrlen 0) 16)
+    (setf (sb-sys:sap-ref-32 addrlen 0) 28)
     (let ((result (const:%getsockname socket-fd sockaddr addrlen)))
       (errors:check-error result "getsockname")
-      ;; Parse the sockaddr directly and create the correct type
-      (let* ((port-bytes (sb-sys:sap-ref-16 sockaddr 2))
-             (port (logior (ash (logand port-bytes #xff) 8)
-                           (ash (logand port-bytes #xff00) -8)))
-             (ip (format nil "~D.~D.~D.~D"
-                        (sb-sys:sap-ref-8 sockaddr 4)
-                        (sb-sys:sap-ref-8 sockaddr 5)
-                        (sb-sys:sap-ref-8 sockaddr 6)
-                        (sb-sys:sap-ref-8 sockaddr 7))))
-        (types:make-socket-address ip port)))))
+      (address:parse-sockaddr-by-family sockaddr))))
 
 (defun get-peer-address (socket-fd)
-  "Get the peer address of a socket"
-  (lib:with-foreign-memory ((sockaddr :char :count 16)
+  "Get the peer address of a socket.
+   Handles both IPv4 and IPv6."
+  (lib:with-foreign-memory ((sockaddr :char :count 28)
                             (addrlen :int :count 1))
-    (setf (sb-sys:sap-ref-32 addrlen 0) 16)
+    (setf (sb-sys:sap-ref-32 addrlen 0) 28)
     (let ((result (const:%getpeername socket-fd sockaddr addrlen)))
       (errors:check-error result "getpeername")
-      (address:parse-sockaddr-in sockaddr))))
+      (address:parse-sockaddr-by-family sockaddr))))
 
 ;;; ============================================================================
 ;;; Stream Conversion

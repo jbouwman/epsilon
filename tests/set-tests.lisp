@@ -1,7 +1,6 @@
 (defpackage epsilon.set-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.set set))
-  (:enter t))
+  (:import (epsilon.set set)))
 
 (deftest test-empty-set
   (assert-= (set:size set:+empty+) 0)
