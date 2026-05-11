@@ -81,7 +81,7 @@ else
     echo "extensions not present in upstream SBCL. The fork is not vendored;" >&2
     echo "build it locally with:" >&2
     echo "" >&2
-    echo "    ./epsilon/vendor/sbcl/build.sh" >&2
+    echo "    ./vendor/sbcl/build.sh" >&2
     echo "" >&2
     echo "Under Nix, 'nix develop' provides it automatically via sbcl-epsilon." >&2
     echo "Override with EPSILON_SBCL=/path/to/sbcl to point at another build." >&2
