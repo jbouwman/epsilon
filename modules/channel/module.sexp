@@ -1,0 +1,5 @@
+(:name "epsilon.channel"
+ :module-set "epsilon-stdlib"
+ :description "Go-style channels and streaming abstractions"
+ :stability :stable
+ :requires ("epsilon"))

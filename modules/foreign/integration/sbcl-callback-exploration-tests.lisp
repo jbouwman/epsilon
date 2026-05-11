@@ -3,11 +3,10 @@
    cl
    epsilon.syntax
    epsilon.test)
-  (:local-nicknames
-   (lib epsilon.foreign)
-   (callback epsilon.foreign.callback)
-   (trampoline epsilon.foreign.trampoline))
-  (:enter t))
+  (:import
+   (epsilon.foreign lib)
+   (epsilon.foreign.callback callback)
+   (epsilon.foreign.trampoline trampoline)))
 
 ;;;; Tests to explore SBCL callback APIs and validate implementation
 
@@ -80,9 +79,10 @@
 
 (deftest test-alien-callback-mechanism
   "Test that define-alien-callable creates GC-safe callbacks"
-  ;; Skip: alien-lambda via eval corrupts SBCL memory (IMPL-224).
-  ;; Fix: replace with alien-lambda2 + %define-alien-callable.
-  (skip "alien-lambda memory corruption (IMPL-224)"))
+  ;; IMPL-224 fixed: uses alien-lambda2 + %define-alien-callable now.
+  (let ((cb (callback:make-callback (lambda (x) (* x 2)) :int '(:int))))
+    (assert-true (sb-sys:system-area-pointer-p cb))
+    (assert-true (not (sb-sys:sap= cb (sb-sys:int-sap 0))))))
 
 (deftest test-manual-trampoline-creation
   "Test creating manual trampolines for callbacks"
@@ -124,7 +124,13 @@
 
 (deftest test-callback-registry-functionality
   "Test that our callback registry works independently"
-  (skip "alien-lambda memory corruption (IMPL-224)"))
+  ;; IMPL-224 fixed: callback registry now works with GC-safe trampolines.
+  (let ((id (callback:register-callback 'test-registry-cb
+                                        (lambda (x) (+ x 1))
+                                        :int '(:int))))
+    (assert-true (integerp id))
+    (let ((ptr (callback:get-callback 'test-registry-cb)))
+      (assert-true (sb-sys:system-area-pointer-p ptr)))))
 
 (deftest test-alternative-callback-creation
   "Test alternative approaches to callback creation"
@@ -164,8 +170,12 @@
       (assert-true nil "Baseline alien system not working"))))
 
 (deftest test-callback-stub-behavior
-  "Test current callback stub to understand its behavior"
-  (skip "alien-lambda memory corruption (IMPL-224)"))
+  "Test current callback behavior with GC-safe trampolines"
+  ;; IMPL-224 fixed: callbacks use alien-lambda2 + %define-alien-callable.
+  (let ((cb (callback:make-callback (lambda () 42) :int '())))
+    (assert-true (sb-sys:system-area-pointer-p cb))
+    ;; Verify we can call back through the registry
+    (assert-= 42 (callback:call-callback cb))))
 
 (deftest test-memory-address-approaches
   "Test getting memory addresses for potential callback implementation"

@@ -6,9 +6,9 @@
 
 (defpackage epsilon.uuid
   (:use cl)
-  (:local-nicknames
-   (str epsilon.string)
-   (seq epsilon.sequence))
+  (:import
+   (epsilon.string str)
+   (epsilon.sequence seq))
   (:export
    ;; UUID type and predicates
    #:uuid
@@ -51,8 +51,7 @@
    #:+namespace-x500+
 
    ;; Nil UUID
-   #:+nil-uuid+)
-  (:enter t))
+   #:+nil-uuid+))
 
 ;;; UUID Structure
 

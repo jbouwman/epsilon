@@ -5,10 +5,10 @@
 
 (defpackage epsilon.foreign.jit.library
   (:use cl)
-  (:local-nicknames
-   (jit epsilon.foreign.jit)
-   (sigs epsilon.foreign.signatures)
-   (lc epsilon.foreign.libclang))
+  (:import
+   (epsilon.foreign.jit jit)
+   (epsilon.foreign.signatures sigs)
+   (epsilon.foreign.libclang lc))
   (:export
    ;; Library definition
    #:deflibrary
@@ -30,8 +30,7 @@
 
    ;; Utilities
    #:list-library-functions
-   #:describe-library)
-  (:enter t))
+   #:describe-library))
 
 ;;; ============================================================================
 ;;; Library Registry

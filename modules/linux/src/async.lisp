@@ -5,10 +5,12 @@
 
 (defpackage #:epsilon.async
   (:use #:cl)
-  (:local-nicknames
-   (#:epoll #:epsilon.sys.epoll)
-   (#:epoll-mgr #:epsilon.net.epoll-manager)
-   (#:lib #:epsilon.foreign))
+  (:import
+   (epsilon.sys.epoll epoll)
+   (epsilon.net.reactor reactor)
+   (epsilon.foreign lib)
+   (epsilon.sys.thread thread)
+   (epsilon.sys.lock lock))
   (:export
    ;; Async operation struct
    #:async-operation
@@ -53,8 +55,7 @@
    #:process-monitor-add-pid
    #:process-monitor-remove-read
    #:process-monitor-wait
-   #:process-monitor-close)
-  (:enter t))
+   #:process-monitor-close))
 
 ;;; ============================================================================
 ;;; Async Operation Struct
@@ -105,7 +106,7 @@
 (defvar *completion-queue* '()
   "Queue of completed operations")
 
-(defvar *completion-lock* (sb-thread:make-mutex :name "completion-queue"))
+(defvar *completion-lock* (lock:make-lock "completion-queue"))
 
 (defvar *cancel-in-progress* nil
   "Defense-in-depth guard: when non-nil, cancel-async-operation is already
@@ -115,9 +116,9 @@
   "Monotonically increasing counter incremented after each event loop iteration.
    Used by fence-async-event-loop to synchronize with the event loop thread.")
 
-(defvar *event-loop-generation-lock* (sb-thread:make-mutex :name "event-loop-generation"))
+(defvar *event-loop-generation-lock* (lock:make-lock "event-loop-generation"))
 
-(defvar *event-loop-generation-cv* (sb-thread:make-waitqueue :name "event-loop-generation"))
+(defvar *event-loop-generation-cv* (lock:make-condition-variable :name "event-loop-generation"))
 
 (defun validate-file-descriptor (fd)
   "Validate that a file descriptor is valid before using with epoll"
@@ -135,7 +136,7 @@
   (handler-case
       (progn
         ;; Ensure epoll manager is available
-        (epoll-mgr:get-epoll-manager)
+        (reactor:boot-reactor)
         (start-async-thread))
     (error (e)
       (warn "Failed to initialize async system: ~A" e)
@@ -143,22 +144,22 @@
 
 (defun start-async-thread ()
   "Start the background async event processing thread"
-  (unless (and *async-thread* (sb-thread:thread-alive-p *async-thread*))
+  (unless (and *async-thread* (thread:thread-alive-p *async-thread*))
     (setf *async-running* t)
     (setf *async-thread*
-          (sb-thread:make-thread #'async-event-loop :name "linux-async-loop"))))
+          (thread:make-thread #'async-event-loop :name "linux-async-loop"))))
 
 (defun stop-async-system ()
   "Stop the async system and clean up resources"
   (setf *async-running* nil)
-  (when (and *async-thread* (sb-thread:thread-alive-p *async-thread*))
+  (when (and *async-thread* (thread:thread-alive-p *async-thread*))
     (handler-case
-        (sb-thread:join-thread *async-thread*)
+        (thread:join-thread *async-thread*)
       (error (e)
         (warn "Error joining async thread: ~A" e))))
   (setf *async-thread* nil)
   ;; Epoll manager will handle its own cleanup
-  (epoll-mgr:shutdown-epoll-manager)
+  (reactor:shutdown-reactor)
   (clrhash *pending-operations*)
   (setf *completion-queue* '())
   (setf *event-loop-generation* 0))
@@ -167,7 +168,7 @@
   "Main async event processing loop"
   (loop while *async-running* do
     (handler-case
-        (let ((events (epoll-mgr:wait-for-any-socket 100))) ; 100ms timeout
+        (let ((events (reactor:wait-for-any-socket 100))) ; 100ms timeout
           (dolist (event events)
             (process-epoll-event event))
           ;; If no events, short sleep to prevent busy waiting
@@ -179,9 +180,9 @@
         (sleep 0.1)))
     ;; Advance generation for fence synchronization.
     ;; This signals that all callbacks from this iteration have completed.
-    (sb-thread:with-mutex (*event-loop-generation-lock*)
+    (lock:with-lock (*event-loop-generation-lock*)
       (incf *event-loop-generation*)
-      (sb-thread:condition-broadcast *event-loop-generation-cv*))))
+      (lock:condition-broadcast *event-loop-generation-cv*))))
 
 (defun process-epoll-event (event)
   "Process a single epoll event"
@@ -212,7 +213,7 @@
               (error (e)
                 (warn "Error in error callback: ~A" e))))
           ;; Add to completion queue for cleanup
-          (sb-thread:with-mutex (*completion-lock*)
+          (lock:with-lock (*completion-lock*)
             (push async-op *completion-queue*)))
         (return-from process-epoll-event)))
 
@@ -228,7 +229,7 @@
           (:accept (perform-accept-operation async-op)))
 
         ;; Add to completion queue
-        (sb-thread:with-mutex (*completion-lock*)
+        (lock:with-lock (*completion-lock*)
           (push async-op *completion-queue*))))))
 
 ;;; ============================================================================
@@ -304,22 +305,22 @@
 
       ;; Register or modify epoll interest for this fd
       (handler-case
-          (if (epoll-mgr:socket-registered-p fd)
+          (if (reactor:socket-registered-p fd)
               ;; fd already in epoll -- modify events
-              (epoll-mgr:modify-socket-events fd events)
+              (reactor:modify-socket-events fd events)
               ;; fd not yet registered -- add it
-              (epoll-mgr:register-socket fd events :data fd))
+              (reactor:register-socket fd events :data fd))
         (error (e)
           ;; For testing purposes, just complete immediately if epoll fails
           ;; This allows tests to work with stdin/stdout
           (warn "Socket registration failed for fd ~A: ~A" fd e)
-          (sb-thread:with-mutex (*completion-lock*)
+          (lock:with-lock (*completion-lock*)
             (push operation *completion-queue*)))))))
 
 (defun poll-completions (&optional (timeout-ms 0))
   "Poll for completed operations"
   (declare (ignore timeout-ms))
-  (sb-thread:with-mutex (*completion-lock*)
+  (lock:with-lock (*completion-lock*)
     (prog1 *completion-queue*
       (setf *completion-queue* '()))))
 
@@ -401,7 +402,7 @@
 
     ;; Unregister from epoll manager (ignore errors)
     (handler-case
-        (epoll-mgr:unregister-socket fd)
+        (reactor:unregister-socket fd)
       (error ()
         ;; Ignore errors - fd might already be closed
         nil))
@@ -448,22 +449,22 @@
              *pending-operations*)
     (dolist (key keys-to-remove)
       (remhash key *pending-operations*)))
-  (handler-case (epoll-mgr:unregister-socket fd) (error () nil)))
+  (handler-case (reactor:unregister-socket fd) (error () nil)))
 
 (defun fence-async-event-loop ()
   "Wait for the async event loop to complete its current iteration.
    Guarantees that any callbacks in-flight when this function is called
    have finished executing before this function returns.
    Returns immediately if the async system is not running."
-  (unless (and *async-thread* (sb-thread:thread-alive-p *async-thread*))
+  (unless (and *async-thread* (thread:thread-alive-p *async-thread*))
     (return-from fence-async-event-loop))
-  (sb-thread:with-mutex (*event-loop-generation-lock*)
+  (lock:with-lock (*event-loop-generation-lock*)
     (let ((target (1+ *event-loop-generation*)))
       (loop while (and *async-running*
                        (< *event-loop-generation* target))
-            do (sb-thread:condition-wait *event-loop-generation-cv*
-                                        *event-loop-generation-lock*
-                                        :timeout 1)))))
+            do (lock:condition-wait *event-loop-generation-cv*
+                                    *event-loop-generation-lock*
+                                    :timeout 1)))))
 
 ;;; ============================================================================
 ;;; Utilities

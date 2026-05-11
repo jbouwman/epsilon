@@ -12,9 +12,8 @@
 
 (defpackage epsilon.digest.crc32
   (:use :cl)
-  (:require (epsilon.digest.protocol proto)
-            (epsilon.typeclass tc))
-  (:enter t))
+  (:import (epsilon.digest.protocol proto)
+            (epsilon.typeclass tc)))
 
 ;;; ============================================================================
 ;;; CRC-32 Lookup Table

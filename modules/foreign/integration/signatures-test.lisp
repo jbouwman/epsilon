@@ -2,20 +2,18 @@
 
 (defpackage :epsilon.foreign.signatures.test
   (:use :cl :epsilon.syntax :epsilon.test)
-  (:local-nicknames
-   (:sigs :epsilon.foreign.signatures)
-   (:lc :epsilon.foreign.libclang))
-   (:enter t))
+  (:import
+   (epsilon.foreign.signatures sigs)
+   (epsilon.foreign.libclang lc)))
 
 ;;; Skip all tests if libclang is not available
 
 ;;; Use local test headers that work on all platforms
 (defun get-test-headers-dir ()
   "Get the path to the test-headers directory."
-  (let* ((env (epsilon.loader:environment))
-         (module (epsilon.loader:get-module env "epsilon.foreign")))
+  (let* ((module (epsilon.loader:get-module "epsilon.foreign")))
     (when module
-      (let ((location (epsilon.path:path-string (epsilon.loader:module-location module))))
+      (let ((location (epsilon.fs:path-string (epsilon.loader:module-location module))))
         (concatenate 'string location "/tests/jit/test-headers/")))))
 
 (defparameter *test-headers-dir* (get-test-headers-dir))

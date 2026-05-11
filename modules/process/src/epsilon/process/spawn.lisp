@@ -9,10 +9,10 @@
 
 (defpackage epsilon.process.spawn
   (:use :cl)
-  (:local-nicknames
-   (posix epsilon.process.posix)
-   (lib epsilon.foreign)
-   (lock epsilon.sys.lock))
+  (:import
+   (epsilon.process.posix posix)
+   (epsilon.foreign lib)
+   (epsilon.sys.lock lock))
   (:export
    ;; Spawn specification
    #:spawn-spec
@@ -27,6 +27,7 @@
    #:spawn-spec-process-group
    #:spawn-spec-cloexec-default
    #:spawn-spec-keep-fds
+   #:spawn-spec-extra-file-actions
    #:spawn-spec-search-path
 
    ;; Process handle
@@ -74,8 +75,7 @@
    #:read-handle-output
 
    ;; Error conditions
-   #:spawn-error)
-  (:enter t))
+   #:spawn-error))
 
 ;;; ============================================================================
 ;;; Error Conditions
@@ -157,6 +157,7 @@
   (process-group  :inherit :type (or keyword integer))
   (cloexec-default t   :type boolean)
   (keep-fds       nil :type list)
+  (extra-file-actions nil :type list)
   (search-path    t   :type boolean))
 
 (defun make-spawn-spec (program &key
@@ -169,6 +170,7 @@
                                   (process-group :inherit)
                                   (cloexec-default t)
                                   keep-fds
+                                  extra-file-actions
                                   (search-path t))
   "Create a spawn specification.
 
@@ -183,6 +185,9 @@
    PROCESS-GROUP: :inherit | :new-group | :new-session | pgid-integer
    CLOEXEC-DEFAULT: if T (default), close all fds > 2 in child except keep-fds.
    KEEP-FDS: list of fds to NOT close in child.
+   EXTRA-FILE-ACTIONS: list of (:dup2 src-fd target-fd) actions for custom FD
+     passing. Used to set up non-standard FDs (e.g., bridge communication channels).
+     FDs referenced as targets are automatically added to keep-fds.
    SEARCH-PATH: if T (default), search PATH for program (posix_spawnp)."
   (%make-spawn-spec
    :program program
@@ -196,6 +201,7 @@
    :process-group process-group
    :cloexec-default cloexec-default
    :keep-fds keep-fds
+   :extra-file-actions extra-file-actions
    :search-path search-path))
 
 ;;; ============================================================================
@@ -421,6 +427,19 @@
   ;; still need to close the "other side" of each pipe in the child.
   ;; Those close actions were already added above (one per pipe pair).
 
+  ;; --- Extra file actions (custom dup2 for bridge FDs etc.) ---
+  (dolist (action (spawn-spec-extra-file-actions spec))
+    (let ((op (first action)))
+      (case op
+        (:dup2
+         (let ((src-fd (second action))
+               (target-fd (third action)))
+           (posix:file-actions-adddup2 fa-ptr src-fd target-fd)))
+        (:close
+         (posix:file-actions-addclose fa-ptr (second action)))
+        (otherwise
+         (error "Unknown extra file action: ~S" action)))))
+
   ;; --- Working directory ---
   (when (spawn-spec-working-directory spec)
     (posix:file-actions-addchdir fa-ptr (spawn-spec-working-directory spec)))
@@ -439,7 +458,12 @@
                                   (when stdout-pipes (cdr stdout-pipes))
                                   (when stderr-pipes (car stderr-pipes))
                                   (when stderr-pipes (cdr stderr-pipes)))))
-           (all-keep (append '(0 1 2) keep pipe-fds))
+           ;; Also keep FDs referenced in extra file actions (both source
+           ;; and target fds for dup2 must survive the cloexec cleanup)
+           (extra-fds (loop for action in (spawn-spec-extra-file-actions spec)
+                            when (eq (first action) :dup2)
+                              append (list (second action) (third action))))
+           (all-keep (append '(0 1 2) keep pipe-fds extra-fds))
            (open-fds (posix:list-open-fds)))
       (dolist (fd open-fds)
         (unless (member fd all-keep)
@@ -519,22 +543,26 @@
           collect handle)))
 
 ;;; ============================================================================
-;;; SBCL Signal Handler Override
+;;; SBCL SIGCHLD Handler Coexistence
 ;;; ============================================================================
 
-;;; SBCL installs a SIGCHLD handler that calls get-processes-status-changes,
-;;; which iterates sb-impl::*active-processes* and calls waitpid on each PID
-;;; registered via sb-ext:run-program.  Epsilon manages children exclusively
-;;; through posix_spawn and its own waitpid calls.  To prevent any interaction
-;;; (especially wait4(-1) from a hypothetical future SBCL change), we neuter
-;;; the handler.  The SIGCHLD signal still arrives and SBCL's trampoline
-;;; dispatches to this function, but it does nothing.
-
-(sb-ext:without-package-locks
-  (handler-bind ((warning #'muffle-warning))
-    (defun sb-impl::get-processes-status-changes ()
-      "Neutered by epsilon.process.spawn -- Epsilon manages child processes directly."
-      nil)))
+;;; Epsilon manages its own children via posix_spawn + epsilon.process'
+;;; waitpid loop; SBCL manages its own children (those started via
+;;; sb-ext:run-program) via SB-IMPL::*ACTIVE-PROCESSES* and the SBCL-
+;;; installed SIGCHLD handler that calls SB-IMPL::GET-PROCESSES-STATUS-
+;;; CHANGES.  The two registries are disjoint -- waitpid is per-pid, so
+;;; SBCL's handler iterating *active-processes* never touches an
+;;; epsilon-managed child.
+;;;
+;;; A previous version of this file neutered SB-IMPL::GET-PROCESSES-
+;;; STATUS-CHANGES out of paranoia about a "hypothetical future SBCL
+;;; change" using wait4(-1).  In practice that override killed every
+;;; SB-EXT:RUN-PROGRAM call: the child exits, SIGCHLD arrives, the
+;;; neutered handler does nothing, the SBCL process struct's status
+;;; never flips from :RUNNING to :EXITED, and SB-EXT:PROCESS-WAIT loops
+;;; forever.  Anyone who loaded epsilon.process couldn't shell out
+;;; afterwards.  We let SBCL's handler keep running -- it only touches
+;;; its own list, and we keep ours.
 
 ;;; ============================================================================
 ;;; Core Spawn Function

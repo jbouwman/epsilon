@@ -2,10 +2,9 @@
 
 (defpackage epsilon.crypto.tests.jwk
   (:use :cl :epsilon.test)
-  (:require (epsilon.crypto.jwk jwk)
+  (:import (epsilon.crypto.jwk jwk)
             (epsilon.crypto.native native)
-            (epsilon.base-encode enc))
-  (:enter t))
+            (epsilon.encode enc)))
 
 ;;; ============================================================================
 ;;; EC P-256 JWK Tests
@@ -51,6 +50,7 @@
 ;;; RSA JWK Tests
 ;;; ============================================================================
 
+#@(:timeout 30)
 (deftest test-rsa-key-to-jwk
   "RSA key produces valid JWK with kty, n, e"
   (let* ((key (native:generate-rsa-key :bits 2048))

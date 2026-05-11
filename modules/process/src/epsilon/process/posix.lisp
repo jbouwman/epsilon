@@ -7,8 +7,8 @@
 
 (defpackage epsilon.process.posix
   (:use :cl)
-  (:local-nicknames
-   (lib epsilon.foreign))
+  (:import
+   (epsilon.foreign lib))
   (:export
    ;; Open flags
    #:+o-rdonly+ #:+o-wronly+ #:+o-rdwr+
@@ -29,7 +29,7 @@
    #:+wnohang+ #:+wuntraced+
 
    ;; Signals
-   #:+sighup+ #:+sigint+ #:+sigkill+ #:+sigterm+ #:+sigpipe+ #:+sigchld+
+   #:+sighup+ #:+sigint+ #:+sigkill+ #:+sigterm+ #:+sigpipe+ #:+sigchld+ #:+sigusr1+
 
    ;; errno values
    #:+eintr+
@@ -89,8 +89,7 @@
    ;; wait4 / rusage
    #:+rusage-size+
    #:wait4
-   #:parse-rusage)
-  (:enter t))
+   #:parse-rusage))
 
 ;;; ============================================================================
 ;;; Constants
@@ -136,6 +135,7 @@
 (defconstant +sigterm+ 15)
 (defconstant +sigpipe+ 13)
 (defconstant +sigchld+ #+darwin 20 #+linux 17)
+(defconstant +sigusr1+ #+darwin 30 #+linux 10)
 
 ;;; errno values
 (defconstant +eintr+ 4)

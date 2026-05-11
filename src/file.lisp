@@ -3,7 +3,7 @@
 ;;;; Low-level file I/O, directory operations, path manipulation, and
 ;;;; directory tree walking via POSIX system calls.
 
-(defpackage :epsilon.file
+(cl:defpackage :epsilon.file
   (:use
    :cl
    :epsilon.type)
@@ -52,7 +52,6 @@
    :current-directory
 
    ;; File operations
-   :replace-extension
    :copy-file
    :rename
    :read-file
@@ -64,7 +63,6 @@
    :create-symbolic-link
    :delete-directory
    :delete-file*
-   :directory*
    :ensure-deleted
    :list-contents
    :list-directories
@@ -74,19 +72,16 @@
    :access-time
    :modification-time
    :creation-time
+   :file-size
+   :file-inode
    :group
    :owner
    :attributes
    :*system*
    :*work-directory*
-   :encode-attributes
-   :decode-attributes
 
-   :file=
-   :stream=
-   :stream-files
-
-   ;; Directory traversal
+   ;; Directory traversal (consumed by epsilon/src/project.lisp;
+   ;; not re-exported by epsilon.fs)
    :normalize-directory
    :parent-directory
    :at-root-p
@@ -267,6 +262,9 @@
   (dirname file))
 
 (defun runtime-dir ()
+  "Return the directory containing the running SBCL binary, as recorded in
+   *POSIX-ARGV*.  Used to locate sibling artifacts shipped alongside the
+   image."
   (parent (normalize-separators (first sb-ext:*posix-argv*))))
 
 (defun temp-dir ()
@@ -275,6 +273,9 @@
   (or *work-directory* (env:getenv "TMPDIR")))
 
 (defun home-dir ()
+  "Return the current user's home directory as a string, with a trailing
+   separator.  On Unix, queries the password database; on Windows, falls
+   back to USERPROFILE / HOMEDRIVE+HOMEPATH."
   #+(or linux darwin)
   (sb-unix:uid-homedir (sb-unix:unix-getuid))
   #+(or windows win32)
@@ -282,6 +283,10 @@
       (str:concat (env:getenv "HOMEDRIVE") (env:getenv "HOMEPATH"))))
 
 (defmacro with-temp-file ((name) &body body)
+  "Bind NAME to the path of a fresh randomly-named temp file under TEMP-DIR
+   and execute BODY.  The file itself is not created up front -- BODY is
+   responsible for opening it.  On exit (normal or non-local), the file is
+   deleted if it exists."
   `(let ((,name (join-paths
                  (temp-dir)
                  (str:concat "epsilon-" (str:random-string 16) ".tmp"))))
@@ -313,6 +318,9 @@
              (not (pathname-name pathname))))))
 
 (defun file-info (path)
+  "Return a stat-like record for PATH.  On Unix this is the SB-POSIX:STAT
+   struct itself; on Windows it's a property list with :path and :type.
+   The FILE-INFO-* accessors below normalize across both shapes."
   #-win32 (sb-posix:stat path)
   #+win32 (let ((truepath (probe-file path)))
             (when truepath
@@ -320,6 +328,8 @@
                     :type (if (directory-pathname-p truepath) :directory :file)))))
 
 (defun dir-p (path)
+  "True iff PATH names an existing directory.  Returns NIL (rather than
+   signaling) for paths that don't exist or aren't reachable."
   (let ((path-str (if (typep path 'path:path)
                       (path:path-string path)
                       path)))
@@ -331,6 +341,8 @@
         #+win32 (error () nil))))
 
 (defun file-p (path)
+  "True iff PATH names an existing regular file (not a directory or other
+   special file).  Returns NIL for nonexistent or unreadable paths."
   (let ((path-str (if (typep path 'path:path)
                       (path:path-string path)
                       path)))
@@ -342,6 +354,8 @@
         #+win32 (error () nil))))
 
 (defun file-info-type (stat)
+  "Classify the entry described by STAT (from FILE-INFO) as :FILE,
+   :DIRECTORY, or :LINK.  Returns NIL for other special types."
   #-win32 (cond ((sb-posix:s-isreg (sb-posix:stat-mode stat)) :file)
                 ((sb-posix:s-isdir (sb-posix:stat-mode stat)) :directory)
                 ((sb-posix:s-islnk (sb-posix:stat-mode stat)) :link))
@@ -350,34 +364,51 @@
               :file))
 
 (defun file-info-size (stat)
+  "Size in bytes from a FILE-INFO record.  Windows stub returns 0."
   #-win32 (sb-posix:stat-size stat)
   #+win32 (if (listp stat) 0 0)) ; Windows implementation would need file size lookup
 
 (defun file-info-mtime (stat)
+  "Last-modified time (universal time) from a FILE-INFO record.  Windows stub returns 0."
   #-win32 (sb-posix:stat-mtime stat)
   #+win32 (if (listp stat) 0 0)) ; Windows implementation would need mtime lookup
 
 (defun file-info-atime (stat)
+  "Last-access time (universal time) from a FILE-INFO record.  Windows stub returns 0."
   #-win32 (sb-posix:stat-atime stat)
   #+win32 (if (listp stat) 0 0)) ; Windows implementation would need atime lookup
 
 (defun file-info-ctime (stat)
+  "Status-change time (universal time) from a FILE-INFO record.  Windows stub returns 0."
   #-win32 (sb-posix:stat-ctime stat)
   #+win32 (if (listp stat) 0 0)) ; Windows implementation would need ctime lookup
 
 (defun file-info-mode (stat)
+  "POSIX mode bits from a FILE-INFO record.  Windows stub returns 0."
   #-win32 (sb-posix:stat-mode stat)
   #+win32 (if (listp stat) 0 0)) ; Windows implementation would need mode lookup
 
 (defun file-info-uid (stat)
+  "Owner's numeric UID from a FILE-INFO record.  Windows stub returns 0."
   #-win32 (sb-posix:stat-uid stat)
   #+win32 (if (listp stat) 0 0)) ; Windows implementation would need uid lookup
 
 (defun file-info-gid (stat)
+  "Group's numeric GID from a FILE-INFO record.  Windows stub returns 0."
   #-win32 (sb-posix:stat-gid stat)
   #+win32 (if (listp stat) 0 0)) ; Windows implementation would need gid lookup
 
+(defun file-info-ino (stat)
+  "Inode number from a FILE-INFO record.  Used to detect file rotation
+   (same name across an unlink+create cycle gets a new inode).  Windows
+   stub returns 0."
+  #-win32 (sb-posix:stat-ino stat)
+  #+win32 (if (listp stat) 0 0)) ; Windows implementation would need inode lookup
+
 (defun %walk-dir (dirpath f)
+  "Single-level directory iterator: open DIRPATH, call F on the joined path
+   of every entry (excluding . and ..), and close the directory.  Used by
+   WALK-PATH, which adds recursion."
   #+(or linux darwin)
   (locally
     (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
@@ -410,6 +441,10 @@
       (error () nil))))
 
 (defun walk-path (path-string f &key (recursive t) (test (constantly t)))
+  "Walk the directory tree rooted at PATH-STRING, calling F on each entry
+   path that satisfies TEST.  When RECURSIVE (the default), descend into
+   subdirectories.  TEST is applied before F, so it can both filter the
+   entries F sees and act as a side-effect-free predicate for callers."
   (%walk-dir (if (stringp path-string)
                  path-string
                  (path:path-from-uri path-string))
@@ -418,10 +453,6 @@
                  (funcall f entry-path))
                (when (and recursive (dir-p entry-path))
                  (walk-path entry-path f :recursive t :test test)))))
-
-(defun replace-extension (path-string extension)
-  "Replace file extension (deprecated, use with-extension)"
-  (with-extension path-string extension))
 
 (defun exists-p (path-string)
   "Check if file or directory exists"
@@ -439,6 +470,9 @@
   (and (exists-p path) (dir-p path)))
 
 (defun read-file (filename)
+  "Read FILENAME's contents into a single string in one shot.  Allocates a
+   buffer the size of the file up front; not appropriate for very large
+   files where streaming would be a better fit."
   (with-open-file (stream filename :direction :input)
     (let ((contents (make-string (file-length stream))))
       (read-sequence contents stream)
@@ -500,6 +534,9 @@
                 (ensure-directories-exist (pathname current))))))))
 
 (defun list-files (path-string extension)
+  "Walk PATH-STRING recursively and return a sorted list of regular-file
+   paths whose names end with EXTENSION (a literal suffix string, e.g.
+   \".lisp\")."
   (let (files)
     (walk-path path-string
 	       (lambda (entry-path)
@@ -510,13 +547,14 @@
     (sort files #'string<=)))
 
 (defun ensure-deleted (pathname)
+  "Delete PATHNAME if it exists as a regular file.  No-op if it doesn't
+   exist or is a directory."
   (when (file-p pathname)
     (delete-file* pathname)))
 
-(defun directory* (directory &rest args &key &allow-other-keys)
-  (apply #'directory directory :resolve-symlinks NIL args))
-
 (defun list-dir (directory)
+  "Return a list of entry names (just the basenames, not full paths) in
+   DIRECTORY.  Excludes . and ..  Returns NIL on errors."
   #+(or linux darwin)
   (locally
     (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
@@ -549,9 +587,13 @@
       (error () nil))))
 
 (defun symbolic-link-p (file)
+  "True iff FILE is a symbolic link.  Reaches into SB-IMPL for the kind
+   query because SB-POSIX:LSTAT isn't exposed at the level we need."
   (eql :symlink (sb-impl::native-file-kind file)))
 
 (defun create-symbolic-link (link-file destination-file)
+  "Create LINK-FILE as a symlink pointing at DESTINATION-FILE.  Signals
+   an error on Windows; the SB-POSIX call is the only supported path."
   #-win32 (sb-posix:symlink destination-file link-file)
   #+win32 (error "Symbolic links not supported on Windows in this implementation"))
 
@@ -560,6 +602,9 @@
   (sb-ext:delete-directory file :recursive T))
 
 (defun delete-file* (file)
+  "Delete FILE, dispatching on type: regular files go through CL:DELETE-FILE,
+   directories through DELETE-DIRECTORY (recursive).  Use this rather than
+   CL:DELETE-FILE when callers may pass either kind of path."
   (cond ((dir-p file)
          (delete-directory file))
         (t
@@ -567,32 +612,20 @@
 
 
 (defmacro with-u8-in ((f in) &body body)
+  "Bind F to a binary input stream on path IN (element-type U8) for the
+   extent of BODY.  Closes the stream on exit."
   `(with-open-file (,f ,in :element-type 'u8)
      ,@body))
 
 (defmacro with-u8-out ((f in) &body body)
+  "Bind F to a binary output stream on path IN (element-type U8,
+   :supersede on overwrite) for the extent of BODY.  Closes the stream
+   on exit.  The IN parameter is a misnomer kept for symmetry with
+   WITH-U8-IN -- it's the output path."
   `(with-open-file (,f ,in :element-type 'u8
                        :direction :output
                        :if-exists :supersede)
      ,@body))
-
-(defun stream-files (f in out)
-  (with-u8-in (in in)
-    (with-u8-out (out out)
-      (funcall f in out))))
-
-(defun stream= (a b)
-  (loop :for ab := (read-byte a nil nil)
-        :for bb := (read-byte b nil nil)
-        :unless (eql ab bb)
-        :return nil
-        :unless (and ab bb)
-        :return t))
-
-(defun file= (a b)
-  (with-u8-in (a a)
-    (with-u8-in (b b)
-      (stream= a b))))
 
 (defun modification-time (path)
   "Return the modification time of the file at PATH as a universal time."
@@ -601,6 +634,29 @@
       #+win32 (let ((truepath (probe-file path)))
                 (when truepath
                   (file-write-date truepath)))
+      #-win32 (sb-posix:syscall-error () nil)
+      #+win32 (error () nil)))
+
+(defun file-size (path)
+  "Return the size of the file at PATH in bytes, or NIL if the file is
+absent or otherwise unreadable."
+  (handler-case
+      #-win32 (file-info-size (sb-posix:stat path))
+      #+win32 (let ((truepath (probe-file path)))
+                (when truepath
+                  (with-open-file (s truepath :element-type '(unsigned-byte 8))
+                    (file-length s))))
+      #-win32 (sb-posix:syscall-error () nil)
+      #+win32 (error () nil)))
+
+(defun file-inode (path)
+  "Return the inode number of the file at PATH, or NIL if unavailable.
+Used to detect file rotation: a path can keep the same name across an
+unlink+create cycle but the inode number typically changes."
+  (handler-case
+      #-win32 (file-info-ino (sb-posix:stat path))
+      #+win32 (declare (ignore path))
+      #+win32 nil
       #-win32 (sb-posix:syscall-error () nil)
       #+win32 (error () nil)))
 
@@ -707,14 +763,6 @@
   #+(or linux darwin) :unix
   #+(or windows win32) :windows
   "The current operating system type")
-
-(defun encode-attributes (attrs)
-  "Encode file attributes to a portable format"
-  attrs)  ; For now, just return as-is
-
-(defun decode-attributes (attrs)
-  "Decode file attributes from a portable format"
-  attrs)  ; For now, just return as-is
 
 ;;;; Directory Traversal
 

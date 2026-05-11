@@ -30,8 +30,8 @@
 
 (defpackage epsilon.foreign.libclang.diagnostics
   (:use cl)
-  (:local-nicknames
-   (lc epsilon.foreign.libclang))
+  (:import
+   (epsilon.foreign.libclang lc))
   (:export
    #:run-all-diagnostics
    #:diagnose-memory-mapping
@@ -40,8 +40,7 @@
    #:diagnose-gc-interaction
    #:minimal-gc-callback-reproducer
    #:*diagnostic-verbose*
-   #:*diagnostic-results*)
-  (:enter t))
+   #:*diagnostic-results*))
 
 ;;; Configuration
 

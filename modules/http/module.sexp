@@ -1,0 +1,16 @@
+(:name "epsilon.http"
+ :module-set "epsilon-stdlib"
+ :description "HTTP client and server"
+ :stability :stable
+ :requires ("epsilon.json"
+            "epsilon.crypto"
+            "epsilon.net"
+            "epsilon.io"
+            "epsilon.compression"
+            "epsilon.encode"
+            "epsilon.scheduler"
+            "epsilon.time"
+            "epsilon.channel"
+            "epsilon.pool"
+            "epsilon.uuid"
+            "epsilon.url"))

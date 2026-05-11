@@ -5,11 +5,11 @@
 
 (defpackage epsilon.foreign.grovel
   (:use cl)
-  (:local-nicknames
-   (clang epsilon.foreign.libclang)
-   (types epsilon.foreign.type-database)
-   (map epsilon.map)
-   (log epsilon.log))
+  (:import
+   (epsilon.foreign.libclang clang)
+   (epsilon.foreign.type-database types)
+   (epsilon.map map)
+   (epsilon.log log))
   (:export
    #:*default-include-paths*
    #:*default-defines*
@@ -22,8 +22,7 @@
    #:grovel-enum
    #:grovel-typedef
    #:populate-database
-   #:grovel-to-database)
-  (:enter t))
+   #:grovel-to-database))
 
 ;;; Configuration
 

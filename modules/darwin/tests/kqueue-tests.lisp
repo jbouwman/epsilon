@@ -2,10 +2,10 @@
   (:use
    cl
    epsilon.test)
-  (:local-nicknames
-   (kqueue epsilon.kqueue)
-   (lib epsilon.foreign))
-  (:enter t))
+  (:import
+   (epsilon.kqueue kqueue)
+   (epsilon.foreign lib)
+   (epsilon.sys.thread thread)))
 
 (deftest basic-kqueue-creation
   "Test basic kqueue creation and cleanup"
@@ -358,13 +358,16 @@
           (assert-true (< elapsed 0.1) "Should return immediately"))))
 
     ;; Test short timeout
-    (let ((start-time (get-internal-real-time)))
-      (let ((events (kqueue:wait-for-events kq 10 0.05)))
+    (let ((start-time (get-internal-real-time))
+          (timeout 0.1))
+      (let ((events (kqueue:wait-for-events kq 10 timeout)))
         (assert-true (null events) "Short timeout should return empty")
         (let ((elapsed (/ (- (get-internal-real-time) start-time)
                          internal-time-units-per-second)))
-          (assert-true (>= elapsed 0.04) "Should wait at least 0.04 seconds")
-          (assert-true (< elapsed 0.2) "Should not wait too long"))))
+          (assert-true (>= elapsed (- timeout 0.02))
+                       "Should wait approximately the configured timeout")
+          (assert-true (< elapsed (+ timeout 0.2))
+                       "Should not wait too long"))))
 
     ;; Test nil timeout (would block forever if there were no events)
     ;; We'll add a self-triggering event for this test
@@ -420,7 +423,7 @@
          (progn
            ;; Start monitor in a thread with timeout
            (let ((monitor-thread
-                  (sb-thread:make-thread
+                  (thread:make-thread
                    (lambda ()
                      (handler-case
                          (kqueue:with-kqueue (kq)
@@ -439,7 +442,7 @@
              (write-to-pipe write-fd "trigger")
 
              ;; Wait for thread to complete
-             (let ((result (sb-thread:join-thread monitor-thread :timeout 1)))
+             (let ((result (thread:join-thread monitor-thread :timeout 1)))
                (assert-true (not (null result)) "Monitor should detect the event"))))
       (close-pipe read-fd write-fd))))
 

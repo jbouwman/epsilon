@@ -4,12 +4,24 @@
 
 (defpackage epsilon.net.constants
   (:use cl)
-  (:local-nicknames
-   (lib epsilon.foreign))
+  (:import
+   (epsilon.foreign lib))
   (:export
    ;; Address families
    #:+af-inet+
    #:+af-inet6+
+   #:+af-unix+
+
+   ;; IPv6 constants
+   #:+sockaddr-in6-size+
+   #:+ipv6-any+
+   #:+ipv6-loopback+
+   #:+ipproto-ipv6+
+   #:+ipv6-v6only+
+
+   ;; Unix socket sizes
+   #:+sockaddr-un-path-max+
+   #:+sockaddr-un-size+
 
    ;; Socket types
    #:+sock-stream+
@@ -46,6 +58,7 @@
    #:+o-nonblock+
 
    ;; Errno values
+   #:+eintr+
    #:+eagain+
    #:+ewouldblock+
    #:+einprogress+
@@ -71,8 +84,8 @@
    #:%getsockopt
    #:%getsockname
    #:%getpeername
-   #:%fcntl)
-  (:enter t))
+   #:%fcntl
+   #:%unlink))
 
 ;;; ============================================================================
 ;;; Address Families
@@ -83,6 +96,38 @@
 
 (defconstant +af-inet6+ 10
   "IPv6 address family")
+
+(defconstant +af-unix+ 1
+  "Unix domain socket address family")
+
+;;; ============================================================================
+;;; IPv6 Constants
+;;; ============================================================================
+
+(defconstant +sockaddr-in6-size+ 28
+  "Size of sockaddr_in6 structure on Linux")
+
+(defvar +ipv6-any+ "::"
+  "IPv6 any address")
+
+(defvar +ipv6-loopback+ "::1"
+  "IPv6 loopback address")
+
+(defconstant +ipproto-ipv6+ 41
+  "IPv6 protocol level for setsockopt")
+
+(defconstant +ipv6-v6only+ 26
+  "IPV6_V6ONLY socket option")
+
+;;; ============================================================================
+;;; Unix Socket Sizes
+;;; ============================================================================
+
+(defconstant +sockaddr-un-path-max+ 108
+  "Maximum path length for Unix domain socket (Linux sun_path size)")
+
+(defconstant +sockaddr-un-size+ 110
+  "Size of sockaddr_un structure on Linux (2-byte header + 108-byte path)")
 
 ;;; ============================================================================
 ;;; Socket Types
@@ -178,6 +223,10 @@
 ;;; Error Numbers
 ;;; ============================================================================
 
+(defconstant +eintr+ 4
+  "Interrupted system call -- the syscall was hit by a signal before any
+   data was transferred and should be retried.")
+
 (defconstant +eagain+ 11
   "Resource temporarily unavailable")
 
@@ -270,3 +319,7 @@
 (lib:defshared %fcntl "fcntl" "libc" :int
   (fd :int) (cmd :int) (arg :int)
   :documentation "File control operations")
+
+(lib:defshared %unlink "unlink" "libc" :int
+  (pathname :string)
+  :documentation "Remove a file or socket path")

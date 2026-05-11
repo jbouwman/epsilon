@@ -5,16 +5,19 @@
 ;;;; cross-thread event consumption bug where multiple threads calling
 ;;;; epoll_wait on the same epfd would steal each other's events.
 
-(defpackage epsilon.net.epoll-manager
+(defpackage epsilon.net.reactor
   (:use cl)
-  (:local-nicknames
-   (epoll epsilon.sys.epoll)
-   (lib epsilon.foreign))
+  (:import
+   (epsilon.sys.epoll epoll)
+   (epsilon.foreign lib)
+   (epsilon.sys.thread thread)
+   (epsilon.sys.lock lock)
+   (epsilon.sys.semaphore sem))
   (:export
-   ;; Manager operations
-   #:get-epoll-manager
-   #:shutdown-epoll-manager
-   #:with-epoll-manager
+   ;; Reactor lifecycle
+   #:boot-reactor
+   #:shutdown-reactor
+   #:with-reactor
 
    ;; Socket registration
    #:register-socket
@@ -25,12 +28,12 @@
    ;; Event waiting
    #:wait-for-socket
    #:wait-for-any-socket
+   #:register-socket-callback
    #:poll-sockets
 
    ;; Configuration
    #:*use-edge-triggered*
-   #:*max-events*)
-  (:enter t))
+   #:*max-events*))
 
 ;;; ============================================================================
 ;;; Configuration
@@ -78,11 +81,14 @@
 (defstruct waiter
   "A thread waiting for epoll events on a specific fd.
    The reactor sets DONE to t and stores the event in RESULT,
-   then signals the semaphore to wake the waiting thread."
+   then signals the semaphore to wake the waiting thread.
+   When CALLBACK is non-nil, the reactor calls it instead of
+   signaling the semaphore (one-shot, for coroutine integration)."
   (interest-mask 0 :type (unsigned-byte 32))
   (result nil)
   (done nil)
-  (semaphore (sb-thread:make-semaphore :name "waiter-sem")))
+  (semaphore (sem:make-semaphore :name "waiter-sem"))
+  (callback nil :type (or null function)))
 
 ;;; ============================================================================
 ;;; Epoll Manager Structure
@@ -95,7 +101,7 @@
   ;; Core epoll state
   (epfd nil :type (or null integer))
   (registered-sockets (make-hash-table) :type hash-table)
-  (lock (sb-thread:make-mutex :name "epoll-manager") :type sb-thread:mutex)
+  (lock (lock:make-lock "epoll-manager") :type lock:lock)
   ;; Reactor thread
   (reactor-thread nil)
   (reactor-running nil)
@@ -104,11 +110,11 @@
   (wakeup-write-fd nil :type (or null integer))
   ;; Per-fd waiters: fd -> list of waiter structs
   (waiters (make-hash-table) :type hash-table)
-  (waiters-lock (sb-thread:make-mutex :name "epoll-waiters") :type sb-thread:mutex)
+  (waiters-lock (lock:make-lock "epoll-waiters") :type lock:lock)
   ;; Catch-all event queue for wait-for-any-socket
   (any-queue nil :type list)
-  (any-queue-lock (sb-thread:make-mutex :name "epoll-any-queue") :type sb-thread:mutex)
-  (any-queue-cv (sb-thread:make-waitqueue :name "epoll-any-queue-cv")))
+  (any-queue-lock (lock:make-lock "epoll-any-queue") :type lock:lock)
+  (any-queue-cv (lock:make-condition-variable :name "epoll-any-queue-cv")))
 
 ;;; ============================================================================
 ;;; Global Manager Instance
@@ -117,7 +123,7 @@
 (defvar *epoll-manager* nil
   "Global epoll manager instance (shared across all threads)")
 
-(defvar *epoll-manager-init-lock* (sb-thread:make-mutex :name "epoll-manager-init")
+(defvar *epoll-manager-init-lock* (lock:make-lock "epoll-manager-init")
   "Lock for thread-safe initialization of the global manager")
 
 ;;; ============================================================================
@@ -163,11 +169,11 @@
 ;;; Manager Lifecycle
 ;;; ============================================================================
 
-(defun get-epoll-manager ()
+(defun boot-reactor ()
   "Get or create the global epoll manager with reactor thread.
    Thread-safe via double-checked locking."
   (or *epoll-manager*
-      (sb-thread:with-mutex (*epoll-manager-init-lock*)
+      (lock:with-lock (*epoll-manager-init-lock*)
         (or *epoll-manager*
             (let* ((epfd (epoll:epoll-create1 epoll:+epoll-cloexec+))
                    (pipe (create-wakeup-pipe))
@@ -183,12 +189,12 @@
               ;; Start reactor thread
               (setf (epoll-manager-reactor-running manager) t)
               (setf (epoll-manager-reactor-thread manager)
-                    (sb-thread:make-thread
+                    (thread:make-thread
                      (lambda () (reactor-loop manager))
                      :name "epoll-reactor"))
               (setf *epoll-manager* manager))))))
 
-(defun shutdown-epoll-manager ()
+(defun shutdown-reactor ()
   "Shutdown the global epoll manager and reactor thread"
   (when *epoll-manager*
     (let ((manager *epoll-manager*))
@@ -197,13 +203,13 @@
       (setf (epoll-manager-reactor-running manager) nil)
       (wake-reactor manager)
       (when (and (epoll-manager-reactor-thread manager)
-                 (sb-thread:thread-alive-p (epoll-manager-reactor-thread manager)))
+                 (thread:thread-alive-p (epoll-manager-reactor-thread manager)))
         (handler-case
-            (sb-thread:join-thread (epoll-manager-reactor-thread manager) :timeout 2)
+            (thread:join-thread (epoll-manager-reactor-thread manager) :timeout 2)
           (error () nil)))
       ;; Wake all blocked specific-fd waiters so they can return nil
       (let ((all-waiters nil))
-        (sb-thread:with-mutex ((epoll-manager-waiters-lock manager))
+        (lock:with-lock ((epoll-manager-waiters-lock manager))
           (maphash (lambda (fd waiters-list)
                      (declare (ignore fd))
                      (dolist (w waiters-list)
@@ -213,12 +219,12 @@
         ;; Signal each waiter via semaphore
         (dolist (w all-waiters)
           (setf (waiter-done w) t)
-          (sb-thread:signal-semaphore (waiter-semaphore w))))
+          (sem:signal-semaphore (waiter-semaphore w))))
       ;; Wake any-queue waiters
-      (sb-thread:with-mutex ((epoll-manager-any-queue-lock manager))
-        (sb-thread:condition-broadcast (epoll-manager-any-queue-cv manager)))
+      (lock:with-lock ((epoll-manager-any-queue-lock manager))
+        (lock:condition-broadcast (epoll-manager-any-queue-cv manager)))
       ;; Unregister all sockets from epoll
-      (sb-thread:with-mutex ((epoll-manager-lock manager))
+      (lock:with-lock ((epoll-manager-lock manager))
         (maphash (lambda (fd info)
                    (declare (ignore info))
                    (handler-case
@@ -238,7 +244,7 @@
         (%close-fd (epoll-manager-wakeup-write-fd manager))
         (setf (epoll-manager-wakeup-write-fd manager) nil)))))
 
-(defmacro with-epoll-manager ((&key create-new) &body body)
+(defmacro with-reactor ((&key create-new) &body body)
   "Execute body with an epoll manager, optionally creating a new one"
   (let ((old-manager (gensym)))
     `(let ((,old-manager (when ,create-new *epoll-manager*)))
@@ -247,7 +253,7 @@
        (unwind-protect
             (progn ,@body)
          (when ,create-new
-           (shutdown-epoll-manager)
+           (shutdown-reactor)
            (setf *epoll-manager* ,old-manager))))))
 
 ;;; ============================================================================
@@ -292,7 +298,7 @@
         (event-mask (epoll:epoll-event-events event))
         (error-mask (logior epoll:+epollerr+ epoll:+epollhup+)))
     ;; Try specific-fd waiters first (under waiters-lock)
-    (sb-thread:with-mutex ((epoll-manager-waiters-lock manager))
+    (lock:with-lock ((epoll-manager-waiters-lock manager))
       (let ((fd-waiters (gethash fd (epoll-manager-waiters manager))))
         (when fd-waiters
           (let ((remaining nil))
@@ -305,17 +311,20 @@
             (if remaining
                 (setf (gethash fd (epoll-manager-waiters manager)) (nreverse remaining))
                 (remhash fd (epoll-manager-waiters manager)))))))
-    ;; Signal each delivered waiter via semaphore (outside waiters-lock)
+    ;; Wake each delivered waiter (outside waiters-lock)
     (when delivered-waiters
       (dolist (w delivered-waiters)
         (setf (waiter-result w) event
               (waiter-done w) t)
-        (sb-thread:signal-semaphore (waiter-semaphore w))))
+        (if (waiter-callback w)
+            (handler-case (funcall (waiter-callback w) event)
+              (error () nil))
+            (sem:signal-semaphore (waiter-semaphore w)))))
     ;; If no specific waiter matched, push to any-queue
     (unless delivered-waiters
-      (sb-thread:with-mutex ((epoll-manager-any-queue-lock manager))
+      (lock:with-lock ((epoll-manager-any-queue-lock manager))
         (push event (epoll-manager-any-queue manager))
-        (sb-thread:condition-broadcast (epoll-manager-any-queue-cv manager))))
+        (lock:condition-broadcast (epoll-manager-any-queue-cv manager))))
     (not (null delivered-waiters))))
 
 ;;; ============================================================================
@@ -342,8 +351,8 @@
 
 (defun register-socket (fd events &key data)
   "Register a socket with the epoll manager"
-  (let ((manager (get-epoll-manager)))
-    (sb-thread:with-mutex ((epoll-manager-lock manager))
+  (let ((manager (boot-reactor)))
+    (lock:with-lock ((epoll-manager-lock manager))
       (when (gethash fd (epoll-manager-registered-sockets manager))
         (error "Socket ~D is already registered" fd))
 
@@ -368,8 +377,8 @@
 
 (defun unregister-socket (fd)
   "Unregister a socket from the epoll manager"
-  (let ((manager (get-epoll-manager)))
-    (sb-thread:with-mutex ((epoll-manager-lock manager))
+  (let ((manager (boot-reactor)))
+    (lock:with-lock ((epoll-manager-lock manager))
       (when (gethash fd (epoll-manager-registered-sockets manager))
         (handler-case
             (epoll:epoll-ctl (epoll-manager-epfd manager)
@@ -382,8 +391,8 @@
 
 (defun modify-socket-events (fd new-events)
   "Modify the events monitored for a socket"
-  (let ((manager (get-epoll-manager)))
-    (sb-thread:with-mutex ((epoll-manager-lock manager))
+  (let ((manager (boot-reactor)))
+    (lock:with-lock ((epoll-manager-lock manager))
       (let ((info (gethash fd (epoll-manager-registered-sockets manager))))
         (unless info
           (error "Socket ~D is not registered" fd))
@@ -410,7 +419,7 @@
 
 (defun socket-registered-p (fd)
   "Return non-nil if FD is currently registered with the epoll manager."
-  (let ((manager (get-epoll-manager)))
+  (let ((manager (boot-reactor)))
     (not (null (gethash fd (epoll-manager-registered-sockets manager))))))
 
 ;;; ============================================================================
@@ -421,11 +430,11 @@
   "Wait for specific events on a socket.
    The reactor thread dispatches events via condition variable.
    Returns the epoll event or nil on timeout."
-  (let* ((manager (get-epoll-manager))
+  (let* ((manager (boot-reactor))
          (interest-mask (compute-epoll-events events))
          (w (make-waiter :interest-mask interest-mask)))
     ;; Ensure socket is registered with epoll for our events of interest
-    (sb-thread:with-mutex ((epoll-manager-lock manager))
+    (lock:with-lock ((epoll-manager-lock manager))
       (let ((info (gethash fd (epoll-manager-registered-sockets manager))))
         (if info
             ;; Already registered - ensure our events are included
@@ -457,17 +466,17 @@
                           (list :events events :data nil)))
                 (error () nil))))))
     ;; Add waiter under waiters-lock, then wake reactor
-    (sb-thread:with-mutex ((epoll-manager-waiters-lock manager))
+    (lock:with-lock ((epoll-manager-waiters-lock manager))
       (push w (gethash fd (epoll-manager-waiters manager))))
     (wake-reactor manager)
     ;; Block on semaphore until reactor delivers an event or timeout expires
     (let ((timeout-s (when (and timeout-ms (>= timeout-ms 0))
                        (/ timeout-ms 1000.0))))
-      (sb-thread:wait-on-semaphore (waiter-semaphore w)
+      (sem:wait-on-semaphore (waiter-semaphore w)
                                    :timeout (or timeout-s 30.0)))
     ;; Clean up waiter on timeout (reactor already removed it on success)
     (unless (waiter-done w)
-      (sb-thread:with-mutex ((epoll-manager-waiters-lock manager))
+      (lock:with-lock ((epoll-manager-waiters-lock manager))
         (let ((fd-waiters (gethash fd (epoll-manager-waiters manager))))
           (when fd-waiters
             (let ((remaining (remove w fd-waiters :test #'eq)))
@@ -476,11 +485,79 @@
                   (remhash fd (epoll-manager-waiters manager))))))))
     (waiter-result w)))
 
+(defun register-socket-callback (fd events callback)
+  "Register a one-shot callback for when FD is ready for EVENTS.
+   CALLBACK receives the epoll event. Called from the reactor thread.
+   Does not block the caller. For coroutine I/O integration.
+
+   When the fd is already registered with the manager (e.g. an earlier
+   park parked on a different direction), this widens the kernel's
+   interest mask via EPOLL_CTL_MOD so it covers EVENTS too.  Without
+   that step, a fd first parked on :IN and later parked on :OUT (or
+   vice versa) would never receive the readiness wakeup, because the
+   kernel only fires events that were in the original mask.  TLS
+   handshakes alternate read and write parks on the same fd, so a
+   missing widen step manifests as 5s deadline-exceeded errors mid-
+   handshake."
+  (let* ((manager (boot-reactor))
+         (interest-mask (compute-epoll-events events))
+         (w (make-waiter :interest-mask interest-mask
+                         :callback callback)))
+    ;; Ensure fd is registered with epoll, and that the kernel
+    ;; interest mask covers `events'.
+    (lock:with-lock ((epoll-manager-lock manager))
+      (let ((info (gethash fd (epoll-manager-registered-sockets manager))))
+        (cond
+          ((null info)
+           ;; First park on this fd -- ADD to epoll.
+           (let ((event-mask (if *use-edge-triggered*
+                                 (logior interest-mask epoll:+epollet+)
+                                 interest-mask)))
+             (handler-case
+                 (progn
+                   (epoll:epoll-ctl (epoll-manager-epfd manager)
+                                    epoll:+epoll-ctl-add+ fd
+                                    (epoll:make-epoll-event
+                                     :events event-mask :data fd))
+                   (setf (gethash fd
+                                  (epoll-manager-registered-sockets manager))
+                         (list :events events :data nil)))
+               (error () nil))))
+          (t
+           ;; Already registered -- widen mask if our events aren't yet covered.
+           (let ((current-mask (compute-epoll-events (getf info :events))))
+             (unless (= (logand current-mask interest-mask) interest-mask)
+               (let* ((combined (logior current-mask interest-mask))
+                      (event-mask (if *use-edge-triggered*
+                                      (logior combined epoll:+epollet+)
+                                      combined)))
+                 (handler-case
+                     (progn
+                       (epoll:epoll-ctl (epoll-manager-epfd manager)
+                                        epoll:+epoll-ctl-mod+ fd
+                                        (epoll:make-epoll-event
+                                         :events event-mask
+                                         :data (or (getf info :data) fd)))
+                       ;; Track the widened interest set so the next park
+                       ;; on this fd compares against the current mask
+                       ;; rather than the original.
+                       (setf (getf (gethash fd
+                                            (epoll-manager-registered-sockets
+                                             manager))
+                                   :events)
+                             (union events (getf info :events))))
+                   (error () nil)))))))))
+    ;; Add callback waiter
+    (lock:with-lock ((epoll-manager-waiters-lock manager))
+      (push w (gethash fd (epoll-manager-waiters manager))))
+    (wake-reactor manager)
+    w))
+
 (defun wait-for-any-socket (timeout-ms)
   "Wait for events on any registered socket.
    Returns a list of epoll events from the any-queue."
-  (let ((manager (get-epoll-manager)))
-    (sb-thread:with-mutex ((epoll-manager-any-queue-lock manager))
+  (let ((manager (boot-reactor)))
+    (lock:with-lock ((epoll-manager-any-queue-lock manager))
       ;; If events are already queued, return them immediately
       (when (epoll-manager-any-queue manager)
         (return-from wait-for-any-socket
@@ -489,7 +566,7 @@
       ;; Wait for the reactor to deliver events
       (let ((timeout-s (when (and timeout-ms (>= timeout-ms 0))
                          (/ timeout-ms 1000.0))))
-        (sb-thread:condition-wait (epoll-manager-any-queue-cv manager)
+        (lock:condition-wait (epoll-manager-any-queue-cv manager)
                                   (epoll-manager-any-queue-lock manager)
                                   :timeout (or timeout-s 1.0)))
       ;; Return whatever accumulated
@@ -498,8 +575,8 @@
 
 (defun poll-sockets ()
   "Poll for events without blocking"
-  (let ((manager (get-epoll-manager)))
-    (sb-thread:with-mutex ((epoll-manager-any-queue-lock manager))
+  (let ((manager (boot-reactor)))
+    (lock:with-lock ((epoll-manager-any-queue-lock manager))
       (prog1 (nreverse (epoll-manager-any-queue manager))
         (setf (epoll-manager-any-queue manager) nil)))))
 
@@ -509,11 +586,11 @@
 
 (defun registered-socket-count ()
   "Return the number of registered sockets"
-  (let ((manager (get-epoll-manager)))
+  (let ((manager (boot-reactor)))
     (hash-table-count (epoll-manager-registered-sockets manager))))
 
 (defun list-registered-sockets ()
   "Return a list of registered socket file descriptors"
-  (let ((manager (get-epoll-manager)))
+  (let ((manager (boot-reactor)))
     (loop for fd being the hash-keys of (epoll-manager-registered-sockets manager)
           collect fd)))

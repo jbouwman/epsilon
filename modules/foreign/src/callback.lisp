@@ -1,9 +1,9 @@
 (defpackage epsilon.foreign.callback
   (:use cl)
-  (:local-nicknames
-   (map epsilon.map)
-   (trampoline epsilon.foreign.trampoline)
-   (lock epsilon.sys.lock))
+  (:import
+   (epsilon.map map)
+   (epsilon.foreign.trampoline trampoline)
+   (epsilon.sys.lock lock))
   (:export
    ;; Core callback functions
    #:make-callback
@@ -26,8 +26,7 @@
    #:callback-info-p
    #:callback-info-function
    #:callback-info-signature
-   #:callback-info-pointer)
-  (:enter t))
+   #:callback-info-pointer))
 
 ;;;; Callback Support for FFI
 

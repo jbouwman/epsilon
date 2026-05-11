@@ -3,7 +3,7 @@
 ;;;; Provides declarative pattern matching with destructuring,
 ;;;; guards, and integration with Option/Result types.
 
-(defpackage :epsilon.match
+(cl:defpackage :epsilon.match
   (:use :cl)
   (:local-nicknames (map epsilon.map)
                     (opt epsilon.option)

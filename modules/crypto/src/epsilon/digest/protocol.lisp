@@ -7,8 +7,7 @@
 
 (defpackage epsilon.digest.protocol
   (:use :cl)
-  (:local-nicknames (tc epsilon.typeclass))
-  (:enter t))
+  (:import (epsilon.typeclass tc)))
 
 ;;; ============================================================================
 ;;; Hasher Protocol

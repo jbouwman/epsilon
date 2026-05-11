@@ -1,4 +1,8 @@
-(defpackage epsilon.log
+;;; Suppress redefinition warnings: the bootstrap provides a minimal shim
+;;; for epsilon.log; this module replaces it with the full implementation.
+(declaim (sb-ext:muffle-conditions sb-kernel:redefinition-warning))
+
+(cl:defpackage epsilon.log
   (:use :cl)
   (:shadow
    error log trace debug warn)
@@ -25,6 +29,7 @@
    ;; Appenders
    add-appender remove-appender console-appender file-appender
    tee-appender logger-appenders appender appender-formatter append-log
+   log-appender
    tee-appenders console-stream
 
    ;; Spec parser state
@@ -63,17 +68,21 @@
 
 (in-package epsilon.log)
 
-;;; Remove boot-stub definitions so defmacro below doesn't trigger
-;;; SBCL redefinition warnings.
-;;; Remove boot-stub definitions so defmacro/defun below doesn't trigger
-;;; SBCL redefinition warnings.
-(eval-when (:compile-toplevel :load-toplevel :execute)
+;;; Remove boot-stub definitions so the defmacro/defun forms below do
+;;; not trigger SBCL redefinition warnings at load time.  Important: do
+;;; NOT run this at :compile-toplevel.  The compile-tracking hook
+;;; (epsilon.compile-integration) calls (log:debug ...) during
+;;; compilation, and that macro was baked against the boot-log shim's
+;;; runtime symbols (get-logger / logger-enabled-p / ...).  fmakunbound'ing
+;;; them at compile time wipes the shim under the hook's feet and yields
+;;; "EPSILON.LOG:GET-LOGGER is undefined" mid-compile.
+(eval-when (:load-toplevel :execute)
   (dolist (sym '(;; macros
                  with-context log trace debug info warn error fatal
                  log-with-fields info-with-fields debug-with-fields
                  warn-with-fields error-with-fields
                  ;; functions
-                 get-logger logger-enabled-p
+                 get-logger make-logger logger-enabled-p logger-level
                  emit-log emit-log-with-context emit-log-with-fields
                  fields configure-from-spec configure-from-string
                  reset-configuration configure
@@ -514,19 +523,23 @@
 
 (defmacro warn (format-string-or-condition &rest args)
   "Log a warning message. If first argument is a condition, logs it with context."
-  (let ((first-arg (gensym "FIRST-ARG")))
-    `(let ((,first-arg ,format-string-or-condition))
-       (if (typep ,first-arg 'condition)
-           (log :warn "~A" ,first-arg ,@args)
-         (log :warn ,first-arg ,@args)))))
+  (if (stringp format-string-or-condition)
+      `(log :warn ,format-string-or-condition ,@args)
+      (let ((first-arg (gensym "FIRST-ARG")))
+        `(let ((,first-arg ,format-string-or-condition))
+           (if (typep ,first-arg 'condition)
+               (log :warn "~A" ,first-arg ,@args)
+               (log :warn ,first-arg ,@args))))))
 
 (defmacro error (format-string-or-condition &rest args)
   "Log an error message. If first argument is a condition, logs it with context."
-  (let ((first-arg (gensym "FIRST-ARG")))
-    `(let ((,first-arg ,format-string-or-condition))
-       (if (typep ,first-arg 'condition)
-           (log :error "~A" ,first-arg ,@args)
-         (log :error ,first-arg ,@args)))))
+  (if (stringp format-string-or-condition)
+      `(log :error ,format-string-or-condition ,@args)
+      (let ((first-arg (gensym "FIRST-ARG")))
+        `(let ((,first-arg ,format-string-or-condition))
+           (if (typep ,first-arg 'condition)
+               (log :error "~A" ,first-arg ,@args)
+               (log :error ,first-arg ,@args))))))
 
 (defmacro fatal (format-string &rest args)
   `(log :fatal ,format-string ,@args))
@@ -608,9 +621,9 @@
   "Resolve an abbreviated logger name to a full pattern.
    Resolution order:
    1. Exact match against registered loggers
-   2. Suffix match against kreisler.service.NAME (if registered)
+   2. Prefix match against NAME.* (product-rooted services)
    3. Prefix match against epsilon.NAME.*
-   4. Passthrough -- assume kreisler.service.NAME.* (the common case)"
+   4. Passthrough -- assume NAME.* (the common case)"
   (cond
    ;; Already contains a dot or wildcard -- use as-is
    ((or (position #\. name) (position #\* name))
@@ -618,15 +631,14 @@
    ;; Exact match in registered loggers
    ((map:get *loggers* name)
     name)
-   ;; Suffix match: kreisler.service.NAME (only if already registered)
-   ((map:get *loggers* (format nil "kreisler.service.~A" name))
-    (format nil "kreisler.service.~A.*" name))
+   ;; Prefix match: NAME.* (product-rooted services like hemidemi, rondeau)
+   ((map:get *loggers* name)
+    (format nil "~A.*" name))
    ;; Prefix match: epsilon.NAME.* (only if already registered)
    ((map:get *loggers* (format nil "epsilon.~A" name))
     (format nil "epsilon.~A.*" name))
-   ;; Default: assume kreisler.service.NAME.* (the common case for
-   ;; abbreviated names targeting service modules)
-   (t (format nil "kreisler.service.~A.*" name))))
+   ;; Default: assume NAME.* (product-rooted service convention)
+   (t (format nil "~A.*" name))))
 
 (defun apply-level-to-target (pattern level)
   "Apply LEVEL to loggers matching PATTERN (exact or wildcard)."
@@ -891,3 +903,5 @@ Usage:
 
 ;;; Initialize default configuration
 (add-appender *root-logger* (make-instance 'console-appender :formatter :compact))
+
+(declaim (sb-ext:unmuffle-conditions sb-kernel:redefinition-warning))

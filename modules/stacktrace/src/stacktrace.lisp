@@ -5,44 +5,37 @@
 
 (defpackage epsilon.stacktrace
   (:use :cl)
+  (:import
+   (epsilon.source-location loc)
+   (epsilon.sys.thread thread)
+   (epsilon.sys.lock lock))
   (:export
    ;; Frame structure
-   #:stack-frame #:make-stack-frame #:stack-frame-p #:copy-stack-frame
+   #:stack-frame #:make-stack-frame #:stack-frame-p
    #:stack-frame-index #:stack-frame-function-name #:stack-frame-package-name
-   #:stack-frame-source-file #:stack-frame-source-line #:stack-frame-source-column
+   #:stack-frame-location
    #:stack-frame-locals #:stack-frame-arguments
    #:stack-frame-internal-p #:stack-frame-lambda-p #:stack-frame-raw-frame
    ;; Trace structure
-   #:stack-trace #:make-stack-trace #:stack-trace-p #:copy-stack-trace
+   #:stack-trace #:make-stack-trace #:stack-trace-p
    #:stack-trace-frames #:stack-trace-condition #:stack-trace-condition-type
    #:stack-trace-condition-message #:stack-trace-timestamp
    #:stack-trace-thread-name #:stack-trace-cause
    ;; Utility
    #:user-frames #:frame-count
    ;; Capture
-   #:capture-stack-trace #:capture-current-stack #:extract-frame
-   #:get-function-name #:get-package-name #:get-source-location
-   #:get-frame-locals-info #:get-frame-arguments-info
-   #:internal-package-p #:internal-function-name-p #:lambda-function-p
-   #:truncate-value-string
-   #:*internal-packages* #:*internal-function-patterns* #:*max-value-length*
+   #:capture-stack-trace #:capture-current-stack
    ;; Source context
-   #:get-source-lines #:get-source-context
+   #:get-source-context
    #:source-context-line #:make-source-context-line #:source-context-line-p
-   #:copy-source-context-line #:source-context-line-number
+   #:source-context-line-number
    #:source-context-line-text #:source-context-line-current-p
-   #:source-available-p #:clear-source-cache #:load-source-lines
-   #:evict-oldest-from-cache #:update-cache-access
-   #:*source-cache* #:*source-cache-access-order*
-   #:*source-cache-max-size* #:*source-cache-lock*
+   #:source-available-p #:clear-source-cache
    ;; Formatting
-   #:format-stack-trace #:serialize-stack-trace #:serialize-frame
-   #:format-stack-trace-json #:format-json-object
-   #:colorize #:color-enabled-p #:config-get
-   #:format-function-name #:format-location #:shorten-path
-   #:format-frame-compact #:format-frame-default #:format-frame-verbose
-   #:*stack-trace-format* #:*stack-trace-color* #:*stack-trace-config*
-   #:*ansi-colors* #:initialize-stack-trace-config))
+   #:format-stack-trace #:serialize-stack-trace
+   #:format-stack-trace-json
+   #:colorize
+   #:*stack-trace-format* #:*stack-trace-color*))
 
 (in-package epsilon.stacktrace)
 
@@ -55,9 +48,7 @@
   (index 0 :type fixnum)
   (function-name nil :type (or symbol string null))
   (package-name nil :type (or string null))
-  (source-file nil :type (or pathname string null))
-  (source-line nil :type (or fixnum null))
-  (source-column nil :type (or fixnum null))
+  (location nil :type (or loc:source-location null))
   (locals nil :type list)
   (arguments nil :type list)
   (internal-p nil :type boolean)
@@ -205,7 +196,7 @@
     (multiple-value-bind (file line column) (get-source-location raw-frame)
       (make-stack-frame
        :index index :function-name function-name :package-name package-name
-       :source-file file :source-line line :source-column column
+       :location (when file (loc:make-source-location :file file :line line :column column))
        :locals (when capture-locals (get-frame-locals-info raw-frame :capture-values t))
        :arguments nil
        :internal-p internal-p :lambda-p (lambda-function-p debug-fun)
@@ -224,7 +215,7 @@
      :condition-type (type-of condition)
      :condition-message (princ-to-string condition)
      :timestamp (get-universal-time)
-     :thread-name (ignore-errors (sb-thread:thread-name sb-thread:*current-thread*))
+     :thread-name (ignore-errors (thread:thread-name (thread:current-thread)))
      :cause nil)))
 
 (defun capture-current-stack (&key (max-frames 50) (capture-locals nil))
@@ -237,59 +228,32 @@
     (make-stack-trace
      :frames (coerce (nreverse frames) 'vector)
      :timestamp (get-universal-time)
-     :thread-name (ignore-errors (sb-thread:thread-name sb-thread:*current-thread*)))))
+     :thread-name (ignore-errors (thread:thread-name (thread:current-thread))))))
 
 ;;;; ====================================================================
-;;;; Source Context
+;;;; Source Context (delegates to core source-file cache)
 ;;;; ====================================================================
 
-(defvar *source-cache* (make-hash-table :test 'equal))
-(defvar *source-cache-access-order* nil)
-(defvar *source-cache-max-size* 50)
-(defvar *source-cache-lock* (sb-thread:make-mutex :name "source-cache-lock"))
+;; Legacy variables - delegate to core cache
+(defvar *source-cache* nil
+  "Deprecated - uses core source-file cache. Retained for export compatibility.")
+(defvar *source-cache-access-order* nil
+  "Deprecated - uses core source-file cache.")
+(defvar *source-cache-max-size* 50
+  "Deprecated - uses core source-file cache.")
+(defvar *source-cache-lock* (lock:make-lock "source-cache-lock"))
 
 (defun clear-source-cache ()
-  (sb-thread:with-mutex (*source-cache-lock*)
-    (clrhash *source-cache*)
-    (setf *source-cache-access-order* nil)))
+  "Clear the source file cache."
+  (loc:clear-source-file-cache))
 
-(defun evict-oldest-from-cache ()
-  (when *source-cache-access-order*
-    (let ((oldest (car (last *source-cache-access-order*))))
-      (remhash oldest *source-cache*)
-      (setf *source-cache-access-order* (butlast *source-cache-access-order*)))))
-
-(defun update-cache-access (path-string)
-  (setf *source-cache-access-order*
-        (cons path-string (remove path-string *source-cache-access-order* :test #'equal))))
-
-(defun load-source-lines (file)
-  (handler-case
-      (let ((path (if (pathnamep file) file (pathname file))))
-        (when (probe-file path)
-          (with-open-file (stream path :direction :input :if-does-not-exist nil)
-            (when stream
-              (coerce (loop for line = (read-line stream nil nil)
-                            while line collect line)
-                      'vector)))))
-    (error () nil)))
+(defun evict-oldest-from-cache () nil)
+(defun update-cache-access (path-string) (declare (ignore path-string)) nil)
+(defun load-source-lines (file) (loc:get-source-lines file))
 
 (defun get-source-lines (file)
-  "Get source lines for a file, using cache."
-  (when (null file) (return-from get-source-lines nil))
-  (let ((path-string (if (pathnamep file) (namestring file) file)))
-    (sb-thread:with-mutex (*source-cache-lock*)
-      (let ((cached (gethash path-string *source-cache*)))
-        (when cached
-          (update-cache-access path-string)
-          (return-from get-source-lines cached)))
-      (let ((lines (load-source-lines path-string)))
-        (when lines
-          (when (>= (hash-table-count *source-cache*) *source-cache-max-size*)
-            (evict-oldest-from-cache))
-          (setf (gethash path-string *source-cache*) lines)
-          (update-cache-access path-string))
-        lines))))
+  "Get source lines for a file, using core cache."
+  (loc:get-source-lines file))
 
 (defstruct source-context-line
   (number 0 :type fixnum)
@@ -298,15 +262,13 @@
 
 (defun get-source-context (file line &key (before 2) (after 2))
   "Get source lines around a specific location."
-  (when (or (null file) (null line) (<= line 0))
-    (return-from get-source-context nil))
-  (let ((lines (get-source-lines file)))
-    (when (null lines) (return-from get-source-context nil))
-    (let* ((start (max 1 (- line before)))
-           (end (min (length lines) (+ line after))))
-      (loop for i from start to end
-            collect (make-source-context-line
-                     :number i :text (aref lines (1- i)) :current-p (= i line))))))
+  (let ((ctx (loc:get-source-context-lines file line :before before :after after)))
+    (mapcar (lambda (entry)
+              (make-source-context-line
+               :number (getf entry :number)
+               :text (getf entry :text)
+               :current-p (getf entry :current-p)))
+            ctx)))
 
 (defun source-available-p (file)
   (and file (probe-file (if (pathnamep file) file (pathname file)))))
@@ -345,6 +307,15 @@
 
 (defun color-enabled-p () (and *stack-trace-color* (or (config-get :color) t)))
 
+;; Convenience accessors for source location fields
+(declaim (inline frame-file frame-line))
+(defun frame-file (frame)
+  (let ((l (stack-frame-location frame)))
+    (when l (loc:source-location-file l))))
+(defun frame-line (frame)
+  (let ((l (stack-frame-location frame)))
+    (when l (loc:source-location-line l))))
+
 (defun format-function-name (frame)
   (locally (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
     (let ((name (stack-frame-function-name frame)))
@@ -354,8 +325,8 @@
             (t (prin1-to-string name))))))
 
 (defun format-location (frame)
-  (let ((file (stack-frame-source-file frame))
-        (line (stack-frame-source-line frame)))
+  (let ((file (frame-file frame))
+        (line (frame-line frame)))
     (when file
       (let ((short-file (shorten-path file)))
         (if line #~"~{short-file}:~{line}" short-file)))))
@@ -377,8 +348,8 @@
 (defun format-frame-default (frame stream &key show-source show-locals (source-context 2))
   (let ((func-name (format-function-name frame))
         (location (format-location frame))
-        (file (stack-frame-source-file frame))
-        (line (stack-frame-source-line frame)))
+        (file (frame-file frame))
+        (line (frame-line frame)))
     (format stream "~&  at ~A" (colorize func-name :function))
     (when location (format stream " (~A)" (colorize location :file)))
     (format stream "~%")
@@ -401,8 +372,8 @@
 (defun format-frame-verbose (frame stream index)
   (let ((func-name (format-function-name frame))
         (pkg-name (stack-frame-package-name frame))
-        (file (stack-frame-source-file frame))
-        (line (stack-frame-source-line frame)))
+        (file (frame-file frame))
+        (line (frame-line frame)))
     (format stream "~&~A~%" (make-string 80 :initial-element #\-))
     (format stream "Frame ~D: ~A~%" index (colorize func-name :function))
     (when pkg-name (format stream "  Package: ~A~%" pkg-name))
@@ -476,11 +447,11 @@
   (list (cons "index" (stack-frame-index frame))
         (cons "function" (format-function-name frame))
         (cons "package" (stack-frame-package-name frame))
-        (cons "file" (when (stack-frame-source-file frame)
-                       (if (pathnamep (stack-frame-source-file frame))
-                           (namestring (stack-frame-source-file frame))
-                           (stack-frame-source-file frame))))
-        (cons "line" (stack-frame-source-line frame))
+        (cons "file" (when (frame-file frame)
+                       (if (pathnamep (frame-file frame))
+                           (namestring (frame-file frame))
+                           (frame-file frame))))
+        (cons "line" (frame-line frame))
         (cons "internal" (stack-frame-internal-p frame))
         (cons "locals" (mapcar (lambda (l)
                                  (list (cons "name" (prin1-to-string (car l)))

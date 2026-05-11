@@ -3,7 +3,7 @@
 ;;;; Explicit representation of optional values eliminates null-related bugs
 ;;;; and enables composition. Option values are either Some(value) or None.
 
-(defpackage :epsilon.option
+(cl:defpackage :epsilon.option
   (:use :cl)
   (:local-nicknames
    (:seq :epsilon.sequence))
@@ -41,8 +41,7 @@
 
    ;; Conversion
    #:to-list
-   #:to-seq
-   #:from-nullable))
+   #:to-seq))
 
 (in-package :epsilon.option)
 
@@ -282,23 +281,9 @@
       (seq:seq (list (some-type-value opt)))
       seq:*empty*))
 
-(defun from-nullable (value)
-  "Alias for option - convert nullable to Option.
-   Provided for API clarity when converting from nullable types.
-
-   Examples:
-     (from-nullable nil)  => #<NONE>
-     (from-nullable 42)   => #<SOME 42>"
-  (option value))
-
 ;;; Print representation
 
 (defmethod print-object ((obj some-type) stream)
   (if *print-readably*
       (call-next-method)
       (format stream "#<SOME ~S>" (some-type-value obj))))
-
-;; For None, we use the symbol printer, but provide a way to check
-(defun print-none (stream)
-  "Helper for printing None in debug contexts"
-  (format stream "#<NONE>"))

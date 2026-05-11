@@ -25,8 +25,7 @@
 
    ;; Module information
    #:version
-   #:features)
-  (:enter t))
+   #:features))
 
 ;;; ============================================================================
 ;;; Module Metadata

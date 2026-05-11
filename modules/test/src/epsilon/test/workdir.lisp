@@ -5,10 +5,10 @@
 
 (defpackage epsilon.test.workdir
   (:use :cl)
-  (:local-nicknames
-   (:fs :epsilon.file)
-   (:str :epsilon.string)
-   (:project :epsilon.project))
+  (:import
+   (epsilon.fs fs)
+   (epsilon.string str)
+   (epsilon.project project))
   (:export
    :make-run-directory
    :cleanup-run-directory))

@@ -5,8 +5,7 @@
 ;;;; All IO errors derive from io-error and carry contextual information.
 
 (defpackage epsilon.io.conditions
-  (:use :cl)
-  (:enter t))
+  (:use :cl))
 
 ;;; ============================================================================
 ;;; Base Condition

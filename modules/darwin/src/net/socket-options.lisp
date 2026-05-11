@@ -2,8 +2,8 @@
 
 (defpackage epsilon.net.socket-options
   (:use cl)
-  (:local-nicknames
-   (lib epsilon.foreign))
+  (:import
+   (epsilon.foreign lib))
   (:import-from epsilon.net.constants
    +sol-socket+ +so-reuseaddr+ +so-keepalive+ +so-broadcast+ +so-linger+
    +so-rcvbuf+ +so-sndbuf+ +so-rcvtimeo+ +so-sndtimeo+
@@ -16,8 +16,7 @@
    network-error)
   (:export
    set-socket-option
-   get-socket-option)
-  (:enter t))
+   get-socket-option))
 
 ;;; ============================================================================
 ;;; Socket Options

@@ -4,14 +4,16 @@
   (:use
    cl
    epsilon.test)
-  (:local-nicknames
-   (net epsilon.net)
-   (const epsilon.net.constants)
-   (core epsilon.net.core)
-   (types epsilon.net.types)
-   (address epsilon.net.address)
-   (epoll epsilon.sys.epoll))
-  (:enter t))
+  (:import
+   (epsilon.net net)
+   (epsilon.net.constants const)
+   (epsilon.net.core core)
+   (epsilon.net.types types)
+   (epsilon.net.address address)
+   (epsilon.sys.epoll epoll)
+   (epsilon.net.reactor reactor)
+   (epsilon.sys.lock lock)
+   (epsilon.sys.thread thread)))
 
 ;;; ============================================================================
 ;;; Basic Address and Socket Tests
@@ -30,7 +32,7 @@
         (addr2 (net:parse-address "localhost:8080")))
     (assert-equal "127.0.0.1" (net:socket-address-ip addr1))
     (assert-equal 3000 (net:socket-address-port addr1))
-    (assert-equal "localhost" (net:socket-address-ip addr2))
+    (assert-equal "127.0.0.1" (net:socket-address-ip addr2))
     (assert-equal 8080 (net:socket-address-port addr2)))
 
   ;; Test error on invalid format
@@ -317,13 +319,9 @@
       (let* ((addr (net:make-socket-address "0.0.0.0" 0))
              (listener (net:tcp-bind addr)))
 
-        ;; Should timeout since no connections are pending
-        (handler-case
-            (progn
-              (net:tcp-accept listener :timeout 0.1)
-              (assert-true nil "Should have timed out"))
-          (net:timeout-error ()
-            (assert-true t "Got expected timeout error")))
+        ;; Should return nil since no connections are pending
+        (let ((result (net:tcp-accept listener :timeout 0.1)))
+          (assert-true (null result) "Should return nil on timeout"))
         t)
     (error (e)
            (assert-true nil (format nil "TCP accept timeout test failed: ~A" e)))))
@@ -337,7 +335,7 @@
 
     ;; Start server thread
     (let ((server-thread
-	   (sb-thread:make-thread
+	   (thread:make-thread
             (lambda ()
               (handler-case
 		  (let ((stream (net:tcp-accept listener)))
@@ -372,7 +370,7 @@
 
 	(net:tcp-shutdown client :how :both))
 
-      (sb-thread:join-thread server-thread :timeout 3))))
+      (thread:join-thread server-thread :timeout 3))))
 
 ;;; ============================================================================
 ;;; Documentation of Linux-specific Features
@@ -431,7 +429,7 @@
         (progn
           ;; Start echo server thread
           (setf server-thread
-                (sb-thread:make-thread
+                (thread:make-thread
                  (lambda ()
                    (handler-case
                        (let ((server-stream (net:tcp-accept listener :timeout 3.0)))
@@ -466,7 +464,7 @@
 
           ;; Wait for server thread
           (when server-thread
-            (sb-thread:join-thread server-thread :timeout 5.0))
+            (thread:join-thread server-thread :timeout 5.0))
 
           ;; Check for server errors
           (when server-error
@@ -474,7 +472,7 @@
 
       ;; Cleanup
       (when server-thread
-        (ignore-errors (sb-thread:terminate-thread server-thread))))))
+        (ignore-errors (thread:destroy-thread server-thread))))))
 
 (deftest test-udp-echo-server ()
   "Test UDP echo server with retry logic for non-blocking sockets"
@@ -489,7 +487,7 @@
         (progn
           ;; Start UDP echo server with retry logic
           (setf server-thread
-                (sb-thread:make-thread
+                (thread:make-thread
                  (lambda ()
                    (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8)))
                          (bytes-received 0)
@@ -538,11 +536,11 @@
 
           ;; Wait for server thread
           (when server-thread
-            (sb-thread:join-thread server-thread :timeout 5.0)))
+            (thread:join-thread server-thread :timeout 5.0)))
 
       ;; Cleanup
       (when server-thread
-        (ignore-errors (sb-thread:terminate-thread server-thread))))))
+        (ignore-errors (thread:destroy-thread server-thread))))))
 
 (deftest test-tcp-concurrent-clients ()
   "Test TCP server handling multiple concurrent clients"
@@ -558,13 +556,13 @@
         (progn
           ;; Start multi-client server
           (setf server-thread
-                (sb-thread:make-thread
+                (thread:make-thread
                  (lambda ()
                    (handler-case
                        (loop repeat num-clients
                              do (let ((client-stream (net:tcp-accept listener :timeout 5.0)))
                                   (when client-stream
-                                    (sb-thread:make-thread
+                                    (thread:make-thread
                                      (lambda ()
                                        (unwind-protect
                                            (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
@@ -584,7 +582,7 @@
             (let ((client-id i)
                   (test-message (format nil "Client-~D-Message" i)))
               (push
-               (sb-thread:make-thread
+               (thread:make-thread
                 (lambda ()
                   (handler-case
                       (let ((client-stream (net:tcp-connect
@@ -608,11 +606,11 @@
 
           ;; Wait for all client threads
           (dolist (thread client-threads)
-            (sb-thread:join-thread thread :timeout 10.0))
+            (thread:join-thread thread :timeout 10.0))
 
           ;; Wait for server thread
           (when server-thread
-            (sb-thread:join-thread server-thread :timeout 10.0))
+            (thread:join-thread server-thread :timeout 10.0))
 
           ;; Check results
           (dotimes (i num-clients)
@@ -621,100 +619,453 @@
 
       ;; Cleanup
       (dolist (thread client-threads)
-        (ignore-errors (sb-thread:terminate-thread thread)))
+        (ignore-errors (thread:destroy-thread thread)))
       (when server-thread
-        (ignore-errors (sb-thread:terminate-thread server-thread))))))
+        (ignore-errors (thread:destroy-thread server-thread))))))
 
 (deftest test-mixed-tcp-udp-concurrent ()
-  "Test concurrent TCP and UDP operations"
+  "Test concurrent TCP and UDP operations.
+   TCP and UDP client work runs in parallel threads; server threads capture
+   diagnostic state so failures surface root cause rather than a bare nil."
   (let* ((tcp-listener (net:tcp-bind (net:make-socket-address "127.0.0.1" 0)))
          (tcp-port (net:socket-address-port (net:tcp-local-addr tcp-listener)))
          (udp-socket (net:udp-bind (net:make-socket-address "127.0.0.1" 0)))
          (udp-port (net:socket-address-port (net:udp-local-addr udp-socket)))
-         (tcp-success nil)
-         (udp-success nil))
+         ;; Diagnostic cells: nil = "didn't reach this point"
+         (tcp-server-state (cons :pending nil))
+         (udp-server-state (cons :pending nil))
+         (tcp-client-state (cons :pending nil))
+         (udp-client-state (cons :pending nil))
+         (udp-server-stop nil))
+    (flet ((record (cell stage value) (setf (car cell) stage (cdr cell) value)))
+
+      (unwind-protect
+          (let ((tcp-server-thread
+                 (thread:make-thread
+                  (lambda ()
+                    (handler-case
+                        (let ((stream (net:tcp-accept tcp-listener :timeout 10.0)))
+                          (record tcp-server-state :accepted stream)
+                          (when stream
+                            (unwind-protect
+                                (let* ((buffer (make-array 1024 :element-type '(unsigned-byte 8)))
+                                       (bytes (net:tcp-read stream buffer :timeout 10.0)))
+                                  (record tcp-server-state :read bytes)
+                                  (when (> bytes 0)
+                                    (net:tcp-write-all stream buffer :end bytes)
+                                    (record tcp-server-state :wrote bytes)))
+                              (ignore-errors (net:tcp-shutdown stream :how :both)))))
+                      (error (e) (record tcp-server-state :error e))))
+                  :name "tcp-server"))
+
+                (udp-server-thread
+                 (thread:make-thread
+                  (lambda ()
+                    (handler-case
+                        (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8)))
+                              (bytes 0)
+                              (addr nil))
+                          ;; Poll until message arrives or main signals stop
+                          (loop until udp-server-stop
+                                do (multiple-value-bind (b a) (net:udp-recv-from udp-socket buffer)
+                                     (setf bytes b addr a)
+                                     (when (> bytes 0) (return))
+                                     (sleep 0.05)))
+                          (record udp-server-state :received bytes)
+                          (when (> bytes 0)
+                            (net:udp-send-to udp-socket buffer addr :end bytes)
+                            (record udp-server-state :echoed bytes)))
+                      (error (e) (record udp-server-state :error e))))
+                  :name "udp-server"))
+
+                (tcp-client-thread
+                 (thread:make-thread
+                  (lambda ()
+                    (handler-case
+                        (let ((tcp-client (net:tcp-connect
+                                           (net:make-socket-address "127.0.0.1" tcp-port)
+                                           :timeout 10.0)))
+                          (record tcp-client-state :connected t)
+                          (unwind-protect
+                              (progn
+                                (net:tcp-write-all tcp-client "TCP-Test")
+                                (record tcp-client-state :wrote t)
+                                (let* ((buffer (make-array 1024 :element-type '(unsigned-byte 8)))
+                                       (bytes (net:tcp-read tcp-client buffer :timeout 10.0)))
+                                  (record tcp-client-state :read bytes)
+                                  (if (> bytes 0)
+                                      (record tcp-client-state :match
+                                              (string= "TCP-Test"
+                                                       (sb-ext:octets-to-string
+                                                        (subseq buffer 0 bytes))))
+                                      (record tcp-client-state :short-read bytes))))
+                            (ignore-errors (net:tcp-shutdown tcp-client :how :both))))
+                      (error (e) (record tcp-client-state :error e))))
+                  :name "tcp-client"))
+
+                (udp-client-thread
+                 (thread:make-thread
+                  (lambda ()
+                    (handler-case
+                        (let ((udp-client (net:udp-bind (net:make-socket-address "127.0.0.1" 0))))
+                          (net:udp-send-to udp-client "UDP-Test"
+                                           (net:make-socket-address "127.0.0.1" udp-port))
+                          (record udp-client-state :sent t)
+                          (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8)))
+                                (bytes 0)
+                                (deadline (+ (get-internal-real-time)
+                                             (* 10 internal-time-units-per-second))))
+                            (loop while (< (get-internal-real-time) deadline)
+                                  do (multiple-value-bind (b a) (net:udp-recv-from udp-client buffer)
+                                       (declare (ignore a))
+                                       (setf bytes b)
+                                       (when (> bytes 0) (return))
+                                       (sleep 0.05)))
+                            (record udp-client-state :read bytes)
+                            (when (> bytes 0)
+                              (record udp-client-state :match
+                                      (string= "UDP-Test"
+                                               (sb-ext:octets-to-string
+                                                (subseq buffer 0 bytes)))))))
+                      (error (e) (record udp-client-state :error e))))
+                  :name "udp-client")))
+
+            ;; Wait for client work
+            (thread:join-thread tcp-client-thread :timeout 15.0)
+            (thread:join-thread udp-client-thread :timeout 15.0)
+            ;; Servers should be done once clients are; signal UDP poll to wake.
+            (thread:join-thread tcp-server-thread :timeout 5.0)
+            (setf udp-server-stop t)
+            (thread:join-thread udp-server-thread :timeout 5.0)
+
+            (assert-true (eq (car tcp-client-state) :match)
+                         (format nil "TCP failed. client=~S server=~S"
+                                 tcp-client-state tcp-server-state))
+            (assert-true (eq (cdr tcp-client-state) t)
+                         (format nil "TCP echo mismatch. client=~S" tcp-client-state))
+            (assert-true (eq (car udp-client-state) :match)
+                         (format nil "UDP failed. client=~S server=~S"
+                                 udp-client-state udp-server-state))
+            (assert-true (eq (cdr udp-client-state) t)
+                         (format nil "UDP echo mismatch. client=~S" udp-client-state)))
+
+        ;; Ensure poller wakes if we bail mid-test.
+        (setf udp-server-stop t)))))
+
+;;; ============================================================================
+;;; IPv6 Tests
+;;; ============================================================================
+
+(deftest test-ipv6-socket-address-creation ()
+  "Test IPv6 socket address creation and family detection"
+  (let ((addr4 (net:make-socket-address "127.0.0.1" 8080))
+        (addr6 (net:make-socket-address "::1" 8080))
+        (addr6-full (net:make-socket-address "2001:db8::1" 9090)))
+    ;; IPv4 family
+    (assert-eq :ipv4 (net:socket-address-family addr4))
+    ;; IPv6 auto-detected from colons
+    (assert-eq :ipv6 (net:socket-address-family addr6))
+    (assert-equal "::1" (net:socket-address-ip addr6))
+    (assert-equal 8080 (net:socket-address-port addr6))
+    ;; Full IPv6
+    (assert-eq :ipv6 (net:socket-address-family addr6-full))
+    (assert-equal "2001:db8::1" (net:socket-address-ip addr6-full))))
+
+(deftest test-ipv6-address-parsing ()
+  "Test IPv6 address string parsing"
+  ;; Loopback
+  (let ((words (address:parse-ipv6-address "::1")))
+    (assert-true (not (null words)))
+    (assert-equal 0 (aref words 0))
+    (assert-equal 1 (aref words 7)))
+  ;; All zeros
+  (let ((words (address:parse-ipv6-address "::")))
+    (assert-true (not (null words)))
+    (assert-equal 0 (aref words 0))
+    (assert-equal 0 (aref words 7)))
+  ;; Full form
+  (let ((words (address:parse-ipv6-address "2001:0db8:0000:0000:0000:0000:0000:0001")))
+    (assert-true (not (null words)))
+    (assert-equal #x2001 (aref words 0))
+    (assert-equal #x0db8 (aref words 1))
+    (assert-equal 1 (aref words 7)))
+  ;; Compressed form
+  (let ((words (address:parse-ipv6-address "fe80::1")))
+    (assert-true (not (null words)))
+    (assert-equal #xfe80 (aref words 0))
+    (assert-equal 1 (aref words 7))))
+
+(deftest test-ipv6-expand-address ()
+  "Test IPv6 :: expansion"
+  (assert-equal "0:0:0:0:0:0:0:1"
+                (address:expand-ipv6-address "::1"))
+  (assert-equal "0:0:0:0:0:0:0:0"
+                (address:expand-ipv6-address "::"))
+  (assert-equal "fe80:0:0:0:0:0:0:1"
+                (address:expand-ipv6-address "fe80::1"))
+  ;; No expansion needed
+  (assert-equal "1:2:3:4:5:6:7:8"
+                (address:expand-ipv6-address "1:2:3:4:5:6:7:8")))
+
+(deftest test-ipv6-detect-address-family ()
+  "Test address family detection"
+  (assert-eq :ipv4 (net:detect-address-family "192.168.1.1"))
+  (assert-eq :ipv6 (net:detect-address-family "::1"))
+  (assert-eq :ipv6 (net:detect-address-family "fe80::1"))
+  (assert-eq :hostname (net:detect-address-family "example"))
+  (assert-eq :ipv4 (net:detect-address-family nil)))
+
+(deftest test-ipv6-parse-address-bracket ()
+  "Test parsing IPv6 bracket notation"
+  (let ((addr (net:parse-address "[::1]:8080")))
+    (assert-eq :ipv6 (net:socket-address-family addr))
+    (assert-equal "::1" (net:socket-address-ip addr))
+    (assert-equal 8080 (net:socket-address-port addr)))
+  ;; Full IPv6 with port
+  (let ((addr (net:parse-address "[2001:db8::1]:443")))
+    (assert-eq :ipv6 (net:socket-address-family addr))
+    (assert-equal "2001:db8::1" (net:socket-address-ip addr))
+    (assert-equal 443 (net:socket-address-port addr))))
+
+(deftest test-ipv6-sockaddr-roundtrip ()
+  "Test sockaddr_in6 fill and parse round-trip"
+  (epsilon.foreign:with-foreign-memory ((addr :char :count 28))
+    ;; Fill IPv6 loopback
+    (address:make-sockaddr-in6-into addr "::1" 9090)
+    ;; Verify family
+    (assert-equal const:+af-inet6+ (sb-sys:sap-ref-16 addr 0))
+    ;; Parse back
+    (let ((parsed (address:parse-sockaddr-in6 addr)))
+      (assert-eq :ipv6 (types:socket-address-family parsed))
+      (assert-equal 9090 (types:socket-address-port parsed))
+      ;; The parsed IP should represent ::1
+      (let ((words (address:parse-ipv6-address (types:socket-address-ip parsed))))
+        (assert-true (not (null words)))
+        (assert-equal 1 (aref words 7))
+        (assert-equal 0 (aref words 0))))))
+
+(deftest test-ipv6-sockaddr-by-family ()
+  "Test parse-sockaddr-by-family dispatch"
+  ;; IPv4
+  (epsilon.foreign:with-foreign-memory ((addr4 :char :count 16))
+    (address:make-sockaddr-in-into addr4 "10.0.0.1" 3000)
+    (let ((parsed (address:parse-sockaddr-by-family addr4)))
+      (assert-eq :ipv4 (types:socket-address-family parsed))
+      (assert-equal "10.0.0.1" (types:socket-address-ip parsed))
+      (assert-equal 3000 (types:socket-address-port parsed))))
+  ;; IPv6
+  (epsilon.foreign:with-foreign-memory ((addr6 :char :count 28))
+    (address:make-sockaddr-in6-into addr6 "::1" 4000)
+    (let ((parsed (address:parse-sockaddr-by-family addr6)))
+      (assert-eq :ipv6 (types:socket-address-family parsed))
+      (assert-equal 4000 (types:socket-address-port parsed)))))
+
+(deftest test-ipv6-resolve-localhost ()
+  "Test that resolve-address for localhost returns both IPv4 and IPv6"
+  (let ((addrs (net:resolve-address "localhost" 8080)))
+    (assert-true (>= (length addrs) 2))
+    ;; Should have both families
+    (assert-true (some (lambda (a) (eq :ipv4 (net:socket-address-family a))) addrs))
+    (assert-true (some (lambda (a) (eq :ipv6 (net:socket-address-family a))) addrs))))
+
+(deftest test-ipv6-tcp-bind-loopback ()
+  "Test TCP bind on IPv6 loopback"
+  (handler-case
+      (let* ((addr (net:make-socket-address "::1" 0))
+             (listener (net:tcp-bind addr)))
+        (assert-true (typep listener 'net:tcp-listener))
+        (let ((local (net:tcp-local-addr listener)))
+          (assert-eq :ipv6 (net:socket-address-family local))
+          (assert-true (> (net:socket-address-port local) 0))))
+    (error (e)
+      (assert-true nil (format nil "IPv6 TCP bind failed: ~A" e)))))
+
+(deftest test-ipv6-tcp-echo ()
+  "Test TCP echo over IPv6 loopback"
+  (let* ((listener (net:tcp-bind (net:make-socket-address "::1" 0)))
+         (port (net:socket-address-port (net:tcp-local-addr listener)))
+         (test-message "IPv6 echo test!")
+         (server-error nil)
+         (server-thread
+           (thread:make-thread
+            (lambda ()
+              (handler-case
+                  (let ((stream (net:tcp-accept listener :timeout 3.0)))
+                    (when stream
+                      (unwind-protect
+                          (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
+                            (let ((bytes (net:tcp-read stream buffer :timeout 3.0)))
+                              (when (> bytes 0)
+                                (net:tcp-write-all stream buffer :end bytes))))
+                        (ignore-errors (net:tcp-shutdown stream :how :both)))))
+                (error (e) (setf server-error e))))
+            :name "ipv6-echo-server")))
+
+    (sleep 0.2)
 
     (unwind-protect
-        (let ((tcp-server-thread
-               (sb-thread:make-thread
-                (lambda ()
-                  (handler-case
-                      (let ((stream (net:tcp-accept tcp-listener :timeout 5.0)))
-                        (when stream
-                          (unwind-protect
-                              (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
-                                (let ((bytes (net:tcp-read stream buffer :timeout 5.0)))
-                                  (when (> bytes 0)
-                                    (net:tcp-write-all stream buffer :end bytes))))
-                            (ignore-errors (net:tcp-shutdown stream :how :both)))))
-                    (error () nil)))
-                :name "tcp-server"))
+        (handler-case
+            (let ((client (net:tcp-connect (net:make-socket-address "::1" port) :timeout 3.0)))
+              (unwind-protect
+                  (progn
+                    (net:tcp-write-all client test-message)
+                    (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
+                      (let ((bytes (net:tcp-read client buffer :timeout 3.0)))
+                        (when (> bytes 0)
+                          (let ((response (sb-ext:octets-to-string (subseq buffer 0 bytes))))
+                            (assert-true (string= test-message response) "IPv6 echo mismatch"))))))
+                (ignore-errors (net:tcp-shutdown client :how :both))))
+          (error (e)
+            (assert-true nil (format nil "IPv6 TCP echo failed: ~A" e))))
 
-              (udp-server-thread
-               (sb-thread:make-thread
-                (lambda ()
-                  (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8)))
-                        (bytes 0)
-                        (addr nil))
-                    ;; Poll for UDP message
-                    (loop repeat 50
-                          do (multiple-value-bind (b a) (net:udp-recv-from udp-socket buffer)
-                               (setf bytes b addr a)
-                               (when (> bytes 0) (return))
-                               (sleep 0.1)))
-                    (when (> bytes 0)
-                      (net:udp-send-to udp-socket buffer addr :end bytes))))
-                :name "udp-server")))
+      (when server-thread
+        (thread:join-thread server-thread :timeout 5.0)
+        (when server-error
+          (assert-true nil (format nil "IPv6 server error: ~A" server-error)))))))
 
-          ;; Give servers time to start
+;;; ============================================================================
+;;; Regression: detect-address-family on dotted FQDNs (Class A)
+;;; ============================================================================
+;;;
+;;; Before the fix, detect-address-family returned :ipv4 for any string
+;;; containing a dot, including "sparrow.kreisleriana.com", which caused
+;;; tcp-connect to skip DNS resolution and feed a raw hostname to
+;;; make-sockaddr-in-into. That crashed with SBCL's "junk in string"
+;;; parse-integer error and took epsilon-build-worker into a 50k+
+;;; restart loop on lark.
+;;;
+;;; The fix tightens the :ipv4 classification to require the string to
+;;; consist only of digits and dots.
+
+(deftest test-detect-address-family-fqdn ()
+  "detect-address-family must classify dotted hostnames as :hostname."
+  ;; Regression cases -- these previously returned :ipv4 and caused
+  ;; parse-integer crashes downstream.
+  (assert-eq :hostname (net:detect-address-family "foo.example.com"))
+  (assert-eq :hostname (net:detect-address-family "sparrow.kreisleriana.com"))
+  (assert-eq :hostname (net:detect-address-family "a.b"))
+  ;; Mixed digit/letter octet -- clearly not an IPv4 literal.
+  (assert-eq :hostname (net:detect-address-family "1.2.3.x"))
+  ;; Genuine IPv4 dotted-quad must still be recognized.
+  (assert-eq :ipv4 (net:detect-address-family "1.2.3.4"))
+  (assert-eq :ipv4 (net:detect-address-family "192.168.1.1"))
+  ;; IPv6 short-circuit via colon still works.
+  (assert-eq :ipv6 (net:detect-address-family "::1"))
+  (assert-eq :ipv6 (net:detect-address-family "fe80::1"))
+  ;; A bare label remains a hostname.
+  (assert-eq :hostname (net:detect-address-family "example"))
+  ;; Defensive: nil preserves the legacy :ipv4 fallback used by
+  ;; internal callers.
+  (assert-eq :ipv4 (net:detect-address-family nil)))
+
+(deftest test-make-sockaddr-in-into-rejects-hostname ()
+  "make-sockaddr-in-into must refuse non-numeric IPs with a clean
+   network-error rather than SBCL's junk-in-string parse-integer
+   noise. This is the second line of defense behind
+   detect-address-family."
+  (epsilon.foreign:with-foreign-memory ((addr :char :count 16))
+    (assert-condition (net:network-error)
+                      (address:make-sockaddr-in-into
+                       addr "sparrow.kreisleriana.com" 3104))))
+
+;;; ============================================================================
+;;; Regression: tcp-shutdown accepts listeners (Class B)
+;;; ============================================================================
+;;;
+;;; Before the fix, tcp-shutdown hardcoded (types:tcp-stream-handle stream)
+;;; and had no dispatch for tcp-listener. Any caller that shut a listener
+;;; down -- including the h2-accept-loop cleanup path used by pkg-server --
+;;; crashed with NO-APPLICABLE-METHOD-ERROR on tcp-stream-handle.
+
+(deftest test-tcp-shutdown-accepts-listener ()
+  "tcp-shutdown on a tcp-listener must not signal.  It should wake any
+   blocked tcp-accept and leave the listener in a state tcp-close can
+   still finalize."
+  (let* ((addr (net:make-socket-address "127.0.0.1" 0))
+         (listener (net:tcp-bind addr)))
+    (unwind-protect
+        (progn
+          ;; All three HOW values are accepted.
+          (net:tcp-shutdown listener :how :read)
+          (net:tcp-shutdown listener :how :write)
+          (net:tcp-shutdown listener :how :both)
+          (assert-true (typep listener 'net:tcp-listener)))
+      (ignore-errors (net:tcp-close listener)))))
+
+(deftest test-tcp-bind-shutdown-wakes-accept ()
+  "An accept thread blocked inside tcp-accept must wake (not crash)
+   when another thread calls tcp-shutdown on the listener.  This is
+   the end-to-end Class B path exercised by the h2-accept-loop
+   cleanup in pkg-server."
+  (let* ((addr (net:make-socket-address "127.0.0.1" 0))
+         (listener (net:tcp-bind addr))
+         (accept-done nil)
+         (accept-error nil)
+         (accept-thread nil))
+    (unwind-protect
+        (progn
+          (setf accept-thread
+                (thread:make-thread
+                 (lambda ()
+                   (handler-case
+                       (progn
+                         ;; This should either return NIL or a closed-
+                         ;; socket condition once shutdown fires.
+                         (net:tcp-accept listener :timeout 5.0)
+                         (setf accept-done :returned))
+                     (error (e)
+                       (setf accept-error e)
+                       (setf accept-done :errored))))
+                 :name "shutdown-wake-test"))
+          ;; Let the accept thread block.
           (sleep 0.2)
+          ;; Shutdown must not crash and must unblock the accept.
+          (net:tcp-shutdown listener :how :both)
+          (thread:join-thread accept-thread :timeout 5.0)
+          (assert-true accept-done
+                       "Accept thread did not wake up after tcp-shutdown")
+          ;; Either path is acceptable (returned NIL, or signalled a
+          ;; clean condition). The pre-fix bug manifested as an
+          ;; unhandled NO-APPLICABLE-METHOD-ERROR on tcp-stream-handle,
+          ;; which would leave accept-done unset.
+          (when (eq accept-done :errored)
+            (assert-true (typep accept-error 'error)
+                         "accept-error should be a condition if set")))
+      (ignore-errors (net:tcp-close listener)))))
 
-          ;; Test TCP
-          (handler-case
-              (let ((tcp-client (net:tcp-connect
-                               (net:make-socket-address "127.0.0.1" tcp-port)
-                               :timeout 5.0)))
-                (unwind-protect
-                    (progn
-                      (net:tcp-write-all tcp-client "TCP-Test")
-                      (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8))))
-                        (let ((bytes (net:tcp-read tcp-client buffer :timeout 5.0)))
-                          (when (> bytes 0)
-                            (setf tcp-success
-                                  (string= "TCP-Test"
-                                          (sb-ext:octets-to-string
-                                           (subseq buffer 0 bytes))))))))
-                  (ignore-errors (net:tcp-shutdown tcp-client :how :both))))
-            (error (e)
-              (assert-true nil (format nil "TCP Error: ~A" e))))
+;;; ============================================================================
+;;; Epoll Manager Callback Waiter Tests
+;;; ============================================================================
 
-          ;; Test UDP
-          (let ((udp-client (net:udp-bind (net:make-socket-address "127.0.0.1" 0))))
-            (net:udp-send-to udp-client "UDP-Test"
-                            (net:make-socket-address "127.0.0.1" udp-port))
-
-            (let ((buffer (make-array 1024 :element-type '(unsigned-byte 8)))
-                  (bytes 0))
-              ;; Poll for response
-              (loop repeat 50
-                    do (multiple-value-bind (b a) (net:udp-recv-from udp-client buffer)
-                         (declare (ignore a))
-                         (setf bytes b)
-                         (when (> bytes 0) (return))
-                         (sleep 0.1)))
-
-              (when (> bytes 0)
-                (setf udp-success
-                      (string= "UDP-Test"
-                              (sb-ext:octets-to-string (subseq buffer 0 bytes)))))))
-
-          ;; Wait for threads
-          (sb-thread:join-thread tcp-server-thread :timeout 10.0)
-          (sb-thread:join-thread udp-server-thread :timeout 10.0)
-
-          ;; Check results
-          (assert-true tcp-success "TCP operation failed")
-          (assert-true udp-success "UDP operation failed"))
-
-      ;; Cleanup happens automatically
-      nil)))
+(deftest test-epoll-callback-waiter
+  "register-socket-callback fires when a connected socket becomes readable."
+  (let ((listener (net:tcp-bind (net:make-socket-address "127.0.0.1" 0)))
+        (fired nil)
+        (fired-lock (lock:make-lock "fired")))
+    (unwind-protect
+         (let* ((port (net:socket-address-port
+                       (net:tcp-local-addr listener)))
+                (addr (net:make-socket-address "127.0.0.1" port))
+                (client (net:tcp-connect addr))
+                (server (net:tcp-accept listener)))
+           (unwind-protect
+                (progn
+                  ;; Register callback for read readiness on server fd
+                  (let ((fd (types:tcp-stream-handle server)))
+                    (reactor:register-socket-callback
+                     fd '(:in)
+                     (lambda (event)
+                       (declare (ignore event))
+                       (lock:with-lock (fired-lock)
+                         (setf fired t)))))
+                  ;; Write from client to trigger callback
+                  (let ((buf (make-array 5 :element-type '(unsigned-byte 8)
+                                           :initial-contents '(1 2 3 4 5))))
+                    (net:tcp-write client buf :start 0 :end 5))
+                  ;; Wait briefly for reactor to deliver
+                  (sleep 0.1)
+                  (lock:with-lock (fired-lock)
+                    (assert-true fired)))
+             (ignore-errors (net:tcp-close client))
+             (ignore-errors (net:tcp-close server))))
+      (ignore-errors (net:tcp-close listener)))))

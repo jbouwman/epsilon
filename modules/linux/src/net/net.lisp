@@ -8,11 +8,14 @@
    dns-resolution-error dns-error-hostname
    host-unreachable unreachable-host)
   (:import-from epsilon.net.types
-   socket-address socket-address-ip socket-address-port
+   socket-address socket-address-ip socket-address-port socket-address-family
    tcp-listener tcp-stream udp-socket udp-socket-handle
-   tcp-stream-handle)
+   tcp-stream-handle
+   unix-socket-address unix-socket-address-path
+   unix-socket-stream unix-socket-stream-handle unix-socket-stream-connected-p
+   unix-socket-listener unix-socket-listener-handle unix-socket-listener-path)
   (:import-from epsilon.net.address
-   make-socket-address resolve-address parse-address)
+   make-socket-address resolve-address parse-address detect-address-family ip-literal-p)
   (:import-from epsilon.net.socket-options
    set-socket-option get-socket-option)
   (:import-from epsilon.net.sockets
@@ -22,7 +25,9 @@
    tcp-peer-addr tcp-shutdown tcp-stream-reader tcp-stream-writer
    tcp-stream-byte-reader tcp-stream-byte-writer tcp-connected-p
    udp-bind udp-connect udp-send udp-recv udp-send-to udp-recv-from
-   udp-local-addr udp-poll-send udp-poll-recv)
+   udp-local-addr udp-poll-send udp-poll-recv
+   unix-connect unix-bind unix-accept unix-close unix-socket-io
+   unix-dgram-bind unix-dgram-connect unix-dgram-send unix-dgram-recv unix-dgram-close)
   (:export
    ;; Address types
    socket-address
@@ -76,7 +81,10 @@
    resolve-address
    socket-address-ip
    socket-address-port
+   socket-address-family
    parse-address
+   detect-address-family
+   ip-literal-p
 
    ;; Socket options
    set-socket-option
@@ -93,6 +101,32 @@
    dns-resolution-error
    host-unreachable
 
+   ;; Unix domain socket types
+   unix-socket-address
+   unix-socket-address-path
+   unix-socket-stream
+   unix-socket-stream-handle
+   unix-socket-stream-connected-p
+   unix-socket-listener
+   unix-socket-listener-handle
+   unix-socket-listener-path
+
+   ;; Unix domain socket operations (stream)
+   unix-connect
+   unix-bind
+   unix-accept
+   unix-close
+   unix-socket-io
+
+   ;; Unix domain socket operations (datagram)
+   unix-dgram-socket
+   unix-dgram-socket-handle
+   unix-dgram-socket-path
+   unix-dgram-bind
+   unix-dgram-connect
+   unix-dgram-send
+   unix-dgram-recv
+   unix-dgram-close
+
    ;; Status checks
-   tcp-connected-p)
-  (:enter t))
+   tcp-connected-p))

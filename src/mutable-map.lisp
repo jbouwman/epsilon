@@ -6,7 +6,7 @@
 ;;;;     (mmap:put! m :key "value")
 ;;;;     (mmap:get m :key))
 
-(defpackage epsilon.mutable-map
+(cl:defpackage epsilon.mutable-map
   (:use cl)
   (:nicknames mmap)
   (:shadow get)

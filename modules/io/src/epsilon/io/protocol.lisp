@@ -11,9 +11,8 @@
 
 (defpackage epsilon.io.protocol
   (:use :cl)
-  (:require (epsilon.io.conditions cond)
-            (epsilon.typeclass tc))
-  (:enter t))
+  (:import (epsilon.io.conditions cond)
+            (epsilon.typeclass tc)))
 
 ;;; ============================================================================
 ;;; Reader Protocol

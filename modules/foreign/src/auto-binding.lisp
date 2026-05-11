@@ -6,10 +6,10 @@
 
 (defpackage epsilon.foreign.auto-binding
   (:use cl)
-  (:local-nicknames
-   (lc epsilon.foreign.libclang)
-   (sigs epsilon.foreign.signatures)
-   (ffi epsilon.foreign))
+  (:import
+   (epsilon.foreign.libclang lc)
+   (epsilon.foreign.signatures sigs)
+   (epsilon.foreign ffi))
   (:export
    ;; Main macro
    #:deflib
@@ -40,8 +40,7 @@
    ;; Utilities
    #:list-header-functions
    #:describe-library-api
-   #:binding-decision-matrix)
-  (:enter t))
+   #:binding-decision-matrix))
 
 ;;; ============================================================================
 ;;; Binding Decision Criteria

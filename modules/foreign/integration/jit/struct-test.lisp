@@ -2,9 +2,8 @@
 
 (defpackage :epsilon.foreign.jit.struct.test
   (:use :cl :epsilon.syntax :epsilon.test)
-  (:local-nicknames
-   (:struct :epsilon.foreign.jit.struct))
-  (:enter t))
+  (:import
+   (epsilon.foreign.jit.struct struct)))
 
 ;;; ============================================================================
 ;;; Struct Definition Tests

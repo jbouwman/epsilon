@@ -1,7 +1,7 @@
 (defpackage epsilon.kqueue
   (:use cl)
-  (:local-nicknames
-   (lib epsilon.foreign))
+  (:import
+   (epsilon.foreign lib))
   (:export
    ;; Core kqueue operations
    kqueue
@@ -52,8 +52,7 @@
 
    ;; timespec-struct accessors
    timespec-struct-tv-sec
-   timespec-struct-tv-nsec)
-  (:enter t))
+   timespec-struct-tv-nsec))
 
 ;;; BSD kqueue constants (macOS/FreeBSD)
 

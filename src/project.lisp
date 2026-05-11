@@ -1,11 +1,11 @@
 ;;;; Project Manifest Support
 ;;;;
 ;;;; This module provides explicit project manifests for Epsilon via
-;;;; project.plist files. A project.plist declares the project's own
+;;;; project.sexp files. A project.sexp declares the project's own
 ;;;; modules and its dependencies, replacing the implicit workspace
 ;;;; discovery system.
 ;;;;
-;;;; When project.plist is found, workspace discovery does NOT run.
+;;;; When project.sexp is found, workspace discovery does NOT run.
 ;;;; This avoids confusing double-registration.
 ;;;;
 ;;;; Format:
@@ -15,102 +15,120 @@
 ;;;;    :modules ("path/to/module1" "path/to/module2")
 ;;;;    :dependencies (("epsilon" :version ">=0.14.0"))
 ;;;;    :registries ("https://pkg.epsilon.dev"))
-
-(defpackage epsilon.project
+(cl:defpackage epsilon.project
   (:use cl)
-  (:local-nicknames
-   (loader epsilon.loader)
-   (discovery epsilon.file)
-   (path epsilon.path)
-   (fs epsilon.file)
-   (env epsilon.sys.env)
-   (log epsilon.log))
-  (:export
-   #:*current-project*
-   #:find-project-file
-   #:load-project
-   #:validate-project-metadata
-   #:project-name
-   #:project-version
-   #:project-description
-   #:project-modules
-   #:project-dependencies
-   #:project-registries
-   #:project-root))
+  (:local-nicknames (loader epsilon.loader)
+                    (discovery epsilon.file)
+                    (path epsilon.path)
+                    (fs epsilon.file)
+                    (env epsilon.sys.env)
+                    (log epsilon.log))
+  (:export #:*current-project*
+           #:find-project-file
+           #:load-project
+           #:validate-project-metadata
+           #:project-name
+           #:project-version
+           #:project-description
+           #:project-modules
+           #:project-dependencies
+           #:project-registries
+           #:project-root))
 
 (in-package epsilon.project)
 
 ;;; Project class
+(defclass project
+  ()
+  ((name :initarg :name :reader project-name :type string) (version :initarg
+                                                                    :version
+                                                                    :reader
+                                                                    project-version
+                                                                    :initform
+                                                                    nil)
+                                                           (description :initarg
+                                                                        :description
+                                                                        :reader
+                                                                        project-description
+                                                                        :initform
+                                                                        nil)
+                                                           (root :initarg
+                                                                 :root
+                                                                 :reader
+                                                                 project-root
+                                                                 :type
+                                                                 string
+                                                                 :documentation
+                                                                 "Absolute path to directory containing project.sexp")
+                                                           (modules :initarg
+                                                                    :modules
+                                                                    :reader
+                                                                    project-modules
+                                                                    :initform
+                                                                    nil
+                                                                    :documentation
+                                                                    "List of relative module path strings")
+                                                           (dependencies :initarg
+                                                                         :dependencies
+                                                                         :reader
+                                                                         project-dependencies
+                                                                         :initform
+                                                                         nil
+                                                                         :documentation
+                                                                         "List of dependency specs")
+                                                           (registries :initarg
+                                                                       :registries
+                                                                       :reader
+                                                                       project-registries
+                                                                       :initform
+                                                                       nil
+                                                                       :documentation
+                                                                       "List of registry URL strings")
+                                                           (metadata :initarg
+                                                                     :metadata
+                                                                     :reader
+                                                                     project-metadata
+                                                                     :initform
+                                                                     nil
+                                                                     :documentation
+                                                                     "Raw plist from project.sexp")))
 
-(defclass project ()
-  ((name :initarg :name
-         :reader project-name
-         :type string)
-   (version :initarg :version
-            :reader project-version
-            :initform nil)
-   (description :initarg :description
-                :reader project-description
-                :initform nil)
-   (root :initarg :root
-         :reader project-root
-         :type string
-         :documentation "Absolute path to directory containing project.plist")
-   (modules :initarg :modules
-            :reader project-modules
-            :initform nil
-            :documentation "List of relative module path strings")
-   (dependencies :initarg :dependencies
-                 :reader project-dependencies
-                 :initform nil
-                 :documentation "List of dependency specs")
-   (registries :initarg :registries
-               :reader project-registries
-               :initform nil
-               :documentation "List of registry URL strings")
-   (metadata :initarg :metadata
-             :reader project-metadata
-             :initform nil
-             :documentation "Raw plist from project.plist")))
-
-(defvar *current-project* nil
+(defvar *current-project*
+  nil
   "The currently loaded project, or NIL if none.")
 
 ;;; Project file discovery
-
 (defun find-project-file (start-dir)
-  "Walk up from START-DIR looking for project.plist.
-   Returns the directory path (string) containing project.plist, or NIL."
-  (let ((current (handler-case
-                     (truename (discovery:normalize-directory start-dir))
-                   (error () nil)))
+  "Walk up from START-DIR looking for project.sexp.
+   Returns the directory path (string) containing project.sexp, or NIL."
+  (let ((current (handler-case (truename (discovery:normalize-directory start-dir))
+                   (error
+                    ()
+                    nil)))
         (depth 0)
         (depth-limit 10))
     (when current
-      (loop while (and current
-                       (< depth depth-limit)
-                       (not (discovery:at-root-p current)))
-            do (let ((project-file (merge-pathnames "project.plist" current)))
-                 (when (probe-file project-file)
-                   (return-from find-project-file (namestring current)))
-                 (when (discovery:at-home-p current)
-                   (return nil))
-                 (setf current (discovery:parent-directory current))
-                 (incf depth))))
+      (loop while (and current (< depth depth-limit) (not (discovery:at-root-p current)))
+            do (let ((project-file (merge-pathnames "project.sexp" current)))
+              (when (probe-file project-file)
+                (return-from find-project-file (namestring current)))
+              (when (discovery:at-home-p current)
+                (return nil))
+              (setf current (discovery:parent-directory current))
+              (incf depth))))
     nil))
 
 ;;; Validation
-
 (defvar *valid-project-keys*
   '(:name :version :description :scan :modules :dependencies :registries))
 
 (defun validate-project-metadata (plist filepath)
-  "Check that PLIST is a valid project.plist.
+  "Check that PLIST is a valid project.sexp.
    Returns NIL if valid, or a list of error strings if invalid."
   (let ((errors '()))
     ;; Must be a plist
     (unless (and (listp plist) (evenp (length plist)))
-      (push (format nil "Invalid project.plist format in ~A: must be a property list" filepath)
+      (push (format nil "Invalid project.sexp format in ~A: must be a property list" filepath)
             errors)
       (return-from validate-project-metadata (nreverse errors)))
     ;; :name is required and must be a string
@@ -160,25 +178,25 @@
         (when (listp registries)
           (dolist (r registries)
             (unless (stringp r)
-              (push (format nil "Invalid :registries entry in ~A: must be a string" filepath) errors))))))
+              (push (format nil "Invalid :registries entry in ~A: must be a string" filepath)
+                    errors))))))
     ;; Reject unknown keys
     (loop for key in plist by #'cddr
           unless (member key *valid-project-keys*)
-            do (push (format nil "Unknown key ~A in ~A" key filepath) errors))
-    (when errors (nreverse errors))))
+          do (push (format nil "Unknown key ~A in ~A" key filepath) errors))
+    (when errors
+      (nreverse errors))))
 
 ;;; Version checking
-
 (defun parse-version (version-string)
   "Parse a version string like \"0.14.0\" into a list of integers (0 14 0)."
   (let ((parts '())
         (start 0))
     (loop for i from 0 to (length version-string)
-          do (when (or (= i (length version-string))
-                       (char= (char version-string i) #\.))
-               (let ((part (parse-integer (subseq version-string start i) :junk-allowed t)))
-                 (push (or part 0) parts))
-               (setf start (1+ i))))
+          do (when (or (= i (length version-string)) (char= (char version-string i) #\.))
+            (let ((part (parse-integer (subseq version-string start i) :junk-allowed t)))
+              (push (or part 0) parts))
+            (setf start (1+ i))))
     (nreverse parts)))
 
 (defun version-satisfies-p (actual-version constraint)
@@ -191,8 +209,7 @@
     (dolist (candidate operators)
       (when (and (>= (length constraint) (length candidate))
                  (string= constraint candidate :end1 (length candidate)))
-        (setf op candidate
-              version-part (subseq constraint (length candidate)))
+        (setf op candidate version-part (subseq constraint (length candidate)))
         (return)))
     (unless (and op version-part (> (length version-part) 0))
       (return-from version-satisfies-p nil))
@@ -201,19 +218,30 @@
       ;; Compare lexicographically by version components
       (let ((cmp (loop for a in actual
                        for r in required
-                       when (< a r) return -1
-                       when (> a r) return 1
+                       when (< a r)
+                       return -1
+                       when (> a r)
+                       return 1
                        finally (return (cond
-                                         ((< (length actual) (length required)) -1)
-                                         ((> (length actual) (length required)) 1)
-                                         (t 0))))))
+                                         ((< (length actual) (length required))
+                                          -1)
+                                         ((> (length actual) (length required))
+                                          1)
+                                         (t
+                                          0))))))
         (cond
-          ((string= op ">=") (>= cmp 0))
-          ((string= op "<=") (<= cmp 0))
-          ((string= op ">")  (> cmp 0))
-          ((string= op "<")  (< cmp 0))
-          ((string= op "=")  (= cmp 0))
-          (t nil))))))
+          ((string= op ">=")
+           (>= cmp 0))
+          ((string= op "<=")
+           (<= cmp 0))
+          ((string= op ">")
+           (> cmp 0))
+          ((string= op "<")
+           (< cmp 0))
+          ((string= op "=")
+           (= cmp 0))
+          (t
+           nil))))))
 
 (defun check-runtime-version (dep-spec)
   "Check that the runtime version satisfies a dependency spec.
@@ -223,37 +251,42 @@
     (when constraint
       (let ((actual (env:version)))
         (unless (version-satisfies-p actual constraint)
-          (error "Runtime version ~A does not satisfy ~A ~A"
-                 actual (first dep-spec) constraint))))))
+          (error "Runtime version ~A does not satisfy ~A ~A" actual (first dep-spec) constraint))))))
 
 ;;; Project loading
-
-(defun load-project (environment project-dir)
-  "Load a project manifest from PROJECT-DIR into ENVIRONMENT.
-   1. Read and validate project.plist
+(defun load-project (project-dir)
+  "Load a project manifest from PROJECT-DIR.
+   1. Read and validate project.sexp
    2. Check runtime version constraint
    3. Register all declared modules
    4. Store project in environment config
    5. Set *current-project*"
   (let* ((project-dir (discovery:normalize-directory project-dir))
-         (project-file (namestring (merge-pathnames "project.plist" project-dir)))
-         (plist (handler-case
-                    (with-open-file (stream project-file)
-                      (read stream))
-                  (error (e)
-                    (error "Failed to read project.plist at ~A: ~A" project-file e))))
+         (project-file (namestring (merge-pathnames "project.sexp" project-dir)))
+         (plist (handler-case (with-open-file (stream project-file) (read stream))
+                  (error
+                   (e)
+                   (error "Failed to read project.sexp at ~A: ~A" project-file e))))
          (validation-errors (validate-project-metadata plist project-file)))
     (when validation-errors
-      (error "Invalid project.plist at ~A:~%~{  ~A~%~}" project-file validation-errors))
+      (error "Invalid project.sexp at ~A:~%~{  ~A~%~}" project-file validation-errors))
     (let ((proj (make-instance 'project
-                               :name (getf plist :name)
-                               :version (getf plist :version)
-                               :description (getf plist :description)
-                               :root (namestring (truename project-dir))
-                               :modules (getf plist :modules)
-                               :dependencies (getf plist :dependencies)
-                               :registries (getf plist :registries)
-                               :metadata plist)))
+                               :name
+                               (getf plist :name)
+                               :version
+                               (getf plist :version)
+                               :description
+                               (getf plist :description)
+                               :root
+                               (namestring (truename project-dir))
+                               :modules
+                               (getf plist :modules)
+                               :dependencies
+                               (getf plist :dependencies)
+                               :registries
+                               (getf plist :registries)
+                               :metadata
+                               plist)))
       ;; Check runtime version constraint for "epsilon" dependency
       (dolist (dep (project-dependencies proj))
         (when (string-equal (first dep) "epsilon")
@@ -261,24 +294,26 @@
       ;; Scan directories first
       (let ((root (project-root proj)))
         (dolist (rel-dir (getf plist :scan))
-          (let ((abs-dir (path:path-string
-                          (path:path-join root rel-dir))))
+          (let ((abs-dir (path:path-string (path:path-join root rel-dir))))
             (if (probe-file abs-dir)
-                (loader:scan-module-directory environment abs-dir)
-                (log:warn "Project scan directory not found: ~A" abs-dir)))))
+              (loader:scan-module-directory abs-dir)
+              (log:warn "Project scan directory not found: ~A" abs-dir)))))
       ;; Register each explicit module path
       (let ((root (project-root proj))
             (registered 0))
         (dolist (rel-path (project-modules proj))
-          (let ((abs-path (path:path-string
-                           (path:path-join root rel-path))))
+          (let ((abs-path (path:path-string (path:path-join root rel-path))))
             (if (probe-file abs-path)
-                (progn
-                  (loader:register-module environment abs-path)
-                  (incf registered))
-                (log:warn "Project module path not found: ~A" abs-path)))))
+              (progn (loader:register-module abs-path) (incf registered))
+              (log:warn "Project module path not found: ~A" abs-path)))))
+      ;; Scan installed modules under ~/.epsilon/modules so dependencies
+      ;; fetched by `epsilon install` are discoverable.
+      (let ((installed-root (namestring (merge-pathnames ".epsilon/modules/"
+                                                         (user-homedir-pathname)))))
+        (when (probe-file installed-root)
+          (loader:scan-module-directory installed-root)))
       ;; Store in environment config
-      (let ((config (loader:environment-config environment)))
+      (let ((config (loader:environment-config loader:*environment*)))
         (epsilon.map:assoc! config :project proj))
       ;; Set global
       (setf *current-project* proj)

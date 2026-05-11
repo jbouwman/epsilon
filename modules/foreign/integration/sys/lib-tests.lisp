@@ -3,9 +3,8 @@
    cl
    epsilon.syntax
    epsilon.test)
-  (:local-nicknames
-   (lib epsilon.foreign))
-  (:enter t))
+  (:import
+   (epsilon.foreign lib)))
 
 ;; Basic FFI tests using libc functions
 

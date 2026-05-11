@@ -3,7 +3,7 @@
 ;;;; Provides sum types (tagged unions) with constructors, predicates,
 ;;;; and accessors. Integrates with pattern matching.
 
-(defpackage :epsilon.data
+(cl:defpackage :epsilon.data
   (:use :cl)
   (:local-nicknames
    (:map :epsilon.map)

@@ -1,10 +1,9 @@
 (defpackage epsilon.match-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.match m)
+  (:import (epsilon.match m)
             (epsilon.option opt)
             (epsilon.result res)
-            (epsilon.map map))
-  (:enter t))
+            (epsilon.map map)))
 
 ;;; Basic pattern matching tests
 

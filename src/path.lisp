@@ -2,7 +2,7 @@
 ;;;; with handling of Windows drive letters, Unix absolute paths, and
 ;;;; platform-specific path separators. Includes filesystem queries.
 
-(defpackage :epsilon.path
+(cl:defpackage :epsilon.path
   (:use :cl)
   (:export
    ;; Core path type

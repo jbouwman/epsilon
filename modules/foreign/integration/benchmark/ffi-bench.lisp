@@ -2,9 +2,8 @@
   (:use
    cl
    epsilon.syntax)
-  (:local-nicknames
-   (lib epsilon.foreign))
-  (:enter t))
+  (:import
+   (epsilon.foreign lib)))
 
 ;;;; FFI Performance Benchmarks
 

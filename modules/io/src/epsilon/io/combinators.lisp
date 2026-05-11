@@ -12,10 +12,9 @@
 
 (defpackage epsilon.io.combinators
   (:use :cl)
-  (:require (epsilon.io.protocol proto)
+  (:import (epsilon.io.protocol proto)
             (epsilon.io.conditions cond)
-            (epsilon.typeclass tc))
-  (:enter t))
+            (epsilon.typeclass tc)))
 
 (defun check-open (stream operation)
   "Signal closed-error if STREAM is not open."

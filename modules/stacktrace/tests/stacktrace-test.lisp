@@ -2,9 +2,8 @@
 
 (defpackage epsilon.stacktrace-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.record record)
-            (epsilon.map map))
-  (:enter t))
+  (:import (epsilon.record record)
+            (epsilon.map map)))
 
 (deftest basic-capture
     (let ((trace (handler-case
@@ -22,7 +21,7 @@
 
 (deftest compact-format
     (let ((trace (handler-case
-                   (let ((zero (- 1 1))) (/ 1 zero))
+                   (error "Compact format test")
                  (error (c)
                    (epsilon.stacktrace:capture-stack-trace c)))))
     (let ((output (epsilon.stacktrace:format-stack-trace trace nil

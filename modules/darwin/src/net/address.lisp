@@ -2,13 +2,14 @@
 
 (defpackage epsilon.net.address
   (:use cl)
-  (:local-nicknames
-   (lib epsilon.foreign)
-   (log epsilon.log)
-   (str epsilon.string)
-   (seq epsilon.sequence))
+  (:import
+   (epsilon.foreign lib)
+   (epsilon.log log)
+   (epsilon.string str)
+   (epsilon.sequence seq))
   (:import-from epsilon.net.constants
-   +af-inet+ +af-inet6+ +sock-stream+ +sockaddr-in6-size+ +ipv6-addr-size+)
+   +af-inet+ +af-inet6+ +af-unix+ +sock-stream+ +sockaddr-in6-size+ +ipv6-addr-size+
+   +sockaddr-un-path-max+ +sockaddr-un-size+)
   (:import-from epsilon.net.core
    socket-address socket-address-ip socket-address-port socket-address-family
    ipv4-address ipv6-address ipv6-address-words)
@@ -35,12 +36,15 @@
    detect-address-family
    detect-ip-address
    dns-resolve-hostname
+   ip-literal-p
 
    ;; Unified address handling
    fill-sockaddr-for-address
    sockaddr-size-for-family
-   socket-family-constant)
-  (:enter t))
+   socket-family-constant
+
+   ;; Unix socket address
+   make-sockaddr-un-into))
 
 ;;; ============================================================================
 ;;; Address Utilities
@@ -247,15 +251,27 @@
   (cond
     ((position #\. host) :ipv4)    ; Contains dots - likely IPv4
     ((position #\: host) :ipv6)    ; Contains colons - likely IPv6
-    (t :hostname)))                ; Otherwise hostname
+    (t :hostname)))
+
+(defun ip-literal-p (string)
+  "Return T if STRING is an IP address literal (IPv4 or IPv6), not a hostname."
+  (or (every (lambda (c) (or (digit-char-p c) (char= c #\.))) string)
+      (position #\: string)))                ; Otherwise hostname
 
 (defun make-socket-address (host port)
-  "Create a socket address from host and port"
-  (let ((family (detect-address-family host)))
-    (make-instance 'socket-address
-                   :ip host
-                   :port port
-                   :family (if (eq family :hostname) :ipv4 family))))
+  "Create a socket address from host and port.
+   If HOST is a hostname (not an IP literal), resolves it via DNS."
+  (if (ip-literal-p host)
+      (let ((family (detect-address-family host)))
+        (make-instance 'socket-address
+                       :ip host
+                       :port port
+                       :family family))
+      (let ((addrs (dns-resolve-hostname host port)))
+        (if addrs
+            (first addrs)
+            (error 'network-error
+                   :message (format nil "Failed to resolve hostname: ~A" host))))))
 
 (defun resolve-address (address-spec &optional port)
   "Resolve an address specification to socket addresses.
@@ -392,3 +408,29 @@
       (:ipv6
        (make-sockaddr-in6-into addr ip port)
        +sockaddr-in6-size+))))
+
+;;; ============================================================================
+;;; Unix Domain Socket Address
+;;; ============================================================================
+
+(defun make-sockaddr-un-into (addr path)
+  "Fill sockaddr_un structure (BSD layout) into provided buffer.
+   BSD/Darwin: sun_len (1 byte) + sun_family (1 byte) at offset 0-1, sun_path at offset 2.
+   Returns the actual address length for bind/connect."
+  (let* ((path-bytes (sb-ext:string-to-octets path :external-format :utf-8))
+         (path-len (length path-bytes))
+         (addr-len (+ 2 path-len)))
+    (when (>= path-len +sockaddr-un-path-max+)
+      (error "Unix socket path too long (~D bytes, max ~D)"
+             path-len (1- +sockaddr-un-path-max+)))
+    ;; Zero the entire buffer
+    (dotimes (i +sockaddr-un-size+)
+      (setf (sb-sys:sap-ref-8 addr i) 0))
+    ;; sun_len
+    (setf (sb-sys:sap-ref-8 addr 0) addr-len)
+    ;; sun_family
+    (setf (sb-sys:sap-ref-8 addr 1) +af-unix+)
+    ;; sun_path at offset 2
+    (dotimes (i path-len)
+      (setf (sb-sys:sap-ref-8 addr (+ 2 i)) (aref path-bytes i)))
+    addr-len))

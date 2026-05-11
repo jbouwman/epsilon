@@ -7,8 +7,8 @@
 
 (defpackage epsilon.foreign.jit.variadic
   (:use cl)
-  (:local-nicknames
-   (jit epsilon.foreign.jit))
+  (:import
+   (epsilon.foreign.jit jit))
   (:export
    ;; Core API
    #:make-variadic-caller
@@ -34,8 +34,7 @@
 
    ;; Utilities
    #:sprintf-to-string
-   #:with-c-string-buffer)
-  (:enter t))
+   #:with-c-string-buffer))
 
 ;;; ============================================================================
 ;;; Type Inference for Variadic Arguments

@@ -7,10 +7,9 @@
 
 (defpackage epsilon.digest.blake3
   (:use :cl)
-  (:require (epsilon.digest.protocol proto)
+  (:import (epsilon.digest.protocol proto)
             (epsilon.typeclass tc)
-            (epsilon.ssl.primitives prim))
-  (:enter t))
+            (epsilon.crypto.primitives prim)))
 
 ;;; ============================================================================
 ;;; Constants

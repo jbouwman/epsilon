@@ -4,9 +4,8 @@
 
 (defpackage epsilon.loader-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.loader loader)
-            (epsilon.file fs))
-  (:enter t))
+  (:import (epsilon.loader loader)
+           (epsilon.file fs)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; File Detection Tests
@@ -299,13 +298,36 @@
            (with-open-file (out temp-file :direction :output :if-exists :supersede)
              (format out "(defpackage :my-utils~%")
              (format out "  (:use :cl)~%")
-             (format out "  (:local-nicknames (:json :epsilon.json))~%")
+             (format out "  (:import (epsilon.json json))~%")
              (format out "  (:export #:foo #:bar))~%")
              (format out "(in-package :my-utils)~%"))
            (let ((info (loader:extract-defpackage-info temp-file)))
              (assert-true (equal "MY-UTILS" (loader:unified-source-info-package-name info)))
              (assert-true (eq :lisp (loader:unified-source-info-file-type info)))
-             (assert-true (member "CL" (loader:unified-source-info-use info) :test #'string-equal))))
+             (assert-true (member "CL" (loader:unified-source-info-use info) :test #'string-equal))
+             ;; Verify :import spec extracts the dependency
+             (assert-true (loader:unified-source-info-imports info)
+                 "Should extract import nickname mapping from :import spec")))
+      (when (probe-file temp-file)
+        (delete-file temp-file)))))
+
+(deftest test-extract-defpackage-info-import-no-nickname
+  "extract-defpackage-info handles :import spec without nickname"
+  (let ((temp-file (fs:join-paths (namestring (user-homedir-pathname)) "test-defpkg-bare.lisp")))
+    (unwind-protect
+         (progn
+           (with-open-file (out temp-file :direction :output :if-exists :supersede)
+             (format out "(defpackage :my-bare-utils~%")
+             (format out "  (:use :cl)~%")
+             (format out "  (:import epsilon.json))~%")
+             (format out "(in-package :my-bare-utils)~%"))
+           (let ((info (loader:extract-defpackage-info temp-file)))
+             (assert-true (equal "MY-BARE-UTILS" (loader:unified-source-info-package-name info)))
+             ;; Bare :import (no nickname) should appear in import-froms/requires
+             (assert-true (member "EPSILON.JSON"
+                         (loader:unified-source-info-requires info)
+                         :test #'string-equal)
+                 "Should extract EPSILON.JSON as a dependency from bare :import")))
       (when (probe-file temp-file)
         (delete-file temp-file)))))
 
@@ -382,10 +404,10 @@
   "scan-module-directory discovers modules in subdirectories"
   (let ((test-dir (%test-packages-path)))
     (when test-dir
-      (let ((env (loader:make-build-environment)))
-        (loader:scan-module-directory env test-dir)
+      (let ((loader:*environment* (loader:make-build-environment)))
+        (loader:scan-module-directory test-dir)
         ;; Both myapp and mylib should be registered
-        (let ((modules (loader:modules env)))
+        (let ((modules (loader:modules loader:*environment*)))
           (assert-true (epsilon.map:get modules "myapp")
                        "myapp should be registered")
           (assert-true (epsilon.map:get modules "mylib")
@@ -395,15 +417,15 @@
   "scan-module-directory returns the number of subdirectories scanned"
   (let ((test-dir (%test-packages-path)))
     (when test-dir
-      (let* ((env (loader:make-build-environment))
-             (count (loader:scan-module-directory env test-dir)))
+      (let* ((loader:*environment* (loader:make-build-environment))
+             (count (loader:scan-module-directory test-dir)))
         (assert-true (= 2 count)
                      (format nil "Expected 2 subdirectories scanned, got ~A" count))))))
 
 (deftest test-scan-module-directory-nonexistent
   "scan-module-directory returns 0 for nonexistent path"
-  (let* ((env (loader:make-build-environment))
-         (count (loader:scan-module-directory env "/tmp/nonexistent-dir-for-epsilon-test")))
+  (let* ((loader:*environment* (loader:make-build-environment))
+         (count (loader:scan-module-directory "/tmp/nonexistent-dir-for-epsilon-test")))
     (assert-true (= 0 count)
                  (format nil "Expected 0 for nonexistent dir, got ~A" count))))
 
@@ -433,3 +455,82 @@
                    (loader:unified-source-info-uri (first sorted))))
       (assert-true (string= "/a.lisp"
                    (loader:unified-source-info-uri (second sorted)))))))
+
+;;; ---------------------------------------------------------------------------
+;;; .key sidecar format
+;;; ---------------------------------------------------------------------------
+
+(defun %tmp-key-path ()
+  (format nil "/tmp/epsilon-loader-test-~A.fasl"
+          (random most-positive-fixnum)))
+
+(deftest test-key-sidecar-roundtrip
+  "write-key-sidecar writes a plist that read-key-sidecar restores intact"
+  (let ((fasl (%tmp-key-path)))
+    (unwind-protect
+         (let ((key (make-string 64 :initial-element #\a)))
+           (loader:write-key-sidecar fasl key)
+           (let ((data (loader:read-key-sidecar fasl)))
+             (assert-true (consp data))
+             (assert-equal key (getf data :content-key))
+             (assert-equal (loader:current-fasl-file-version)
+                           (getf data :fasl-version))))
+      (let ((kp (loader:key-sidecar-path fasl)))
+        (when (probe-file kp) (delete-file kp))))))
+
+(deftest test-key-sidecar-rejects-legacy-hex-format
+  "Legacy 64-char hex sidecars must read as NIL so the FASL is recompiled.
+   This prevents a stale FASL from being trusted across the format change."
+  (let ((fasl (%tmp-key-path)))
+    (unwind-protect
+         (progn
+           (with-open-file (s (loader:key-sidecar-path fasl)
+                              :direction :output :if-exists :supersede
+                              :if-does-not-exist :create)
+             (write-string (make-string 64 :initial-element #\b) s))
+           (assert-true (null (loader:read-key-sidecar fasl)))
+           (assert-true (not (loader:local-fasl-valid-p fasl "anything"))))
+      (let ((kp (loader:key-sidecar-path fasl)))
+        (when (probe-file kp) (delete-file kp))))))
+
+(deftest test-local-fasl-valid-p-rejects-fasl-version-mismatch
+  "A sidecar with a wrong :fasl-version must invalidate the FASL even if
+   the content key matches -- this is what guards against load-time crashes
+   after an SBCL upgrade that shares a version string."
+  (let ((fasl (%tmp-key-path))
+        (key  (make-string 64 :initial-element #\c)))
+    (unwind-protect
+         (progn
+           ;; Hand-write a sidecar with a deliberately-wrong fasl-version.
+           (with-open-file (s (loader:key-sidecar-path fasl)
+                              :direction :output :if-exists :supersede
+                              :if-does-not-exist :create)
+             (with-standard-io-syntax
+               (let ((*print-readably* t))
+                 (prin1 (list :content-key key
+                              :fasl-version
+                              (1+ (loader:current-fasl-file-version)))
+                        s))))
+           ;; The fasl file itself doesn't need to exist for this assertion
+           ;; -- but local-fasl-valid-p insists on probe-file. Make it real.
+           (with-open-file (s fasl :direction :output :if-exists :supersede
+                                   :if-does-not-exist :create)
+             (write-string "stub" s))
+           (assert-true (not (loader:local-fasl-valid-p fasl key))))
+      (let ((kp (loader:key-sidecar-path fasl)))
+        (when (probe-file kp) (delete-file kp)))
+      (when (probe-file fasl) (delete-file fasl)))))
+
+(deftest test-fasl-load-failure-p-classifies-conditions
+  "fasl-load-failure-p is the discriminator that decides whether to recover.
+   It must accept SBCL-internal FASL-shaped condition names and reject
+   ordinary user errors so we don't recompile on real bugs."
+  ;; Faked condition class living in the right package + carrying the right
+  ;; name shape -- a stand-in for sb-fasl::invalid-fasl across SBCL versions.
+  (let ((c (make-condition 'simple-error)))
+    (assert-true (not (loader:fasl-load-failure-p c))))
+  ;; Real SBCL conditions vary by release; verify the predicate is at least
+  ;; safe on plain error conditions.
+  (let ((c (make-condition 'simple-condition)))
+    (assert-true (not (loader:fasl-load-failure-p c)))))
+

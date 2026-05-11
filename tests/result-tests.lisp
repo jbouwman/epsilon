@@ -1,8 +1,7 @@
 (defpackage epsilon.result-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.result res)
-            (epsilon.option opt))
-  (:enter t))
+  (:import (epsilon.result res)
+            (epsilon.option opt)))
 
 ;;; Constructor tests
 

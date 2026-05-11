@@ -8,8 +8,8 @@
 
 (defpackage epsilon.foreign.jit.array
   (:use cl)
-  (:local-nicknames
-   (jit epsilon.foreign.jit))
+  (:import
+   (epsilon.foreign.jit jit))
   (:export
    ;; Array pinning
    #:with-pinned-array
@@ -29,8 +29,7 @@
    ;; Utilities
    #:copy-to-c-array
    #:copy-from-c-array
-   #:zero-c-array)
-  (:enter t))
+   #:zero-c-array))
 
 ;;; ============================================================================
 ;;; Type Mapping

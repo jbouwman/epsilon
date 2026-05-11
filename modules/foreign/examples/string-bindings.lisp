@@ -5,10 +5,9 @@
 
 (defpackage :epsilon.foreign.examples.string-bindings
   (:use :cl)
-  (:local-nicknames
-   (:ffi :epsilon.foreign)
-   (:bir :epsilon.foreign.binding-ir))
-   (:enter t))
+  (:import
+   (epsilon.foreign ffi)
+   (epsilon.foreign.binding-ir bir)))
 
 ;;; ============================================================================
 ;;; Option 1: Manual Bindings (Simple Cases)

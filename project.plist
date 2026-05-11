@@ -1,3 +1,0 @@
-(:name "epsilon"
-       :description "Epsilon Module System"
-       :scan ("modules"))

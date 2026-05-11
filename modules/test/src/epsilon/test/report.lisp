@@ -1,11 +1,10 @@
 (defpackage epsilon.test.report
   (:use :cl)
-  (:require (epsilon.test.suite suite)
+  (:import (epsilon.test.suite suite)
             (epsilon.map map)
             (epsilon.sequence seq)
             (epsilon.string str)
-            (epsilon.stacktrace strace))
-  (:enter t))
+            (epsilon.stacktrace strace)))
 
 ;;; Import helper from suite package
 (defun symbol-package-name (symbol)

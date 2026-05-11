@@ -4,9 +4,9 @@
 
 (defpackage epsilon.net.udp
   (:use cl)
-  (:local-nicknames
-   (sockets epsilon.net.sockets)
-   (types epsilon.net.types))
+  (:import
+   (epsilon.net.sockets sockets)
+   (epsilon.net.types types))
   ;; Re-export all UDP functions directly from sockets module
   (:import-from epsilon.net.sockets
    #:udp-bind
@@ -31,8 +31,7 @@
    #:udp-poll-recv
 
    ;; Macros
-   #:with-udp-socket)
-  (:enter t))
+   #:with-udp-socket))
 
 ;;; ============================================================================
 ;;; Convenience Macros

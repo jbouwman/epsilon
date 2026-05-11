@@ -6,13 +6,12 @@
 
 (defpackage epsilon.library
   (:use :cl :epsilon.syntax)
-  (:require (epsilon.map map)
+  (:import (epsilon.map map)
             (epsilon.sequence seq)
             (epsilon.string str)
-            (epsilon.path path)
-            (epsilon.file fs)
-            (epsilon.log log))
-  (:enter t))
+            (epsilon.fs path)
+            (epsilon.fs fs)
+            (epsilon.log log)))
 
 ;;; Platform Detection
 
@@ -37,10 +36,14 @@
 (defun platform-library-name (base-name &optional version)
   "Convert base library name to platform-specific format"
   ;; Check if base-name already has platform extension
+  ;; Also detect versioned shared library names like "libc.so.6"
   (let* ((extension (platform-library-extension))
-         (has-extension (and (>= (length base-name) (length extension))
-                           (string= (subseq base-name (- (length base-name) (length extension)))
-                                  extension))))
+         (has-extension (or (and (>= (length base-name) (length extension))
+                                (string= (subseq base-name (- (length base-name) (length extension)))
+                                         extension))
+                           ;; Check for versioned .so names (e.g. "libc.so.6", "libm.so.6")
+                           #+linux
+                           (search ".so." base-name))))
     ;; If already has extension, return as-is
     (when has-extension
       (return-from platform-library-name base-name))
@@ -291,11 +294,37 @@
         (find-library-tier-4 info)
         (error "Library ~A not found" name))))
 
+(defvar *availability-cache* (map:make-map)
+  "Memoizes successful library-available-p probes by name.
+
+   This is load-bearing: the SBCL `load-shared-object` call inside
+   library-available-p has the side effect of re-running symbol
+   resolution against any libraries with overlapping exports. With
+   FFmpeg's libavformat / libavcodec / libavutil / libswscale all
+   exporting interlocking symbols, repeatedly probing them in a tight
+   loop (e.g. once per `demux:open-video` call) deterministically
+   corrupts SBCL's dispatch state on x86_64 -- a foreign call lands
+   on a wild PC inside libavformat at offset 0x52e10 (mid-instruction
+   in apng_write_header), root-caused at IMPL-406's decoder-leak
+   investigation 2026-05-05. Caching the boolean answer per library
+   name makes the second-and-onward probes hash-table lookups, which
+   is both faster and side-effect-free.")
+
 (defun library-available-p (name)
   "Check if a library is available.
    Checks if the library file can be found on disk or is already loaded.
    Does NOT unload after probing -- unloading unmaps code pages that
-   cached function pointers reference, causing SIGSEGV on next FFI call."
+   cached function pointers reference, causing SIGSEGV on next FFI call.
+   Memoized: subsequent calls return the cached answer without re-
+   running the probe (see `*availability-cache*` for why)."
+  (let ((cached (map:get *availability-cache* name :unset)))
+    (if (not (eq cached :unset))
+        cached
+        (let ((result (%library-available-p-uncached name)))
+          (setf *availability-cache* (map:assoc *availability-cache* name result))
+          result))))
+
+(defun %library-available-p-uncached (name)
   (handler-case
       (let ((path (find-library name)))
         (cond
@@ -303,7 +332,7 @@
           ((and path (or (char= (char path 0) #\/)
                         #+windows (and (>= (length path) 3)
                                       (char= (char path 1) #\:))))
-           (probe-file path))
+           (and (probe-file path) t))
           ;; If it's just a library name, try to load it and KEEP it loaded.
           ;; The previous implementation called unload-shared-object after
           ;; loading, which unmapped the library's code pages. Any cached
@@ -317,6 +346,10 @@
              (error () nil)))
           (t nil)))
     (error () nil)))
+
+(defun clear-availability-cache ()
+  "Forget memoized probe results. Useful for tests."
+  (setf *availability-cache* (map:make-map)))
 
 ;;; Library Validation
 
@@ -431,12 +464,20 @@
                               (t
                                ;; Handle both "libcrypto" and "crypto" style names
                                ;; First strip platform extension if present
+                               ;; Also handle versioned .so names like "libc.so.6"
                                (let* ((extension (platform-library-extension))
-                                      (base-without-ext (if (and (>= (length normalized-name) (length extension))
-                                                               (string= (subseq normalized-name (- (length normalized-name) (length extension)))
-                                                                      extension))
-                                                          (subseq normalized-name 0 (- (length normalized-name) (length extension)))
-                                                          normalized-name))
+                                      (so-pos #+linux (search ".so." normalized-name)
+                                              #-linux nil)
+                                      (base-without-ext (cond
+                                                          ;; Versioned .so name (e.g. "libc.so.6")
+                                                          (so-pos
+                                                           (subseq normalized-name 0 so-pos))
+                                                          ;; Exact extension match
+                                                          ((and (>= (length normalized-name) (length extension))
+                                                                (string= (subseq normalized-name (- (length normalized-name) (length extension)))
+                                                                         extension))
+                                                           (subseq normalized-name 0 (- (length normalized-name) (length extension))))
+                                                          (t normalized-name)))
                                       (lookup-name (if (and (>= (length base-without-ext) 3)
                                                           (string= (subseq base-without-ext 0 3) "lib"))
                                                      (subseq base-without-ext 3)

@@ -4,9 +4,9 @@
 
 (defpackage epsilon.net.tcp
   (:use cl)
-  (:local-nicknames
-   (sockets epsilon.net.sockets)
-   (types epsilon.net.types))
+  (:import
+   (epsilon.net.sockets sockets)
+   (epsilon.net.types types))
   ;; Re-export most functions directly from sockets module
   (:import-from epsilon.net.sockets
    #:tcp-bind
@@ -58,8 +58,7 @@
 
    ;; Macros
    #:with-tcp-server
-   #:with-tcp-connection)
-  (:enter t))
+   #:with-tcp-connection))
 
 ;;; ============================================================================
 ;;; Value-Added TCP Operations

@@ -2,10 +2,9 @@
 
 (defpackage :epsilon.foreign.jit.array.test
   (:use :cl :epsilon.syntax :epsilon.test)
-  (:local-nicknames
-   (:jit :epsilon.foreign.jit)
-   (:arr :epsilon.foreign.jit.array))
-   (:enter t))
+  (:import
+   (epsilon.foreign.jit jit)
+   (epsilon.foreign.jit.array arr)))
 
 ;;; ============================================================================
 ;;; Type Mapping Tests

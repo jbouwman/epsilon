@@ -30,16 +30,16 @@ The JIT FFI module provides near-native call performance by generating specializ
 
 ```lisp
 (require :epsilon.foreign.jit)
-(require :epsilon.tool.benchmark)
+(require :epsilon.benchmark)
 
 ;; Load benchmarks
 (load "epsilon/modules/foreign-jit/benchmarks/jit-ffi-benchmarks.lisp")
 
 ;; Run quick test
-(epsilon.tool.benchmark.jit-ffi:quick-performance-test)
+(epsilon.benchmark.jit-ffi:quick-performance-test)
 
 ;; Run all benchmarks
-(epsilon.tool.benchmark.jit-ffi:run-all-benchmarks)
+(epsilon.benchmark.jit-ffi:run-all-benchmarks)
 ```
 
 ### Legacy Benchmarks

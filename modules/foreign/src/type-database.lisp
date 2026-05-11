@@ -5,9 +5,9 @@
 
 (defpackage epsilon.foreign.type-database
   (:use cl)
-  (:local-nicknames
-   (map epsilon.map)
-   (log epsilon.log))
+  (:import
+   (epsilon.map map)
+   (epsilon.log log))
   (:export
    ;; Type info structures
    #:c-type-info
@@ -48,8 +48,7 @@
    #:struct-size
    #:struct-alignment
    #:enum-value
-   #:database-statistics)
-  (:enter t))
+   #:database-statistics))
 
 ;;; Type Information Structures
 

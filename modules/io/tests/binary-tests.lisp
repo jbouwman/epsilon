@@ -1,9 +1,8 @@
 (defpackage epsilon.io.binary-tests
   (:use :cl :epsilon.test)
-  (:require (epsilon.io.binary binary)
+  (:import (epsilon.io.binary binary)
             (epsilon.test test)
-            (epsilon.io io))
-  (:enter t))
+            (epsilon.io io)))
 
 (deftest uint16-conversion
   "Test uint16 to/from octets"

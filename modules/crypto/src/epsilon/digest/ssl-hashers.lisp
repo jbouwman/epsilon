@@ -1,23 +1,26 @@
-;;;; epsilon.digest.ssl-hashers - Hasher protocol bridge for epsilon.ssl states
+;;;; epsilon.digest.ssl-hashers - Hasher protocol bridge for epsilon.crypto states
 ;;;;
-;;;; Wraps epsilon.ssl hash states (md5-state, sha256-state, etc.) in a
+;;;; Wraps epsilon.crypto hash states (md5-state, sha256-state, etc.) in a
 ;;;; uniform struct that implements the epsilon.digest.protocol hasher typeclass.
 
 (defpackage epsilon.digest.ssl-hashers
   (:use :cl)
-  (:require (epsilon.typeclass tc)
+  (:import (epsilon.typeclass tc)
             (epsilon.digest.protocol proto)
-            (epsilon.ssl ssl))
+            (epsilon.crypto.md5 md5)
+            (epsilon.crypto.sha1 sha1)
+            (epsilon.crypto.sha256 sha256)
+            (epsilon.crypto.sha512 sha512)
+            (epsilon.crypto.sha3 sha3))
   (:export ssl-hasher
-           make-ssl-hasher)
-  (:enter t))
+           make-ssl-hasher))
 
 ;;; ============================================================================
 ;;; SSL Hasher Wrapper
 ;;; ============================================================================
 
 (defstruct (ssl-hasher (:constructor %make-ssl-hasher))
-  "Wrapper around epsilon.ssl hash states that implements the hasher protocol."
+  "Wrapper around epsilon.crypto hash states that implements the hasher protocol."
   (algorithm :md5 :type keyword)
   (state nil)
   (update-fn nil :type function)
@@ -33,74 +36,74 @@
   (ecase algorithm
     (:md5 (%make-ssl-hasher
             :algorithm :md5
-            :state (ssl:make-md5-state)
-            :update-fn #'ssl:md5-update
-            :finalize-fn #'ssl:md5-finalize
-            :copy-fn #'ssl:md5-copy
-            :make-fn #'ssl:make-md5-state
+            :state (md5:make-md5-state)
+            :update-fn #'md5:md5-update
+            :finalize-fn #'md5:md5-finalize
+            :copy-fn #'md5:md5-copy
+            :make-fn #'md5:make-md5-state
             :output-length 16
             :block-length 64))
     (:sha1 (%make-ssl-hasher
              :algorithm :sha1
-             :state (ssl:make-sha1-state)
-             :update-fn #'ssl:sha1-update
-             :finalize-fn #'ssl:sha1-finalize
-             :copy-fn #'ssl:sha1-copy
-             :make-fn #'ssl:make-sha1-state
+             :state (sha1:make-sha1-state)
+             :update-fn #'sha1:sha1-update
+             :finalize-fn #'sha1:sha1-finalize
+             :copy-fn #'sha1:sha1-copy
+             :make-fn #'sha1:make-sha1-state
              :output-length 20
              :block-length 64))
     (:sha256 (%make-ssl-hasher
                :algorithm :sha256
-               :state (ssl:make-sha256-state)
-               :update-fn #'ssl:sha256-update
-               :finalize-fn #'ssl:sha256-finalize
-               :copy-fn #'ssl:sha256-copy
-               :make-fn #'ssl:make-sha256-state
+               :state (sha256:make-sha256-state)
+               :update-fn #'sha256:sha256-update
+               :finalize-fn #'sha256:sha256-finalize
+               :copy-fn #'sha256:sha256-copy
+               :make-fn #'sha256:make-sha256-state
                :output-length 32
                :block-length 64))
     (:sha384 (%make-ssl-hasher
                :algorithm :sha384
-               :state (ssl:make-sha384-state)
-               :update-fn #'ssl:sha384-update
-               :finalize-fn #'ssl:sha384-finalize
-               :copy-fn #'ssl:sha384-copy
-               :make-fn #'ssl:make-sha384-state
+               :state (sha512:make-sha384-state)
+               :update-fn #'sha512:sha384-update
+               :finalize-fn #'sha512:sha384-finalize
+               :copy-fn #'sha512:sha384-copy
+               :make-fn #'sha512:make-sha384-state
                :output-length 48
                :block-length 128))
     (:sha512 (%make-ssl-hasher
                :algorithm :sha512
-               :state (ssl:make-sha512-state)
-               :update-fn #'ssl:sha512-update
-               :finalize-fn #'ssl:sha512-finalize
-               :copy-fn #'ssl:sha512-copy
-               :make-fn #'ssl:make-sha512-state
+               :state (sha512:make-sha512-state)
+               :update-fn #'sha512:sha512-update
+               :finalize-fn #'sha512:sha512-finalize
+               :copy-fn #'sha512:sha512-copy
+               :make-fn #'sha512:make-sha512-state
                :output-length 64
                :block-length 128))
     (:sha3-256 (%make-ssl-hasher
                  :algorithm :sha3-256
-                 :state (ssl:make-sha3-256-state)
-                 :update-fn #'ssl:sha3-256-update
-                 :finalize-fn #'ssl:sha3-256-finalize
-                 :copy-fn #'ssl:sha3-256-copy
-                 :make-fn #'ssl:make-sha3-256-state
+                 :state (sha3:make-sha3-256-state)
+                 :update-fn #'sha3:sha3-256-update
+                 :finalize-fn #'sha3:sha3-256-finalize
+                 :copy-fn #'sha3:sha3-256-copy
+                 :make-fn #'sha3:make-sha3-256-state
                  :output-length 32
                  :block-length 136))
     (:sha3-384 (%make-ssl-hasher
                  :algorithm :sha3-384
-                 :state (ssl:make-sha3-384-state)
-                 :update-fn #'ssl:sha3-384-update
-                 :finalize-fn #'ssl:sha3-384-finalize
-                 :copy-fn #'ssl:sha3-384-copy
-                 :make-fn #'ssl:make-sha3-384-state
+                 :state (sha3:make-sha3-384-state)
+                 :update-fn #'sha3:sha3-384-update
+                 :finalize-fn #'sha3:sha3-384-finalize
+                 :copy-fn #'sha3:sha3-384-copy
+                 :make-fn #'sha3:make-sha3-384-state
                  :output-length 48
                  :block-length 104))
     (:sha3-512 (%make-ssl-hasher
                  :algorithm :sha3-512
-                 :state (ssl:make-sha3-512-state)
-                 :update-fn #'ssl:sha3-512-update
-                 :finalize-fn #'ssl:sha3-512-finalize
-                 :copy-fn #'ssl:sha3-512-copy
-                 :make-fn #'ssl:make-sha3-512-state
+                 :state (sha3:make-sha3-512-state)
+                 :update-fn #'sha3:sha3-512-update
+                 :finalize-fn #'sha3:sha3-512-finalize
+                 :copy-fn #'sha3:sha3-512-copy
+                 :make-fn #'sha3:make-sha3-512-state
                  :output-length 64
                  :block-length 72))))
 

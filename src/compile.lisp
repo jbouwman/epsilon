@@ -1,10 +1,11 @@
 ;;;; This module provides advisory file locking to prevent concurrent
 ;;;; compilation of the same file, and atomic writes.
 
-(defpackage epsilon.compile
+(cl:defpackage epsilon.compile
   (:use cl)
   (:export
    compile-file-safely
+   *compile-file-around*
    with-file-lock
    with-compilation-lock))
 
@@ -149,6 +150,26 @@
               (write-line note s)))
         (error () nil)))))
 
+;;; Compilation enhancement hook
+;;;
+;;; Modules loaded after bootstrap can enhance compile-file by setting
+;;; *compile-file-around*.  The hook receives the source pathname and a
+;;; thunk that performs the actual compilation; it should call the thunk
+;;; exactly once and return its values.
+;;;
+;;; Example (set by epsilon.compile-integration on load):
+;;;
+;;;   (setf compile:*compile-file-around*
+;;;         (lambda (input-file compile-thunk)
+;;;           (with-cst-source-tracking (input-file)
+;;;             (funcall compile-thunk))))
+
+(defvar *compile-file-around* nil
+  "When non-nil, a function (input-file thunk) that wraps compile-file calls.
+   THUNK is a zero-argument function that performs the compilation and
+   returns (values output-truename warnings-p failure-p).
+   The wrapper must call THUNK exactly once and return its values.")
+
 (defun compile-file-safely (input-file &key
                                          (output-file (compile-file-pathname input-file))
                                          (verbose nil)
@@ -199,12 +220,17 @@
                                    (let ((text (princ-to-string c)))
                                      (search "*ON-PACKAGE-VARIANCE*" text)))
                           (muffle-warning c)))))
-                 (let ((sb-ext:*on-package-variance* nil))
-                   (compile-file input-file
-                                 :output-file temp-path
-                                 :verbose verbose
-                                 :print print
-                                 :external-format external-format)))
+                 (let ((compile-thunk
+                         (lambda ()
+                           (let ((sb-ext:*on-package-variance* nil))
+                             (compile-file input-file
+                                           :output-file temp-path
+                                           :verbose verbose
+                                           :print print
+                                           :external-format external-format)))))
+                   (if *compile-file-around*
+                       (funcall *compile-file-around* input-file compile-thunk)
+                       (funcall compile-thunk))))
              (declare (ignore output-truename))
              ;; Treat undefined function warnings as compilation failures
              (when undefined-warnings

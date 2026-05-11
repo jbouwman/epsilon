@@ -7,11 +7,10 @@
 
 (defpackage epsilon.test.property
   (:use :cl :epsilon.symbol)
-  (:require (epsilon.map map)
+  (:import (epsilon.map map)
             (epsilon.sequence seq)
             (epsilon.string str)
-            (epsilon.log log))
-  (:enter t))
+            (epsilon.log log)))
 
 ;;; Configuration
 

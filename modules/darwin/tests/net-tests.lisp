@@ -12,11 +12,12 @@
   (:use
    cl
    epsilon.test)
-  (:local-nicknames
-   (net epsilon.net)
-   (lib epsilon.foreign)
-   (kqueue epsilon.kqueue))
-  (:enter t))
+  (:import
+   (epsilon.net net)
+   (epsilon.foreign lib)
+   (epsilon.kqueue kqueue)
+   (epsilon.sys.thread thread)
+   (epsilon.sys.semaphore sem)))
 
 ;;; ============================================================================
 ;;; Basic Address and Socket Tests
@@ -193,7 +194,7 @@
 
         ;; Start accepting thread
         (let ((accept-thread
-               (sb-thread:make-thread
+               (thread:make-thread
                 (lambda ()
                   (handler-case
                       (let ((stream (net:tcp-accept listener)))
@@ -214,7 +215,7 @@
             (net:tcp-shutdown client))
 
           ;; Wait for accept thread to finish
-          (sb-thread:join-thread accept-thread :timeout 2))
+          (thread:join-thread accept-thread :timeout 2))
         t)
     (error (e)
       (assert-true nil (format nil "TCP connect/accept test failed: ~A" e)))))
@@ -248,7 +249,7 @@
 
         ;; Start echo server thread
         (let ((server-thread
-               (sb-thread:make-thread
+               (thread:make-thread
                 (lambda ()
                   (handler-case
                       (let ((stream (net:tcp-accept listener)))
@@ -283,7 +284,7 @@
             (net:tcp-shutdown client))
 
           ;; Wait for server thread
-          (sb-thread:join-thread server-thread :timeout 2))
+          (thread:join-thread server-thread :timeout 2))
         t)
     (error (e)
       (assert-true nil (format nil "Data transfer test failed: ~A" e)))))
@@ -471,7 +472,7 @@
 
     ;; Start server thread
     (setf (server-thread fixture)
-          (sb-thread:make-thread
+          (thread:make-thread
            (lambda ()
              (handler-case
                  (progn
@@ -481,7 +482,7 @@
                                 (let ((client (net:tcp-accept listener)))
                                   (push client (client-connections fixture))
                                   ;; Handle client in a separate thread
-                                  (sb-thread:make-thread
+                                  (thread:make-thread
                                    (lambda ()
                                      (funcall handler client fixture))
                                    :name "client-handler"))
@@ -503,9 +504,9 @@
   (when (server-listener fixture)
     (ignore-errors
      (when (server-thread fixture)
-       (sb-thread:terminate-thread (server-thread fixture)))))
+       (thread:destroy-thread (server-thread fixture)))))
   (when (server-thread fixture)
-    (ignore-errors (sb-thread:join-thread (server-thread fixture) :timeout 0.5)))
+    (ignore-errors (thread:join-thread (server-thread fixture) :timeout 0.5)))
   (dolist (conn (client-connections fixture))
     (ignore-errors (net:tcp-shutdown conn))))
 
@@ -1111,7 +1112,7 @@
 
         ;; Start a connection in a separate thread
         (let ((connect-thread
-                (sb-thread:make-thread
+                (thread:make-thread
                  (lambda ()
                    (sleep 0.1) ; Small delay to let polling start
                    (let* ((connect-addr (net:make-socket-address "127.0.0.1" port))
@@ -1130,7 +1131,7 @@
               (assert-true (typep (first (multiple-value-list result)) 'net:tcp-stream)
                   "Should return TCP stream after connection")))
 
-          (sb-thread:join-thread connect-thread :timeout 2))
+          (thread:join-thread connect-thread :timeout 2))
         t)
     (error (e)
       (assert-true nil (format nil "Async TCP poll accept test failed: ~A" e)))))
@@ -1143,13 +1144,13 @@
              (port (net:socket-address-port (net:tcp-local-addr listener)))
              (test-data "Hello async read!")
              ;; Waker callback synchronization
-             (waker-sem (sb-thread:make-semaphore :name "waker-sem" :count 0))
+             (waker-sem (sem:make-semaphore :name "waker-sem" :count 0))
              (waker-function (lambda ()
-                               (sb-thread:signal-semaphore waker-sem))))
+                               (sem:signal-semaphore waker-sem))))
 
         ;; Set up connection - server sends data after a delay
         (let ((accept-thread
-                (sb-thread:make-thread
+                (thread:make-thread
                  (lambda ()
                    (handler-case
                        (let ((stream (net:tcp-accept listener)))
@@ -1171,7 +1172,7 @@
               (assert-true (eq result :pending) "Should return :pending when no data available"))
 
             ;; Wait for waker to be called
-            (let ((waker-signaled (sb-thread:wait-on-semaphore waker-sem :timeout 5)))
+            (let ((waker-signaled (sem:wait-on-semaphore waker-sem :timeout 5)))
               (assert-true waker-signaled "Waker callback should have been called within timeout")
 
               ;; Now reading should succeed
@@ -1181,7 +1182,7 @@
                   (assert-true (> bytes-read 0) "Should read some data after polling indicates ready"))))
 
             (net:tcp-shutdown client)
-            (sb-thread:join-thread accept-thread :timeout 2)))
+            (thread:join-thread accept-thread :timeout 2)))
         t)
     (error (e)
       (assert-true nil (format nil "Async TCP poll read test failed: ~A" e)))))
@@ -1198,7 +1199,7 @@
 
         ;; Set up connection
         (let ((accept-thread
-                (sb-thread:make-thread
+                (thread:make-thread
                  (lambda ()
                    (handler-case
                        (let ((stream (net:tcp-accept listener)))
@@ -1219,7 +1220,7 @@
                   "Should return :ready or :pending for write polling"))
 
             (net:tcp-shutdown client)
-            (sb-thread:join-thread accept-thread :timeout 2)))
+            (thread:join-thread accept-thread :timeout 2)))
         t)
     (error (e)
       (assert-true nil (format nil "Async TCP poll write test failed: ~A" e)))))

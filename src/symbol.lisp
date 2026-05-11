@@ -1,14 +1,14 @@
-(defpackage #:epsilon.symbol
+(cl:defpackage #:epsilon.symbol
   (:use
    #:cl)
   (:export
-   #:make-gensym
-   #:make-gensym-list
    #:with-gensyms
    #:parse-body
    ;; Package re-export utilities
    #:reexport
-   #:reexport-types))
+   #:reexport-types
+   ;; Condition-type predicate generator
+   #:define-condition-predicates))
 
 (in-package #:epsilon.symbol)
 
@@ -22,21 +22,6 @@ or a character."
    (if package
        (intern name (if (eq t package) *package* package))
        (make-symbol name))))
-
-(defun make-gensym (name)
-  "If NAME is a non-negative integer, calls GENSYM using it. Otherwise NAME
-must be a string designator, in which case calls GENSYM using the designated
-string as the argument."
-  (gensym (if (typep name '(integer 0))
-              name
-              (string name))))
-
-(defun make-gensym-list (length &optional (x "G"))
-  "Returns a list of LENGTH gensyms, each generated as if with a call to MAKE-GENSYM,
-using the second (optional, defaulting to \"G\") argument."
-  (let ((g (if (typep x '(integer 0)) x (string x))))
-    (loop repeat length
-          collect (gensym g))))
 
 (defmacro with-gensyms (names &body forms)
   "Binds a set of variables to gensyms and evaluates the implicit progn FORMS.
@@ -150,3 +135,13 @@ arguments when given."
         (when src-sym
           (import src-sym dst)
           (export src-sym dst))))))
+
+(defmacro define-condition-predicates (&rest names)
+  "Generate type-checking predicates (NAME-P obj) for each condition type
+   listed in NAMES. Each predicate returns T if OBJ is an instance of that
+   condition class, NIL otherwise."
+  `(progn
+     ,@(loop for name in names
+             collect `(defun ,(intern (format nil "~A-P" name)) (obj)
+                        ,(format nil "Test if OBJ is a ~(~A~)." name)
+                        (typep obj ',name)))))

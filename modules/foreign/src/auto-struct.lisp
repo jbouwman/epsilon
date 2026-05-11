@@ -4,11 +4,11 @@
 
 (defpackage epsilon.foreign.auto-struct
   (:use cl)
-  (:local-nicknames
-   (types epsilon.foreign.type-database)
-   (grovel epsilon.foreign.grovel)
-   (fs epsilon.file)
-   (log epsilon.log))
+  (:import
+   (epsilon.foreign.type-database types)
+   (epsilon.foreign.grovel grovel)
+   (epsilon.fs fs)
+   (epsilon.log log))
   (:export
    #:generate-struct-definition
    #:define-c-struct
@@ -18,8 +18,7 @@
    #:generate-bindings-to-file
    #:generate-bindings-for-library
    #:list-available-structs
-   #:list-available-functions)
-  (:enter t))
+   #:list-available-functions))
 
 ;;; Struct Generation
 

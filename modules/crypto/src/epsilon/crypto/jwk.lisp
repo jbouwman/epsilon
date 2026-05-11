@@ -12,16 +12,15 @@
 
 (defpackage epsilon.crypto.jwk
   (:use :cl)
-  (:require (epsilon.json json)
+  (:import (epsilon.json json)
             (epsilon.map map)
-            (epsilon.base-encode enc))
+            (epsilon.encode enc))
   (:export key-to-jwk
            key-from-jwk
            keys-to-jwks
            keys-from-jwks
            jwk-to-json
-           jwks-to-json)
-  (:enter t))
+           jwks-to-json))
 
 ;;; ---------------------------------------------------------------------------
 ;;; Internal helpers
@@ -100,8 +99,8 @@
   (let (x-bytes y-bytes)
     (if is-private
         ;; Derive public point from private scalar
-        (let ((pub-from-priv (%find-fn :epsilon.ssl.ecdsa "ECDSA-PUBLIC-KEY-FROM-PRIVATE"))
-              (point-encode (%find-fn :epsilon.ssl.ec-p256 "P256-POINT-ENCODE-UNCOMPRESSED")))
+        (let ((pub-from-priv (%find-fn :epsilon.crypto.ecdsa "ECDSA-PUBLIC-KEY-FROM-PRIVATE"))
+              (point-encode (%find-fn :epsilon.crypto.ec-p256 "P256-POINT-ENCODE-UNCOMPRESSED")))
           (let* ((point (funcall pub-from-priv material))
                  (sec1 (funcall point-encode point)))
             (setf x-bytes (subseq sec1 1 33))
@@ -119,11 +118,11 @@
   "Convert RSA key material to JWK fields.
    Extracts modulus (n) and exponent (e) for the public key."
   (let ((n-fn (if is-private
-                  (%find-fn :epsilon.ssl.rsa "RSA-PRIVATE-KEY-N")
-                  (%find-fn :epsilon.ssl.rsa "RSA-PUBLIC-KEY-N")))
+                  (%find-fn :epsilon.crypto.rsa "RSA-PRIVATE-KEY-N")
+                  (%find-fn :epsilon.crypto.rsa "RSA-PUBLIC-KEY-N")))
         (e-fn (if is-private
-                  (%find-fn :epsilon.ssl.rsa "RSA-PRIVATE-KEY-E")
-                  (%find-fn :epsilon.ssl.rsa "RSA-PUBLIC-KEY-E"))))
+                  (%find-fn :epsilon.crypto.rsa "RSA-PRIVATE-KEY-E")
+                  (%find-fn :epsilon.crypto.rsa "RSA-PUBLIC-KEY-E"))))
     (let ((n (funcall n-fn material))
           (e (funcall e-fn material)))
       (list (cons :kty "RSA")
@@ -165,7 +164,7 @@
   (let ((n (%base64url-decode-integer (cdr (assoc :n jwk))))
         (e (%base64url-decode-integer (cdr (assoc :e jwk))))
         (make-key (%find-fn :epsilon.crypto.native "MAKE-NATIVE-KEY"))
-        (make-rsa-pub (%find-fn :epsilon.ssl.rsa "MAKE-RSA-PUBLIC-KEY")))
+        (make-rsa-pub (%find-fn :epsilon.crypto.rsa "MAKE-RSA-PUBLIC-KEY")))
     (funcall make-key :type :rsa :private-p nil
              :material (funcall make-rsa-pub n e))))
 

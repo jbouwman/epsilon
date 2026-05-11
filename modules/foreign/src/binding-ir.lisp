@@ -16,18 +16,18 @@
 ;;;;   ;; Load time: Use BIR file
 ;;;;   (load-binding-ir "bindings/libpq.bir.lisp")
 ;;;;
-;;;; See docs/implement/182_epsilon-ffi-binding-improvement.md for architecture.
+;;;; See manual/implement/182_epsilon-ffi-binding-improvement.md for architecture.
 
 (defpackage epsilon.foreign.binding-ir
   (:use cl)
-  (:local-nicknames
-   (map epsilon.map)
-   (lc epsilon.foreign.libclang)
-   (ab epsilon.foreign.auto-binding)
-   (sigs epsilon.foreign.signatures)
-   (grovel epsilon.foreign.grovel)
-   (log epsilon.log)
-   (fs epsilon.file))
+  (:import
+   (epsilon.map map)
+   (epsilon.foreign.libclang lc)
+   (epsilon.foreign.auto-binding ab)
+   (epsilon.foreign.signatures sigs)
+   (epsilon.foreign.grovel grovel)
+   (epsilon.log log)
+   (epsilon.fs fs))
   (:export
    ;; BIR Format Constants
    #:+bir-version+
@@ -136,8 +136,7 @@
    #:get-bir-enum-value
 
    ;; CLI Entry Point
-   #:grovel)
-  (:enter t))
+   #:grovel))
 
 ;;; ============================================================================
 ;;; BIR Format Constants

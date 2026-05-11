@@ -4,8 +4,7 @@
 
 (defpackage epsilon.graph-tests
   (:use :cl :epsilon.syntax :epsilon.test)
-  (:require (epsilon.graph graph))
-  (:enter t))
+  (:import (epsilon.graph graph)))
 
 ;;; ============================================================
 ;;; Tarjan's SCC Tests

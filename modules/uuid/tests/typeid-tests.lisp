@@ -4,8 +4,7 @@
 
 (defpackage epsilon.typeid-test
   (:use :cl :epsilon.test :epsilon.syntax :epsilon.typeid)
-  (:require (epsilon.uuid uuid))
-  (:enter t))
+  (:import (epsilon.uuid uuid)))
 
 ;;;; ==========================================================================
 ;;;; Base32 Encoding/Decoding Tests

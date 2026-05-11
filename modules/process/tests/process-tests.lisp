@@ -4,9 +4,8 @@
 
 (defpackage epsilon.process-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.process process)
-            (epsilon.file fs))
-  (:enter t))
+  (:import (epsilon.process process)
+            (epsilon.fs fs)))
 
 ;;; ============================================================================
 ;;; Test Helpers
@@ -156,6 +155,19 @@
     (assert-equal 0 exit-code)
     ;; When run through shell, $HOME should be expanded
     (assert-true (not (search "$HOME" output)))))
+
+(deftest test-shell-passthrough-with-embedded-args ()
+  "When :shell t and no :args, the command string must be passed to the
+shell verbatim. Regression test: an earlier shape escape-quoted the whole
+string, so `bash -c \"'systemctl reload X'\"` failed with exit 127
+'command not found' even though plain shell syntax was used."
+  (multiple-value-bind (output error-output exit-code)
+      (process:run-sync "echo hello world"
+                        :shell t
+                        :error-on-failure nil)
+    (declare (ignore error-output))
+    (assert-equal 0 exit-code)
+    (assert-true (search "hello world" output))))
 
 ;;; ============================================================================
 ;;; Process Monitoring Tests

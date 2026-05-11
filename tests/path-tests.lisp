@@ -1,6 +1,5 @@
 (defpackage epsilon.path-test
-  (:use :cl :epsilon.test :epsilon.syntax :epsilon.path)
-  (:enter t))
+  (:use :cl :epsilon.test :epsilon.syntax :epsilon.path))
 
 ;;;; ==========================================================================
 ;;;; Path Construction Tests

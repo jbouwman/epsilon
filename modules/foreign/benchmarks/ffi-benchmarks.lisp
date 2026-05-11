@@ -1,18 +1,17 @@
 ;;;; FFI Performance Benchmarks
 ;;;;
 ;;;; Benchmarks for Foreign Function Interface operations.
-;;;; Uses the epsilon.tool.benchmark framework for consistent measurement.
+;;;; Uses the epsilon.benchmark framework for consistent measurement.
 
-(defpackage epsilon.tool.benchmark.ffi
+(defpackage epsilon.benchmark.ffi
   (:use cl)
-  (:local-nicknames
-   (bench epsilon.tool.benchmark)
-   (lib epsilon.foreign))
+  (:import
+   (epsilon.benchmark bench)
+   (epsilon.foreign lib))
   (:export
    register-ffi-benchmarks
    run-memory-throughput-benchmarks
-   quick-performance-test)
-  (:enter t))
+   quick-performance-test))
 
 ;;; Define shared library functions for benchmarking
 

@@ -1,8 +1,8 @@
 (defpackage epsilon.foreign.marshalling
   (:use cl)
-  (:local-nicknames
-   (map epsilon.map)
-   (trampoline epsilon.foreign.trampoline))
+  (:import
+   (epsilon.map map)
+   (epsilon.foreign.trampoline trampoline))
   (:export
    ;; Type inference
    #:infer-function-signature
@@ -30,8 +30,7 @@
 
    ;; Converters
    #:bool-to-foreign
-   #:foreign-to-bool)
-  (:enter t))
+   #:foreign-to-bool))
 
 ;;;; Automatic Type Marshalling for FFI
 

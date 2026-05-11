@@ -2,9 +2,8 @@
 
 (defpackage epsilon.commands-test
   (:use :cl :epsilon.test)
-  (:local-nicknames
-   (commands epsilon.commands))
-  (:enter t))
+  (:import
+   (epsilon.commands commands)))
 
 (deftest test-parse-declared-args-integer ()
   "Test parsing an integer flag"
@@ -89,3 +88,26 @@
     (assert-not-null (commands:command-args cmd))
     (assert-equal "--port"
                   (getf (first (commands:command-args cmd)) :flag))))
+
+(deftest test-namespaced-alias-resolves ()
+  "Module commands are reachable via both <name> and <module>:<name>.
+The discover-module-commands path adds the namespaced alias so that
+two modules declaring the same top-level command name remain
+disambiguable -- the winner keeps the unqualified form, the loser is
+addressable via its module-prefixed alias."
+  (let ((before (commands:get-command "ns-test-cmd")))
+    (assert-true (null before)))
+  (unwind-protect
+       (progn
+         (commands::register-lazy-command "ns-test-cmd" "fake-module"
+           "fake-module.handler:run"
+           :description "Fake test command"
+           :aliases (list "fake-module:ns-test-cmd"))
+         (let ((bare (commands:get-command "ns-test-cmd"))
+               (qualified (commands:get-command "fake-module:ns-test-cmd")))
+           (assert-not-null bare)
+           (assert-not-null qualified)
+           (assert-eq bare qualified)))
+    ;; Cleanup so the test is order-independent.
+    (epsilon.map:dissoc! commands::*commands* "ns-test-cmd")
+    (epsilon.map:dissoc! commands::*commands* "fake-module:ns-test-cmd")))

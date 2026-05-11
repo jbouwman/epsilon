@@ -2,13 +2,15 @@
 ;;;; feature detection capabilities. Handles system environment queries
 ;;;; and Common Lisp feature expression evaluation.
 
-(defpackage epsilon.sys.env
+(cl:defpackage epsilon.sys.env
   (:use cl)
   (:local-nicknames
    (map epsilon.map))
   (:export featurep
            getenv
            getenvp
+           setenv
+           unsetenv
            epsilon-home
            system-info
            platform
@@ -46,6 +48,19 @@ then returning the non-empty string value of the variable"
   (let ((g (getenv x)))
     (and (not (= 0 (length g)))
          g)))
+
+(defun setenv (name value &key (overwrite t))
+  "Set environment variable NAME to VALUE in the libc environment.  When
+OVERWRITE is NIL, an existing value is preserved."
+  #-win32 (sb-posix:setenv name value (if overwrite 1 0))
+  #+win32 (declare (ignore name value overwrite))
+  #+win32 (error "setenv: not implemented on Windows"))
+
+(defun unsetenv (name)
+  "Remove environment variable NAME from the libc environment."
+  #-win32 (sb-posix:unsetenv name)
+  #+win32 (declare (ignore name))
+  #+win32 (error "unsetenv: not implemented on Windows"))
 
 (defparameter *system-info*
   (let ((features *features*))

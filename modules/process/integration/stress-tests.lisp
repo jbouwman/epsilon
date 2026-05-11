@@ -8,10 +8,9 @@
 
 (defpackage epsilon.process.stress-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.process.spawn spawn)
+  (:import (epsilon.process.spawn spawn)
             (epsilon.process.posix posix))
-  (:local-nicknames (lib epsilon.foreign))
-  (:enter t))
+  (:import (epsilon.foreign lib)))
 
 ;;; ============================================================================
 ;;; Mass Spawn Tests

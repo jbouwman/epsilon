@@ -5,9 +5,8 @@
 
 (defpackage epsilon.interpolation-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.interpolation interp)
-            (epsilon.string str))
-  (:enter t))
+  (:import (epsilon.interpolation interp)
+            (epsilon.string str)))
 
 ;;; Helper to read with interpolation syntax
 

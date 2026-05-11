@@ -24,9 +24,9 @@
    #:thread-p
    #:thread-yield
    #:warn-in-thread
+   #:memory-barrier
    #:*default-special-bindings*
-   #:*standard-io-bindings*)
-  (:enter t))
+   #:*standard-io-bindings*))
 
 ;;;; Thread conditions (merged from sys/error.lisp)
 
@@ -48,6 +48,9 @@
   (sb-thread:list-all-threads))
 
 (defun %make-thread (function name)
+  "Internal: spawn a thread named NAME running FUNCTION.  The wrapper
+   in MAKE-THREAD installs the special-bindings closure before this
+   point; this is the leaf SB-THREAD call."
   (sb-thread:make-thread function :name name))
 
 (defvar *default-special-bindings* nil
@@ -62,6 +65,11 @@
   head of the list.")
 
 (defmacro defbindings (name docstring &body initforms)
+  "Define a defparameter whose value is an alist of (SPECIAL . FORM)
+   pairs, suitable for splicing into MAKE-THREAD's :INITIAL-BINDINGS.
+   INITFORMS is a list of (SPECIAL FORM) pairs; FORM is captured
+   unevaluated and EVAL'd inside each new thread.  DOCSTRING is
+   required and attached to the resulting parameter."
   (check-type docstring string)
   `(defparameter ,name
      (list
@@ -145,6 +153,9 @@ FUNCTION."
   (sb-thread:join-thread thread :timeout timeout))
 
 (defun signal-error-if-current-thread (thread)
+  "Signal THREAD-ERROR if THREAD is the calling thread.  Used by
+   DESTROY-THREAD to refuse self-termination -- a thread killing
+   itself mid-call has no defined cleanup story."
   (when (eq thread (current-thread))
     (error 'thread-error
            :message "Cannot destroy the current thread")))
@@ -171,6 +182,9 @@ FUNCTION."
   'sb-thread:thread)
 
 (defun thread-name (thread)
+  "Return the human-readable name THREAD was created with -- the NAME
+   argument to MAKE-THREAD, or \"Anonymous thread\" if none was supplied.
+   Surfaces in slow-wait diagnostics, backtraces, and inspector output."
   (sb-thread:thread-name thread))
 
 (defun interrupt-thread (thread function &rest args)
@@ -202,3 +216,10 @@ FUNCTION."
 (defun thread-p (object)
   "Returns true if object is a thread, otherwise NIL."
   (typep object 'sb-thread:thread))
+
+(defmacro memory-barrier (&optional (kind :memory))
+  "Emit a memory barrier of the given KIND, one of :MEMORY (full),
+:READ (acquire), :WRITE (release), :DATA-DEPENDENCY, or :COMPILER.
+Surrounding code on either side of the barrier is prevented from
+being reordered across it."
+  `(sb-thread:barrier (,kind)))

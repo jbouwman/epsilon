@@ -8,8 +8,7 @@
    #:condition-variable
    #:condition-variable-p
    #:condition-wait
-   #:make-condition-variable)
-  (:enter t))
+   #:make-condition-variable))
 
 ;;; Resource contention: condition variables
 

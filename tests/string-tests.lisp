@@ -1,8 +1,7 @@
 (defpackage epsilon.string-test
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.string str)
-            (epsilon.sequence seq))
-  (:enter t))
+  (:import (epsilon.string str)
+            (epsilon.sequence seq)))
 
 ;;;; Basic Operations Tests
 

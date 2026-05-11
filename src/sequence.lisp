@@ -1,7 +1,7 @@
 ;;;; This module provides lazy, immutable sequences with delayed evaluation.
 ;;;; Sequences are computed on-demand and cached.
 
-(defpackage :epsilon.sequence
+(cl:defpackage :epsilon.sequence
   (:use
    cl
    epsilon.syntax)
@@ -56,9 +56,15 @@
   (compute-fn nil))
 
 (defun delay (function)
+  "Wrap FUNCTION in a memoising promise; the function is invoked at
+   most once on the first FORCE.  Internal building block for the
+   lazy CONS macro below; callers normally don't construct promises
+   directly."
   (make-promise :compute-fn function :computed nil))
 
 (defun force (promise)
+  "Compute PROMISE if it hasn't been forced yet (memoising the
+   result), and return its value.  Idempotent."
   (if (promise-computed promise)
       (promise-value promise)
       (progn
@@ -71,24 +77,35 @@
   (tail-promise nil))
 
 (defmacro cons (head tail-expr)
+  "Build a lazy cons cell: HEAD is evaluated now, TAIL-EXPR is
+   wrapped in a promise and only evaluated when REST is called.
+   This is the CL CONS shadow that gives epsilon.sequence its
+   one-element-at-a-time evaluation."
   `(make-cons :head ,head
               :tail-promise (delay (lambda () ,tail-expr))))
 
 (defvar *empty*
-  (gensym "empty-sequence"))
+  (gensym "empty-sequence")
+  "Sentinel for the empty sequence.  EQ-comparable; never modify.")
 
 (defun empty-p (sequence)
+  "T iff SEQUENCE is the empty sequence (the *EMPTY* sentinel)."
   (eq sequence *empty*))
 
 (defun not-empty-p (sequence)
+  "T iff SEQUENCE has at least one element."
   (not (eq sequence *empty*)))
 
 (defun sequence-p (obj)
-  "Returns true if OBJ is a lazy sequence"
+  "Returns true if OBJ is a lazy sequence (a cons cell or the
+   *EMPTY* sentinel)."
   (or (cons-p obj)
       (eq obj *empty*)))
 
 (defun seq (list)
+  "Coerce LIST (a list or any sequence type) into a lazy sequence.
+   The realisation is eager in this direction -- conversion walks
+   the input -- but the resulting structure can be consumed lazily."
   (labels ((convert (remaining)
              (if (null remaining)
                  *empty*
@@ -99,21 +116,32 @@
         (convert (coerce list 'list)))))
 
 (defun first (seq)
+  "Return the first element of SEQ, or NIL if SEQ is empty.
+   Shadows CL:FIRST so callers should use the EPSILON.SEQUENCE
+   nickname (typically `seq:first`)."
   (if (empty-p seq)
       nil
       (cons-head seq)))
 
 (defun rest (seq)
+  "Return the tail of SEQ as a lazy sequence; *EMPTY* if SEQ has
+   no more elements.  This is the step that forces the next
+   promise, advancing one element at a time."
   (if (empty-p seq)
       *empty*
       (force (cons-tail-promise seq))))
 
 (defun realize (seq)
+  "Walk SEQ to completion, returning a plain CL list of its
+   elements.  For infinite sequences this never returns -- pair
+   with TAKE first."
   (loop for current = seq then (rest current)
         while (not (empty-p current))
         collect (first current)))
 
 (defun count (seq)
+  "Return the number of elements in SEQ.  Forces the entire
+   sequence; for infinite sequences this never returns."
   (loop with i = 0
         for current = seq then (rest current)
         while (not (empty-p current))
@@ -132,6 +160,9 @@
                 (not (empty-p rest-seq))))))
 
 (defun take (n seq)
+  "Return the first N elements of SEQ as a plain CL list (not a
+   lazy sequence).  Stops early if SEQ has fewer than N elements;
+   no error in that case."
   (loop for i from 1 to n
         for current = seq then (rest current)
         until (empty-p current)

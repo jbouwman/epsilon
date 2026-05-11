@@ -5,8 +5,8 @@
 
 (defpackage epsilon.foreign.jit.integration
   (:use cl)
-  (:local-nicknames
-   (jit epsilon.foreign.jit))
+  (:import
+   (epsilon.foreign.jit jit))
   (:export
    ;; High-level macros
    #:defjit
@@ -19,8 +19,7 @@
 
    ;; Signature helpers
    #:discover-signature
-   #:validate-signature)
-  (:enter t))
+   #:validate-signature))
 
 ;;; ============================================================================
 ;;; Library and Symbol Resolution

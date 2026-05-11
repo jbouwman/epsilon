@@ -424,7 +424,7 @@ epsilon/modules/io/
     buffered-tests.lisp
     combinator-tests.lisp
     async-tests.lisp
-  module.plist
+  module.sexp
 ```
 
 ## Future Considerations

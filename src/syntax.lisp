@@ -3,7 +3,7 @@
 ;;; epsilon re-exports symbols from other packages
 (setf sb-ext:*on-package-variance* nil)
 
-(defpackage :epsilon.syntax
+(cl:defpackage :epsilon.syntax
   (:use
    :cl)
   (:export

@@ -6,16 +6,15 @@
 
 (defpackage epsilon.net.socket-options
   (:use cl)
-  (:local-nicknames
-   (lib epsilon.foreign)
-   (const epsilon.net.constants)
-   (core epsilon.net.core)
-   (types epsilon.net.types)
-   (errors epsilon.net.errors))
+  (:import
+   (epsilon.foreign lib)
+   (epsilon.net.constants const)
+   (epsilon.net.core core)
+   (epsilon.net.types types)
+   (epsilon.net.errors errors))
   (:export
    set-socket-option
-   get-socket-option)
-  (:enter t))
+   get-socket-option))
 
 ;;; ============================================================================
 ;;; Helpers

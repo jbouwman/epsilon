@@ -1,3 +1,0 @@
-(:name "epsilon.parsing"
- :module-set "epsilon-stdlib"
- :description "Parsing and lexing utilities")

@@ -6,10 +6,9 @@
 
 (defpackage epsilon.io.cl-stream-adapters
   (:use :cl)
-  (:require (epsilon.io.protocol proto)
+  (:import (epsilon.io.protocol proto)
             (epsilon.io.conditions cond)
-            (epsilon.typeclass tc))
-  (:enter t))
+            (epsilon.typeclass tc)))
 
 ;;; ============================================================================
 ;;; CL Stream Reader - wraps CL binary input stream for reading

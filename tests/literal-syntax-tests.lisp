@@ -8,10 +8,9 @@
 
 (defpackage epsilon.reader.literal-syntax-tests
   (:use :cl :epsilon.test :epsilon.syntax)
-  (:require (epsilon.reader reader)
+  (:import (epsilon.readtable reader)
             (epsilon.map map)
-            (epsilon.set set))
-  (:enter t))
+            (epsilon.set set)))
 
 ;;;; Helper to read with epsilon syntax
 
